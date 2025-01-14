@@ -7,14 +7,15 @@ Need minimum requirements:
 2. react@18
 3. react-dom@18
 
-For this project, have requirements:
+For this project, have these requirements to minimize errors by being on the latest version as of 1/13/2025:
 1. node@22
 2. react@19
 3. react-dom@19
+4. npm@11
 
 Steps to run local host:
 1. Clone the repository
-2. cd to the directory
+2. cd to the repository
 3. npm install
 4. npm run dev
 
