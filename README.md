@@ -12,12 +12,15 @@ For this project, have these requirements to minimize errors by being on the lat
 2. react@19
 3. react-dom@19
 4. npm@11
+5. postgres@17 w/ pgadmin@4
 
 Steps to run local host:
 1. Clone the repository
 2. cd to the repository
 3. npm install
-4. npm run dev
+4. Create a .env file, if you don't already have, and add DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA" and change values using pgadmin 4 credentials
+5. npx prisma migrate dev
+6. npm run dev
 
 # Welcome to React Router!
 
