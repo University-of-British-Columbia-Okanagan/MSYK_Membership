@@ -57,9 +57,10 @@ export default function Register() {
 
     return (
       <>
-      <div className="flex items-center justify-center h-screen">
-        <Button variant="default">Click me</Button>
-        </div>
+      <div>
+      <Button>Click me</Button>
+    </div>
+      
         {/* <div>Welcome to register</div>
             <Form method="post" onSubmit={() => handleReset()}>
                 <div>
