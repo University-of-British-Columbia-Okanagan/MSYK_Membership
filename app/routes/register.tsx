@@ -2,6 +2,7 @@
 import { PrismaClient } from '@prisma/client';
 import React, { useState } from 'react';
 import { Form, type ActionFunctionArgs, redirect, useFetcher } from 'react-router';
+import { Button } from "@/components/ui/button";
 const prisma = new PrismaClient();
 
 export async function loader() {
@@ -56,7 +57,11 @@ export default function Register() {
 
     return (
       <>
-        <div>Welcome to register</div>
+      <div>
+      <Button>Click me</Button>
+    </div>
+      
+        {/* <div>Welcome to register</div>
             <Form method="post" onSubmit={() => handleReset()}>
                 <div>
                     <label>
@@ -83,7 +88,7 @@ export default function Register() {
                     </label>
                 </div>
                 <button type="submit">Add User</button>
-            </Form>
+            </Form> */}
       </>
     );
 }
