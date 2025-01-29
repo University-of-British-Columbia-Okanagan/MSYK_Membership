@@ -1,17 +1,15 @@
 import HeroSection from "@/components/ui/HeroSection";
-import RegisterForWorkshop from "@/components/ui/Programming/RegisterWorkshop";
-import EventWorkshopCalendar from "@/components/ui/Programming/EventWorkshopCalendar";
+
 import Footer from "@/components/ui/Home/Footer";
 
-export default function Programming() {
+import ProgrammingGrid from "~/components/ui/Programming/ProgrammingGrid";
+
+export default function Spaces() {
   return (
     <main>
-      <HeroSection title = "Programming"/>
+         <HeroSection title="Programming" />
 
-      <section className="grid grid-cols-1 md:grid-cols-2">
-        <RegisterForWorkshop />
-        <EventWorkshopCalendar />
-      </section>
+      <ProgrammingGrid />
 
       <Footer />
     </main>
