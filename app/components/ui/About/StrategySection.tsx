@@ -7,8 +7,8 @@ export default function StrategySection() {
             Our mandate is to drive sustainable economic diversification and community self-reliance through sharing and collaboration.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <img src="/path-to-image1.jpg" alt="Community Event" className="rounded-lg shadow-md" />
-            <img src="/path-to-image2.jpg" alt="Skill Workshop" className="rounded-lg shadow-md" />
+            <img src="/public/images/About img1.avif" alt="Community Event" className="rounded-lg shadow-md" />
+            <img src="/public/images/About img2.avif" alt = "Skill Workshop" className="rounded-lg shadow-md" />
           </div>
         </div>
       </section>
