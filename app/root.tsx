@@ -4,6 +4,7 @@ import { User } from "lucide-react"
 import type { Route } from "./+types/root"
 import "./app.css"
 
+//TODO: you need to move the layout to its own component, and theun update the routes.tsx file to use the layout component (see React Router 7 tutorial)
 export function Layout() {
   return (
     <html lang="en">
@@ -19,7 +20,8 @@ export function Layout() {
             <div className="container mx-auto px-4 h-20 flex items-center justify-between">
               <Link to="/" className="flex items-center gap-2">
                 <img
-                  src="https://sjc.microlink.io/IdAdpIVrlcu9ixE9XGhHVPGsb4BzTLyAaJWAz3_rsyXIflfd8gWMjnnBnPwtyDyC8ms_L5rNwP9_Qt9GCkB5qQ.jpeg"
+                  // src="https://sjc.microlink.io/IdAdpIVrlcu9ixE9XGhHVPGsb4BzTLyAaJWAz3_rsyXIflfd8gWMjnnBnPwtyDyC8ms_L5rNwP9_Qt9GCkB5qQ.jpeg"
+                  src = "public\images\Makerspace Horizontal Text Logo Colour-01.avif"
                   alt="Makerspace YK"
                   className="h-12 w-auto"
                 />
