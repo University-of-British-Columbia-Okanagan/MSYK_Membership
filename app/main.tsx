@@ -19,6 +19,7 @@ import DontFakeIt from "./routes/dontfakeit";
 import EventCalendar from "./routes/eventcalendar";
 import RentalRates from "./routes/SpaceRental";
 import SpaceRental from "./routes/SpaceRental";
+import SpacesEquipment from "./routes/SpacesEquipment";
 
 const router = createBrowserRouter([
   {
@@ -41,6 +42,7 @@ const router = createBrowserRouter([
       { path: "dontfakeit", element: <DontFakeIt/> },
       { path: "makermarket2024", element: <Market2024/> },
       {path: "SpaceRental", element: <SpaceRental />},
+      {path: "SpacesEquipment", element: <SpacesEquipment />},
     ],
   },
 ]);
