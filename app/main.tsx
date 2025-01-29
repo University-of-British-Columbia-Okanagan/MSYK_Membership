@@ -21,6 +21,7 @@ import RentalRates from "./routes/SpaceRental";
 import SpaceRental from "./routes/SpaceRental";
 import SpacesEquipment from "./routes/SpacesEquipment";
 import ResourceToolbox from "./routes/resourcetoolbox";
+import FabricationServices from "./routes/fabricationservices";
 
 const router = createBrowserRouter([
   {
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       {path: "SpaceRental", element: <SpaceRental />},
       {path: "SpacesEquipment", element: <SpacesEquipment />},
       {path: "resourcetoolbox", element: <ResourceToolbox />},
+      {path: "fabricationservices", element: <FabricationServices />},
     ],
   },
 ]);

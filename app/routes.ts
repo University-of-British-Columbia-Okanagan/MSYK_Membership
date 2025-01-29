@@ -20,4 +20,5 @@ export default [
   route("/SpaceRental", "routes/SpaceRental.tsx"),
   route("/SpacesEquipment", "routes/SpacesEquipment.tsx"),
   route("/resourcetoolbox", "routes/resourcetoolbox.tsx"),
+  route("/fabricationservices", "routes/fabricationservices.tsx"),
 ] satisfies RouteConfig;
