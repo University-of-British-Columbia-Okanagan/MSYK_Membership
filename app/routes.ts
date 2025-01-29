@@ -19,4 +19,5 @@ export default [
   route("/get-involved", "routes/getinvolved.tsx"),
   route("/SpaceRental", "routes/SpaceRental.tsx"),
   route("/SpacesEquipment", "routes/SpacesEquipment.tsx"),
+  route("/resourcetoolbox", "routes/resourcetoolbox.tsx"),
 ] satisfies RouteConfig;
