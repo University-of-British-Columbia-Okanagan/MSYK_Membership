@@ -1,10 +1,19 @@
-export default function About() {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold mb-6">About Makerspace YK</h1>
-        <p className="text-lg text-gray-700">About Page Content</p>
-      </div>
-    )
-  }
-  
-  
+import AboutHero from "~/components/ui/About/AboutHero";
+import MissionStatement from "~/components/ui/About/MissionStatement";
+import VisionSection from "~/components/ui/About/VisionSection";
+import ValuesGrid from "~/components/ui/About/ValuesGrid";
+import StrategySection from "~/components/ui/About/StrategySection";
+import Footer from "~/components/ui/Home/Footer";
+
+export default function about() {
+  return (
+    <main>
+      <AboutHero />
+      <MissionStatement />
+      <VisionSection />
+      <ValuesGrid />
+      <StrategySection />
+      <Footer />
+    </main>
+  );
+}
