@@ -22,6 +22,7 @@ import SpaceRental from "./routes/SpaceRental";
 import SpacesEquipment from "./routes/SpacesEquipment";
 import ResourceToolbox from "./routes/resourcetoolbox";
 import FabricationServices from "./routes/fabricationservices";
+import VolunteerPage from "./routes/volunteer";
 
 const router = createBrowserRouter([
   {
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
       {path: "SpacesEquipment", element: <SpacesEquipment />},
       {path: "resourcetoolbox", element: <ResourceToolbox />},
       {path: "fabricationservices", element: <FabricationServices />},
+      {path: "volunteer", element: <VolunteerPage />},
     ],
   },
 ]);
