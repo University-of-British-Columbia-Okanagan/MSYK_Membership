@@ -4,9 +4,9 @@ import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 
 const images = [
-  "https://via.placeholder.com/1200x600?text=Image+1",
-  "https://via.placeholder.com/1200x600?text=Image+2",
-  "https://via.placeholder.com/1200x600?text=Image+3",
+  "public/images/gallerysectionimg3.avif",
+  "public/images/gallerysection img2.avif",
+  "public/images/gallery section img1.avif",
 ];
 
 const GallerySection = () => {
