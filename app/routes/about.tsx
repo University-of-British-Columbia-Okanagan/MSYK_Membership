@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom";
-import AboutHero from "~/components/ui/About/AboutHero";
+import HeroSection from "@/components/ui/HeroSection";
 import MissionStatement from "~/components/ui/About/MissionStatement";
 import VisionSection from "~/components/ui/About/VisionSection";
 import ValuesGrid from "~/components/ui/About/ValuesGrid";
@@ -9,7 +9,7 @@ import Footer from "~/components/ui/Home/Footer";
 export default function About() {
   return (
     <main>
-      <AboutHero />
+       <HeroSection title="About" />
       <MissionStatement />
       <VisionSection />
       <ValuesGrid />
