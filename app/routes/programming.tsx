@@ -1,10 +1,19 @@
+import HeroSection from "@/components/ui/Programming/HeroSection";
+import RegisterForWorkshop from "@/components/ui/Programming/RegisterWorkshop";
+import EventWorkshopCalendar from "@/components/ui/Programming/EventWorkshopCalendar";
+import Footer from "@/components/ui/Home/Footer";
+
 export default function Programming() {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold mb-6">Programming</h1>
-        <p className="text-lg text-gray-700">Programming Page Content</p>
-      </div>
-    )
-  }
-  
-  
+  return (
+    <main>
+      <HeroSection />
+
+      <section className="grid grid-cols-1 md:grid-cols-2">
+        <RegisterForWorkshop />
+        <EventWorkshopCalendar />
+      </section>
+
+      <Footer />
+    </main>
+  );
+}
