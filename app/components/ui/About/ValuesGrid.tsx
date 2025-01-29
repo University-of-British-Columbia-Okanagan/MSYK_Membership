@@ -1,15 +1,47 @@
-export default function ValuesGrid() {
-    return (
-      <section className="py-16 bg-gray-100">
-        <div className="container mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-8">Our Values</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="p-6 bg-yellow-500 text-white rounded-lg">Empowering</div>
-            <div className="p-6 bg-indigo-500 text-white rounded-lg">Innovative</div>
-            <div className="p-6 bg-orange-500 text-white rounded-lg">Inclusive</div>
-            <div className="p-6 bg-gray-700 text-white rounded-lg">Community-Driven</div>
-          </div>
+import React from "react";
+
+const values = [
+  {
+    title: "Empowering",
+    text: "Giving people the confidence, skills, tools and space they need to reach their potential.",
+    bgColor: "bg-yellow-400",
+  },
+  {
+    title: "Innovative",
+    text: "Fostering an environment that encourages people to look at challenges and find solutions in new and different ways.",
+    bgColor: "bg-indigo-500",
+  },
+  {
+    title: "Inclusive",
+    text: "Committed to removing barriers to access and opening doors for participation to all members of the community.",
+    bgColor: "bg-orange-500",
+  },
+  {
+    title: "Community-Driven",
+    text: "Listening to and maintaining strong relationships with the membership and meeting the needs of the community.",
+    bgColor: "bg-gray-700",
+  },
+];
+
+const ValuesGrid = () => {
+  return (
+    <section className="max-w-4xl mx-auto my-12">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+        {/* Our Values Block */}
+        <div className="bg-gray-800 text-white p-6 flex items-center justify-center text-2xl font-bold col-span-2 md:col-span-1">
+          Our Values
         </div>
-      </section>
-    );
-  }
+
+        {/* Value Cards */}
+        {values.map((value, index) => (
+          <div key={index} className={`${value.bgColor} p-6 text-white`}>
+            <h3 className="text-lg font-bold">{value.title}</h3>
+            <p className="mt-2 text-sm">{value.text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+export default ValuesGrid;
