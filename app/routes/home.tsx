@@ -25,7 +25,7 @@ export default function Home() {
       <SpacesSection />
       <GetInvolved />
       <EventCalendar />
-      <SupportingPartners />
+      {/* <SupportingPartners /> */}
       <NewsletterSignup />
       <Footer />
     </main>
