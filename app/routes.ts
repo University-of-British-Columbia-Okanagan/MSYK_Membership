@@ -17,4 +17,5 @@ export default [
   route("/pastworkshops", "routes/pastworkshops.tsx"),  
   route("/spaces", "routes/spaces.tsx"),
   route("/get-involved", "routes/getinvolved.tsx"),
+  route("/SpaceRental", "routes/SpaceRental.tsx"),
 ] satisfies RouteConfig;

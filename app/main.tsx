@@ -17,17 +17,19 @@ import PastWorkshops from "./routes/pastworkshops";
 import Market2024 from "./routes/makermarket2024";
 import DontFakeIt from "./routes/dontfakeit";
 import EventCalendar from "./routes/eventcalendar";
+import RentalRates from "./routes/SpaceRental";
+import SpaceRental from "./routes/SpaceRental";
 
 const router = createBrowserRouter([
   {
     path: "/",
-    element: <App />, // Main layout containing Navbar and Outlet
+    element: <App />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: "about", element: <About /> }, // About is now independent
-      { path: "board", element: <Board /> }, // Not nested inside /about
-      { path: "staff", element: <Staff /> }, // Not nested inside /about
-      { path: "contact", element: <Contact /> }, // Not nested inside /about
+      { path: "about", element: <About /> }, 
+      { path: "board", element: <Board /> }, 
+      { path: "staff", element: <Staff /> }, 
+      { path: "contact", element: <Contact /> }, 
       { path: "programming", element: <Programming /> },
       { path: "spaces", element: <Spaces /> },
       { path: "get-involved", element: <GetInvolved /> },
@@ -38,6 +40,7 @@ const router = createBrowserRouter([
       { path: "eventcalendar", element: <EventCalendar/> },
       { path: "dontfakeit", element: <DontFakeIt/> },
       { path: "makermarket2024", element: <Market2024/> },
+      {path: "SpaceRental", element: <SpaceRental />},
     ],
   },
 ]);
