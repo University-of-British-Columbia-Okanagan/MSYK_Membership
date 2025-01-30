@@ -1,3 +1,4 @@
+//TODO: Change the hardcoded job opportunities data into dynamic state. Should be linked to the database and update according to the db.
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
 
@@ -5,7 +6,7 @@ export default function JobOpportunities() {
   return (
     <main>
       {/* Hero Section */}
-      <HeroSection title="Job Opportunities" />
+      <HeroSection title="Job & Contract Opportunities" />
 
       {/* Job Opportunities Section */}
       <section className="container mx-auto px-4 py-16">
@@ -14,9 +15,11 @@ export default function JobOpportunities() {
           <div className="bg-yellow-500 text-white p-8 rounded-lg shadow-lg">
             <h2 className="text-2xl font-bold">Woodshop Instructors</h2>
             <p className="mt-2 font-semibold">Contract</p>
-            <button className="mt-4 bg-gray-800 text-white px-6 py-2 rounded-md hover:bg-gray-700 transition">
-              Apply Now
-            </button>
+            <a href="mailto:info@makerspaceyk.com">
+              <button className="mt-4 bg-gray-800 text-white px-6 py-2 rounded-md hover:bg-gray-700 transition">
+                Apply Now
+              </button>
+            </a>
           </div>
 
           {/* Job Details */}
@@ -29,10 +32,10 @@ export default function JobOpportunities() {
             </p>
             <p className="mt-2">
               Sessions are in the evenings and weekends, with hours varying
-              between **3 to 24 hours a month**.
+              between <strong>3 to 24 hours a month</strong>.
             </p>
             <p className="mt-2 font-semibold">
-              Rolling applications open until **Dec. 31, 2025**.
+              Rolling applications open until <strong>Dec. 31, 2025</strong>.
             </p>
             <p className="mt-2 text-red-600 font-semibold">
               Got questions or want to apply? Email us at{" "}
@@ -49,20 +52,23 @@ export default function JobOpportunities() {
           <div className="bg-indigo-600 text-white p-8 rounded-lg shadow-lg">
             <h2 className="text-2xl font-bold">Freelance Opportunities</h2>
             <p className="mt-2 font-semibold">Contract</p>
-            <button className="mt-4 bg-yellow-400 text-black px-6 py-2 rounded-md hover:bg-yellow-300 transition">
-              Get in Touch
-            </button>
+            <a href="mailto:info@makerspaceyk.com">
+              <button className="mt-4 bg-yellow-400 text-black px-6 py-2 rounded-md hover:bg-yellow-300 transition">
+                Get in Touch
+              </button>
+            </a>
           </div>
 
           {/* Freelance Details */}
           <div className="bg-white text-gray-800 p-8 rounded-lg shadow-lg">
             <p>
-              We need folks with experience in **graphics, communications, and
-              information design** to help us with outreach, marketing, and
-              training materials.
+              We need folks with experience in{" "}
+              <strong>graphics, communications, and information design</strong>{" "}
+              to help us with outreach, marketing, and training materials.
             </p>
             <p className="mt-2">
-              If you have these skills, **send us your resume & portfolio** at
+              If you have these skills,{" "}
+              <strong>send us your resume & portfolio</strong> at
               <a
                 href="mailto:info@makerspaceyk.com"
                 className="underline text-red-600"
@@ -78,6 +84,7 @@ export default function JobOpportunities() {
           </div>
         </div>
       </section>
+
       {/* Open Application (Future Consideration) Section */}
       <section
         className="relative bg-cover bg-center py-16"
@@ -90,14 +97,19 @@ export default function JobOpportunities() {
             Open Application (Future Consideration)
           </h2>
           <p className="mt-4 text-gray-700">
-            If you are experienced in **trades, arts, digital
-            fabrication/technologies, or entrepreneurship**, feel free to send
-            us your resume! We'll keep it on record and reach out if we need
-            your expertise.
+            If you are experienced in{" "}
+            <strong>
+              trades, arts, digital fabrication/technologies, or
+              entrepreneurship
+            </strong>
+            , feel free to send us your resume! We'll keep it on record and
+            reach out if we need your expertise.
           </p>
-          <button className="mt-4 bg-yellow-500 text-white px-6 py-2 rounded-md hover:bg-yellow-400 transition">
-            Say Hi
-          </button>
+          <a href="mailto:info@makerspaceyk.com">
+            <button className="mt-4 bg-yellow-500 text-white px-6 py-2 rounded-md hover:bg-yellow-400 transition">
+              Say Hi
+            </button>
+          </a>
         </div>
       </section>
 

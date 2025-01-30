@@ -1,3 +1,5 @@
+//Link the Volunteer form with the google form or create a separate volunteer form and link it.
+//Change the hardcoded volunteer opportunities to dynamic state that fetches data from the db.
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
 

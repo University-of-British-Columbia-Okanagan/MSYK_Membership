@@ -1,3 +1,4 @@
+//Link the membership plan to payment system in Stripe. 
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
 
