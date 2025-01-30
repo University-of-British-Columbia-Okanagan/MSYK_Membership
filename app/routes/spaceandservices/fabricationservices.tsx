@@ -61,7 +61,6 @@ export default function FabricationServices() {
               <textarea
                 placeholder="Write a message"
                 className="border p-2 rounded w-full mt-4"
-                rows="4"
               ></textarea>
               <div className="mt-4">
                 <label className="block text-sm font-medium">File Upload</label>
