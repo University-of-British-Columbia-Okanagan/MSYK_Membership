@@ -59,7 +59,7 @@ export default function SpacesEquipment() {
   return (
     <main>
       {/* Hero Section (Reduced Height) */}
-      <HeroSection title="Spaces and Equipment" className="py-8" />
+      <HeroSection title="Spaces and Equipment" />
 
       {/* Title */}
       <h2 className="text-center text-2xl font-bold mb-6">

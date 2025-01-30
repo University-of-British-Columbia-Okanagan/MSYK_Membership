@@ -59,7 +59,7 @@ export default function ResourceToolbox() {
   return (
     <main>
       {/* Hero Section with Reduced Height */}
-     <HeroSection title = "Resource Toolbox" className="py-6"/>
+     <HeroSection title = "Resource Toolbox" />
       <section>
 
         {/* Grid Layout for Cards */}
