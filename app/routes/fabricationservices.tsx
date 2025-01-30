@@ -19,7 +19,7 @@ export default function FabricationServices() {
         description="Have a project you think Makerspace YK could help out with on the fabrication side? Email us at info@makerspaceyk.com or using the contact form below with the details, timeline, and any relevant images, and we'll respond as soon as possible"
       />
 
-      <section className="bg-indigo-600 text-white py-16 px-4">
+      <section className="bg-[rgb(107,116,189)] text-white py-16 px-4">
         <div className="container mx-auto">
           {/* Examples Section */}
           <h2 className="text-center text-3xl font-bold mb-8">

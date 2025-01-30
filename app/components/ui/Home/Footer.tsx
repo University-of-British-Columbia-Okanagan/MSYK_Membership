@@ -3,7 +3,7 @@ import { FaFacebook, FaInstagram } from "react-icons/fa";
 
 const Footer = () => {
   return (
-    <footer className="bg-gray-800 text-white py-12">
+    <footer className="bg-gray-700 text-white py-8">
       <div className="container mx-auto grid md:grid-cols-3 gap-8 px-4">
         
         {/* Location Info */}
