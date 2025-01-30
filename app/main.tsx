@@ -23,6 +23,8 @@ import SpacesEquipment from "./routes/SpacesEquipment";
 import ResourceToolbox from "./routes/resourcetoolbox";
 import FabricationServices from "./routes/fabricationservices";
 import VolunteerPage from "./routes/volunteer";
+import MembershipPage from "./routes/membership";
+import JobOpportunities from "./routes/jobopportunities";
 
 const router = createBrowserRouter([
   {
@@ -49,6 +51,8 @@ const router = createBrowserRouter([
       {path: "resourcetoolbox", element: <ResourceToolbox />},
       {path: "fabricationservices", element: <FabricationServices />},
       {path: "volunteer", element: <VolunteerPage />},
+      {path: "membership", element: <MembershipPage/>},
+      {path: "jobopportunities", element: <JobOpportunities/>},
     ],
   },
 ]);
