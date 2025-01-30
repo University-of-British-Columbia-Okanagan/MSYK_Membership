@@ -7,7 +7,7 @@ interface HeroSectionProps {
 const HeroSection: React.FC<HeroSectionProps> = ({ title }) => {
   return (
     <section
-      className="relative h-[300px] flex items-center justify-center bg-cover bg-center text-white text-5xl font-bold"
+      className="relative h-[200px] flex items-center justify-center bg-cover bg-center text-white text-5xl font-bold"
       style={{
         backgroundImage:
           "url('public/images/herosectionbackground.avif')",
