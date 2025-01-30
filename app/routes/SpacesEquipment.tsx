@@ -35,7 +35,7 @@ const spaces = [
       "Sawgrass SG1000 Sublimation Printer (up to 11x17”)",
       "Brother Persona Embroidery Machine",
       "Nomad CNC",
-      "Flat and tumbler heatpress",
+      "Flat and tumbler heat press",
     ],
   },
   {
@@ -57,32 +57,38 @@ const spaces = [
 
 export default function SpacesEquipment() {
   return (
-    
-    <main className="container mx-auto px-4 py-12">
-      <HeroSection title="Spaces Equipment" />
-      <h2 className="text-center text-3xl font-bold mb-8">
+    <main>
+      {/* Hero Section (Reduced Height) */}
+      <HeroSection title="Spaces and Equipment" className="py-8" />
+
+      {/* Title */}
+      <h2 className="text-center text-2xl font-bold mb-6">
         See the list below each space to see what tools and equipment we have available!
       </h2>
 
       {/* Spaces Grid */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {spaces.map((space, index) => (
-          <div key={index} className="shadow-lg rounded-lg overflow-hidden">
-            {/* Image */}
-            <img src={space.image} alt={space.name} className="w-full h-64 object-cover" />
+      <section className="container mx-auto px-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {spaces.map((space, index) => (
+            <div key={index} className="shadow-lg rounded-lg overflow-hidden bg-white">
+              {/* Image */}
+              <img src={space.image} alt={space.name} className="w-full h-56 object-cover" />
 
-            {/* Description */}
-            <div className={`p-6 text-white ${space.color}`}>
-              <h3 className="text-xl font-bold">{space.name}</h3>
-              <p className="text-sm font-semibold">{space.subtitle}</p>
-              <ul className="mt-4 text-sm list-disc list-inside">
-                {space.items.map((item, idx) => (
-                  <li key={idx}>{item}</li>
-                ))}
-              </ul>
+              {/* Description */}
+              <div className={`p-6 ${space.color} text-white flex flex-col justify-between h-full`}>
+                <div>
+                  <h3 className="text-lg font-bold">{space.name}</h3>
+                  <p className="text-sm font-semibold">{space.subtitle}</p>
+                  <ul className="mt-4 text-sm list-disc list-inside space-y-1">
+                    {space.items.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </section>
 
       {/* Footer */}
