@@ -2,7 +2,7 @@
 //Change the hardcoded volunteer opportunities to dynamic state that fetches data from the db.
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
-import VolunteerForm from "~/components/ui/VolunteerForm";
+import VolunteerForm from "~/components/ui/Get Involved/VolunteerForm";
 
 export default function VolunteerPage() {
   return (
