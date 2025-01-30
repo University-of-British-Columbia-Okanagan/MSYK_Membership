@@ -1,5 +1,5 @@
 import React from "react";
-import SpaceRentalForm from "../SpaceRentalForm";
+import SpaceRentalForm from "./SpaceRentalForm";
 
 const RentalRates = () => {
   return (

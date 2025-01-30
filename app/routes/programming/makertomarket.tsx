@@ -6,7 +6,7 @@ const courses = [
     title: "Intro to Product Photography",
     description: "Tips and tricks to take great product and print photos!",
     price: "$40",
-    image: "/images/product-photography.jpg",
+    image: "public/images/makertomarketimg1.webp",
     ended: true,
   },
   {
@@ -14,7 +14,7 @@ const courses = [
     description:
       "Learn basic graphic design concepts and what software you can use.",
     price: "$40",
-    image: "/images/graphic-design.jpg",
+    image: "public/images/makertomarketimg2.webp",
     ended: false,
   },
   {
@@ -22,7 +22,7 @@ const courses = [
     description:
       "From laser cutters and Cricut, learn about 2D digital production techniques.",
     price: "$40",
-    image: "/images/2d-digital-production.jpg",
+    image: "public/images/makertomarketimg3.webp",
     ended: false,
   },
   {
@@ -30,7 +30,7 @@ const courses = [
     description:
       "Learn how 3D printing and CNC machines can be used for business.",
     price: "$40",
-    image: "/images/3d-digital-production.jpg",
+    image: "public/images/makertomarketimg4.webp",
     ended: false,
   },
   {
@@ -38,14 +38,14 @@ const courses = [
     description:
       "From screenprinting to embroidery, vinyl, and invisible inks!",
     price: "$40",
-    image: "/images/textiles.jpg",
+    image: "public/images/makertomarketimg5.webp",
     ended: false,
   },
   {
     title: "Intro to E-Commerce with Prosper NWT",
     description: "Dates to be confirmed",
     price: "TBD",
-    image: "/images/ecommerce.jpg",
+    image: "public/images/makertomarketimg6.webp",
     ended: false,
   },
 ];
