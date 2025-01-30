@@ -1,85 +1,94 @@
 import React from "react";
 import HeroSection from "@/components/ui/HeroSection"; // Common Hero Component
-import Footer from "@/components/ui/Home/Footer"; 
+import Footer from "@/components/ui/Home/Footer";
+import { Button } from "~/components/ui/button";
 
 const workshops = [
   {
     title: "Craft Your Own Charcuterie/Serving Board",
     price: "$120",
     duration: "Ended",
-    image: "https://via.placeholder.com/300",
+    image: "public/images/workshopregimg1.webp",
     link: "#",
+    buttontext: "View Course",
   },
   {
     title: "Rug Tufting Workshop",
     price: "$225",
     duration: "Ended",
-    image: "https://via.placeholder.com/300",
+    image: "public/images/workshopregimg2.webp",
     link: "#",
+    buttontext: "View Course",
   },
   {
     title: "Sublimation Mug Workshop",
     price: "$45",
     duration: "3 hr",
-    image: "https://via.placeholder.com/300",
+    image: "public/images/workshopregimg3.webp",
     link: "#",
+     buttontext: "View Course",
+  },
+  {
+    title: "Life Drawing",
+    price: "$30",
+    duration: "3 hr",
+    image: "public/images/workshopregimg4.webp",
+    link: "#",
+     buttontext: "View Course",
   },
 ];
 
-const WorkshopRegistration = () => {
+export default function WorkshopsPage() {
   return (
-    <main className="container mx-auto px-4 py-12">
+    <main>
       {/* Hero Section */}
-      <HeroSection title="Workshop Registration" />
+      <HeroSection title="MSYK Workshops" />
 
-      {/* Workshop Categories */}
-      <section className="text-center py-8">
-        <h2 className="text-2xl font-semibold text-gray-800">MSYK Workshops</h2>
-        <div className="mt-4 flex justify-center space-x-4 text-gray-600 text-sm">
-          <button className="border-b-2 border-orange-500 pb-1 font-medium">
-            Workshops
-          </button>
-          <button className="hover:text-orange-500">Orientations</button>
-          <button className="hover:text-orange-500">Free & Drop-In Events</button>
-          <button className="hover:text-orange-500">Courses</button>
-          <button className="hover:text-orange-500">Maker to Market</button>
-        </div>
-      </section>
-
-      {/* Workshop Grid */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8">
-        {workshops.map((workshop, index) => (
-          <div
-            key={index}
-            className="border rounded-lg shadow-sm p-4 flex flex-col items-center"
-          >
-            <img
-              src={workshop.image}
-              alt={workshop.title}
-              className="w-full h-48 object-cover rounded-md"
-            />
-            <h3 className="mt-4 text-lg font-semibold text-gray-900 text-center">
-              {workshop.title}
-            </h3>
-            <a href={workshop.link} className="text-orange-500 font-medium mt-1">
-              Read More
-            </a>
-            <p className="text-gray-500 mt-1">{workshop.duration}</p>
-            <p className="text-lg font-bold text-gray-800">{workshop.price}</p>
-            <a
-              href={workshop.link}
-              className="mt-4 px-4 py-2 bg-yellow-500 text-white font-semibold rounded-md hover:bg-yellow-600 transition"
+      {/* Navigation Tabs */}
+      <div className="flex justify-center space-x-6 my-6">
+        {["Workshops", "Orientations", "Free & Drop-In Events", "Courses", "Maker to Market"].map(
+          (tab, index) => (
+            <button
+              key={index}
+              className={`text-gray-700 font-medium pb-2 border-b-2 ${
+                tab === "Workshops" ? "border-yellow-500 text-black font-bold" : "border-transparent"
+              }`}
             >
-              {workshop.duration === "Ended" ? "View Course" : "Book Now"}
-            </a>
-          </div>
-        ))}
+              {tab}
+            </button>
+          )
+        )}
+      </div>
+
+      {/* Workshop Cards */}
+      <section className="container mx-auto px-4 py-10">
+        <div className="grid md:grid-cols-3 gap-6">
+          {workshops.map((workshop, index) => (
+            <div key={index} className="bg-gray-100 rounded-lg shadow-md overflow-hidden">
+              {/* Image */}
+              <img src={workshop.image} alt={workshop.title} className="w-full h-60 object-cover" />
+
+              {/* Content */}
+              <div className="p-5">
+                <h3 className="text-lg font-semibold">{workshop.title}</h3>
+                <a href="#" className="text-red-500 text-sm mt-2 block hover:underline">
+                  Read More
+                </a>
+                <p className="text-sm text-gray-500">{workshop.duration}</p>
+                <p className="font-bold mt-1">{workshop.price}</p>
+
+                {/* Button */}
+                <button className="mt-4 bg-yellow-500 text-white w-full py-2 rounded-md hover:bg-yellow-400 transition">
+                  {workshop.buttontext}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* Footer */}
       <Footer />
     </main>
   );
-};
-
-export default WorkshopRegistration;
+}
