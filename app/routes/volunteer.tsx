@@ -2,6 +2,7 @@
 //Change the hardcoded volunteer opportunities to dynamic state that fetches data from the db.
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
+import VolunteerForm from "~/components/ui/VolunteerForm";
 
 export default function VolunteerPage() {
   return (
@@ -38,14 +39,8 @@ export default function VolunteerPage() {
         <p className="text-orange-500 font-semibold mt-10">
           Interested in becoming a volunteer? Fill out the form below!
         </p>
-        <a
-          href="YOUR_VOLUNTEER_FORM_LINK"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-block bg-orange-500 text-white px-6 py-3 rounded-lg shadow-md hover:bg-orange-600 transition"
-        >
-          Volunteer Form Link
-        </a>
+       {/* Volunteer Form Section */}
+      <VolunteerForm />
       </section>
 
       {/* Footer */}

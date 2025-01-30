@@ -57,7 +57,7 @@ const resources = [
 
 export default function ResourceToolbox() {
   return (
-    <main className="container mx-auto px-4 py-12">
+    <main>
         <HeroSection title = "Resource Toolbox"/>
       <h2 className="text-center text-3xl font-bold mb-8">Resource Toolbox</h2>
 

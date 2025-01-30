@@ -1,4 +1,5 @@
 import React from "react";
+import SpaceRentalForm from "../SpaceRentalForm";
 
 const RentalRates = () => {
   return (
@@ -11,9 +12,10 @@ const RentalRates = () => {
 
       {/* Description */}
       <p className="text-lg text-gray-600 max-w-2xl mx-auto mt-4">
-        MSYK has tiered booking rates so that renting can be more accessible for different users.
-        Larger non-profit and for-profit rates are higher to help support grassroots organizations 
-        and community members that would like to host events!
+        MSYK has tiered booking rates so that renting can be more accessible for
+        different users. Larger non-profit and for-profit rates are higher to
+        help support grassroots organizations and community members that would
+        like to host events!
       </p>
 
       {/* Buttons */}
@@ -28,7 +30,7 @@ const RentalRates = () => {
         </a>
 
         <a
-          href="https://docs.google.com/forms/d/e/your-google-form-id/viewform" // Replace with actual Google Form link
+          href="https://docs.google.com/forms/d/e/1FAIpQLSeHeXMxiCetWSd9S-nQ3icLbg8lf9te73aHukiezAJRoZTz2A/viewform" // Replace with actual Google Form link
           target="_blank"
           rel="noopener noreferrer"
           className="bg-orange-500 text-white px-6 py-3 rounded-full text-lg font-semibold hover:bg-orange-600 transition"
@@ -44,17 +46,7 @@ const RentalRates = () => {
 
       <div className="mt-4 animate-bounce text-orange-500 text-2xl">⬇</div>
 
-      {/* Embedded Google Form */}
-      <div className="mt-8 max-w-4xl mx-auto">
-        <iframe
-          src="https://docs.google.com/forms/d/e/your-google-form-id/viewform?embedded=true"
-          width="100%"
-          height="800"
-          className="border border-gray-300 rounded-lg"
-        >
-          Loading…
-        </iframe>
-      </div>
+      <SpaceRentalForm />
     </section>
   );
 };
