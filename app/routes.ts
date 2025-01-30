@@ -23,4 +23,5 @@ export default [
   route("/fabricationservices", "routes/fabricationservices.tsx"),
   route("/volunteer", "routes/volunteer.tsx"),
   route("/membership", "routes/membership.tsx"),
+  route("/jobopportunities", "routes/jobopportunities.tsx"),
 ] satisfies RouteConfig;
