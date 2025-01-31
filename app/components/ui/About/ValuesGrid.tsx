@@ -25,16 +25,19 @@ const values = [
 
 const ValuesGrid = () => {
   return (
-    <section className="max-w-4xl mx-auto my-12">
+    <section className="max-w-5xl mx-auto py-16 px-4">
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
         {/* Our Values Block */}
-        <div className="bg-gray-800 text-white p-6 flex items-center justify-center text-2xl font-bold col-span-2 md:col-span-1">
+        <div className="bg-gray-900 text-white p-6 flex items-center justify-center text-2xl font-bold col-span-2 md:col-span-1">
           Our Values
         </div>
 
         {/* Value Cards */}
         {values.map((value, index) => (
-          <div key={index} className={`${value.bgColor} p-6 text-white`}>
+          <div
+            key={index}
+            className={`p-6 text-white rounded-lg flex flex-col justify-center ${value.bgColor}`}
+          >
             <h3 className="text-lg font-bold">{value.title}</h3>
             <p className="mt-2 text-sm">{value.text}</p>
           </div>
