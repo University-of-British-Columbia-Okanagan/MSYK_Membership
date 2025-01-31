@@ -23,7 +23,7 @@ const visionGoals = [
 
 const VisionSection = () => {
   return (
-    <section className="max-w-5xl mx-auto py-16 px-6 flex flex-col md:flex-row items-center">
+    <section className="max-w-6xl mx-auto py-16 px-6 flex flex-col md:flex-row items-center gap-12">
       {/* Vision Text */}
       <div className="md:w-1/2 text-gray-800">
         <h2 className="text-3xl font-bold text-gray-800">Our Vision</h2>
@@ -35,7 +35,7 @@ const VisionSection = () => {
       </div>
 
       {/* Strategic Goals */}
-      <div className="md:w-1/2 flex flex-col space-y-4 mt-6 md:mt-0">
+      <div className="md:w-1/2 flex flex-col space-y-6">
         {visionGoals.map((goal, index) => (
           <div
             key={index}
