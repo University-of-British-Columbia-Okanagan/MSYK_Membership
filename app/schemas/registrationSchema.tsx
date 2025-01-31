@@ -26,9 +26,7 @@ export const registerSchema = z
     //   message: "You must attach a file",
     // }), // Allow null for file
 
-    photoRelease: z.boolean().refine((val) => val, {
-      message: "You must consent to the Photo Release policy",
-    }),
+    photoRelease: z.boolean(),
     dataPrivacy: z.boolean().refine((val) => val, {
       message: "You must agree to the Data Privacy policy",
     }),

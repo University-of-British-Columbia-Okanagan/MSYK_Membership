@@ -1,8 +1,8 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import React, { useState, useRef } from "react";
 import { type ActionFunctionArgs, redirect, useNavigation } from "react-router";
-import { registerSchema } from "../schemas/registrationSchema";
-import type { RegisterFormValues } from "../schemas/registrationSchema";
+import { registerSchema } from "../../schemas/registrationSchema";
+import type { RegisterFormValues } from "../../schemas/registrationSchema";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -40,30 +40,6 @@ export async function action({ request }: Route.ActionArgs) {
     ? parseInt(rawValues.trainingCardUserNumber, 10)
     : null;
 
-  // // Handle guardianSignedConsent file in base 64
-  // const guardianSignedConsent = formData.get("guardianSignedConsent");
-  // let guardianSignedConsentBase64: string | null = null;
-  // if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
-  //   const arrayBuffer = await guardianSignedConsent.arrayBuffer();
-  //   guardianSignedConsentBase64 = btoa(
-  //     new Uint8Array(arrayBuffer).reduce(
-  //       (acc, byte) => acc + String.fromCharCode(byte),
-  //       ""
-  //     )
-  //   );
-  //   rawValues.guardianSignedConsent = guardianSignedConsentBase64;
-  // } else {
-  //   rawValues.guardianSignedConsent = null; // If no file, set it to null
-  // }
-
-  // // Handle guardianSignedConsent file name
-  // const guardianSignedConsent = formData.get("guardianSignedConsent");
-  // if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
-  //   rawValues.guardianSignedConsent = guardianSignedConsent.name; // Save the file name
-  // } else {
-  //   rawValues.guardianSignedConsent = null; // If no file, set it to null
-  // }
-
   const guardianSignedConsent = formData.get("guardianSignedConsent");
   if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
     const storageDir = path.join(process.cwd(), "app", "storage");
@@ -71,12 +47,7 @@ export async function action({ request }: Route.ActionArgs) {
     // Ensure the storage directory exists
     await fs.mkdir(storageDir, { recursive: true });
 
-    // Save the file to the storage directory
     const fileName = `${Date.now()}_${guardianSignedConsent.name}`;
-    const filePath = path.join(storageDir, fileName);
-
-    const fileBuffer = await guardianSignedConsent.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(fileBuffer));
 
     // Save only the file name to the database
     rawValues.guardianSignedConsent = fileName;
@@ -101,6 +72,21 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const data = parsed.data;
+
+  if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
+    const storageDir = path.join(process.cwd(), "app", "storage");
+
+    // Ensure the storage directory exists
+    await fs.mkdir(storageDir, { recursive: true });
+
+    // Save the file to the storage directory
+    const fileName = `${Date.now()}_${guardianSignedConsent.name}`;
+    const filePath = path.join(storageDir, fileName);
+
+    const fileBuffer = await guardianSignedConsent.arrayBuffer();
+    await fs.writeFile(filePath, Buffer.from(fileBuffer));
+
+  }
 
   try {
     await prisma.user.create({

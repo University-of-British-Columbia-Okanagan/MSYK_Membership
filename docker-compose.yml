@@ -7,15 +7,16 @@ services:
     container_name: makerspace_app
     restart: always
     ports:
-      - "3000:3000" 
+      - "3000:3000"
     environment:
       NODE_ENV: production
-      DATABASE_URL: "postgresql://postgres:password@database:5432/msykmembershipdb" 
+      DATABASE_URL: "postgresql://postgres:new_password@database:5432/msykmembershipdb"
     depends_on:
-      - database 
+      database:
+        condition: service_healthy
 
   database:
-    image: postgres:15 
+    image: postgres:17
     container_name: postgres_db
     restart: always
     environment:
@@ -23,9 +24,14 @@ services:
       POSTGRES_PASSWORD: new_password
       POSTGRES_DB: msykmembershipdb
     ports:
-      - "5434:5432" 
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
-      - db_data:/var/lib/postgresql/data 
+      - db_data:/var/lib/postgresql/data
 
 volumes:
   db_data:
