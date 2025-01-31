@@ -14,9 +14,11 @@ import "./app.css";
 
 export function Layout() {
   const [isAboutDropdownOpen, setAboutDropdownOpen] = useState(false);
-  const [isProgrammingDropdownOpen, setProgrammingDropdownOpen] = useState(false);
+  const [isProgrammingDropdownOpen, setProgrammingDropdownOpen] =
+    useState(false);
   const [isSpacesDropdownOpen, setSpacesDropdownOpen] = useState(false);
-  const [isGetInvolvedDropdownOpen, setGetInvolvedDropdownOpen] = useState(false); // Added for "Get Involved"
+  const [isGetInvolvedDropdownOpen, setGetInvolvedDropdownOpen] =
+    useState(false); // Added for "Get Involved"
 
   const aboutDropdownRef = useRef<HTMLDivElement>(null);
   const programmingDropdownRef = useRef<HTMLDivElement>(null);
@@ -27,20 +29,28 @@ export function Layout() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
-        aboutDropdownRef.current && !aboutDropdownRef.current.contains(event.target as Node)
-      ) setTimeout(() => setAboutDropdownOpen(false), 100);
+        aboutDropdownRef.current &&
+        !aboutDropdownRef.current.contains(event.target as Node)
+      )
+        setTimeout(() => setAboutDropdownOpen(false), 100);
 
       if (
-        programmingDropdownRef.current && !programmingDropdownRef.current.contains(event.target as Node)
-      ) setTimeout(() => setProgrammingDropdownOpen(false), 100);
+        programmingDropdownRef.current &&
+        !programmingDropdownRef.current.contains(event.target as Node)
+      )
+        setTimeout(() => setProgrammingDropdownOpen(false), 100);
 
       if (
-        spacesDropdownRef.current && !spacesDropdownRef.current.contains(event.target as Node)
-      ) setTimeout(() => setSpacesDropdownOpen(false), 100);
+        spacesDropdownRef.current &&
+        !spacesDropdownRef.current.contains(event.target as Node)
+      )
+        setTimeout(() => setSpacesDropdownOpen(false), 100);
 
       if (
-        getInvolvedDropdownRef.current && !getInvolvedDropdownRef.current.contains(event.target as Node)
-      ) setTimeout(() => setGetInvolvedDropdownOpen(false), 100);
+        getInvolvedDropdownRef.current &&
+        !getInvolvedDropdownRef.current.contains(event.target as Node)
+      )
+        setTimeout(() => setGetInvolvedDropdownOpen(false), 100);
     }
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -72,17 +82,40 @@ export function Layout() {
                 {/* About Dropdown */}
                 <div className="relative" ref={aboutDropdownRef}>
                   <button
-                    onClick={() => setAboutDropdownOpen(prev => !prev)}
+                    onClick={() => setAboutDropdownOpen((prev) => !prev)}
                     className="text-gray-600 hover:text-gray-900 transition-colors"
                   >
-                    About ▼
+                   <Link
+                        to="/about"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setAboutDropdownOpen(false)}
+                      >
+                        About
+                      </Link>
                   </button>
                   {isAboutDropdownOpen && (
                     <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-300 shadow-lg rounded-md">
-                      <Link to="/about" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setAboutDropdownOpen(false)}>About</Link>
-                      <Link to="/board" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setAboutDropdownOpen(false)}>Our Board</Link>
-                      <Link to="/staff" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setAboutDropdownOpen(false)}>Our Staff</Link>
-                      <Link to="/contact" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setAboutDropdownOpen(false)}>Contact</Link>
+                      <Link
+                        to="/board"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setAboutDropdownOpen(false)}
+                      >
+                        Our Board
+                      </Link>
+                      <Link
+                        to="/staff"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setAboutDropdownOpen(false)}
+                      >
+                        Our Staff
+                      </Link>
+                      <Link
+                        to="/contact"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setAboutDropdownOpen(false)}
+                      >
+                        Contact
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -90,20 +123,68 @@ export function Layout() {
                 {/* Programming Dropdown */}
                 <div className="relative" ref={programmingDropdownRef}>
                   <button
-                    onClick={() => setProgrammingDropdownOpen(prev => !prev)}
+                    onClick={() => setProgrammingDropdownOpen((prev) => !prev)}
                     className="text-gray-600 hover:text-gray-900 transition-colors"
                   >
-                    Programming ▼
+                    <Link
+                        to="/programming"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                       Programming
+                      </Link>
                   </button>
                   {isProgrammingDropdownOpen && (
                     <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-300 shadow-lg rounded-md">
-                      <Link to="/workshopregistration" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Workshop Registration</Link>
-                      <Link to="/eventcalendar" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Event Calendar</Link>
-                      <Link to="/makertomarket" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Maker to Market</Link>
-                      <Link to="/muralproject" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Mural Project</Link>
-                      <Link to="/dontfakeit" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Don't Fake It</Link>
-                      <Link to="/makermarket2024" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Maker Market 2024</Link>
-                      <Link to="/pastworkshops" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setProgrammingDropdownOpen(false)}>Past Workshops</Link>
+                      <Link
+                        to="/workshopregistration"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Workshop Registration
+                      </Link>
+                      <Link
+                        to="/eventcalendar"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Event Calendar
+                      </Link>
+                      <Link
+                        to="/makertomarket"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Maker to Market
+                      </Link>
+                      <Link
+                        to="/muralproject"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Mural Project
+                      </Link>
+                      <Link
+                        to="/dontfakeit"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Don't Fake It
+                      </Link>
+                      <Link
+                        to="/makermarket2024"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Maker Market 2024
+                      </Link>
+                      <Link
+                        to="/pastworkshops"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setProgrammingDropdownOpen(false)}
+                      >
+                        Past Workshops
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -111,17 +192,47 @@ export function Layout() {
                 {/* Spaces & Services Dropdown */}
                 <div className="relative" ref={spacesDropdownRef}>
                   <button
-                    onClick={() => setSpacesDropdownOpen(prev => !prev)}
+                    onClick={() => setSpacesDropdownOpen((prev) => !prev)}
                     className="text-gray-600 hover:text-gray-900 transition-colors"
                   >
-                    Spaces & Services ▼
+                    <Link
+                      to="/spaces"
+                      className="block px-4 py-2 hover:bg-gray-100"
+                      onClick={() => setGetInvolvedDropdownOpen(false)}
+                    >
+                      Spaces and Services
+                    </Link>
                   </button>
                   {isSpacesDropdownOpen && (
                     <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-300 shadow-lg rounded-md">
-                      <Link to="/SpaceRental" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setSpacesDropdownOpen(false)}>Space Rental</Link>
-                      <Link to="/SpacesEquipment" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setSpacesDropdownOpen(false)}>Spaces & Equipment</Link>
-                      <Link to="/resourcetoolbox" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setSpacesDropdownOpen(false)}>Resource Toolbox</Link>
-                      <Link to="/fabricationservices" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setSpacesDropdownOpen(false)}>Fabrication Services</Link>
+                      <Link
+                        to="/SpaceRental"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setSpacesDropdownOpen(false)}
+                      >
+                        Space Rental
+                      </Link>
+                      <Link
+                        to="/SpacesEquipment"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setSpacesDropdownOpen(false)}
+                      >
+                        Spaces & Equipment
+                      </Link>
+                      <Link
+                        to="/resourcetoolbox"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setSpacesDropdownOpen(false)}
+                      >
+                        Resource Toolbox
+                      </Link>
+                      <Link
+                        to="/fabricationservices"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setSpacesDropdownOpen(false)}
+                      >
+                        Fabrication Services
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -129,16 +240,40 @@ export function Layout() {
                 {/* Get Involved Dropdown */}
                 <div className="relative" ref={getInvolvedDropdownRef}>
                   <button
-                    onClick={() => setGetInvolvedDropdownOpen(prev => !prev)}
+                    onClick={() => setGetInvolvedDropdownOpen((prev) => !prev)}
                     className="text-gray-600 hover:text-gray-900 transition-colors"
                   >
-                    Get Involved ▼
+                    <Link
+                      to="/get-involved"
+                      className="block px-4 py-2 hover:bg-gray-100"
+                      onClick={() => setGetInvolvedDropdownOpen(false)}
+                    >
+                      Get Involved
+                    </Link>
                   </button>
                   {isGetInvolvedDropdownOpen && (
                     <div className="absolute left-0 mt-2 w-48 bg-white border border-gray-300 shadow-lg rounded-md">
-                      <Link to="/volunteer" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setGetInvolvedDropdownOpen(false)}>Volunteer</Link>
-                      <Link to="/membership" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setGetInvolvedDropdownOpen(false)}>Membership</Link>
-                      <Link to="/jobopportunities" className="block px-4 py-2 hover:bg-gray-100" onClick={() => setGetInvolvedDropdownOpen(false)}>Job Opportunities</Link>
+                      <Link
+                        to="/volunteer"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setGetInvolvedDropdownOpen(false)}
+                      >
+                        Volunteer
+                      </Link>
+                      <Link
+                        to="/membership"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setGetInvolvedDropdownOpen(false)}
+                      >
+                        Membership
+                      </Link>
+                      <Link
+                        to="/jobopportunities"
+                        className="block px-4 py-2 hover:bg-gray-100"
+                        onClick={() => setGetInvolvedDropdownOpen(false)}
+                      >
+                        Job Opportunities
+                      </Link>
                     </div>
                   )}
                 </div>
