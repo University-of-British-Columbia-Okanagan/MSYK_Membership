@@ -59,7 +59,7 @@ const App = () => (
       </Route>
 
       {/* Dashboard Routes using DashboardLayout (Sidebar Only) */}
-      <Route path="dashboard" element={<DashboardLayout />}>
+      <Route path="dashboardlayout" element={<DashboardLayout />}>
         <Route path="workshops" element={<Workshops />} />
         <Route path="events" element={<Events />} />
         <Route path="membership" element={<Membership />} />
