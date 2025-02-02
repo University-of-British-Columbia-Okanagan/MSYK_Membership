@@ -28,12 +28,13 @@ import JobOpportunities from "./routes/getinvolved/jobopportunities";
 import Workshops from "./routes/dashboard/workshops";
 import Events from "./routes/dashboard/events";
 import Membership from "./routes/dashboard/memberships";
+import WorkshopDetails from "./routes/dashboard/workshopdetails";
 
 const App = () => (
   <Router>
     <Routes>
       {/* Pages using MainLayout (Navigation Bar) */}
-      <Route element={<MainLayout />}>
+      <Route element={<DashboardLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="about" element={<About />} />
         <Route path="board" element={<Board />} />
@@ -57,12 +58,11 @@ const App = () => (
         <Route path="membership" element={<MembershipPage />} />
         <Route path="jobopportunities" element={<JobOpportunities />} />
       </Route>
-
-      {/* Dashboard Routes using DashboardLayout (Sidebar Only) */}
       <Route path="dashboardlayout" element={<DashboardLayout />}>
         <Route path="workshops" element={<Workshops />} />
         <Route path="events" element={<Events />} />
         <Route path="membership" element={<Membership />} />
+        <Route path="workshopdetails" element={<WorkshopDetails />} />
       </Route>
     </Routes>
   </Router>

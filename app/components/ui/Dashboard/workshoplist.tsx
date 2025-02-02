@@ -2,9 +2,9 @@ import React from "react";
 import WorkshopCard from "./workshopcard";
 
 const workshops = [
-  { id: 1, title: "Laser Cutting Basics", description: "Introduction to laser cutting", price: "$30", role: "INSTRUCTOR" },
-  { id: 2, title: "3D Printing Workshop", description: "Learn 3D printing techniques", price: "Free", role: "PARTICIPANT" },
-  { id: 3, title: "CNC Machining", description: "Advanced CNC machining skills", price: "$50", role: "INSTRUCTOR" },
+  { id: 1, title: "Laser Cutting Basics", description: "Introduction to laser cutting", price: "$30" },
+  { id: 2, title: "3D Printing Workshop", description: "Learn 3D printing techniques", price: "Free" },
+  { id: 3, title: "CNC Machining", description: "Advanced CNC machining skills", price: "$50" },
 ];
 
 export default function WorkshopList() {

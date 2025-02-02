@@ -19,7 +19,7 @@ export function AppSidebar() {
             <User className="w-5 h-5" />
             Profile
           </Link>
-          <Link to="/dashboard/workshops" className="flex items-center gap-2 text-gray-700 hover:text-blue-500">
+          <Link to="/workshops" className="flex items-center gap-2 text-gray-700 hover:text-blue-500">
             <ClipboardList className="w-5 h-5" />
             Workshops
           </Link>
