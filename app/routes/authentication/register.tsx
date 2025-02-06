@@ -19,9 +19,7 @@ import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
-import path from "path";
-import fs from "fs/promises";
-import bcrypt from "bcryptjs";
+import { register } from "~/utils/session.server";
 
 const prisma = new PrismaClient();
 
@@ -41,19 +39,12 @@ export async function action({ request }: Route.ActionArgs) {
     ? parseInt(rawValues.trainingCardUserNumber, 10)
     : null;
 
+  // Handle file field for guardianSignedConsent
   const guardianSignedConsent = formData.get("guardianSignedConsent");
   if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
-    const storageDir = path.join(process.cwd(), "app", "storage");
-
-    // Ensure the storage directory exists
-    await fs.mkdir(storageDir, { recursive: true });
-
-    const fileName = `${Date.now()}_${guardianSignedConsent.name}`;
-
-    // Save only the file name to the database
-    rawValues.guardianSignedConsent = fileName;
+    rawValues.guardianSignedConsent = guardianSignedConsent; // Pass the file directly
   } else {
-    rawValues.guardianSignedConsent = null; // If no file, set it to null
+    rawValues.guardianSignedConsent = null;
   }
 
   // Add parent guardian fields only if they are missing
@@ -64,76 +55,18 @@ export async function action({ request }: Route.ActionArgs) {
     rawValues.guardianSignedConsent = rawValues.guardianSignedConsent || null;
   }
 
-  // Validate using Zod schema
-  const parsed = registerSchema.safeParse(rawValues);
+  const result = await register(rawValues);
 
-  if (!parsed.success) {
-    const errors = parsed.error.flatten();
-    return { errors: errors.fieldErrors }; // Always return all field-level errors
+  if (!result) {
+    return { errors: { database: "Failed to register. Please try again." } };
   }
 
-  const data = parsed.data;
-
-  if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
-    const storageDir = path.join(process.cwd(), "app", "storage");
-
-    // Ensure the storage directory exists
-    await fs.mkdir(storageDir, { recursive: true });
-
-    // Save the file to the storage directory
-    const fileName = `${Date.now()}_${guardianSignedConsent.name}`;
-    const filePath = path.join(storageDir, fileName);
-
-    const fileBuffer = await guardianSignedConsent.arrayBuffer();
-    await fs.writeFile(filePath, Buffer.from(fileBuffer));
+  if ("errors" in result) {
+    return { errors: result.errors };
   }
 
-  const hashedPassword = await bcrypt.hash(data.password, 10);
+  return { success: true, user: result };
 
-  try {
-    await prisma.user.create({
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        password: hashedPassword,
-        phone: data.phone || "",
-        address: data.address || "",
-        over18: data.over18 ?? null,
-        photoRelease: data.photoRelease ?? null,
-        dataPrivacy: data.dataPrivacy ?? null,
-        parentGuardianName: data.parentGuardianName || null,
-        parentGuardianPhone: data.parentGuardianPhone || null,
-        parentGuardianEmail: data.parentGuardianEmail || null,
-        guardianSignedConsent: data.guardianSignedConsent || null,
-        emergencyContactName: data.emergencyContactName || "",
-        emergencyContactPhone: data.emergencyContactPhone || "",
-        emergencyContactEmail: data.emergencyContactEmail || "",
-        trainingCardUserNumber: data.trainingCardUserNumber || -1,
-      },
-    });
-
-    console.log("done!");
-    return { success: true };
-  } catch (error) {
-    console.error("Error saving data:", error);
-
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      // Handle unique constraint error for email
-      return {
-        errors: {
-          email: ["This email is already registered."],
-        },
-      };
-    }
-
-    return {
-      errors: { database: "Failed to save data. Please try again later." },
-    };
-  }
 }
 
 interface FormErrors {
