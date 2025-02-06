@@ -21,6 +21,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import path from "path";
 import fs from "fs/promises";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -85,8 +86,9 @@ export async function action({ request }: Route.ActionArgs) {
 
     const fileBuffer = await guardianSignedConsent.arrayBuffer();
     await fs.writeFile(filePath, Buffer.from(fileBuffer));
-
   }
+
+  const hashedPassword = await bcrypt.hash(data.password, 10);
 
   try {
     await prisma.user.create({
@@ -94,6 +96,7 @@ export async function action({ request }: Route.ActionArgs) {
         firstName: data.firstName,
         lastName: data.lastName,
         email: data.email,
+        password: hashedPassword,
         phone: data.phone || "",
         address: data.address || "",
         over18: data.over18 ?? null,
@@ -137,6 +140,7 @@ interface FormErrors {
   firstName?: string[];
   lastName?: string[];
   email?: string[];
+  password?: string[];
   phone?: string[];
   address?: string[];
   over18?: boolean[];
@@ -157,11 +161,7 @@ interface ActionData {
   success?: boolean;
 }
 
-export default function Register({
-  actionData,
-}: {
-  actionData?: ActionData;
-}) {
+export default function Register({ actionData }: { actionData?: ActionData }) {
   // { actionData }: Route.ComponentProps
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -169,6 +169,7 @@ export default function Register({
       firstName: "",
       lastName: "",
       email: "",
+      password: "",
       phone: "",
       address: "",
       over18: false,
@@ -192,7 +193,8 @@ export default function Register({
     setLoading(true); // Set loading when submission begins
   };
 
-  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
+  const hasErrors =
+    actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   React.useEffect(() => {
     if (formRef.current) {
@@ -293,6 +295,27 @@ export default function Register({
                   <Input placeholder="your@email.com" {...field} />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.email}</FormMessage>
+              </FormItem>
+            )}
+          />
+
+          {/* password */}
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  Password <span className="text-red-500">*</span>
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    placeholder="Enter your password"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage>{actionData?.errors?.password}</FormMessage>
               </FormItem>
             )}
           />
