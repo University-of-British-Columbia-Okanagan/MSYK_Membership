@@ -2,6 +2,7 @@ import { createCookieSessionStorage, redirect } from "react-router";
 import bcrypt from "bcryptjs";
 import { db } from "./db.server";
 import { registerSchema } from "../schemas/registrationSchema";
+import { loginSchema } from "../schemas/loginSchema";
 import { PrismaClient, Prisma } from "@prisma/client";
 import path from "path";
 import fs from "fs/promises";
@@ -26,9 +27,6 @@ export async function register(rawValues: Record<string, any>) {
     ) {
       // Define the storage directory relative to project root
       const storageDir = path.join(process.cwd(), "app", "storage");
-
-      // Log directory for debugging
-      console.log("Storage Directory:", storageDir);
 
       // Ensure the storage directory exists
       await fs.mkdir(storageDir, { recursive: true });
@@ -97,6 +95,45 @@ export async function register(rawValues: Record<string, any>) {
 
     return null; // Return null if registration fails
   }
+}
+
+export async function login(rawValues: Record<string, any>) {
+
+  // Validate the incoming form data using the Zod schema
+  const parsed = loginSchema.safeParse(rawValues);
+
+  if (!parsed.success) {
+    // If validation fails, return errors
+    const errors = parsed.error.flatten();
+    console.log(errors.fieldErrors);
+    return { errors: errors.fieldErrors };
+  }
+
+  const data = parsed.data;
+
+  const user = await db.user.findUnique({
+    where: { email: data.email },
+  });
+
+  if (!user) {
+    // Return an error if the user is not registered
+    return { errors: { email: ["This email is not registered."] } };
+  }
+
+  const isPasswordValid = await bcrypt.compare(data.password, user.password);
+  if (!isPasswordValid) {
+    // Return an error if the password is incorrect
+    return { errors: { password: ["Incorrect password."] } };
+  }
+
+  if (!user || !(await bcrypt.compare(data.password, user.password))) {
+    return null; // Return null if credentials are invalid
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+  };
 }
 
 // export async function test() {
