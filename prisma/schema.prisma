@@ -28,11 +28,30 @@ model User {
   parentGuardianName     String?
   parentGuardianPhone    String?
   parentGuardianEmail    String?
-  guardianSignedConsent  String?  // base64 or path to the uploaded file
+  guardianSignedConsent  String?
   photoRelease           Boolean
   dataPrivacy            Boolean
   emergencyContactName   String
   emergencyContactPhone  String
   emergencyContactEmail  String
   trainingCardUserNumber Int
+
+  roleUser               Int      @default(1)
+  roleLevel              Int      @default(1)
+}
+
+model MembershipPlan {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  title       String
+  description    String
+  price       Float    // Float is used for numeric values like 35.0
+  feature Json     // JSON type for structured data like descriptions
+}
+
+model RoleUser {
+  id   Int    @id @default(autoincrement()) // Primary key with auto-increment
+  name String @unique                       // Role name, e.g., "Admin" or "User"
 }
