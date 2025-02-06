@@ -1,4 +1,8 @@
-import { createCookieSessionStorage, redirect, Form as RouterForm } from "react-router";
+import {
+  createCookieSessionStorage,
+  redirect,
+  Form as RouterForm,
+} from "react-router";
 import bcrypt from "bcryptjs";
 import { db } from "./db.server";
 import { registerSchema } from "../schemas/registrationSchema";
@@ -116,7 +120,7 @@ export async function login(rawValues: Record<string, any>) {
       id: true,
       email: true,
       password: true,
-    }
+    },
   });
 
   if (!user) {
@@ -130,7 +134,6 @@ export async function login(rawValues: Record<string, any>) {
     return { errors: { password: ["Incorrect password."] } };
   }
 
-  
   return {
     id: user.id,
     email: user.email,
@@ -163,7 +166,7 @@ function getUserSession(request: Request) {
 
 export async function getUserId(request: Request) {
   const session = await getUserSession(request);
-  const userId = session.get("userId");;
+  const userId = session.get("userId");
   if (!userId || typeof userId !== "string") {
     return null;
   }
@@ -197,10 +200,7 @@ export async function logout(request: Request) {
   });
 }
 
-export async function createUserSession(
-  userId: number,
-  redirectTo: string
-) {
+export async function createUserSession(userId: number, redirectTo: string) {
   const session = await storage.getSession();
   session.set("userId", userId.toString());
   return redirect(redirectTo, {
@@ -210,6 +210,33 @@ export async function createUserSession(
   });
 }
 
+export async function getRoleUser(request: Request) {
+  const userId = await getUserId(request);
+
+  if (userId) {
+    const userWithRole = await db.user.findUnique({
+      where: { id: parseInt(userId) },
+      select: {
+        id: true,
+        roleUser: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (userWithRole) {
+      return {
+        userId: userWithRole.id,
+        roleId: userWithRole.roleUser.id,
+        roleName: userWithRole.roleUser.name,
+      };
+    }
+  }
+  return null;
+}
 
 // export async function test() {
 //   return { id: "test" };

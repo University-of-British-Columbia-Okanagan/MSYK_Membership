@@ -3,11 +3,13 @@ export default function MembershipCard({
   description,
   price,
   feature,
+  isAdmin,
 }: {
   title: string;
   description: string;
   price: number;
   feature: string[];
+  isAdmin: boolean;
 }) {
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden text-center p-8">
@@ -27,6 +29,17 @@ export default function MembershipCard({
           </li>
         ))}
       </ul>
+      {/* Render Edit and Delete Buttons Conditionally */}
+      {isAdmin && (
+        <div className="flex justify-center mt-6 space-x-4">
+          <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+            Edit
+          </button>
+          <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
