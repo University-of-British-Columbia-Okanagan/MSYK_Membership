@@ -1,8 +1,17 @@
 //Link the membership plan to payment system in Stripe. 
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
+import { getUserId } from "~/utils/session.server";
+import type { Route } from "./+types/membership";
 
-export default function MembershipPage() {
+export async function loader({ request }: { request: Request }) {
+ 
+}
+
+
+export default function MembershipPage({
+  loaderData,
+}: Route.ComponentProps) {
   return (
     <main>
       {/* Hero Section */}
