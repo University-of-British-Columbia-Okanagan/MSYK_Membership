@@ -14,6 +14,13 @@ async function main() {
 
   const hashedPassword = await bcrypt.hash("password", 10);
 
+  await prisma.roleUser.createMany({
+    data: [
+      { name: "User" },
+      { name: "Admin" },
+    ],
+  });
+
   await prisma.user.createMany({
     data: [
       {
@@ -35,7 +42,7 @@ async function main() {
         emergencyContactEmail: "emergency1@example.com",
         trainingCardUserNumber: 1001,
         // roleUser and roleLevel default to 1 but will put roleUser 2 to make admin
-        roleUser: 2,
+        roleUserId: 2,
       },
       {
         email: "testuser2@gmail.com",
@@ -122,13 +129,6 @@ async function main() {
       },
     ],
     
-  });
-
-  await prisma.roleUser.createMany({
-    data: [
-      { name: "User" },
-      { name: "Admin" },
-    ],
   });
 
   // const allUsers = await prisma.user.findMany({});

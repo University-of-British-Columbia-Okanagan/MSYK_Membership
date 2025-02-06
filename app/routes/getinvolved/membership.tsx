@@ -4,8 +4,11 @@ import Footer from "@/components/ui/Home/Footer";
 import type { Route } from "./+types/membership";
 import MembershipCard from "@/components/ui/Get Involved/MembershipCard";
 import { getMembershipPlans } from "~/models/membership.server";
+import { getRoleUser } from "~/utils/session.server";
 
 export async function loader({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+
   const membershipPlans = await getMembershipPlans();
   const parsedPlans = membershipPlans.map((plan) => ({
     ...plan,
@@ -16,11 +19,16 @@ export async function loader({ request }: { request: Request }) {
       : [], // Handle null or undefined
   }));
 
-  return parsedPlans;
+  return { roleUser, membershipPlans: parsedPlans };
 }
 
 export default function MembershipPage({ loaderData }: Route.ComponentProps) {
-  const membershipPlans = loaderData;
+  const { roleUser, membershipPlans } = loaderData;
+
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
 
   return (
     <main>
@@ -30,6 +38,15 @@ export default function MembershipPage({ loaderData }: Route.ComponentProps) {
       {/* Membership Plans */}
       <section className="bg-gray-900 py-16">
         <div className="container mx-auto px-4">
+          {/* Conditionally Render Buttons */}
+          {isAdmin && (
+            <div className="flex justify-center items-center space-x-4 mb-6">
+              <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+                Add
+              </button>
+            </div>
+          )}
+
           <h2 className="text-white text-center text-3xl font-semibold mb-10">
             Choose your Membership Plan
           </h2>
@@ -43,6 +60,7 @@ export default function MembershipPage({ loaderData }: Route.ComponentProps) {
                 description={plan.description}
                 price={plan.price}
                 feature={plan.feature} // Pass JSON feature as props
+                isAdmin={!!isAdmin}
               />
             ))}
           </div>
