@@ -42,9 +42,11 @@ export default function MembershipPage({ loaderData }: Route.ComponentProps) {
           {/* Conditionally Render Buttons */}
           {isAdmin && (
             <div className="flex justify-center items-center space-x-4 mb-6">
-              <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-                <Link to="/addmembershipplan"> Add </Link>
-              </button>
+              <Link to="/addmembershipplan">
+                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+                  Add
+                </button>
+              </Link>
             </div>
           )}
 

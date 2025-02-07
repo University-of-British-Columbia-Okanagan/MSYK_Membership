@@ -7,7 +7,7 @@ export const membershipPlanFormSchema = z.object({
     .number()
     .min(0, "Price must be at least 0") // Allow 0 or more
     .default(0), // Default value is 0
-  features: z.string(),
+    features: z.array(z.string())
 });
 
 export type MembershipPlanFormValues = z.infer<typeof membershipPlanFormSchema>;

@@ -1,6 +1,11 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import React, { useState, useRef } from "react";
-import { type ActionFunctionArgs, redirect, useNavigation, useActionData } from "react-router";
+import {
+  type ActionFunctionArgs,
+  redirect,
+  useNavigation,
+  useActionData,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -20,6 +25,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/addmembershipplan";
 import { membershipPlanFormSchema } from "../../schemas/membershipPlanFormSchema";
 import type { MembershipPlanFormValues } from "../../schemas/membershipPlanFormSchema";
+import { addMembershipPlan } from "~/models/membership.server";
 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
@@ -29,9 +35,12 @@ export async function action({ request }: Route.ActionArgs) {
     rawValues.price = parseInt(rawValues.price); // Convert to a number
   }
 
-  const parsed = membershipPlanFormSchema.safeParse(rawValues);
+  // Convert features into an array of strings
+  rawValues.features = formData.getAll("features") as string[];
 
-  
+  console.log("Features Submitted:", rawValues.features);
+
+  const parsed = membershipPlanFormSchema.safeParse(rawValues);
 
   if (!parsed.success) {
     // If validation fails, return errors
@@ -40,22 +49,49 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: errors.fieldErrors };
   }
 
+  try {
+    await addMembershipPlan({
+      title: parsed.data.title,
+      description: parsed.data.description,
+      price: parsed.data.price,
+      features: parsed.data.features, // Array of features
+    });
+  } catch (error) {
+    console.error(error);
+    return { errors: { database: ["Failed to add membership plan"] } };
+  }
+
   return redirect("/membership");
 }
 
 export default function AddMembershipPlan() {
-const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const actionData = useActionData<{ errors?: Record<string, string[]> }>();
   const form = useForm<MembershipPlanFormValues>({
     resolver: zodResolver(membershipPlanFormSchema),
     defaultValues: {
       title: "",
       description: "",
       price: 0,
-      features: "",
+      features: [],
     },
   });
 
-  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
+  const [features, setFeatures] = useState<string[]>([""]); // Initialize with one empty feature input
+  const [featureCount, setFeatureCount] = useState(1);
+
+  const addFeatureField = () => {
+    setFeatures([...features, ""]);
+    setFeatureCount(featureCount + 1);
+  };
+
+  const handleFeatureChange = (index: number, value: string) => {
+    const updatedFeatures = [...features];
+    updatedFeatures[index] = value; // Update the feature at the given index
+    setFeatures(updatedFeatures);
+  };
+
+  const hasErrors =
+    actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   return (
     <div className="max-w-4xl mx-auto p-8">
@@ -86,14 +122,13 @@ const actionData = useActionData<{ errors?: Record<string, string[]> }>();
                   <Input
                     placeholder="Membership Title"
                     {...field}
-                    className="w-full lg:w-[500px]   "
+                    className="w-full lg:w-[500px]"
                   />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.title}</FormMessage>
               </FormItem>
             )}
           />
-
           {/* Description */}
           <FormField
             control={form.control}
@@ -101,7 +136,7 @@ const actionData = useActionData<{ errors?: Record<string, string[]> }>();
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                    Description
+                  Description
                   {/* Description <span className="text-red-500">*</span> */}
                 </FormLabel>
                 <FormControl>
@@ -116,7 +151,6 @@ const actionData = useActionData<{ errors?: Record<string, string[]> }>();
               </FormItem>
             )}
           />
-
           {/* Price */}
           <FormField
             control={form.control}
@@ -139,30 +173,46 @@ const actionData = useActionData<{ errors?: Record<string, string[]> }>();
               </FormItem>
             )}
           />
-
           {/* Features */}
-          <FormField
-            control={form.control}
-            name="features"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Features (one per line){" "}
-                  {/* <span className="text-red-500">*</span> */}
-                </FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Enter features, one per line"
-                    {...field}
-                    className="w-full"
-                    rows={5}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {features.map((feature, index) => (
+            <FormField
+              control={form.control}
+              name="features"
+              key={index}
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Feature {index}{" "}
+                    {/* <span className="text-red-500">*</span> */}
+                  </FormLabel>
+                  <FormControl>
+                    <div key={index} className="mb-4">
+                      <Textarea
+                        name="features"
+                        value={feature}
+                        onChange={(e) =>
+                          handleFeatureChange(index, e.target.value)
+                        }
+                        placeholder="Enter feature"
+                        // {...field}
+                        className="w-full"
+                        rows={5}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ))}
 
+          <Button
+            type="button"
+            onClick={addFeatureField}
+            className="mt-4 items-center bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
+          >
+            +
+          </Button>
           {/* Submit Button */}
           <Button
             type="submit"
