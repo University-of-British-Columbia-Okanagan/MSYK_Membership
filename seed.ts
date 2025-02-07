@@ -92,10 +92,10 @@ async function main() {
         description: "Support Makerspace YK as a community member",
         price: 35.0,
         feature: {
-          HotdeskAccess: "Hotdesk access in Artspace during drop-in times",
-          SewingMachines: "Access to sewing machines and serger in Artspace",
-          SocialMedia: "Social media promotion for your startup or initiative",
-          Discount: "5% discount on all MSYK workshops",
+          Feature1: "Hotdesk access in Artspace during drop-in times",
+          Feature2: "Access to sewing machines and serger in Artspace",
+          Feature3: "Social media promotion for your startup or initiative",
+          Feature4: "5% discount on all MSYK workshops",
         },
       }, 
       {
@@ -103,29 +103,29 @@ async function main() {
         description:
           "MSYK membership now covers Artspace, Hackspace, & Shopspace for just $50/month!",
         price: 50,
-        feature: [
-          "Hotdesk access in Artspace during drop-in times",
-          "Access to the woodshop & digital lab tools and equipment",
-          "Tablesaw - Compound mitre saw - Bandsaw - Scroll saw",
-          "Joiner - Planer - Disc & Belt sander - Drill Press",
-          "Hand and portable tools also available (drills, jigsaws, etc.)",
-          "Laser cutters, 3D printers, CNC milling, circuits, soldering",
-          "Access to MSYK laptops with software subscriptions",
-          "2 hours of 3D print time per month ($5/30 min after)",
-          "60 minutes of laser/CNC cut time per month ($1/min after)",
-          "Additional Hackspace and Shop orientations required",
-        ],
+        feature: {
+          Feature1: "Hotdesk access in Artspace during drop-in times",
+          Feature2: "Access to the woodshop & digital lab tools and equipment",
+          Feature3: "Tablesaw - Compound mitre saw - Bandsaw - Scroll saw",
+          Feature4: "Joiner - Planer - Disc & Belt sander - Drill Press",
+          Feature5: "Hand and portable tools also available (drills, jigsaws, etc.)",
+          Feature6: "Laser cutters, 3D printers, CNC milling, circuits, soldering",
+          Feature7: "Access to MSYK laptops with software subscriptions",
+          Feature8: "2 hours of 3D print time per month ($5/30 min after)",
+          Feature9: "60 minutes of laser/CNC cut time per month ($1/min after)",
+          Feature10: "Additional Hackspace and Shop orientations required",
+        },
       },
       {
         title: "Drop-In 10 Pass",
         description:
           "Not ready for a membership? Get a Drop-In 10 pass & save $10!",
         price: 90,
-        feature: [
-          "10 drop-in sessions for the Artspace, Shop, or Digital lab",
-          "**Shop Orientation required for Wood Shop",
-          "**Training may be required for Hackspace equipment",
-        ],
+        feature: {
+          Feature1: "10 drop-in sessions for the Artspace, Shop, or Digital lab",
+          Feature2: "**Shop Orientation required for Wood Shop",
+          Feature3: "**Training may be required for Hackspace equipment",
+        },
       },
     ],
     

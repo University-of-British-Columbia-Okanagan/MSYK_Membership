@@ -33,12 +33,21 @@ import { useLoaderData } from "react-router";
 
 export async function loader({ params }: { params: { planId: string } }) {
   const membershipPlan = await getMembershipPlan(Number(params.planId));
+  console.log(membershipPlan);
 
   if (!membershipPlan) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  return membershipPlan;
+  // Convert feature object to an array of values
+  const featuresArray = membershipPlan.feature
+    ? Object.values(membershipPlan.feature)
+    : [];
+
+  return {
+    ...membershipPlan,
+    feature: featuresArray, // Replace the feature object with an array
+  };
 }
 
 export async function action({
@@ -92,9 +101,7 @@ export default function AddMembershipPlan() {
       title: membershipPlan.title,
       description: membershipPlan.description,
       price: membershipPlan.price,
-      features: membershipPlan.feature
-        ? Object.values(membershipPlan.feature)
-        : [],
+      features: membershipPlan.feature || [],
     },
   });
 
@@ -125,7 +132,7 @@ export default function AddMembershipPlan() {
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">
-        Add Membership Plan
+        Edit Membership Plan
       </h1>
 
       {/* Only show the error message if there are errors */}

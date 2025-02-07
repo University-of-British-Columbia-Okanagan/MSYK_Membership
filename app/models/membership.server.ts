@@ -8,7 +8,11 @@ interface MembershipPlanData {
 }
 
 export async function getMembershipPlans() {
-  const membershipPlans = await db.membershipPlan.findMany();
+  const membershipPlans = await db.membershipPlan.findMany({
+    orderBy: {
+      id: "asc",
+    },
+  });
   return membershipPlans;
 }
 
@@ -56,15 +60,7 @@ export async function getMembershipPlan(planId: number) {
 
   if (!plan) return null;
 
-  return {
-    ...plan,
-    // Check if feature is already an array, otherwise parse it as JSON
-    feature: Array.isArray(plan.feature)
-      ? plan.feature
-      : typeof plan.feature === "string"
-      ? JSON.parse(plan.feature || "[]")
-      : [], // Default to an empty array if neither condition is met
-  };
+  return plan;
 }
 
 export async function updateMembershipPlan(
