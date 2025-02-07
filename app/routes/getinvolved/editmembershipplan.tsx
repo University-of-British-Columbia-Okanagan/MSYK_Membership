@@ -33,7 +33,7 @@ import { useLoaderData } from "react-router";
 
 export async function loader({ params }: { params: { planId: string } }) {
   const membershipPlan = await getMembershipPlan(Number(params.planId));
-  console.log(membershipPlan);
+  //   console.log(membershipPlan);
 
   if (!membershipPlan) {
     throw new Response("Not Found", { status: 404 });
@@ -115,7 +115,7 @@ export default function AddMembershipPlan() {
 
   //   const [featureCount, setFeatureCount] = useState(1);
 
-  //   const addFeatureField = () => {
+  //   const addFeatureField = () => {conso
   //     setFeatures([...features, ""]);
   //     setFeatureCount(featureCount + 1);
   //   };
@@ -125,6 +125,12 @@ export default function AddMembershipPlan() {
   }, [membershipPlan]);
 
   const addFeatureField = () => setFeatures([...features, ""]);
+
+  const removeLastFeatureField = () => {
+    if (features.length > 1) {
+      setFeatures(features.slice(0, -1)); // Remove the last feature input
+    }
+  };
 
   const handleFeatureChange = (index: number, value: string) => {
     const updatedFeatures = [...features];
@@ -178,7 +184,7 @@ export default function AddMembershipPlan() {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  Description
+                  Description <span className="text-red-500">*</span>
                   {/* Description <span className="text-red-500">*</span> */}
                 </FormLabel>
                 <FormControl>
@@ -189,7 +195,7 @@ export default function AddMembershipPlan() {
                     rows={5}
                   />
                 </FormControl>
-                <FormMessage />
+                <FormMessage>{actionData?.errors?.description}</FormMessage>
               </FormItem>
             )}
           />
@@ -224,7 +230,7 @@ export default function AddMembershipPlan() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Feature {index + 1}{" "}
+                    Feature {index + 1}{" "} <span className="text-red-500">*</span>
                     {/* <span className="text-red-500">*</span> */}
                   </FormLabel>
                   <FormControl>
@@ -242,7 +248,7 @@ export default function AddMembershipPlan() {
                       />
                     </div>
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage> {actionData?.errors?.features} </FormMessage>
                 </FormItem>
               )}
             />
@@ -255,6 +261,16 @@ export default function AddMembershipPlan() {
           >
             +
           </Button>
+
+          <Button
+            type="button"
+            onClick={removeLastFeatureField}
+            className="mt-4 ml-2 items-center bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
+            disabled={features.length <= 1} // Disable when only one feature remains
+          >
+            -
+          </Button>
+
           {/* Submit Button */}
           <Button
             type="submit"

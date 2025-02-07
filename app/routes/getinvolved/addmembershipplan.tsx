@@ -186,10 +186,10 @@ export default function AddMembershipPlan() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Feature {index + 1}{" "}
+                    Feature {index + 1}{" "} <span className="text-red-500">*</span>
                     {/* <span className="text-red-500">*</span> */}
                   </FormLabel>
-                  
+
                   <FormControl>
                     <div key={index} className="mb-4">
                       <Textarea
@@ -203,7 +203,6 @@ export default function AddMembershipPlan() {
                         className="w-full"
                         rows={5}
                       />
-                      
                     </div>
                   </FormControl>
                   <FormMessage> {actionData?.errors?.features} </FormMessage>
@@ -221,14 +220,14 @@ export default function AddMembershipPlan() {
           </Button>
 
           <Button
-              type="button"
-              onClick={removeLastFeatureField}
-              className="mt-4 ml-2 items-center bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
-              disabled={features.length <= 1} // Disable when only one feature remains
-            >
-              -
-            </Button>
-          
+            type="button"
+            onClick={removeLastFeatureField}
+            className="mt-4 ml-2 items-center bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
+            disabled={features.length <= 1} // Disable when only one feature remains
+          >
+            -
+          </Button>
+
           {/* Submit Button */}
           <Button
             type="submit"
