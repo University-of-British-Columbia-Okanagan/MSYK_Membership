@@ -59,3 +59,15 @@ model RoleUser {
 
   users User[] // Back-reference for the relation
 }
+model Workshop {
+  id              Int      @id @default(autoincrement()) // Unique ID for each workshop
+  name            String   // Workshop title/name
+  description     String   // Short description of the workshop
+  price           Float    // Price of the workshop (0.0 for free)
+  createdAt       DateTime @default(now()) // Date when the workshop was added
+  updatedAt       DateTime @updatedAt // Automatically updates when modified
+  eventDate       DateTime // Date and time when the workshop is scheduled
+  location        String   // Where the workshop is held (e.g., "Makerspace YK")
+  capacity        Int      // Max number of participants
+  status String @default("upcoming") // Possible values: "upcoming", "ongoing", "completed"
+}
