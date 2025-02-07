@@ -65,7 +65,8 @@ export async function action({
   }
 
   // Convert features into an array of strings
-  rawValues.features = formData.getAll("features") as string[];
+  const featuresArray = formData.getAll("features") as string[];
+  rawValues.features = featuresArray;
 
   const parsed = membershipPlanFormSchema.safeParse(rawValues);
 
@@ -76,12 +77,17 @@ export async function action({
     return { errors: errors.fieldErrors };
   }
 
+  const featuresJson = featuresArray.reduce((acc, feature, index) => {
+    acc[`Feature${index + 1}`] = feature;
+    return acc;
+  }, {} as Record<string, string>);
+
   try {
     await updateMembershipPlan(Number(params.planId), {
       title: rawValues.title,
       description: rawValues.description,
       price: rawValues.price,
-      features: rawValues.features,
+      features: featuresJson,
     });
   } catch (error) {
     console.error(error);

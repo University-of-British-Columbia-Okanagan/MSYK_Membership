@@ -69,7 +69,8 @@ export async function updateMembershipPlan(
     title: string;
     description: string;
     price: number;
-    features: string[];
+    // features: string[];
+    features: Record<string, string>;
   }
 ) {
   return await db.membershipPlan.update({
