@@ -5,6 +5,7 @@ import type { Route } from "./+types/membership";
 import MembershipCard from "@/components/ui/Get Involved/MembershipCard";
 import { getMembershipPlans } from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
+import { NavLink, Link } from "react-router";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -42,7 +43,7 @@ export default function MembershipPage({ loaderData }: Route.ComponentProps) {
           {isAdmin && (
             <div className="flex justify-center items-center space-x-4 mb-6">
               <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-                Add
+                <Link to="/addmembershipplan"> Add </Link>
               </button>
             </div>
           )}

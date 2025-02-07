@@ -135,8 +135,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     setLoading(true); // Set loading when submission begins
   };
 
-  const hasErrors =
-    actionData?.errors && Object.keys(actionData.errors).length > 0;
+  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   React.useEffect(() => {
     if (formRef.current) {
