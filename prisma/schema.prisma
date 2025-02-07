@@ -14,25 +14,48 @@ datasource db {
 }
 
 model User {
-  id                     Int   @id @default(autoincrement())
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   firstName              String
   lastName               String
-  email                  String   @unique
-  password               String?
+  email                  String  @unique
+  password               String
   phone                  String
   address                String
   over18                 Boolean
   parentGuardianName     String?
   parentGuardianPhone    String?
   parentGuardianEmail    String?
-  guardianSignedConsent  String?  // base64 or path to the uploaded file
+  guardianSignedConsent  String?
   photoRelease           Boolean
   dataPrivacy            Boolean
   emergencyContactName   String
   emergencyContactPhone  String
   emergencyContactEmail  String
   trainingCardUserNumber Int
+
+  // roleUser  Int @default(1)
+  roleUserId             Int      @default(1) // Default to 1
+  roleUser               RoleUser @relation(fields: [roleUserId], references: [id]) // Relation to RoleUser
+  roleLevel Int @default(1)
+}
+
+model MembershipPlan {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title       String
+  description String
+  price       Float // Float is used for numeric values like 35.0
+  feature     Json // JSON type for structured data like descriptions
+}
+
+model RoleUser {
+  id   Int    @id @default(autoincrement()) // Primary key with auto-increment
+  name String @unique // Role name, e.g., "Admin" or "User"
+
+  users User[] // Back-reference for the relation
 }

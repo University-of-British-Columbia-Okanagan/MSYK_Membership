@@ -3,6 +3,8 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/home.tsx"),
   route("/register", "routes/authentication/register.tsx"),
+  route("/login", "routes/authentication/login.tsx"),
+  route("/logout", "routes/authentication/logout.tsx"),
   route("/about", "routes/about/about.tsx"),
   route("/board", "routes/about/board.tsx"),
   route("/staff", "routes/about/staff.tsx"),
@@ -24,4 +26,5 @@ export default [
   route("/volunteer", "routes/getinvolved/volunteer.tsx"),
   route("/membership", "routes/getinvolved/membership.tsx"),
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
+  route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx")
 ] satisfies RouteConfig;
