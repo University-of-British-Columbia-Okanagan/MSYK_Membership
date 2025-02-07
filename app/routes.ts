@@ -22,9 +22,18 @@ export default [
   route("/SpaceRental", "routes/spaceandservices/SpaceRental.tsx"),
   route("/SpacesEquipment", "routes/spaceandservices/SpacesEquipment.tsx"),
   route("/resourcetoolbox", "routes/spaceandservices/resourcetoolbox.tsx"),
-  route("/fabricationservices", "routes/spaceandservices/fabricationservices.tsx"),
+  route(
+    "/fabricationservices",
+    "routes/spaceandservices/fabricationservices.tsx"
+  ),
   route("/volunteer", "routes/getinvolved/volunteer.tsx"),
   route("/membership", "routes/getinvolved/membership.tsx"),
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
+  route("/dashboardlayout", "routes/dashboard/dashboardlayout.tsx"),
+  route("/workshops", "routes/dashboard/workshops.tsx"),
+  route("/workshopdetails", "routes/dashboard/workshopdetails.tsx"),
   route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx")
+  route("/workshops", "routes/dashboard/workshops.tsx"),
+  route("/workshopdetails", "routes/dashboard/workshopdetails.tsx"),
+  route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
 ] satisfies RouteConfig;
