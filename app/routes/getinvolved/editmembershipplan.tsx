@@ -25,9 +25,38 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/addmembershipplan";
 import { membershipPlanFormSchema } from "../../schemas/membershipPlanFormSchema";
 import type { MembershipPlanFormValues } from "../../schemas/membershipPlanFormSchema";
-import { addMembershipPlan } from "~/models/membership.server";
+import {
+  updateMembershipPlan,
+  getMembershipPlan,
+} from "~/models/membership.server";
+import { useLoaderData } from "react-router";
 
-export async function action({ request }: Route.ActionArgs) {
+export async function loader({ params }: { params: { planId: string } }) {
+  const membershipPlan = await getMembershipPlan(Number(params.planId));
+  //   console.log(membershipPlan);
+
+  if (!membershipPlan) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  // Convert feature object to an array of values
+  const featuresArray = membershipPlan.feature
+    ? Object.values(membershipPlan.feature)
+    : [];
+
+  return {
+    ...membershipPlan,
+    feature: featuresArray, // Replace the feature object with an array
+  };
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { planId: string };
+}) {
   const formData = await request.formData();
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
@@ -36,7 +65,8 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Convert features into an array of strings
-  rawValues.features = formData.getAll("features") as string[];
+  const featuresArray = formData.getAll("features") as string[];
+  rawValues.features = featuresArray;
 
   const parsed = membershipPlanFormSchema.safeParse(rawValues);
 
@@ -47,16 +77,21 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: errors.fieldErrors };
   }
 
+  const featuresJson = featuresArray.reduce((acc, feature, index) => {
+    acc[`Feature${index + 1}`] = feature;
+    return acc;
+  }, {} as Record<string, string>);
+
   try {
-    await addMembershipPlan({
-      title: parsed.data.title,
-      description: parsed.data.description,
-      price: parsed.data.price,
-      features: parsed.data.features, // Array of features
+    await updateMembershipPlan(Number(params.planId), {
+      title: rawValues.title,
+      description: rawValues.description,
+      price: rawValues.price,
+      features: featuresJson,
     });
   } catch (error) {
     console.error(error);
-    return { errors: { database: ["Failed to add membership plan"] } };
+    return { errors: { database: ["Failed to update membership plan"] } };
   }
 
   return redirect("/membership");
@@ -64,23 +99,32 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function AddMembershipPlan() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const membershipPlan = useLoaderData<typeof loader>();
+
   const form = useForm<MembershipPlanFormValues>({
     resolver: zodResolver(membershipPlanFormSchema),
     defaultValues: {
-      title: "",
-      description: "",
-      price: 0,
-      features: [],
+      title: membershipPlan.title,
+      description: membershipPlan.description,
+      price: membershipPlan.price,
+      features: membershipPlan.feature || [],
     },
   });
 
   const [features, setFeatures] = useState<string[]>([""]); // Initialize with one empty feature input
-  const [featureCount, setFeatureCount] = useState(1);
 
-  const addFeatureField = () => {
-    setFeatures([...features, ""]);
-    setFeatureCount(featureCount + 1);
-  };
+  //   const [featureCount, setFeatureCount] = useState(1);
+
+  //   const addFeatureField = () => {conso
+  //     setFeatures([...features, ""]);
+  //     setFeatureCount(featureCount + 1);
+  //   };
+
+  React.useEffect(() => {
+    setFeatures(form.getValues("features") || []);
+  }, [membershipPlan]);
+
+  const addFeatureField = () => setFeatures([...features, ""]);
 
   const removeLastFeatureField = () => {
     if (features.length > 1) {
@@ -100,7 +144,7 @@ export default function AddMembershipPlan() {
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">
-        Add Membership Plan
+        Edit Membership Plan
       </h1>
 
       {/* Only show the error message if there are errors */}
@@ -189,7 +233,6 @@ export default function AddMembershipPlan() {
                     Feature {index + 1}{" "} <span className="text-red-500">*</span>
                     {/* <span className="text-red-500">*</span> */}
                   </FormLabel>
-
                   <FormControl>
                     <div key={index} className="mb-4">
                       <Textarea
@@ -233,7 +276,7 @@ export default function AddMembershipPlan() {
             type="submit"
             className="mt-4 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
           >
-            Submit
+            Confirm
           </Button>
         </form>
       </Form>
