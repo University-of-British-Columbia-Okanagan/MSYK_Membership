@@ -34,3 +34,17 @@ export async function addMembershipPlan(data: MembershipPlanData) {
     throw new Error("Failed to add membership plan");
   }
 }
+
+export async function deleteMembershipPlan(planId: number) {
+  try {
+    await db.membershipPlan.delete({
+      where: {
+        id: planId,
+      },
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting membership plan:", error);
+    throw new Error("Failed to delete membership plan");
+  }
+}

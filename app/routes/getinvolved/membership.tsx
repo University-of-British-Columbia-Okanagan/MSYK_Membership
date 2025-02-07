@@ -3,9 +3,9 @@ import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
 import type { Route } from "./+types/membership";
 import MembershipCard from "@/components/ui/Get Involved/MembershipCard";
-import { getMembershipPlans } from "~/models/membership.server";
+import { getMembershipPlans, deleteMembershipPlan } from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
-import { NavLink, Link } from "react-router";
+import { NavLink, Link, redirect } from "react-router";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -21,6 +21,28 @@ export async function loader({ request }: { request: Request }) {
   }));
 
   return { roleUser, membershipPlans: parsedPlans };
+}
+
+export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const action = formData.get("action");
+  const planId = formData.get("planId");
+
+  if (action === "delete") {
+    try {
+      const result = await deleteMembershipPlan(Number(planId));
+
+      if(result) {
+        return redirect("/membership");
+      }
+      
+    } catch (error) {
+      console.error("Error deleting membership plan:", error);
+    }
+  }
+
+  return null;
+
 }
 
 export default function MembershipPage({ loaderData }: Route.ComponentProps) {
@@ -64,6 +86,7 @@ export default function MembershipPage({ loaderData }: Route.ComponentProps) {
                 price={plan.price}
                 feature={plan.feature} // Pass JSON feature as props
                 isAdmin={!!isAdmin}
+                planId={plan.id}
               />
             ))}
           </div>

@@ -38,8 +38,6 @@ export async function action({ request }: Route.ActionArgs) {
   // Convert features into an array of strings
   rawValues.features = formData.getAll("features") as string[];
 
-  console.log("Features Submitted:", rawValues.features);
-
   const parsed = membershipPlanFormSchema.safeParse(rawValues);
 
   if (!parsed.success) {

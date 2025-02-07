@@ -1,16 +1,22 @@
+import { useFetcher } from "react-router";
+
 export default function MembershipCard({
   title,
   description,
   price,
   feature,
   isAdmin,
+  planId,
 }: {
   title: string;
   description: string;
   price: number;
   feature: string[];
   isAdmin: boolean;
+  planId: number;
 }) {
+  const fetcher = useFetcher();
+
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden text-center p-8">
       <h3 className="text-xl font-semibold text-gray-800">{title}</h3>
@@ -31,14 +37,27 @@ export default function MembershipCard({
       </ul>
       {/* Render Edit and Delete Buttons Conditionally */}
       {isAdmin && (
-        <div className="flex justify-center mt-6 space-x-4">
-          <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-            Edit
-          </button>
-          <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-            Delete
-          </button>
-        </div>
+        <fetcher.Form method="post">
+          <input type="hidden" name="planId" value={planId} />
+          <div className="flex justify-center mt-6 space-x-4">
+            <button
+              type="submit"
+              name="action"
+              value="edit"
+              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+            >
+              Edit
+            </button>
+            <button
+              type="submit"
+              name="action"
+              value="delete"
+              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+            >
+              Delete
+            </button>
+          </div>
+        </fetcher.Form>
       )}
     </div>
   );
