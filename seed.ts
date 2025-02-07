@@ -7,6 +7,7 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.membershipPlan.deleteMany();
   await prisma.roleUser.deleteMany();
+  await prisma.workshop.deleteMany();
 
   await prisma.$executeRaw`ALTER SEQUENCE "User_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "MembershipPlan_id_seq" RESTART WITH 1`;
@@ -129,6 +130,40 @@ async function main() {
       },
     ],
     
+  });
+  await prisma.workshop.createMany({ 
+    data: [
+      {
+        id: 1,
+        name: "Laser Cutting Basics",
+        description: "Introduction to laser cutting techniques.",
+        price: 30.0,
+        eventDate: new Date("2025-03-10T10:00:00Z"),
+        location: "Makerspace YK",
+        capacity: 15,
+        status: "upcoming",
+      },
+      {
+        id: 2,
+        name: "Pottery",
+        description: "Introduction to Pottery",
+        price: 35,
+        eventDate: new Date("2025-06-10T10:00:00Z"),
+        location: "Makerspace YK",
+        capacity: 20,
+        status: "upcoming",
+      },
+      {
+        id: 3,
+        name: "Knitting",
+        description: "Introduction to Knitting",
+        price: 22.0,
+        eventDate: new Date("2025-08-10T10:00:00Z"),
+        location: "Makerspace YK",
+        capacity: 25,
+        status: "upcoming",
+      },
+    ],
   });
 
   // const allUsers = await prisma.user.findMany({});
