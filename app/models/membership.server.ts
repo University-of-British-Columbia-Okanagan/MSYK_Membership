@@ -48,3 +48,41 @@ export async function deleteMembershipPlan(planId: number) {
     throw new Error("Failed to delete membership plan");
   }
 }
+
+export async function getMembershipPlan(planId: number) {
+  const plan = await db.membershipPlan.findUnique({
+    where: { id: planId },
+  });
+
+  if (!plan) return null;
+
+  return {
+    ...plan,
+    // Check if feature is already an array, otherwise parse it as JSON
+    feature: Array.isArray(plan.feature)
+      ? plan.feature
+      : typeof plan.feature === "string"
+      ? JSON.parse(plan.feature || "[]")
+      : [], // Default to an empty array if neither condition is met
+  };
+}
+
+export async function updateMembershipPlan(
+  planId: number,
+  data: {
+    title: string;
+    description: string;
+    price: number;
+    features: string[];
+  }
+) {
+  return await db.membershipPlan.update({
+    where: { id: planId },
+    data: {
+      title: data.title,
+      description: data.description,
+      price: data.price,
+      feature: data.features, // Convert features array to JSON
+    },
+  });
+}

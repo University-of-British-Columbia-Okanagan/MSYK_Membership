@@ -26,5 +26,6 @@ export default [
   route("/volunteer", "routes/getinvolved/volunteer.tsx"),
   route("/membership", "routes/getinvolved/membership.tsx"),
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
-  route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx")
+  route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
+  route("/editmembershipplan/:planId", "routes/getinvolved/editmembershipplan.tsx")
 ] satisfies RouteConfig;

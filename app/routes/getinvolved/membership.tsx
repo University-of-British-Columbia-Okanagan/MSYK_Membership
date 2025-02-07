@@ -41,6 +41,10 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (action === "edit") {
+    return redirect(`/editmembershipplan/${planId}`)
+  }
+
   return null;
 
 }
