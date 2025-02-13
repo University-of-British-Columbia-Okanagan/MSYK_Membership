@@ -32,9 +32,6 @@ export async function action({ request }: { request: Request }) {
     capacity,
   });
 
-  console.log("hello");
-  console.log(parsed);
-
   if (!parsed.success) {
     console.log(parsed.error.flatten().fieldErrors);
     return { errors: parsed.error.flatten().fieldErrors };
@@ -42,20 +39,25 @@ export async function action({ request }: { request: Request }) {
 
   // Make sure done after success
   // Convert eventDate from string to Date object
-//   const eventDate = new Date(rawValues.eventDate as string);
+  //   const eventDate = new Date(rawValues.eventDate as string);
   // Format eventDate to "YYYY-MM-DD HH:MM:SS"
-//   const formattedEventDate = format(eventDate, "yyyy-MM-dd HH:mm:ss");
+  //   const formattedEventDate = format(eventDate, "yyyy-MM-dd HH:mm:ss");
 
-//  console.log(formattedEventDate);
+  //  console.log(formattedEventDate);
 
-const eventDate= new Date(parsed.data.eventDate);
+  const eventDate = new Date(parsed.data.eventDate);
 
- try {
+  // Adjust to store the **exact** local time by removing the timezone offset
+  const localEventDate = new Date(
+    eventDate.getTime() - eventDate.getTimezoneOffset() * 60000
+  );
+
+  try {
     await addWorkshop({
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
-      eventDate, // Correctly formatted date
+      eventDate: localEventDate, // Store it in local time and correct format
       location: parsed.data.location,
       capacity: parsed.data.capacity,
       status: parsed.data.status,
@@ -173,7 +175,9 @@ export default function AddWorkshop() {
                 <FormControl>
                   <Input type="datetime-local" {...field} className="w-full" />
                 </FormControl>
-                <FormMessage>{actionData?.errors?.eventDate?.join(" ")}</FormMessage>
+                <FormMessage>
+                  {actionData?.errors?.eventDate?.join(" ")}
+                </FormMessage>
               </FormItem>
             )}
           />

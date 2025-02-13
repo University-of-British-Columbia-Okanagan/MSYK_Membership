@@ -80,3 +80,15 @@ export async function updateWorkshop(workshopId: number, data: WorkshopData) {
     throw new Error("Failed to update workshop");
   }
 }
+
+export async function deleteWorkshop(workshopId: number) {
+  try {
+    await db.workshop.delete({
+      where: { id: workshopId },
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting workshop:", error);
+    throw new Error("Failed to delete workshop");
+  }
+}

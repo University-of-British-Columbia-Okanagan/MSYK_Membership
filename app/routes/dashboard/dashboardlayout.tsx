@@ -8,6 +8,7 @@ import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
 import type { Route } from "./+types/dashboardlayout";
 import { NavLink, Link, redirect } from "react-router";
+import { deleteWorkshop } from "~/models/workshop.server";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -24,6 +25,16 @@ export async function action({ request }: { request: Request }) {
 
   if (action === "edit") {
     return redirect(`/editworkshop/${workshopId}`);
+  }
+
+  if (action === "delete") {
+    try {
+      await deleteWorkshop(Number(workshopId));
+      return redirect("/dashboardlayout");
+    } catch (error) {
+      console.error("Error deleting workshop:", error);
+      return { error: "Failed to delete workshop" };
+    }
   }
 
   return null;
