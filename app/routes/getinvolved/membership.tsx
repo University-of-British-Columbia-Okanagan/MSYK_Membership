@@ -27,10 +27,16 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const action = formData.get("action");
   const planId = formData.get("planId");
+  const confirmationDelete = formData.get("confirmationDelete");
 
   if (action === "delete") {
     try {
       const result = await deleteMembershipPlan(Number(planId));
+      if (confirmationDelete !== "confirmed") {
+        console.warn("Deletion was not confirmed.");
+        return null; // Prevent deletion if not confirmed
+      }
+  
 
       if(result) {
         return redirect("/membership");

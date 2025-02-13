@@ -40,6 +40,8 @@ model User {
   roleUserId             Int      @default(1) // Default to 1
   roleUser               RoleUser @relation(fields: [roleUserId], references: [id]) // Relation to RoleUser
   roleLevel Int @default(1)
+
+  userWorkshops UserWorkshop[] // Many-to-many relationship with User
 }
 
 model MembershipPlan {
@@ -70,4 +72,32 @@ model Workshop {
   location        String   // Where the workshop is held (e.g., "Makerspace YK")
   capacity        Int      // Max number of participants
   status String @default("upcoming") // Possible values: "upcoming", "ongoing", "completed"
+
+  userWorkshops UserWorkshop[] // Many-to-many relationship with User
+
+}
+
+// prerequisites
+  // - orientations or workshops (many to many)
+  // - at least level 1 member
+  // - not necessarily paid subscription as it only gives perks (discounts, etc)
+  // 
+  // users (many to many)
+  //   user - orientation - result (Passed, Failed) (pass by default for workshop), date
+  //
+  // type: orientation or workshop
+
+model UserWorkshop {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  workshopId Int
+  result    String  @default("passed") // Can be "passed" or "failed"
+  type      String  // "workshop" or "orientation"
+  date      DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workshopId]) // Ensure a user cannot register for the same workshop multiple times
+
 }
