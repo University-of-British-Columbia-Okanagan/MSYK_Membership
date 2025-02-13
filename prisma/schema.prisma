@@ -70,4 +70,14 @@ model Workshop {
   location        String   // Where the workshop is held (e.g., "Makerspace YK")
   capacity        Int      // Max number of participants
   status String @default("upcoming") // Possible values: "upcoming", "ongoing", "completed"
+
+  // prerequisites
+  // - orientations or workshops (many to many)
+  // - at least level 1 member
+  // - not necessarily paid subscription as it only gives perks (discounts, etc)
+  // 
+  // users (many to many)
+  //   user - orientation - result (Passed, Failed) (pass by default for workshop), date
+  //
+  // type: orientation or workshop
 }
