@@ -16,19 +16,33 @@ export async function loader({ request }: { request: Request }) {
   return { roleUser, workshops };
 }
 
+export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const action = formData.get("action");
+  const workshopId = formData.get("workshopId");
+  const confirmationDelete = formData.get("confirmationDelete");
+
+  if (action === "edit") {
+    return redirect(`/editworkshop/${workshopId}`);
+  }
+
+  return null;
+}
+
 export default function DashboardLayout({ loaderData }: Route.ComponentProps) {
   const { workshops, roleUser } = loaderData;
-  const isAdmin =
+  const isAdmin = !!(
     roleUser &&
     roleUser.roleId === 2 &&
-    roleUser.roleName.toLowerCase() === "admin";
+    roleUser.roleName.toLowerCase() === "admin"
+  );
 
   return (
     <SidebarProvider>
       <div className="flex h-screen">
         <AppSidebar />
         <main className="flex-grow p-6">
-          <WorkshopList workshops={workshops} />
+          <WorkshopList workshops={workshops} isAdmin={isAdmin} />
           <div className="flex justify-start mb-6">
           {isAdmin && (
             <Link to="/addworkshop">
