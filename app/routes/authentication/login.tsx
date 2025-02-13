@@ -40,7 +40,7 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: result.errors };
   }
 
-  return createUserSession(result.id, "/membership"); // Redirect to a protected route on success
+  return createUserSession(result.id, "/dashboardlayout"); // Redirect to a protected route on success
 }
 
 interface ActionData {
