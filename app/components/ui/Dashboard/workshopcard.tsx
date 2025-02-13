@@ -11,18 +11,18 @@ import { useNavigate } from "react-router-dom";
 
 interface WorkshopProps {
   id: number; // Add ID to uniquely identify each workshop
-  title: string;
+  name: string;
   description: string;
-  price: string;
+  price: number;
 }
 
-export default function WorkshopCard({ id, title, description, price }: WorkshopProps) {
+export default function WorkshopCard({ id, name, description, price }: WorkshopProps) {
   const navigate = useNavigate(); // React Router hook for navigation
 
   return (
     <Card className="w-full md:w-80 rounded-lg shadow-md">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
+        <CardTitle>{name}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

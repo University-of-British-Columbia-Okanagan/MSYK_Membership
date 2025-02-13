@@ -1,13 +1,8 @@
 import React from "react";
 import WorkshopCard from "./workshopcard";
+import { useLoaderData } from "react-router";
 
-const workshops = [
-  { id: 1, title: "Laser Cutting Basics", description: "Introduction to laser cutting", price: "$30" },
-  { id: 2, title: "3D Printing Workshop", description: "Learn 3D printing techniques", price: "Free" },
-  { id: 3, title: "CNC Machining", description: "Advanced CNC machining skills", price: "$50" },
-];
-
-export default function WorkshopList() {
+export default function WorkshopList({ workshops }: { workshops: { id: number; name: string; description: string; price: number }[] }) {
   return (
     <div className="p-6">
       <h2 className="text-3xl font-bold mb-6">Registered Workshops</h2>
