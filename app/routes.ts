@@ -31,9 +31,13 @@ export default [
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
   route("/dashboardlayout", "routes/dashboard/dashboardlayout.tsx"),
   route("/workshops", "routes/dashboard/workshops.tsx"),
-  route("/workshopdetails", "routes/dashboard/workshopdetails.tsx"),
+  route("/dashboard/workshops/:id", "routes/dashboard/workshopdetails.tsx"),
   route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
-  route("/editmembershipplan/:planId", "routes/getinvolved/editmembershipplan.tsx"),
+  route(
+    "/editmembershipplan/:planId",
+    "routes/getinvolved/editmembershipplan.tsx"
+  ),
   route("/addworkshop", "routes/dashboard/addworkshop.tsx"),
   route("/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
+  route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
 ] satisfies RouteConfig;
