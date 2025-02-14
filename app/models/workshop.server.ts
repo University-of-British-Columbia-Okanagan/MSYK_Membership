@@ -95,7 +95,7 @@ export async function deleteWorkshop(workshopId: number) {
 //users should be able to register for a workshop
 export async function registerForWorkshop(workshopId: number, userId: number) {
   try {
-    console.log("Checking workshop and user..."); // Debugging
+    // Check if the workshop exists and has available capacity
     const workshop = await db.workshop.findUnique({
       where: { id: workshopId },
       include: { userWorkshops: true },
@@ -109,33 +109,32 @@ export async function registerForWorkshop(workshopId: number, userId: number) {
       throw new Error("Workshop is full");
     }
 
-    console.log("Checking existing registration..."); // Debugging
+    // Check if the user is already registered
     const existingRegistration = await db.userWorkshop.findUnique({
       where: {
         userId_workshopId: {
-          userId: userId,
-          workshopId: workshopId,
+          userId,
+          workshopId,
         },
       },
     });
 
     if (existingRegistration) {
-      throw new Error("User is already registered for this workshop");
+      throw new Error("User already registered for this workshop");
     }
 
-    console.log("Creating registration..."); // Debugging
-    const registration = await db.userWorkshop.create({
+    // Create a new registration
+    await db.userWorkshop.create({
       data: {
-        userId: userId,
-        workshopId: workshopId,
+        userId,
+        workshopId,
         type: "workshop",
       },
     });
 
-    console.log("Registration created:", registration); // Debugging
-    return registration;
+    return { success: true, workshopName: workshop.name };
   } catch (error) {
-    console.error("Error registering for workshop:", error); // Debugging
+    console.error("Error registering for workshop:", error);
     throw error;
   }
 }
