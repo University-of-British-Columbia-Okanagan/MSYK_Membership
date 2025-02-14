@@ -20,7 +20,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
-import { format } from "date-fns";
 import { getWorkshopById, updateWorkshop } from "~/models/workshop.server";
 
 export async function loader({ params }: { params: { workshopId: string } }) {
@@ -32,8 +31,6 @@ export async function loader({ params }: { params: { workshopId: string } }) {
 
   return {
     ...workshop,
-    eventDate: format(new Date(workshop.eventDate), "yyyy-MM-dd'T'HH:mm"), // Convert eventDate for datetime-local input
-    status: workshop.status as "upcoming" | "ongoing" | "completed",
   };
 }
 
@@ -61,30 +58,20 @@ export async function action({
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  // Convert eventDate from input string to a Date object
-  const eventDate = new Date(parsed.data.eventDate);
-
-  // Adjust to store the **exact** local time by removing the timezone offset
-  const localEventDate = new Date(
-    eventDate.getTime() - eventDate.getTimezoneOffset() * 60000
-  );
-
   try {
     await updateWorkshop(Number(params.workshopId), {
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
-      eventDate: localEventDate, // Store it in local time and correct format
       location: parsed.data.location,
       capacity: parsed.data.capacity,
-      status: parsed.data.status,
     });
   } catch (error) {
     console.error("Error updating workshop:", error);
     return { errors: { database: ["Failed to update workshop"] } };
   }
 
-  return redirect("/dashboardlayout");
+  return redirect("/dashboard/admin");
 }
 
 export default function EditWorkshop() {
@@ -97,10 +84,8 @@ export default function EditWorkshop() {
       name: workshop.name,
       description: workshop.description,
       price: workshop.price,
-      eventDate: workshop.eventDate, // Use formatted eventDate
       location: workshop.location,
       capacity: workshop.capacity,
-      status: workshop.status as "upcoming" | "ongoing" | "completed",
     },
   });
 
@@ -183,25 +168,6 @@ export default function EditWorkshop() {
             )}
           />
 
-          {/* Event Date */}
-          <FormField
-            control={form.control}
-            name="eventDate"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Event Date <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input type="datetime-local" {...field} className="w-full" />
-                </FormControl>
-                <FormMessage>
-                  {actionData?.errors?.eventDate?.join(" ")}
-                </FormMessage>
-              </FormItem>
-            )}
-          />
-
           {/* Location */}
           <FormField
             control={form.control}
@@ -241,27 +207,6 @@ export default function EditWorkshop() {
                   />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.capacity}</FormMessage>
-              </FormItem>
-            )}
-          />
-
-          {/* Status */}
-          <FormField
-            control={form.control}
-            name="status"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Status <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full border rounded-md p-2">
-                    <option value="upcoming">Upcoming</option>
-                    <option value="ongoing">Ongoing</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.status}</FormMessage>
               </FormItem>
             )}
           />

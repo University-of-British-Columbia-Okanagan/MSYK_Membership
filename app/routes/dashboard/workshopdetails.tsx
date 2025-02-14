@@ -10,9 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { getWorkshopById , checkUserRegistration} from "../../models/workshop.server";
+import { getWorkshopById, checkUserRegistration } from "../../models/workshop.server";
 import { getUser } from "~/utils/session.server";
-import { useState, useEffect } from "react"; // Import useState and useEffect
+import { useState, useEffect } from "react"; 
 
 export async function loader({ params, request }) {
   const workshopId = parseInt(params.id);
@@ -21,28 +21,25 @@ export async function loader({ params, request }) {
     throw new Response("Workshop not found", { status: 404 });
   }
 
-  const user = await getUser(request); // Get the logged-in user
+  const user = await getUser(request);
 
-  // Check if user is registered for this workshop
   let isRegistered = false;
   if (user) {
     const registration = await checkUserRegistration(workshopId, user.id);
-    isRegistered = !!registration; 
+    isRegistered = !!registration;
   }
 
   return { workshop, user, isRegistered };
 }
 
-
 export default function WorkshopDetails() {
-  const { workshop, user, isRegistered: initialIsRegistered } = useLoaderData(); // Get initial registration status
+  const { workshop, user, isRegistered: initialIsRegistered } = useLoaderData();
   const fetcher = useFetcher();
   const [isRegistered, setIsRegistered] = useState(initialIsRegistered);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
   const [popupType, setPopupType] = useState("success");
 
-  // Handle registration status based on fetcher data
   useEffect(() => {
     if (fetcher.data?.success) {
       setIsRegistered(true);
@@ -56,7 +53,7 @@ export default function WorkshopDetails() {
     }
   }, [fetcher.data]);
 
-  const handleRegister = () => {
+  const handleRegister = (occurrenceId) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
       setPopupType("error");
@@ -71,10 +68,9 @@ export default function WorkshopDetails() {
       return;
     }
 
-    console.log("Submitting registration for user:", user.id);
     fetcher.submit(
-      { userId: user.id },
-      { method: "post", action: `/dashboard/register/${workshop.id}` }
+      { userId: user.id, occurrenceId },
+      { method: "post", action: `/dashboard/register/${occurrenceId}` }
     );
   };
 
@@ -99,18 +95,33 @@ export default function WorkshopDetails() {
 
         <CardContent>
           <div className="flex gap-2">
-            <Badge variant="outline">{workshop.status}</Badge>
             <Badge variant="outline">${workshop.price}</Badge>
             <Badge variant="outline">{workshop.location}</Badge>
           </div>
 
           <Separator className="my-6" />
 
-          <h2 className="text-lg font-semibold">Event Details</h2>
-          <p className="text-gray-600">
-            Date: {new Date(workshop.eventDate).toLocaleString()}
-          </p>
-          <p className="text-gray-600">Capacity: {workshop.capacity}</p>
+          {/* Display Available Dates Here */}
+          <h2 className="text-lg font-semibold">Available Dates</h2>
+          {workshop.occurrences.length > 0 ? (
+            <ul>
+              {workshop.occurrences.map((occurrence) => (
+                <li key={occurrence.id} className="text-gray-600">
+                  📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
+                  {new Date(occurrence.endDate).toLocaleString()}
+                  <Button
+                    className="ml-2 bg-blue-500 text-white px-2 py-1 rounded"
+                    onClick={() => handleRegister(occurrence.id)}
+                    disabled={isRegistered}
+                  >
+                    {isRegistered ? "Already Registered" : "Register"}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-500">No available dates.</p>
+          )}
 
           <Separator className="my-6" />
 
@@ -123,22 +134,9 @@ export default function WorkshopDetails() {
             . Full refunds are only available if canceled 48 hours in advance.
           </p>
 
-          <div className="mt-6 flex justify-between items-center">
-            <Button
-              onClick={handleRegister}
-              disabled={fetcher.state !== "idle" || !user || isRegistered}
-              className="bg-blue-500 hover:bg-blue-600 text-white"
-            >
-              {fetcher.state !== "idle"
-                ? "Registering..."
-                : isRegistered
-                ? "Already Registered"
-                : "Register for Workshop"}
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/dashboardlayout/workshops">Back to Workshops</Link>
-            </Button>
-          </div>
+          <Button variant="outline" asChild className="mt-4">
+            <Link to="/dashboardlayout/workshops">Back to Workshops</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

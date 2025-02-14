@@ -1,5 +1,5 @@
-import React from "react";
-import { redirect, useNavigation, useActionData } from "react-router";
+import React, { useState } from "react";
+import { redirect, useActionData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,59 +15,45 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
-import { format } from "date-fns";
 import { addWorkshop } from "~/models/workshop.server";
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
 
-  // Convert price and capacity safely
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
+  // Get occurrences from hidden input field
+  const occurrences = JSON.parse(rawValues.occurrences as string);
+
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
-    price, // Pass the parsed number separately
+    price,
     capacity,
+    occurrences,
   });
 
   if (!parsed.success) {
-    console.log(parsed.error.flatten().fieldErrors);
     return { errors: parsed.error.flatten().fieldErrors };
   }
-
-  // Make sure done after success
-  // Convert eventDate from string to Date object
-  //   const eventDate = new Date(rawValues.eventDate as string);
-  // Format eventDate to "YYYY-MM-DD HH:MM:SS"
-  //   const formattedEventDate = format(eventDate, "yyyy-MM-dd HH:mm:ss");
-
-  //  console.log(formattedEventDate);
-
-  const eventDate = new Date(parsed.data.eventDate);
-
-  // Adjust to store the **exact** local time by removing the timezone offset
-  const localEventDate = new Date(
-    eventDate.getTime() - eventDate.getTimezoneOffset() * 60000
-  );
 
   try {
     await addWorkshop({
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
-      eventDate: localEventDate, // Store it in local time and correct format
       location: parsed.data.location,
       capacity: parsed.data.capacity,
-      status: parsed.data.status,
+      type: parsed.data.type, // Workshop or Orientation
+      occurrences: parsed.data.occurrences, // List of occurrences
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
     return { errors: { database: ["Failed to add workshop"] } };
   }
 
-  return redirect("/dashboardlayout");
+  return redirect("/dashboard/admin");
 }
 
 export default function AddWorkshop() {
@@ -78,11 +64,31 @@ export default function AddWorkshop() {
       name: "",
       description: "",
       price: 0,
+      location: "",
+      capacity: 0,
+      type: "workshop",
+      occurrences: [],
     },
   });
 
-  const hasErrors =
-    actionData?.errors && Object.keys(actionData.errors).length > 0;
+  // Manage occurrences dynamically
+  const [occurrences, setOccurrences] = useState<{ startDate: string; endDate: string }[]>([]);
+
+  const addOccurrence = () => {
+    setOccurrences([...occurrences, { startDate: "", endDate: "" }]);
+  };
+
+  const updateOccurrence = (index: number, field: "startDate" | "endDate", value: string) => {
+    const updatedOccurrences = [...occurrences];
+    updatedOccurrences[index][field] = value;
+    setOccurrences(updatedOccurrences);
+  };
+
+  const removeOccurrence = (index: number) => {
+    setOccurrences(occurrences.filter((_, i) => i !== index));
+  };
+
+  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   return (
     <div className="max-w-4xl mx-auto p-8">
@@ -90,8 +96,7 @@ export default function AddWorkshop() {
 
       {hasErrors && (
         <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-          There are some errors in your form. Please review the highlighted
-          fields below.
+          There are some errors in your form. Please review the highlighted fields below.
         </div>
       )}
 
@@ -103,15 +108,9 @@ export default function AddWorkshop() {
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  Name <span className="text-red-500">*</span>
-                </FormLabel>
+                <FormLabel htmlFor="name">Name <span className="text-red-500">*</span></FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Workshop Name"
-                    {...field}
-                    className="w-full lg:w-[500px]"
-                  />
+                  <Input id="name" placeholder="Workshop Name" {...field} className="w-full lg:w-[500px]" autoComplete="off" />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.name}</FormMessage>
               </FormItem>
@@ -124,16 +123,9 @@ export default function AddWorkshop() {
             name="description"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  Description <span className="text-red-500">*</span>
-                </FormLabel>
+                <FormLabel htmlFor="description">Description <span className="text-red-500">*</span></FormLabel>
                 <FormControl>
-                  <Textarea
-                    placeholder="Workshop Description"
-                    {...field}
-                    className="w-full"
-                    rows={5}
-                  />
+                  <Textarea id="description" placeholder="Workshop Description" {...field} className="w-full" rows={5} autoComplete="off" />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.description}</FormMessage>
               </FormItem>
@@ -146,38 +138,11 @@ export default function AddWorkshop() {
             name="price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  Price <span className="text-red-500">*</span>
-                </FormLabel>
+                <FormLabel htmlFor="price">Price <span className="text-red-500">*</span></FormLabel>
                 <FormControl>
-                  <Input
-                    type="number"
-                    placeholder="Price"
-                    {...field}
-                    step="0.01"
-                    className="w-full"
-                  />
+                  <Input id="price" type="number" placeholder="Price" {...field} step="0.01" className="w-full" autoComplete="off" />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.price}</FormMessage>
-              </FormItem>
-            )}
-          />
-
-          {/* Event Date */}
-          <FormField
-            control={form.control}
-            name="eventDate"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Event Date <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input type="datetime-local" {...field} className="w-full" />
-                </FormControl>
-                <FormMessage>
-                  {actionData?.errors?.eventDate?.join(" ")}
-                </FormMessage>
               </FormItem>
             )}
           />
@@ -188,15 +153,9 @@ export default function AddWorkshop() {
             name="location"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  Location <span className="text-red-500">*</span>
-                </FormLabel>
+                <FormLabel htmlFor="location">Location <span className="text-red-500">*</span></FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Workshop Location"
-                    {...field}
-                    className="w-full"
-                  />
+                  <Input id="location" placeholder="Workshop Location" {...field} className="w-full" autoComplete="off" />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.location}</FormMessage>
               </FormItem>
@@ -209,47 +168,41 @@ export default function AddWorkshop() {
             name="capacity"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  Capacity <span className="text-red-500">*</span>
-                </FormLabel>
+                <FormLabel htmlFor="capacity">Capacity <span className="text-red-500">*</span></FormLabel>
                 <FormControl>
-                  <Input
-                    type="number"
-                    placeholder="Capacity"
-                    {...field}
-                    className="w-full"
-                  />
+                  <Input id="capacity" type="number" placeholder="Capacity" {...field} className="w-full" autoComplete="off" />
                 </FormControl>
                 <FormMessage>{actionData?.errors?.capacity}</FormMessage>
               </FormItem>
             )}
           />
 
-          <FormField
-            control={form.control}
-            name="status"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Status <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full border rounded-md p-2">
-                    <option value="upcoming">Upcoming</option>
-                    <option value="ongoing">Ongoing</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.status}</FormMessage>
-              </FormItem>
-            )}
-          />
+          {/* Workshop Occurrences (Date Selection) */}
+          <div className="mt-4">
+            <FormLabel>Workshop Occurrences</FormLabel>
+            {occurrences.map((occ, index) => (
+              <div key={index} className="flex gap-2 items-center mb-2">
+                <Input
+                  type="datetime-local"
+                  value={occ.startDate}
+                  onChange={(e) => updateOccurrence(index, "startDate", e.target.value)}
+                />
+                <Input
+                  type="datetime-local"
+                  value={occ.endDate}
+                  onChange={(e) => updateOccurrence(index, "endDate", e.target.value)}
+                />
+                <Button type="button" onClick={() => removeOccurrence(index)} className="bg-red-500 text-white">X</Button>
+              </div>
+            ))}
+            <Button type="button" onClick={addOccurrence} className="mt-2 bg-blue-500 text-white">+ Add Date</Button>
+          </div>
+
+          {/* Hidden Input for Occurrences */}
+          <input type="hidden" name="occurrences" value={JSON.stringify(occurrences)} />
 
           {/* Submit Button */}
-          <Button
-            type="submit"
-            className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
-          >
+          <Button type="submit" className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
             Submit
           </Button>
         </form>
