@@ -138,3 +138,9 @@ export async function registerForWorkshop(workshopId: number, userId: number) {
     throw error;
   }
 }
+export async function checkUserRegistration(workshopId: number, userId: number) {
+  const registration = await db.userWorkshop.findFirst({
+    where: { workshopId, userId },
+  });
+  return !!registration;
+}
