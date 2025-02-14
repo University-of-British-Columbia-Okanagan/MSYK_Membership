@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import MainLayout from "./layouts/MainLayout"; // Now using layouts
-import DashboardLayout from "./routes/dashboard/dashboardlayout";
+import DashboardLayout from "./routes/dashboard/admindashboardlayout";
 import HomePage from "./routes/home";
 import About from "./routes/about/about";
 import Board from "./routes/about/board";
