@@ -8,6 +8,7 @@ async function main() {
   await prisma.membershipPlan.deleteMany();
   await prisma.roleUser.deleteMany();
   await prisma.workshop.deleteMany();
+  await prisma.workshopOccurrence.deleteMany();
 
   await prisma.$executeRaw`ALTER SEQUENCE "User_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "MembershipPlan_id_seq" RESTART WITH 1`;
@@ -135,69 +136,59 @@ async function main() {
       {
         id: 1,
         name: "Laser Cutting Basics",
-        description: "Introduction to laser cutting techniques.",
+        description: "Learn how to use a laser cutter safely.",
         price: 30.0,
-        eventDate: new Date("2025-03-10T10:00:00Z"),
         location: "Makerspace YK",
         capacity: 15,
-        status: "upcoming",
+        type: "technical",
       },
       {
         id: 2,
-        name: "Pottery",
-        description: "Introduction to Pottery",
-        price: 35,
-        eventDate: new Date("2025-06-10T10:00:00Z"),
+        name: "Pottery Workshop",
+        description: "Hands-on pottery techniques for beginners.",
+        price: 35.0,
         location: "Makerspace YK",
         capacity: 20,
-        status: "upcoming",
+        type: "art",
       },
       {
         id: 3,
-        name: "Knitting",
-        description: "Introduction to Knitting",
+        name: "Knitting for Beginners",
+        description: "Learn the basics of knitting.",
         price: 22.0,
-        eventDate: new Date("2025-08-10T10:00:00Z"),
         location: "Makerspace YK",
         capacity: 25,
-        status: "upcoming",
-      },
-      {
-        id: 4,
-        name: "Painting",
-        description: "Introduction to Painting",
-        price: 24.0,
-        eventDate: new Date("2025-06-11T10:00:00Z"),
-        location: "Makerspace YK",
-        capacity: 12,
-        status: "ongoing",
-      },
-      {
-        id: 5,
-        name: "Carving",
-        description: "Introduction to Carving",
-        price: 26.0,
-        eventDate: new Date("2025-09-11T10:00:00Z"),
-        location: "Makerspace YK",
-        capacity: 15,
-        status: "ongoing",
-      },
-      {
-        id: 6,
-        name: "Wood Carving",
-        description: "Introduction to Wood Carving",
-        price: 26.0,
-        eventDate: new Date("2025-11-11T10:00:00Z"),
-        location: "Makerspace YK",
-        capacity: 15,
-        status: "ongoing",
+        type: "craft",
       },
     ],
   });
 
-  // const allUsers = await prisma.user.findMany({});
-  // console.dir(allUsers, { depth: null });
-  console.log("success!");
+  await prisma.workshopOccurrence.createMany({
+    data: [
+      {
+        workshopId: 1, // Laser Cutting
+        startDate: new Date("2025-03-10T10:00:00Z"),
+        endDate: new Date("2025-03-10T12:00:00Z"),
+      },
+      {
+        workshopId: 1, // Laser Cutting again
+        startDate: new Date("2025-03-17T10:00:00Z"),
+        endDate: new Date("2025-03-17T12:00:00Z"),
+      },
+      {
+        workshopId: 2, // Pottery
+        startDate: new Date("2025-06-10T14:00:00Z"),
+        endDate: new Date("2025-06-10T16:00:00Z"),
+      },
+      {
+        workshopId: 3, // Knitting
+        startDate: new Date("2025-08-10T10:00:00Z"),
+        endDate: new Date("2025-08-10T12:00:00Z"),
+      },
+    ],
+  });
+
+  console.log("✅ Database seeded successfully!");
 }
 
 main()

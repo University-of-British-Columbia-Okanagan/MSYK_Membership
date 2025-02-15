@@ -6,6 +6,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { getWorkshops, deleteWorkshop } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
+import { FiPlus } from "react-icons/fi";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -48,14 +49,18 @@ export default function AdminDashboard() {
       <div className="flex h-screen">
         <AppSidebar />
         <main className="flex-grow p-6">
-          <WorkshopList workshops={workshops} isAdmin={true} />
-          <div className="flex justify-start mb-6">
+          {/* Move Add Workshop Button to the Right */}
+          <div className="flex justify-end mb-6 pr-4"> {/* Added pr-4 for extra spacing */}
             <Link to="/addworkshop">
-              <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-                Add Workshop
+              <button className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+                <FiPlus size={18} /> Add Workshop {/* Plus Icon */}
               </button>
             </Link>
           </div>
+
+          {/* Display Workshop Cards */}
+          <WorkshopList workshops={workshops} isAdmin={true} />
+          
           <Outlet />
         </main>
       </div>
