@@ -35,22 +35,29 @@ export async function addWorkshop(data: WorkshopData) {
         location: data.location,
         capacity: data.capacity,
         type: data.type,
-        occurrences: {
-          create: data.occurrences.map((occ) => ({
-            startDate: occ.startDate,
-            endDate: occ.endDate,
-          })),
-        },
       },
-      include: { occurrences: true }, // Ensure occurrences are returned
     });
 
-    return newWorkshop;
+    // Insert occurrences separately after the workshop is created
+    const occurrences = await Promise.all(
+      data.occurrences.map((occ) =>
+        db.workshopOccurrence.create({
+          data: {
+            workshopId: newWorkshop.id, // Link the occurrence to the newly created workshop
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+          },
+        })
+      )
+    );
+
+    return { ...newWorkshop, occurrences };
   } catch (error) {
     console.error("Error adding workshop:", error);
     throw new Error("Failed to add workshop");
   }
 }
+
 /**
  * Fetch a single workshop by ID including its occurrences.
  */

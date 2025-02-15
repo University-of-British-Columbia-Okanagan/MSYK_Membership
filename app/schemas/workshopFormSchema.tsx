@@ -10,10 +10,10 @@ export const workshopFormSchema = z.object({
   occurrences: z
     .array(
       z.object({
-        startDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+        startDate: z.coerce.date().refine((date) => !isNaN(date.getTime()), {
           message: "Invalid start date format",
         }),
-        endDate: z.string().refine((val) => !isNaN(Date.parse(val)), {
+        endDate: z.coerce.date().refine((date) => !isNaN(date.getTime()), {
           message: "Invalid end date format",
         }),
       })
