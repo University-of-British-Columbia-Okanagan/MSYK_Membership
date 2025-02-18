@@ -157,9 +157,9 @@ export async function registerForWorkshop(
       throw new Error("Workshop is full");
     }
 
-    // Check if the user is already registered
+    // Check if the user is already registered for this specific occurrence
     const existingRegistration = await db.userWorkshop.findFirst({
-      where: { userId, workshopId: occurrence.workshop.id },
+      where: { userId, workshopId: occurrence.workshop.id, occurrenceId },
     });
 
     if (existingRegistration) {
@@ -171,17 +171,21 @@ export async function registerForWorkshop(
       data: {
         userId,
         workshopId: occurrence.workshop.id,
-        type: "workshop",
+        occurrenceId, // Store the occurrence ID for reference
       },
     });
 
-    return { success: true, workshopName: occurrence.workshop.name };
+    return { 
+      success: true, 
+      workshopName: occurrence.workshop.name, 
+      startDate: occurrence.startDate,
+      endDate: occurrence.endDate
+    };
   } catch (error) {
     console.error("Error registering for workshop:", error);
     throw error;
   }
 }
-
 /**
  * Check if a user is registered for a specific workshop occurrence.
  */
@@ -190,7 +194,7 @@ export async function checkUserRegistration(
   userId: number
 ) {
   const registration = await db.userWorkshop.findFirst({
-    where: { workshopId: occurrenceId, userId },
+    where: { occurrenceId, userId }, // Check against occurrence, not just workshop
   });
   return !!registration;
 }

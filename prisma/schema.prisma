@@ -83,8 +83,7 @@ model WorkshopOccurrence {
   endDate     DateTime
 
   workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-
-  @@unique([workshopId, startDate, endDate]) // Ensure unique occurrences
+  userWorkshops UserWorkshop[] 
 }
 
 
@@ -99,15 +98,16 @@ model WorkshopOccurrence {
   // type: orientation or workshop
 
 model UserWorkshop {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  workshopId Int
-  result    String  @default("passed") // Can be "passed" or "failed"
-  date      DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  workshopId   Int
+  occurrenceId Int      
+  result       String   @default("passed")
+  date         DateTime @default(now())
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop     Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  occurrence   WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)  
 
-  @@unique([userId, workshopId]) // Ensure a user cannot register for the same workshop multiple times
-
+  @@unique([userId, occurrenceId]) // Ensure a user cannot register for the same occurrence twice
 }

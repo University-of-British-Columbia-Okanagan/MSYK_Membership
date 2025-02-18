@@ -9,12 +9,19 @@ import sgMail from "@sendgrid/mail";
 sgMail.setApiKey(process.env.SENDGRID_API_KEY as string);
 
 // Function to send confirmation email using SendGrid
-async function sendConfirmationEmail(userEmail: string, workshopName: string) {
+async function sendConfirmationEmail(
+  userEmail: string,
+  workshopName: string,
+  startDate: Date,
+  endDate: Date
+) {
   const msg = {
     to: userEmail,
     from: process.env.EMAIL_USER as string,
     subject: "Workshop Registration Confirmation",
-    text: `Thank you for registering for the workshop: ${workshopName}. We look forward to seeing you there!`,
+    text: `Thank you for registering for the workshop: ${workshopName}. 
+    Your selected session is from ${startDate.toLocaleString()} to ${endDate.toLocaleString()}. 
+    We look forward to seeing you there!`,
   };
 
   try {
@@ -32,17 +39,22 @@ export async function action({ params, request }: Route.ActionArgs) {
   // Fetch form data
   const formData = await request.formData();
   const userId = parseInt(formData.get("userId") as string);
+  const occurrenceId = parseInt(formData.get("occurrenceId") as string); // 🛠 Get the selected occurrence
 
   console.log("Workshop ID:", workshopId); // Debugging
+  console.log("Occurrence ID:", occurrenceId); // Debugging
   console.log("User ID:", userId); // Debugging
 
-  if (!userId) {
-    return json({ error: "User ID is required" }, { status: 400 });
+  if (!userId || !occurrenceId) {
+    return json(
+      { error: "User ID and Occurrence ID are required" },
+      { status: 400 }
+    );
   }
 
   try {
     // Fetch user details dynamically
-    const user = await getUser(request); // Retrieves user details from session
+    const user = await getUser(request);
     if (!user || !user.email) {
       return json(
         { error: "User not found or email missing" },
@@ -50,24 +62,29 @@ export async function action({ params, request }: Route.ActionArgs) {
       );
     }
 
-    // Check if the user is already registered for the workshop
+    // Check if the user is already registered for this occurrence
     const existingRegistration = await checkUserRegistration(
-      workshopId,
+      occurrenceId,
       user.id
     );
 
     if (existingRegistration) {
       return json(
-        { error: "You are already registered for this workshop." },
+        { error: "You are already registered for this workshop occurrence." },
         { status: 400 }
       );
     }
 
-    // Register the user for the workshop
-    const registration = await registerForWorkshop(workshopId, user.id);
+    // Register the user for the selected occurrence
+    const registration = await registerForWorkshop(occurrenceId, user.id);
 
-    // Send confirmation email to the user
-    await sendConfirmationEmail(user.email, registration.workshopName);
+    // Send confirmation email to the user with the occurrence details
+    await sendConfirmationEmail(
+      user.email,
+      registration.workshopName,
+      registration.startDate,
+      registration.endDate
+    );
 
     console.log("Registration successful:", registration); // Debugging
     return json(
@@ -75,7 +92,7 @@ export async function action({ params, request }: Route.ActionArgs) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Registration error:", error); // Debugging
+    console.error("Registration error:", error);
     return json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 400 }
