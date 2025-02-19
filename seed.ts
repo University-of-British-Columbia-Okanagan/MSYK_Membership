@@ -140,7 +140,7 @@ async function main() {
         price: 30.0,
         location: "Makerspace YK",
         capacity: 15,
-        type: "technical",
+        type: "workshop",
       },
       {
         id: 2,
@@ -149,7 +149,7 @@ async function main() {
         price: 35.0,
         location: "Makerspace YK",
         capacity: 20,
-        type: "art",
+        type: "workshop",
       },
       {
         id: 3,
@@ -158,7 +158,7 @@ async function main() {
         price: 22.0,
         location: "Makerspace YK",
         capacity: 25,
-        type: "craft",
+        type: "orientation",
       },
     ],
   });
