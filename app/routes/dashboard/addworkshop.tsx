@@ -321,7 +321,7 @@ export default function AddWorkshop() {
                           checked={dateSelectionType === "custom"}
                           onChange={() => {
                             setDateSelectionType("custom");
-                            setOccurrences([]);
+                            // setOccurrences([]);
                           }}
                         />
                         <label htmlFor="customDate" className="text-sm">
@@ -337,7 +337,7 @@ export default function AddWorkshop() {
                           checked={dateSelectionType === "weekly"}
                           onChange={() => {
                             setDateSelectionType("weekly");
-                            setOccurrences([]);
+                            // setOccurrences([]);
                           }}
                         />
                         <label htmlFor="weeklyDate" className="text-sm">
@@ -353,7 +353,7 @@ export default function AddWorkshop() {
                           checked={dateSelectionType === "monthly"}
                           onChange={() => {
                             setDateSelectionType("monthly");
-                            setOccurrences([]);
+                            // setOccurrences([]);
                           }}
                         />
                         <label htmlFor="monthlyDate" className="text-sm">
