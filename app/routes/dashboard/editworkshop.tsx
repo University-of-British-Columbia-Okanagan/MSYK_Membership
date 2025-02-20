@@ -56,7 +56,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
     const capacity = parseInt(rawValues.capacity as string, 10);
   
     // Convert local occurrences -> UTC (NOT DOING THIS ANYMORE)
-    let occurrences: { startDate: Date; endDate: Date }[] = [];
+    let occurrences: { startDate: Date; endDate: Date; startDatePST: Date; endDatePST: Date; }[] = [];
     try {
       occurrences = JSON.parse(rawValues.occurrences as string).map(
         (occ: { startDate: string; endDate: string }) => {
@@ -70,7 +70,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
           const utcStart = new Date(localStart.getTime() - startOffset * 60000);
           const endOffset = localEnd.getTimezoneOffset();
           const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
-          return { startDate: localStart, endDate: localEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
+          return { startDate: localStart, endDate: localEnd, startDatePST: utcStart, endDatePST: utcEnd }; // local start and end and utc start and end
         }
       );
     } catch (error) {

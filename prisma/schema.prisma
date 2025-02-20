@@ -81,6 +81,8 @@ model WorkshopOccurrence {
   workshopId  Int
   startDate   DateTime
   endDate     DateTime
+  startDatePST DateTime?
+  endDatePST   DateTime?
 
   workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[] 
