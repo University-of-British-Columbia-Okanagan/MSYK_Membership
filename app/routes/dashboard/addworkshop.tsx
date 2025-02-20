@@ -45,6 +45,8 @@ export async function action({ request }: { request: Request }) {
     return { errors: { occurrences: ["Invalid date format"] } };
   }
 
+  console.log(occurrences);
+
   console.log("Parsed occurrences:", occurrences);
 
   const parsed = workshopFormSchema.safeParse({
@@ -93,26 +95,86 @@ export default function AddWorkshop() {
   });
 
   // Manage occurrences dynamically
+  // const [occurrences, setOccurrences] = useState<
+  //   { startDate: string; endDate: string }[]
+  // >([]);
+
   const [occurrences, setOccurrences] = useState<
-    { startDate: string; endDate: string }[]
+    { startDate: Date; endDate: Date }[]
   >([]);
 
+  const [showCustomDate, setShowCustomDate] = useState(false);
+
+  const [dateSelectionType, setDateSelectionType] = useState<
+    "custom" | "weekly"
+  >("custom");
+  const [weeklyInterval, setWeeklyInterval] = useState(1);
+  const [weeklyCount, setWeeklyCount] = useState(1);
+  const [weeklyStartDate, setWeeklyStartDate] = useState("");
+  const [weeklyEndDate, setWeeklyEndDate] = useState("");
+
+  // const addOccurrence = () => {
+  //   setOccurrences([...occurrences, { startDate: "", endDate: "" }]);
+  // };
+
+  // Update your addOccurrence function
   const addOccurrence = () => {
-    setOccurrences([...occurrences, { startDate: "", endDate: "" }]);
+    if (dateSelectionType === "weekly") {
+      // Weekly logic remains unchanged
+    } else {
+      // Only add empty date slots instead of pre-filled dates
+      setOccurrences((prev) => [
+        ...prev,
+        {
+          startDate: new Date(""), // Invalid date placeholder
+          endDate: new Date(""), // Invalid date placeholder
+        },
+      ]);
+    }
   };
 
+  // Update the updateOccurrence function
   const updateOccurrence = (
     index: number,
     field: "startDate" | "endDate",
     value: string
   ) => {
+    if (!value) {
+      const updatedOccurrences = [...occurrences];
+      updatedOccurrences[index][field] = new Date("");
+      setOccurrences(updatedOccurrences);
+      form.setValue("occurrences", updatedOccurrences);
+      return;
+    }
+
+    // Parse input as UTC
+    const [datePart, timePart] = value.split("T");
+    const [year, month, day] = datePart.split("-").map(Number);
+    const [hours, minutes] = timePart.split(":").map(Number);
+
+    const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+
     const updatedOccurrences = [...occurrences];
-    updatedOccurrences[index][field] = value;
+    updatedOccurrences[index][field] = utcDate;
     setOccurrences(updatedOccurrences);
+    form.setValue("occurrences", updatedOccurrences);
   };
 
   const removeOccurrence = (index: number) => {
     setOccurrences(occurrences.filter((_, i) => i !== index));
+  };
+
+  const formatLocalDatetime = (date: Date) => {
+    if (isNaN(date.getTime())) return "";
+
+    // Display UTC values instead of local
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(date.getUTCDate()).padStart(2, "0");
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
   const hasErrors =
@@ -153,7 +215,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
           {/* Description */}
           <FormField
             control={form.control}
@@ -177,7 +238,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
           {/* Price */}
           <FormField
             control={form.control}
@@ -202,7 +262,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
           {/* Location */}
           <FormField
             control={form.control}
@@ -225,7 +284,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
           {/* Capacity */}
           <FormField
             control={form.control}
@@ -251,41 +309,254 @@ export default function AddWorkshop() {
           />
 
           {/* Workshop Occurrences (Date Selection) */}
-          <div className="mt-4">
-            <FormLabel>Workshop Occurrences</FormLabel>
-            {occurrences.map((occ, index) => (
-              <div key={index} className="flex gap-2 items-center mb-2">
-                <Input
-                  type="datetime-local"
-                  value={occ.startDate}
-                  onChange={(e) =>
-                    updateOccurrence(index, "startDate", e.target.value)
-                  }
-                />
-                <Input
-                  type="datetime-local"
-                  value={occ.endDate}
-                  onChange={(e) =>
-                    updateOccurrence(index, "endDate", e.target.value)
-                  }
-                />
-                <Button
-                  type="button"
-                  onClick={() => removeOccurrence(index)}
-                  className="bg-red-500 text-white"
-                >
-                  X
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              onClick={addOccurrence}
-              className="mt-2 bg-blue-500 text-white"
-            >
-              + Add Date
-            </Button>
-          </div>
+          <FormField
+            control={form.control}
+            name="occurrences"
+            render={() => (
+              <FormItem>
+                <FormLabel htmlFor="occurrences">
+                  Workshop Occurrences <span className="text-red-500">*</span>
+                </FormLabel>
+                <FormControl>
+                  <div className="flex flex-col items-start space-y-4">
+                    {/* Radio Buttons */}
+                    <div className="flex flex-col items-start gap-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="customDate"
+                          name="dateType"
+                          value="custom"
+                          checked={dateSelectionType === "custom"}
+                          onChange={() => setDateSelectionType("custom")}
+                        />
+                        <label htmlFor="customDate" className="text-sm">
+                          Enter custom dates
+                        </label>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="weeklyDate"
+                          name="dateType"
+                          value="weekly"
+                          checked={dateSelectionType === "weekly"}
+                          onChange={() => setDateSelectionType("weekly")}
+                        />
+                        <label htmlFor="weeklyDate" className="text-sm">
+                          Create weekly schedule
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Custom Date Inputs */}
+                    {dateSelectionType === "custom" && (
+                      <div className="flex flex-col items-center w-full">
+                        {occurrences.map((occ, index) => (
+                          <div
+                            key={index}
+                            className="flex gap-2 items-center mb-2 w-full"
+                          >
+                            <Input
+                              type="datetime-local"
+                              value={
+                                isNaN(occ.startDate.getTime())
+                                  ? ""
+                                  : formatLocalDatetime(occ.startDate)
+                              }
+                              onChange={(e) =>
+                                updateOccurrence(
+                                  index,
+                                  "startDate",
+                                  e.target.value
+                                )
+                              }
+                              className="flex-1"
+                            />
+                            <Input
+                              type="datetime-local"
+                              value={
+                                isNaN(occ.endDate.getTime()) // Changed from occ.startDate to occ.endDate
+                                  ? ""
+                                  : formatLocalDatetime(occ.endDate) // Changed to occ.endDate
+                              }
+                              onChange={(e) =>
+                                updateOccurrence(
+                                  index,
+                                  "endDate",
+                                  e.target.value
+                                )
+                              }
+                              className="flex-1"
+                            />
+                            <Button
+                              type="button"
+                              onClick={() => removeOccurrence(index)}
+                              className="bg-red-500 text-white px-2 py-1"
+                            >
+                              X
+                            </Button>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          onClick={addOccurrence}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+                        >
+                          + Add Date
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Weekly Repetition Inputs */}
+                    {dateSelectionType === "weekly" && (
+                      <div className="flex flex-col items-start w-full space-y-4">
+                        <div className="grid grid-cols-2 gap-4 w-full">
+                          <div className="flex flex-col space-y-2">
+                            <FormLabel>First Occurrence Start</FormLabel>
+                            <Input
+                              type="datetime-local"
+                              value={weeklyStartDate}
+                              onChange={(e) =>
+                                setWeeklyStartDate(e.target.value)
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-col space-y-2">
+                            <FormLabel>First Occurrence End</FormLabel>
+                            <Input
+                              type="datetime-local"
+                              value={weeklyEndDate}
+                              onChange={(e) => setWeeklyEndDate(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 w-full">
+                          <div className="flex flex-col space-y-2">
+                            <FormLabel>Repeat every (weeks)</FormLabel>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={weeklyInterval}
+                              onChange={(e) =>
+                                setWeeklyInterval(Number(e.target.value))
+                              }
+                              placeholder="Week interval"
+                            />
+                          </div>
+                          <div className="flex flex-col space-y-2">
+                            <FormLabel>Number of repetitions</FormLabel>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={weeklyCount}
+                              onChange={(e) =>
+                                setWeeklyCount(Number(e.target.value))
+                              }
+                              placeholder="Total occurrences"
+                            />
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            // Validate inputs first
+                            if (!weeklyStartDate || !weeklyEndDate) {
+                              alert(
+                                "Please select initial start and end dates"
+                              );
+                              return;
+                            }
+                            if (weeklyInterval < 1 || weeklyCount < 1) {
+                              alert(
+                                "Please enter valid interval and repetition numbers"
+                              );
+                              return;
+                            }
+
+                            // Generate dates using functional update
+                            setOccurrences((prev) => {
+                              const newOccurrences: {
+                                startDate: Date;
+                                endDate: Date;
+                              }[] = [];
+                              const startDate = new Date(weeklyStartDate);
+                              const endDate = new Date(weeklyEndDate);
+
+                              // Create base occurrence
+                              const baseOccurrence = {
+                                startDate: new Date(startDate),
+                                endDate: new Date(endDate),
+                              };
+
+                              // Generate subsequent dates
+                              for (let i = 0; i < weeklyCount; i++) {
+                                const occurrence = {
+                                  startDate: new Date(baseOccurrence.startDate),
+                                  endDate: new Date(baseOccurrence.endDate),
+                                };
+
+                                occurrence.startDate.setDate(
+                                  baseOccurrence.startDate.getDate() +
+                                    weeklyInterval * 7 * i
+                                );
+                                occurrence.endDate.setDate(
+                                  baseOccurrence.endDate.getDate() +
+                                    weeklyInterval * 7 * i
+                                );
+
+                                newOccurrences.push(occurrence);
+                              }
+
+                              // Update form values with the latest state
+                              // const updatedOccurrences = [
+                              //   ...prev,
+                              //   ...newOccurrences,
+                              // ];
+                              // form.setValue("occurrences", updatedOccurrences);
+
+                              // return updatedOccurrences;
+
+                              setOccurrences(newOccurrences);
+                              form.setValue("occurrences", newOccurrences);
+                              return newOccurrences;
+                            });
+                          }}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+                        >
+                          Generate Weekly Dates
+                        </Button>
+
+                        {dateSelectionType === "weekly" &&
+                          occurrences.length > 0 && (
+                            <div className="mt-4 w-full">
+                              <h3 className="font-medium mb-2">
+                                Generated Dates:
+                              </h3>
+                              <div className="space-y-2">
+                                {occurrences.map((occ, index) => (
+                                  <div key={index} className="text-sm">
+                                    {occ.startDate.toLocaleDateString()}{" "}
+                                    {occ.startDate.toLocaleTimeString()}
+                                    {" - "}
+                                    {occ.endDate.toLocaleDateString()}{" "}
+                                    {occ.endDate.toLocaleTimeString()}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    )}
+                  </div>
+                </FormControl>
+                <FormMessage>{actionData?.errors?.occurrences}</FormMessage>
+              </FormItem>
+            )}
+          />
+          {/* Type */}
           <FormField
             control={form.control}
             name="type"
@@ -308,14 +579,28 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
           {/* Hidden Input for Occurrences */}
-          <input
+          {/* <input
             type="hidden"
             name="occurrences"
             value={JSON.stringify(occurrences)}
+          /> */}
+          <input
+            type="hidden"
+            name="occurrences"
+            value={JSON.stringify(
+              occurrences
+                .filter(
+                  (occ) =>
+                    !isNaN(occ.startDate.getTime()) &&
+                    !isNaN(occ.endDate.getTime())
+                )
+                .map((occ) => ({
+                  startDate: occ.startDate.toISOString(),
+                  endDate: occ.endDate.toISOString(),
+                }))
+            )}
           />
-
           {/* Submit Button */}
           <Button
             type="submit"

@@ -11,9 +11,9 @@ export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const workshops = await getWorkshops();
 
-  if (roleUser && roleUser.roleName.toLowerCase() === "admin") {
-    return redirect("/dashboard/admin"); // Redirect admin to Admin Dashboard
-  }
+  // if (roleUser && roleUser.roleName.toLowerCase() === "admin") {
+  //   return redirect("/dashboard/admin"); // Redirect admin to Admin Dashboard
+  // }
 
   return { workshops };
 }
