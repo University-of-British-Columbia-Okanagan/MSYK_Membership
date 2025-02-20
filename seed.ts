@@ -13,6 +13,8 @@ async function main() {
   await prisma.$executeRaw`ALTER SEQUENCE "User_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "MembershipPlan_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "RoleUser_id_seq" RESTART WITH 1`;
+  await prisma.$executeRaw`ALTER SEQUENCE "Workshop_id_seq" RESTART WITH 1`;
+  await prisma.$executeRaw`ALTER SEQUENCE "WorkshopOccurrence_id_seq" RESTART WITH 1`;
 
   const hashedPassword = await bcrypt.hash("password", 10);
 
@@ -134,31 +136,28 @@ async function main() {
   await prisma.workshop.createMany({
     data: [
       {
-        id: 1,
         name: "Laser Cutting Basics",
         description: "Learn how to use a laser cutter safely.",
         price: 30.0,
         location: "Makerspace YK",
         capacity: 15,
-        type: "technical",
+        type: "workshop",
       },
       {
-        id: 2,
         name: "Pottery Workshop",
         description: "Hands-on pottery techniques for beginners.",
         price: 35.0,
         location: "Makerspace YK",
         capacity: 20,
-        type: "art",
+        type: "workshop",
       },
       {
-        id: 3,
         name: "Knitting for Beginners",
         description: "Learn the basics of knitting.",
         price: 22.0,
         location: "Makerspace YK",
         capacity: 25,
-        type: "craft",
+        type: "orientation",
       },
     ],
   });
