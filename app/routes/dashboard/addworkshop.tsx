@@ -44,7 +44,7 @@ export async function action({ request }: { request: Request }) {
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
-        return { startDate: utcStart, endDate: utcEnd };
+        return { startDate: localStart, endDate: localEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
       }
     );
   } catch (error) {
@@ -376,6 +376,7 @@ export default function AddWorkshop() {
                                 isNaN(occ.startDate.getTime())
                                   ? ""
                                   : formatLocalDatetime(occ.startDate)
+                                  // : occ.startDate.toISOString().slice(0,16)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -392,6 +393,7 @@ export default function AddWorkshop() {
                                 isNaN(occ.endDate.getTime())
                                   ? ""
                                   : formatLocalDatetime(occ.endDate)
+                                  // : occ.endDate.toISOString().slice(0,16)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -528,6 +530,7 @@ export default function AddWorkshop() {
                                 <div key={index} className="text-sm">
                                   {formatLocalDatetime(occ.startDate)} -{" "}
                                   {formatLocalDatetime(occ.endDate)}
+                                  {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
                                 </div>
                               ))}
                             </div>
@@ -644,6 +647,7 @@ export default function AddWorkshop() {
                                 <div key={index} className="text-sm">
                                   {formatLocalDatetime(occ.startDate)} -{" "}
                                   {formatLocalDatetime(occ.endDate)}
+                                  {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
                                 </div>
                               ))}
                             </div>

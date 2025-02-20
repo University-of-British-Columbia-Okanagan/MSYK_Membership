@@ -55,7 +55,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
     const price = parseFloat(rawValues.price as string);
     const capacity = parseInt(rawValues.capacity as string, 10);
   
-    // Convert local occurrences -> UTC
+    // Convert local occurrences -> UTC (NOT DOING THIS ANYMORE)
     let occurrences: { startDate: Date; endDate: Date }[] = [];
     try {
       occurrences = JSON.parse(rawValues.occurrences as string).map(
@@ -70,7 +70,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
           const utcStart = new Date(localStart.getTime() - startOffset * 60000);
           const endOffset = localEnd.getTimezoneOffset();
           const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
-          return { startDate: utcStart, endDate: utcEnd };
+          return { startDate: localStart, endDate: localEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
         }
       );
     } catch (error) {
@@ -135,12 +135,16 @@ export async function loader({ params }: { params: { workshopId: string } }) {
     const actionData = useActionData<{ errors?: Record<string, string[]> }>();
     const workshop = useLoaderData<typeof loader>();
   
-    // Convert DB's existing occurrences (UTC) to local Date objects
+    // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
     const initialOccurrences = workshop.occurrences?.map((occ: any) => {
-      const utcStart = new Date(occ.startDate);
-      const utcEnd = new Date(occ.endDate);
-      // We interpret them in UTC, so to show local we just use them directly as Date
-      return { startDate: utcStart, endDate: utcEnd };
+      // const utcStart = new Date(occ.startDate);
+      // const utcEnd = new Date(occ.endDate);
+      // // We interpret them in UTC, so to show local we just use them directly as Date
+      // return { startDate: utcStart, endDate: utcEnd };
+      const localStart = new Date(occ.startDate);
+      const localEnd = new Date(occ.endDate);
+      // We interpret them in UTC (NOT DOING THIS ANYMORE), so to show local we just use them directly as Date
+      return { startDate: localStart, endDate: localEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
     }) || [];
   
     // React Hook Form setup
@@ -334,12 +338,14 @@ export async function loader({ params }: { params: { workshopId: string } }) {
                             <div key={index} className="flex gap-2 items-center mb-2 w-full">
                               <Input
                                 type="datetime-local"
+                                // value={isNaN(occ.startDate.getTime()) ? "" : occ.startDate.toISOString().slice(0,16)}
                                 value={isNaN(occ.startDate.getTime()) ? "" : formatLocalDatetime(occ.startDate)}
                                 onChange={(e) => updateOccurrence(index, "startDate", e.target.value)}
                                 className="flex-1"
                               />
                               <Input
                                 type="datetime-local"
+                                // value={isNaN(occ.endDate.getTime()) ? "" : occ.endDate.toISOString().slice(0,16)}
                                 value={isNaN(occ.endDate.getTime()) ? "" : formatLocalDatetime(occ.endDate)}
                                 onChange={(e) => updateOccurrence(index, "endDate", e.target.value)}
                                 className="flex-1"
@@ -530,6 +536,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
                           <div className="space-y-2">
                             {occurrences.map((occ, index) => (
                               <div key={index} className="text-sm">
+                                {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
                                 {formatLocalDatetime(occ.startDate)} - {formatLocalDatetime(occ.endDate)}
                               </div>
                             ))}
