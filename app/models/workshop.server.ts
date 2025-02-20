@@ -7,7 +7,7 @@ interface WorkshopData {
   location: string;
   capacity: number;
   type: string;
-  occurrences: { startDate: Date; endDate: Date }[];
+  occurrences: { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date; }[];
 }
 /**
  * Fetch all workshops with their occurrences sorted by date.
@@ -45,8 +45,10 @@ export async function addWorkshop(data: WorkshopData) {
         db.workshopOccurrence.create({
           data: {
             workshopId: newWorkshop.id, // Link the occurrence to the newly created workshop
-            startDate: occ.startDate,
-            endDate: occ.endDate,
+            startDate: occ.startDate,     // Local time as entered.
+            endDate: occ.endDate,         // Local time as entered.
+            startDatePST: occ.startDatePST, // UTC-converted value.
+            endDatePST: occ.endDatePST,     // UTC-converted value.
           },
         })
       )
@@ -128,7 +130,7 @@ export async function updateWorkshopWithOccurrences(
     location: string;
     capacity: number;
     type: string;
-    occurrences: { startDate: Date; endDate: Date }[];
+    occurrences: { startDate: Date; endDate: Date, startDatePST?: Date, endDatePST?: Date }[];
   }
 ) {
   // 1) Update the Workshop table itself
@@ -153,8 +155,10 @@ export async function updateWorkshopWithOccurrences(
   if (data.occurrences && data.occurrences.length > 0) {
     const newOccurrences = data.occurrences.map((occ) => ({
       workshopId: workshopId,
-      startDate: occ.startDate,
-      endDate: occ.endDate,
+      startDate: occ.startDate,      // Local time as entered
+      endDate: occ.endDate,          // Local time as entered
+      startDatePST: occ.startDatePST, // UTC-converted value
+      endDatePST: occ.endDatePST,     // UTC-converted value
     }));
 
     await db.workshopOccurrence.createMany({

@@ -29,7 +29,7 @@ export async function action({ request }: { request: Request }) {
   const capacity = parseInt(rawValues.capacity as string, 10);
 
   // Get occurrences from hidden input field (local ISO strings)
-  let occurrences: { startDate: Date; endDate: Date }[] = [];
+  let occurrences: { startDate: Date; endDate: Date; startDatePST: Date; endDatePST: Date; }[] = [];
   try {
     occurrences = JSON.parse(rawValues.occurrences as string).map(
       (occ: { startDate: string; endDate: string }) => {
@@ -44,7 +44,7 @@ export async function action({ request }: { request: Request }) {
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
-        return { startDate: localStart, endDate: localEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
+        return { startDate: localStart, endDate: localEnd, startDatePST: utcStart, endDatePST: utcEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
       }
     );
   } catch (error) {
@@ -72,7 +72,7 @@ export async function action({ request }: { request: Request }) {
       location: parsed.data.location,
       capacity: parsed.data.capacity,
       type: parsed.data.type,
-      occurrences: parsed.data.occurrences, // These are now UTC dates.
+      occurrences: parsed.data.occurrences, // Includes local and UTC dates
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
