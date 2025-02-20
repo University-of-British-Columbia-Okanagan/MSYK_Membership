@@ -17,6 +17,10 @@ import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
 import { addWorkshop } from "~/models/workshop.server";
 
+/**
+ * Server Action:
+ * Convert each occurrence (which are local ISO strings) to UTC before saving.
+ */
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
@@ -24,30 +28,29 @@ export async function action({ request }: { request: Request }) {
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
-  // Get occurrences from hidden input field
+  // Get occurrences from hidden input field (local ISO strings)
   let occurrences: { startDate: Date; endDate: Date }[] = [];
-
   try {
     occurrences = JSON.parse(rawValues.occurrences as string).map(
       (occ: { startDate: string; endDate: string }) => {
-        const startDate = new Date(occ.startDate);
-        const endDate = new Date(occ.endDate);
-
-        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        // Parse the stored local ISO strings as Dates
+        const localStart = new Date(occ.startDate);
+        const localEnd = new Date(occ.endDate);
+        if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
           throw new Error("Invalid date format");
         }
-
-        return { startDate, endDate };
+        // Convert local to UTC by subtracting the timezone offset
+        const startOffset = localStart.getTimezoneOffset();
+        const utcStart = new Date(localStart.getTime() - startOffset * 60000);
+        const endOffset = localEnd.getTimezoneOffset();
+        const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+        return { startDate: utcStart, endDate: utcEnd };
       }
     );
   } catch (error) {
     console.error("Error parsing occurrences:", error);
     return { errors: { occurrences: ["Invalid date format"] } };
   }
-
-  console.log(occurrences);
-
-  console.log("Parsed occurrences:", occurrences);
 
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
@@ -69,7 +72,7 @@ export async function action({ request }: { request: Request }) {
       location: parsed.data.location,
       capacity: parsed.data.capacity,
       type: parsed.data.type,
-      occurrences: parsed.data.occurrences,
+      occurrences: parsed.data.occurrences, // These are now UTC dates.
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
@@ -77,6 +80,30 @@ export async function action({ request }: { request: Request }) {
   }
 
   return redirect("/dashboard/admin");
+}
+
+/**
+ * Helper: Parse a datetime-local string as a local Date.
+ */
+function parseDateTimeAsLocal(value: string): Date {
+  if (!value) return new Date("");
+  const [datePart, timePart] = value.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+  return new Date(year, month - 1, day, hours, minutes);
+}
+
+/**
+ * Helper: Format a Date as a datetime-local string using local time.
+ */
+function formatLocalDatetime(date: Date): string {
+  if (isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 export default function AddWorkshop() {
@@ -94,149 +121,57 @@ export default function AddWorkshop() {
     },
   });
 
-  // Manage occurrences dynamically
-  // const [occurrences, setOccurrences] = useState<
-  //   { startDate: string; endDate: string }[]
-  // >([]);
-
+  // Occurrences will be stored as local Date objects.
   const [occurrences, setOccurrences] = useState<
     { startDate: Date; endDate: Date }[]
   >([]);
-
-  const [showCustomDate, setShowCustomDate] = useState(false);
-
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
   >("custom");
+
+  // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
   const [weeklyCount, setWeeklyCount] = useState(1);
   const [weeklyStartDate, setWeeklyStartDate] = useState("");
   const [weeklyEndDate, setWeeklyEndDate] = useState("");
 
+  // Monthly-specific state
   const [monthlyInterval, setMonthlyInterval] = useState(1);
   const [monthlyCount, setMonthlyCount] = useState(1);
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  // const addOccurrence = () => {
-  //   setOccurrences([...occurrences, { startDate: "", endDate: "" }]);
-  // };
-
-  // Update your addOccurrence function
+  // For custom dates, add an empty occurrence (local)
   const addOccurrence = () => {
-    if (dateSelectionType === "weekly") {
-      // Weekly logic remains unchanged
-    } else {
-      // Only add empty date slots instead of pre-filled dates
-      setOccurrences((prev) => [
-        ...prev,
-        {
-          startDate: new Date(""), // Invalid date placeholder
-          endDate: new Date(""), // Invalid date placeholder
-        },
-      ]);
-    }
+    setOccurrences((prev) => [
+      ...prev,
+      { startDate: new Date(""), endDate: new Date("") },
+    ]);
   };
 
-  // Update the updateOccurrence function
+  // When user changes a datetime input for custom dates, parse as local.
   const updateOccurrence = (
     index: number,
     field: "startDate" | "endDate",
     value: string
   ) => {
-    if (!value) {
-      const updatedOccurrences = [...occurrences];
-      updatedOccurrences[index][field] = new Date("");
-      setOccurrences(updatedOccurrences);
-      form.setValue("occurrences", updatedOccurrences);
-      return;
-    }
-
-    // Parse input as UTC
-    // const [datePart, timePart] = value.split("T");
-    // const [year, month, day] = datePart.split("-").map(Number);
-    // const [hours, minutes] = timePart.split(":").map(Number);
-
-    // const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
-
-    const localDate = parseDateTimeAsUTC(value);
-    console.log(localDate);
-
+    const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
     updatedOccurrences[index][field] = localDate;
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
   };
 
-  function parseDateTimeAsUTC(value: string): Date {
-    if (!value) {
-      return new Date(""); // Invalid date placeholder
-    }
-    const [datePart, timePart] = value.split("T");
-    const [year, month, day] = datePart.split("-").map(Number);
-    const [hours, minutes] = timePart.split(":").map(Number);
-  
-    // Use UTC so that it matches your custom date approach
-    return new Date(Date.UTC(year, month - 1, day, hours, minutes));
-  }
-
-  function parseDateTimeAsLocal(value: string): Date {
-    if (!value) {
-      return new Date(""); // invalid date placeholder
-    }
-    // e.g. "2025-02-19T19:13"
-    const [datePart, timePart] = value.split("T");
-    const [year, month, day] = datePart.split("-").map(Number);
-    const [hours, minutes] = timePart.split(":").map(Number);
-  
-    // Construct a local date (not UTC)
-    return new Date(year, month - 1, day, hours, minutes);
-  }
-
+  // Remove an occurrence from the list.
   const removeOccurrence = (index: number) => {
     setOccurrences(occurrences.filter((_, i) => i !== index));
   };
-
-  const formatLocalDatetime = (date: Date) => {
-    if (isNaN(date.getTime())) return "";
-
-    // Display UTC values instead of local
-    const year = date.getUTCFullYear();
-    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(date.getUTCDate()).padStart(2, "0");
-    const hours = String(date.getUTCHours()).padStart(2, "0");
-    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-  };
-
-  function parseLocalDateTimeToUTC(value: string): Date {
-    if (!value) return new Date(""); // invalid placeholder
-    const [datePart, timePart] = value.split("T");
-    const [year, month, day] = datePart.split("-").map(Number);
-    const [hours, minutes] = timePart.split(":").map(Number);
-  
-    // 1) Construct the date/time in the local time zone:
-    const localDate = new Date(year, month - 1, day, hours, minutes);
-  
-    // 2) Convert that local date/time to “UTC-based” Date by subtracting
-    //    the timezone offset. For example, if local time is 19:13 and
-    //    your offset is +60 minutes, then we shift it to 18:13 UTC.
-    const offset = localDate.getTimezoneOffset(); // in minutes
-    const utcDate = new Date(localDate.getTime() - offset * 60_000);
-    console.log(utcDate);
-  
-    return utcDate;
-  };
-
-  const hasErrors =
-    actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Add Workshop</h1>
 
-      {hasErrors && (
+      {actionData?.errors && Object.keys(actionData.errors).length > 0 && (
         <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
           There are some errors in your form. Please review the highlighted
           fields below.
@@ -267,6 +202,7 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
+
           {/* Description */}
           <FormField
             control={form.control}
@@ -290,6 +226,7 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
+
           {/* Price */}
           <FormField
             control={form.control}
@@ -314,6 +251,7 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
+
           {/* Location */}
           <FormField
             control={form.control}
@@ -336,6 +274,7 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
+
           {/* Capacity */}
           <FormField
             control={form.control}
@@ -360,7 +299,7 @@ export default function AddWorkshop() {
             )}
           />
 
-          {/* Workshop Occurrences (Date Selection) */}
+          {/* Occurrences (Date Selection) */}
           <FormField
             control={form.control}
             name="occurrences"
@@ -389,7 +328,6 @@ export default function AddWorkshop() {
                           Enter custom dates
                         </label>
                       </div>
-
                       <div className="flex items-center space-x-2">
                         <input
                           type="radio"
@@ -406,7 +344,6 @@ export default function AddWorkshop() {
                           Create weekly schedule
                         </label>
                       </div>
-
                       <div className="flex items-center space-x-2">
                         <input
                           type="radio"
@@ -438,7 +375,7 @@ export default function AddWorkshop() {
                               value={
                                 isNaN(occ.startDate.getTime())
                                   ? ""
-                                  : formatLocalDatetime(occ.startDate) // formatLocalDatetime(occ.startDate) occ.startDate.toISOString().slice(0, 16)
+                                  : formatLocalDatetime(occ.startDate)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -452,9 +389,9 @@ export default function AddWorkshop() {
                             <Input
                               type="datetime-local"
                               value={
-                                isNaN(occ.endDate.getTime()) // Changed from occ.startDate to occ.endDate
+                                isNaN(occ.endDate.getTime())
                                   ? ""
-                                  : formatLocalDatetime(occ.endDate) // formatLocalDatetime(occ.endDate) // Changed to occ.endDate occ.endDate.toISOString().slice(0, 16)
+                                  : formatLocalDatetime(occ.endDate)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -533,11 +470,9 @@ export default function AddWorkshop() {
                             />
                           </div>
                         </div>
-
                         <Button
                           type="button"
                           onClick={() => {
-                            // Validate inputs first
                             if (!weeklyStartDate || !weeklyEndDate) {
                               alert(
                                 "Please select initial start and end dates"
@@ -550,87 +485,58 @@ export default function AddWorkshop() {
                               );
                               return;
                             }
-
-                            // Generate dates using functional update
-                            setOccurrences((prev) => {
-                              const newOccurrences: {
-                                startDate: Date;
-                                endDate: Date;
-                              }[] = [];
-                              // const startDate = new Date(weeklyStartDate);
-                              // const endDate = new Date(weeklyEndDate);
-                              const startDate = parseLocalDateTimeToUTC(weeklyStartDate);
-                              const endDate = parseLocalDateTimeToUTC(weeklyEndDate);
-
-                              // Create base occurrence
-                              const baseOccurrence = {
-                                startDate: new Date(startDate),
-                                endDate: new Date(endDate),
+                            const newOccurrences: {
+                              startDate: Date;
+                              endDate: Date;
+                            }[] = [];
+                            // Parse as local dates
+                            const start = parseDateTimeAsLocal(weeklyStartDate);
+                            const end = parseDateTimeAsLocal(weeklyEndDate);
+                            const baseOccurrence = {
+                              startDate: new Date(start),
+                              endDate: new Date(end),
+                            };
+                            for (let i = 0; i < weeklyCount; i++) {
+                              const occurrence = {
+                                startDate: new Date(baseOccurrence.startDate),
+                                endDate: new Date(baseOccurrence.endDate),
                               };
-
-                              // Generate subsequent dates
-                              for (let i = 0; i < weeklyCount; i++) {
-                                const occurrence = {
-                                  startDate: new Date(baseOccurrence.startDate),
-                                  endDate: new Date(baseOccurrence.endDate),
-                                };
-
-                                occurrence.startDate.setDate(
-                                  baseOccurrence.startDate.getDate() +
-                                    weeklyInterval * 7 * i
-                                );
-                                occurrence.endDate.setDate(
-                                  baseOccurrence.endDate.getDate() +
-                                    weeklyInterval * 7 * i
-                                );
-
-                                newOccurrences.push(occurrence);
-                              }
-
-                              // Update form values with the latest state
-                              // const updatedOccurrences = [
-                              //   ...prev,
-                              //   ...newOccurrences,
-                              // ];
-                              // form.setValue("occurrences", updatedOccurrences);
-
-                              // return updatedOccurrences;
-
-                              setOccurrences(newOccurrences);
-                              form.setValue("occurrences", newOccurrences);
-
-                              return newOccurrences;
-                            });
-                            console.log(occurrences);
+                              occurrence.startDate.setDate(
+                                baseOccurrence.startDate.getDate() +
+                                  weeklyInterval * 7 * i
+                              );
+                              occurrence.endDate.setDate(
+                                baseOccurrence.endDate.getDate() +
+                                  weeklyInterval * 7 * i
+                              );
+                              newOccurrences.push(occurrence);
+                            }
+                            setOccurrences(newOccurrences);
+                            form.setValue("occurrences", newOccurrences);
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
                           Generate Weekly Dates
                         </Button>
-
-                        {dateSelectionType === "weekly" &&
-                          occurrences.length > 0 && (
-                            <div className="mt-4 w-full">
-                              <h3 className="font-medium mb-2">
-                                Generated Dates:
-                              </h3>
-                              <div className="space-y-2">
-                                {occurrences.map((occ, index) => (
-                                  <div key={index} className="text-sm">
-                                    {/* {occ.startDate.toLocaleDateString()}{" "}
-                                    {occ.startDate.toLocaleTimeString()}
-                                    {" - "}
-                                    {occ.endDate.toLocaleDateString()}{" "}
-                                    {occ.endDate.toLocaleTimeString()} */}
-                                    {formatLocalDatetime(occ.startDate)} - {formatLocalDatetime(occ.endDate)}
-                                  </div>
-                                ))}
-                              </div>
+                        {occurrences.length > 0 && (
+                          <div className="mt-4 w-full">
+                            <h3 className="font-medium mb-2">
+                              Generated Dates:
+                            </h3>
+                            <div className="space-y-2">
+                              {occurrences.map((occ, index) => (
+                                <div key={index} className="text-sm">
+                                  {formatLocalDatetime(occ.startDate)} -{" "}
+                                  {formatLocalDatetime(occ.endDate)}
+                                </div>
+                              ))}
                             </div>
-                          )}
+                          </div>
+                        )}
                       </div>
                     )}
 
+                    {/* Monthly Repetition Inputs */}
                     {dateSelectionType === "monthly" && (
                       <>
                         <div className="grid grid-cols-2 gap-4 w-full">
@@ -655,7 +561,6 @@ export default function AddWorkshop() {
                             />
                           </div>
                         </div>
-
                         <div className="grid grid-cols-2 gap-4 w-full">
                           <div className="flex flex-col space-y-2">
                             <FormLabel>Repeat every (months)</FormLabel>
@@ -680,7 +585,6 @@ export default function AddWorkshop() {
                             />
                           </div>
                         </div>
-
                         <Button
                           type="button"
                           onClick={() => {
@@ -696,74 +600,55 @@ export default function AddWorkshop() {
                               );
                               return;
                             }
-
                             const newOccurrences: {
                               startDate: Date;
                               endDate: Date;
                             }[] = [];
-                            const startDate = parseLocalDateTimeToUTC(monthlyStartDate);
-                            const endDate = parseLocalDateTimeToUTC(monthlyEndDate);
-
+                            // Parse as local dates
+                            const start =
+                              parseDateTimeAsLocal(monthlyStartDate);
+                            const end = parseDateTimeAsLocal(monthlyEndDate);
                             const baseOccurrence = {
-                              startDate: new Date(startDate),
-                              endDate: new Date(endDate),
+                              startDate: new Date(start),
+                              endDate: new Date(end),
                             };
-                            console.log("base occurrence");
-                            console.log(baseOccurrence);
-
                             for (let i = 0; i < monthlyCount; i++) {
                               const occurrence = {
-                                startDate: new Date(startDate),
-                                endDate: new Date(endDate),
+                                startDate: new Date(baseOccurrence.startDate),
+                                endDate: new Date(baseOccurrence.endDate),
                               };
-
-
                               occurrence.startDate.setMonth(
-                                baseOccurrence.startDate.getMonth() + monthlyInterval * i
+                                baseOccurrence.startDate.getMonth() +
+                                  monthlyInterval * i
                               );
                               occurrence.endDate.setMonth(
-                                baseOccurrence.endDate.getMonth() + monthlyInterval * i
+                                baseOccurrence.endDate.getMonth() +
+                                  monthlyInterval * i
                               );
-
-                              console.log("occurence at" + i);
-                              console.log(occurrence);
-
                               newOccurrences.push(occurrence);
                             }
-
-                            console.log("all new occureences");
-                            console.log(newOccurrences);
-
                             setOccurrences(newOccurrences);
                             form.setValue("occurrences", newOccurrences);
-                            console.log(occurrences);
-                            return newOccurrences;
                           }}
-                        
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
                           Generate Monthly Dates
                         </Button>
-                        {dateSelectionType === "monthly" &&
-                          occurrences.length > 0 && (
-                            <div className="mt-4 w-full">
-                              <h3 className="font-medium mb-2">
-                                Generated Dates:
-                              </h3>
-                              <div className="space-y-2">
-                                {occurrences.map((occ, index) => (
-                                  <div key={index} className="text-sm">
-                                    {/* {occ.startDate.toLocaleDateString()}{" "}
-                                    {occ.startDate.toLocaleTimeString()}
-                                    {" - "}
-                                    {occ.endDate.toLocaleDateString()}{" "}
-                                    {occ.endDate.toLocaleTimeString()} */}
-                                    {formatLocalDatetime(occ.startDate)} - {formatLocalDatetime(occ.endDate)}
-                                  </div>
-                                ))}
-                              </div>
+                        {occurrences.length > 0 && (
+                          <div className="mt-4 w-full">
+                            <h3 className="font-medium mb-2">
+                              Generated Dates:
+                            </h3>
+                            <div className="space-y-2">
+                              {occurrences.map((occ, index) => (
+                                <div key={index} className="text-sm">
+                                  {formatLocalDatetime(occ.startDate)} -{" "}
+                                  {formatLocalDatetime(occ.endDate)}
+                                </div>
+                              ))}
                             </div>
-                          )}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -772,6 +657,7 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
+
           {/* Type */}
           <FormField
             control={form.control}
@@ -795,12 +681,8 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
+
           {/* Hidden Input for Occurrences */}
-          {/* <input
-            type="hidden"
-            name="occurrences"
-            value={JSON.stringify(occurrences)}
-          /> */}
           <input
             type="hidden"
             name="occurrences"
@@ -812,6 +694,7 @@ export default function AddWorkshop() {
               )
             )}
           />
+
           {/* Submit Button */}
           <Button
             type="submit"
