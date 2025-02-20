@@ -3,7 +3,7 @@ import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { getWorkshops, deleteWorkshop } from "~/models/workshop.server";
+import { getWorkshops, deleteWorkshop, duplicateWorkshop } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
 import { FiPlus } from "react-icons/fi";
@@ -35,6 +35,16 @@ export async function action({ request }: { request: Request }) {
     } catch (error) {
       console.error("Error deleting workshop:", error);
       return { error: "Failed to delete workshop" };
+    }
+  }
+
+  if (action === "duplicate") {
+    try {
+      await duplicateWorkshop(Number(workshopId));
+      return redirect("/dashboard/admin");
+    } catch (error) {
+      console.error("Error duplicating workshop:", error);
+      return { error: "Failed to duplicate workshop" };
     }
   }
 

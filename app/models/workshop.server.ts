@@ -250,3 +250,53 @@ export async function checkUserRegistration(
   });
   return !!registration;
 }
+
+export async function duplicateWorkshop(workshopId: number) {
+  try {
+    return await db.$transaction(async (prisma) => {
+      // 1. Get original workshop with occurrences
+      const originalWorkshop = await prisma.workshop.findUnique({
+        where: { id: workshopId },
+        include: { occurrences: true },
+      });
+
+      if (!originalWorkshop) {
+        throw new Error("Workshop not found");
+      }
+
+      // 2. Create copied workshop with "(Copy)" suffix
+      const newWorkshop = await prisma.workshop.create({
+        data: {
+          name: originalWorkshop.name,
+          description: originalWorkshop.description,
+          price: originalWorkshop.price,
+          location: originalWorkshop.location,
+          capacity: originalWorkshop.capacity,
+          type: originalWorkshop.type,
+        },
+      });
+
+      // 3. Duplicate all occurrences with new workshopId
+      if (originalWorkshop.occurrences.length > 0) {
+        await prisma.workshopOccurrence.createMany({
+          data: originalWorkshop.occurrences.map(occ => ({
+            workshopId: newWorkshop.id,
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+            startDatePST: occ.startDatePST,
+            endDatePST: occ.endDatePST,
+          })),
+        });
+      }
+
+      // Return the duplicated workshop with occurrences
+      return prisma.workshop.findUnique({
+        where: { id: newWorkshop.id },
+        include: { occurrences: true },
+      });
+    });
+  } catch (error) {
+    console.error("Error duplicating workshop:", error);
+    throw new Error("Failed to duplicate workshop");
+  }
+}
