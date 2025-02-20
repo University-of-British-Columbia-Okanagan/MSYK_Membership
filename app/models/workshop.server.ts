@@ -14,6 +14,7 @@ interface WorkshopData {
  */
 export async function getWorkshops() {
   const workshops = await db.workshop.findMany({
+    orderBy: { id: "asc" },
     include: {
       occurrences: {
         orderBy: { startDate: "asc" },
@@ -116,6 +117,53 @@ export async function updateWorkshop(workshopId: number, data: WorkshopData) {
 }
 
 /**
+ * Update the workshop table, then remove all old occurrences and insert new ones.
+ */
+export async function updateWorkshopWithOccurrences(
+  workshopId: number,
+  data: {
+    name: string;
+    description: string;
+    price: number;
+    location: string;
+    capacity: number;
+    type: string;
+    occurrences: { startDate: Date; endDate: Date }[];
+  }
+) {
+  // 1) Update the Workshop table itself
+  await db.workshop.update({
+    where: { id: workshopId },
+    data: {
+      name: data.name,
+      description: data.description,
+      price: data.price,
+      location: data.location,
+      capacity: data.capacity,
+      type: data.type,
+    },
+  });
+
+  // 2) Delete existing rows in WorkshopOccurrence for this workshop
+  await db.workshopOccurrence.deleteMany({
+    where: { workshopId },
+  });
+
+  // 3) Insert new occurrences
+  if (data.occurrences && data.occurrences.length > 0) {
+    const newOccurrences = data.occurrences.map((occ) => ({
+      workshopId: workshopId,
+      startDate: occ.startDate,
+      endDate: occ.endDate,
+    }));
+
+    await db.workshopOccurrence.createMany({
+      data: newOccurrences,
+    });
+  }
+}
+
+/**
  * Delete a workshop and its occurrences.
  */
 export async function deleteWorkshop(workshopId: number) {
@@ -175,11 +223,11 @@ export async function registerForWorkshop(
       },
     });
 
-    return { 
-      success: true, 
-      workshopName: occurrence.workshop.name, 
+    return {
+      success: true,
+      workshopName: occurrence.workshop.name,
       startDate: occurrence.startDate,
-      endDate: occurrence.endDate
+      endDate: occurrence.endDate,
     };
   } catch (error) {
     console.error("Error registering for workshop:", error);

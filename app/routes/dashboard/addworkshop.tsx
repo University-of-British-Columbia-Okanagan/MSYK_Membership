@@ -306,7 +306,7 @@ export default function AddWorkshop() {
             render={() => (
               <FormItem>
                 <FormLabel htmlFor="occurrences">
-                  Workshop Occurrences <span className="text-red-500">*</span>
+                  Workshop Dates <span className="text-red-500">*</span>
                 </FormLabel>
                 <FormControl>
                   <div className="flex flex-col items-start space-y-4">
