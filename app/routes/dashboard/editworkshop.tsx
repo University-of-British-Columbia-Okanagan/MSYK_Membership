@@ -294,7 +294,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
               name="occurrences"
               render={() => (
                 <FormItem>
-                  <FormLabel>Workshop Occurrences <span className="text-red-500">*</span></FormLabel>
+                  <FormLabel>Workshop Dates <span className="text-red-500">*</span></FormLabel>
                   <FormControl>
                     <div className="flex flex-col items-start space-y-4">
                       {/* Radio Buttons for date selection type */}
