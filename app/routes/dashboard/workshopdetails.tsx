@@ -72,7 +72,7 @@ export default function WorkshopDetails() {
       setShowPopup(true);
     }
   }, [fetcher.data]);
-
+  
   const handleRegister = (occurrenceId: number) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
@@ -80,11 +80,9 @@ export default function WorkshopDetails() {
       setShowPopup(true);
       return;
     }
-
-    fetcher.submit(
-      { userId: user.id, occurrenceId },
-      { method: "post", action: `/dashboard/register/${occurrenceId}` }
-    );
+  
+    // Navigate to the payment page
+    navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
   };
 
   const handleOfferAgain = (occurrenceId: number) => {
