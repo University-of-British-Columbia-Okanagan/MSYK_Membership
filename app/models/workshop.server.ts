@@ -191,10 +191,7 @@ export async function deleteWorkshop(workshopId: number) {
 /**
  * Register a user for a specific workshop occurrence.
  */
-export async function registerForWorkshop(
-  occurrenceId: number,
-  userId: number
-) {
+export async function registerForWorkshop(occurrenceId: number, userId: number) {
   try {
     // Validate occurrence exists
     const occurrence = await db.workshopOccurrence.findUnique({
@@ -206,22 +203,19 @@ export async function registerForWorkshop(
       throw new Error("Workshop occurrence not found");
     }
 
-    // Check if the workshop is full
-    const registrationCount = await db.userWorkshop.count({
-      where: { workshopId: occurrence.workshop.id },
-    });
-
-    if (registrationCount >= occurrence.workshop.capacity) {
-      throw new Error("Workshop is full");
+    // Prevent past registrations
+    const now = new Date();
+    if (new Date(occurrence.startDate) < now) {
+      throw new Error("Cannot register for past workshops.");
     }
 
-    // Check if the user is already registered for this specific occurrence
+    // Check if the user is already registered for this occurrence
     const existingRegistration = await db.userWorkshop.findFirst({
-      where: { userId, workshopId: occurrence.workshop.id, occurrenceId },
+      where: { userId, occurrenceId }, 
     });
 
     if (existingRegistration) {
-      throw new Error("User already registered for this workshop occurrence");
+      throw new Error("User already registered for this session.");
     }
 
     // Register user for this occurrence
@@ -229,7 +223,7 @@ export async function registerForWorkshop(
       data: {
         userId,
         workshopId: occurrence.workshop.id,
-        occurrenceId, // Store the occurrence ID for reference
+        occurrenceId, 
       },
     });
 
@@ -244,6 +238,7 @@ export async function registerForWorkshop(
     throw error;
   }
 }
+
 /**
  * Check if a user is registered for a specific workshop occurrence.
  */

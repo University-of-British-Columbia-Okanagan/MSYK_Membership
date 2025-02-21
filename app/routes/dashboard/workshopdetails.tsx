@@ -71,9 +71,10 @@ export default function WorkshopDetails() {
   useEffect(() => {
     if (fetcher.data?.success) {
       setIsRegistered(true);
-      setPopupMessage("Registration successful!");
+      setPopupMessage("🎉 Registration successful!");
       setPopupType("success");
       setShowPopup(true);
+      localStorage.setItem("registrationSuccess", "true");
     } else if (fetcher.data?.error) {
       setPopupMessage(fetcher.data.error);
       setPopupType("error");
@@ -84,13 +85,6 @@ export default function WorkshopDetails() {
   const handleRegister = (occurrenceId: number) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
-      setPopupType("error");
-      setShowPopup(true);
-      return;
-    }
-
-    if (isRegistered) {
-      setPopupMessage("You are already registered for this workshop.");
       setPopupType("error");
       setShowPopup(true);
       return;
@@ -150,6 +144,19 @@ export default function WorkshopDetails() {
           <h2 className="text-lg font-semibold">Available Dates</h2>
           {workshop.occurrences.length > 0 ? (
             <ul>
+              {workshop.occurrences.map((occurrence) => {
+                const isPast = new Date(occurrence.startDate) < new Date();
+                return (
+                  <li key={occurrence.id} className="text-gray-600">
+                    📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
+                    {new Date(occurrence.endDate).toLocaleString()}
+                    <Button
+                      className="ml-2 bg-blue-500 text-white px-2 py-1 rounded"
+                      onClick={() => handleRegister(occurrence.id)}
+                      disabled={isRegistered || fetcher.state === "submitting"}
+                    >
+                      {isRegistered ? "Already Registered" : "Register"}
+                    </Button>
               {workshop.occurrences.map((occurrence: Occurrence) => {
                 const startDate = new Date(occurrence.startDate);
                 const isExpired = startDate < new Date();
