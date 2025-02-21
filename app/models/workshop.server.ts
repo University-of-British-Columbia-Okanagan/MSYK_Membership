@@ -7,7 +7,7 @@ interface WorkshopData {
   location: string;
   capacity: number;
   type: string;
-  occurrences: { startDate: Date; endDate: Date }[];
+  occurrences: { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date; }[];
 }
 /**
  * Fetch all workshops with their occurrences sorted by date.
@@ -45,8 +45,10 @@ export async function addWorkshop(data: WorkshopData) {
         db.workshopOccurrence.create({
           data: {
             workshopId: newWorkshop.id, // Link the occurrence to the newly created workshop
-            startDate: occ.startDate,
-            endDate: occ.endDate,
+            startDate: occ.startDate,     // Local time as entered.
+            endDate: occ.endDate,         // Local time as entered.
+            startDatePST: occ.startDatePST, // UTC-converted value.
+            endDatePST: occ.endDatePST,     // UTC-converted value.
           },
         })
       )
@@ -60,13 +62,19 @@ export async function addWorkshop(data: WorkshopData) {
 }
 
 /**
- * Fetch a single workshop by ID including its occurrences.
+ * Fetch a single workshop by ID including its occurrences order by startDate ascending.
  */
 export async function getWorkshopById(workshopId: number) {
   try {
     const workshop = await db.workshop.findUnique({
       where: { id: workshopId },
-      include: { occurrences: true },
+      include: {
+        occurrences: {
+          orderBy: {
+            startDate: "asc",
+          },
+        },
+      },
     });
 
     if (!workshop) {
@@ -128,7 +136,7 @@ export async function updateWorkshopWithOccurrences(
     location: string;
     capacity: number;
     type: string;
-    occurrences: { startDate: Date; endDate: Date }[];
+    occurrences: { startDate: Date; endDate: Date, startDatePST?: Date, endDatePST?: Date }[];
   }
 ) {
   // 1) Update the Workshop table itself
@@ -153,8 +161,10 @@ export async function updateWorkshopWithOccurrences(
   if (data.occurrences && data.occurrences.length > 0) {
     const newOccurrences = data.occurrences.map((occ) => ({
       workshopId: workshopId,
-      startDate: occ.startDate,
-      endDate: occ.endDate,
+      startDate: occ.startDate,      // Local time as entered
+      endDate: occ.endDate,          // Local time as entered
+      startDatePST: occ.startDatePST, // UTC-converted value
+      endDatePST: occ.endDatePST,     // UTC-converted value
     }));
 
     await db.workshopOccurrence.createMany({
@@ -240,4 +250,105 @@ export async function checkUserRegistration(
     where: { occurrenceId, userId }, // Check against occurrence, not just workshop
   });
   return !!registration;
+}
+
+export async function duplicateWorkshop(workshopId: number) {
+  try {
+    return await db.$transaction(async (prisma) => {
+      // 1. Get original workshop with occurrences
+      const originalWorkshop = await prisma.workshop.findUnique({
+        where: { id: workshopId },
+        include: { occurrences: true },
+      });
+
+      if (!originalWorkshop) {
+        throw new Error("Workshop not found");
+      }
+
+      // 2. Create copied workshop with "(Copy)" suffix
+      const newWorkshop = await prisma.workshop.create({
+        data: {
+          name: originalWorkshop.name,
+          description: originalWorkshop.description,
+          price: originalWorkshop.price,
+          location: originalWorkshop.location,
+          capacity: originalWorkshop.capacity,
+          type: originalWorkshop.type,
+        },
+      });
+
+      // 3. Duplicate all occurrences with new workshopId
+      if (originalWorkshop.occurrences.length > 0) {
+        await prisma.workshopOccurrence.createMany({
+          data: originalWorkshop.occurrences.map(occ => ({
+            workshopId: newWorkshop.id,
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+            startDatePST: occ.startDatePST,
+            endDatePST: occ.endDatePST,
+          })),
+        });
+      }
+
+      // Return the duplicated workshop with occurrences
+      return prisma.workshop.findUnique({
+        where: { id: newWorkshop.id },
+        include: { occurrences: true },
+      });
+    });
+  } catch (error) {
+    console.error("Error duplicating workshop:", error);
+    throw new Error("Failed to duplicate workshop");
+  }
+}
+
+/**
+ * Fetch a single occurrence by workshopId and occurrenceId.
+ */
+export async function getWorkshopOccurrence(
+  workshopId: number,
+  occurrenceId: number
+) {
+  try {
+    const occurrence = await db.workshopOccurrence.findFirst({
+      where: {
+        id: occurrenceId,
+        workshopId: workshopId,
+      },
+    });
+
+    if (!occurrence) {
+      throw new Error("Occurrence not found");
+    }
+    return occurrence;
+  } catch (error) {
+    console.error("Error fetching workshop occurrence:", error);
+    throw new Error("Failed to fetch workshop occurrence");
+  }
+}
+
+/**
+ * Duplicate an occurrence with new start/end dates.
+ * This creates a new occurrence for the given workshop.
+ */
+export async function duplicateOccurrence(
+  workshopId: number,
+  occurrenceId: number, // original occurrence id; you might use it for logging or additional logic if needed
+  data: { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }
+) {
+  try {
+    const newOccurrence = await db.workshopOccurrence.create({
+      data: {
+        workshopId: workshopId,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        startDatePST: data.startDatePST, // if you need to store UTC conversion, compute it before passing
+        endDatePST: data.endDatePST,     // likewise for endDatePST
+      },
+    });
+    return newOccurrence;
+  } catch (error) {
+    console.error("Error duplicating occurrence:", error);
+    throw new Error("Failed to duplicate occurrence");
+  }
 }

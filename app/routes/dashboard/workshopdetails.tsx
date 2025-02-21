@@ -1,4 +1,4 @@
-import { useParams, useLoaderData, useFetcher } from "react-router-dom";
+import { useParams, useLoaderData, useFetcher, useNavigate } from "react-router-dom";
 import {
   Card,
   CardHeader,
@@ -14,11 +14,23 @@ import {
   getWorkshopById,
   checkUserRegistration,
 } from "../../models/workshop.server";
-import { getUser } from "~/utils/session.server";
+import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
+import { redirect } from "react-router";
 
+interface Occurrence {
+  id: number;
+  startDate: Date;
+  endDate: Date;
+}
 
-export async function loader({ params, request }) {
+export async function loader({
+  params,
+  request,
+}: {
+  params: { id: string };
+  request: Request;
+}) {
   const workshopId = parseInt(params.id);
   const workshop = await getWorkshopById(workshopId);
   if (!workshop) {
@@ -26,6 +38,7 @@ export async function loader({ params, request }) {
   }
 
   const user = await getUser(request);
+  const roleUser = await getRoleUser(request);
 
   let isRegistered = false;
   if (user) {
@@ -33,16 +46,27 @@ export async function loader({ params, request }) {
     isRegistered = !!registration;
   }
 
-  return { workshop, user, isRegistered };
+  return { workshop, user, isRegistered, roleUser };
 }
 
 export default function WorkshopDetails() {
-  const { workshop, user, isRegistered: initialIsRegistered } = useLoaderData();
+  const {
+    workshop,
+    user,
+    isRegistered: initialIsRegistered,
+    roleUser,
+  } = useLoaderData();
   const fetcher = useFetcher();
+  const navigate = useNavigate();
   const [isRegistered, setIsRegistered] = useState(initialIsRegistered);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
   const [popupType, setPopupType] = useState("success");
+
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
 
   useEffect(() => {
     if (fetcher.data?.success) {
@@ -58,7 +82,7 @@ export default function WorkshopDetails() {
     }
   }, [fetcher.data]);
 
-  const handleRegister = (occurrenceId) => {
+  const handleRegister = (occurrenceId: number) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
       setPopupType("error");
@@ -70,6 +94,21 @@ export default function WorkshopDetails() {
       { userId: user.id, occurrenceId },
       { method: "post", action: `/dashboard/register/${occurrenceId}` }
     );
+  };
+
+  const handleOfferAgain = (occurrenceId: number) => {
+    // const formData = new FormData();
+    // formData.append("occurrenceId", occurrenceId.toString());
+    // formData.append("action", "offer-again");
+
+    // fetcher.submit(formData, {
+    //   method: "post",
+    //   action: `/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`,
+    // });
+    // console.log(occurrenceId);
+    // return redirect(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
+    console.log(workshop.id);
+    navigate(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
   };
 
   return (
@@ -118,6 +157,35 @@ export default function WorkshopDetails() {
                     >
                       {isRegistered ? "Already Registered" : "Register"}
                     </Button>
+              {workshop.occurrences.map((occurrence: Occurrence) => {
+                const startDate = new Date(occurrence.startDate);
+                const isExpired = startDate < new Date();
+                const buttonText = isExpired
+                  ? "Expired"
+                  : isRegistered
+                  ? "Already Registered"
+                  : "Register";
+
+                return (
+                  <li key={occurrence.id} className="text-gray-600 mb-2">
+                    📅 {startDate.toLocaleString()} -{" "}
+                    {new Date(occurrence.endDate).toLocaleString()}
+                    <Button
+                      className="ml-2 bg-blue-500 text-white px-2 py-1 rounded mr-2"
+                      onClick={() => handleRegister(occurrence.id)}
+                      disabled={isExpired || isRegistered}
+                    >
+                      {buttonText}
+                    </Button>
+                    {isExpired && isAdmin && (
+                      <Button
+                        variant="outline"
+                        className="text-green-600 border-green-500 hover:bg-green-50"
+                        onClick={() => handleOfferAgain(occurrence.id)}
+                      >
+                        Offer Again
+                      </Button>
+                    )}
                   </li>
                 );
               })}

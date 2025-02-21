@@ -16,6 +16,8 @@ export const workshopFormSchema = z.object({
         endDate: z.coerce.date().refine((date) => !isNaN(date.getTime()), {
           message: "Invalid end date format",
         }),
+        startDatePST: z.coerce.date().optional(),
+        endDatePST: z.coerce.date().optional(),
       })
     )
     .min(1, "At least one occurrence is required"),
