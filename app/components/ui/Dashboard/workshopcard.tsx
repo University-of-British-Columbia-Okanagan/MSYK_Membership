@@ -7,9 +7,15 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
 import { useFetcher } from "react-router";
-import { FiEdit, FiTrash2 } from "react-icons/fi"; // Import Icons
+import { FiEdit, FiTrash2, FiMoreVertical } from "react-icons/fi"; // Import Icons
 
 interface WorkshopProps {
   id: number;
@@ -19,7 +25,13 @@ interface WorkshopProps {
   isAdmin: boolean;
 }
 
-export default function WorkshopCard({ id, name, description, price, isAdmin }: WorkshopProps) {
+export default function WorkshopCard({
+  id,
+  name,
+  description,
+  price,
+  isAdmin,
+}: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -28,43 +40,67 @@ export default function WorkshopCard({ id, name, description, price, isAdmin }: 
     <Card className="w-full md:w-80 min-h-[260px] rounded-lg shadow-md flex flex-col justify-between relative">
       {isAdmin && (
         <div className="absolute top-3 right-3 flex space-x-2">
-          {/* Edit Button - Small Icon */}
-          <Button
-            size="icon"
-            variant="outline"
-            className="p-2 text-yellow-500 hover:bg-yellow-100"
-            onClick={() => navigate(`/editworkshop/${id}`)}
-          >
-            <FiEdit size={18} />
-          </Button>
-
-          {/* Delete Button - Small Icon */}
-          <fetcher.Form method="post">
-            <input type="hidden" name="workshopId" value={id} />
-            <Button
-              type="submit"
-              name="action"
-              value="delete"
-              size="icon"
-              variant="outline"
-              className="p-2 text-red-500 hover:bg-red-100"
-              onClick={(e) => {
-                e.preventDefault();
-                if (window.confirm("Are you sure you want to delete this workshop?")) {
-                  setConfirmDelete(true);
-                  fetcher.submit({ workshopId: id, action: "delete" }, { method: "post" });
-                }
-              }}
-            >
-              <FiTrash2 size={18} />
-            </Button>
-          </fetcher.Form>
+          {/* Options Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="p-2 text-gray-600 hover:bg-gray-100"
+              >
+                <FiMoreVertical size={18} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => navigate(`/editworkshop/${id}`)}
+              >
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (
+                    window.confirm(
+                      "Are you sure you want to duplicate this workshop?"
+                    )
+                  ) {
+                    fetcher.submit(
+                      { workshopId: id, action: "duplicate" },
+                      { method: "post" }
+                    );
+                  }
+                }}
+              >
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  if (
+                    window.confirm(
+                      "Are you sure you want to delete this workshop?"
+                    )
+                  ) {
+                    fetcher.submit(
+                      { workshopId: id, action: "delete" },
+                      { method: "post" }
+                    );
+                  }
+                }}
+                className="text-red-600 focus:bg-red-50"
+              >
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
 
       <CardHeader>
         <CardTitle>{name}</CardTitle>
-        <CardDescription className="line-clamp-2">{description}</CardDescription>
+        <CardDescription className="line-clamp-2">
+          {description}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 flex-grow">
         <p className="text-lg font-semibold text-gray-900">Price: ${price}</p>
