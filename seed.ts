@@ -166,8 +166,8 @@ async function main() {
     data: [
       {
         workshopId: 1, // Laser Cutting
-        startDate: new Date("2025-03-10T10:00:00Z"),
-        endDate: new Date("2025-03-10T12:00:00Z"),
+        startDate: new Date("2025-02-10T10:00:00Z"),
+        endDate: new Date("2025-02-10T12:00:00Z"),
       },
       {
         workshopId: 1, // Laser Cutting again

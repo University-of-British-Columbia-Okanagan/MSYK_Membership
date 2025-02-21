@@ -86,6 +86,8 @@ model WorkshopOccurrence {
 
   workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[] 
+
+  @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
 }
 
 

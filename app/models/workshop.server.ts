@@ -300,3 +300,54 @@ export async function duplicateWorkshop(workshopId: number) {
     throw new Error("Failed to duplicate workshop");
   }
 }
+
+/**
+ * Fetch a single occurrence by workshopId and occurrenceId.
+ */
+export async function getWorkshopOccurrence(
+  workshopId: number,
+  occurrenceId: number
+) {
+  try {
+    const occurrence = await db.workshopOccurrence.findFirst({
+      where: {
+        id: occurrenceId,
+        workshopId: workshopId,
+      },
+    });
+
+    if (!occurrence) {
+      throw new Error("Occurrence not found");
+    }
+    return occurrence;
+  } catch (error) {
+    console.error("Error fetching workshop occurrence:", error);
+    throw new Error("Failed to fetch workshop occurrence");
+  }
+}
+
+/**
+ * Duplicate an occurrence with new start/end dates.
+ * This creates a new occurrence for the given workshop.
+ */
+export async function duplicateOccurrence(
+  workshopId: number,
+  occurrenceId: number, // original occurrence id; you might use it for logging or additional logic if needed
+  data: { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }
+) {
+  try {
+    const newOccurrence = await db.workshopOccurrence.create({
+      data: {
+        workshopId: workshopId,
+        startDate: data.startDate,
+        endDate: data.endDate,
+        startDatePST: data.startDatePST, // if you need to store UTC conversion, compute it before passing
+        endDatePST: data.endDatePST,     // likewise for endDatePST
+      },
+    });
+    return newOccurrence;
+  } catch (error) {
+    console.error("Error duplicating occurrence:", error);
+    throw new Error("Failed to duplicate occurrence");
+  }
+}

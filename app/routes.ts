@@ -41,4 +41,5 @@ export default [
   route("/addworkshop", "routes/dashboard/addworkshop.tsx"),
   route("/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
   route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
+  route("/dashboard/workshops/:id/edit/:occurrenceId", "routes/dashboard/editoccurrence.tsx"),
 ] satisfies RouteConfig;
