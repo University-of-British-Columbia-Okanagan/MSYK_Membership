@@ -62,13 +62,19 @@ export async function addWorkshop(data: WorkshopData) {
 }
 
 /**
- * Fetch a single workshop by ID including its occurrences.
+ * Fetch a single workshop by ID including its occurrences order by startDate ascending.
  */
 export async function getWorkshopById(workshopId: number) {
   try {
     const workshop = await db.workshop.findUnique({
       where: { id: workshopId },
-      include: { occurrences: true },
+      include: {
+        occurrences: {
+          orderBy: {
+            startDate: "asc",
+          },
+        },
+      },
     });
 
     if (!workshop) {
