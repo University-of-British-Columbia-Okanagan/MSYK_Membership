@@ -29,6 +29,7 @@ import Workshops from "./routes/dashboard/workshops";
 import Events from "./routes/dashboard/events";
 import Membership from "./routes/dashboard/memberships";
 import WorkshopDetails from "./routes/dashboard/workshopdetails";
+import Payment from "./routes/dashboard/payment";
 
 const App = () => (
   <Router>
@@ -57,12 +58,14 @@ const App = () => (
         <Route path="volunteer" element={<VolunteerPage />} />
         <Route path="membership" element={<MembershipPage />} />
         <Route path="jobopportunities" element={<JobOpportunities />} />
+        <Route path="payment" element={<Payment />} />
       </Route>
       <Route path="dashboardlayout" element={<DashboardLayout />}>
         <Route path="workshops" element={<Workshops />} />
         <Route path="events" element={<Events />} />
         <Route path="membership" element={<Membership />} />
         <Route path="workshopdetails" element={<WorkshopDetails />} />
+        <Route path="payment" element={<Payment />} />
       </Route>
     </Routes>
   </Router>

@@ -10,13 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import {
-  getWorkshopById,
-  checkUserRegistration,
-} from "../../models/workshop.server";
+import { getWorkshopById, checkUserRegistration } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
-import { redirect } from "react-router";
 
 interface Occurrence {
   id: number;
@@ -50,12 +46,7 @@ export async function loader({
 }
 
 export default function WorkshopDetails() {
-  const {
-    workshop,
-    user,
-    isRegistered: initialIsRegistered,
-    roleUser,
-  } = useLoaderData();
+  const { workshop, user, isRegistered: initialIsRegistered, roleUser } = useLoaderData();
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const [isRegistered, setIsRegistered] = useState(initialIsRegistered);
@@ -81,7 +72,7 @@ export default function WorkshopDetails() {
       setShowPopup(true);
     }
   }, [fetcher.data]);
-
+  
   const handleRegister = (occurrenceId: number) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
@@ -89,25 +80,12 @@ export default function WorkshopDetails() {
       setShowPopup(true);
       return;
     }
-
-    fetcher.submit(
-      { userId: user.id, occurrenceId },
-      { method: "post", action: `/dashboard/register/${occurrenceId}` }
-    );
+  
+    // Navigate to the payment page
+    navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
   };
 
   const handleOfferAgain = (occurrenceId: number) => {
-    // const formData = new FormData();
-    // formData.append("occurrenceId", occurrenceId.toString());
-    // formData.append("action", "offer-again");
-
-    // fetcher.submit(formData, {
-    //   method: "post",
-    //   action: `/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`,
-    // });
-    // console.log(occurrenceId);
-    // return redirect(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
-    console.log(workshop.id);
     navigate(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
   };
 
@@ -144,19 +122,6 @@ export default function WorkshopDetails() {
           <h2 className="text-lg font-semibold">Available Dates</h2>
           {workshop.occurrences.length > 0 ? (
             <ul>
-              {workshop.occurrences.map((occurrence) => {
-                const isPast = new Date(occurrence.startDate) < new Date();
-                return (
-                  <li key={occurrence.id} className="text-gray-600">
-                    📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
-                    {new Date(occurrence.endDate).toLocaleString()}
-                    <Button
-                      className="ml-2 bg-blue-500 text-white px-2 py-1 rounded"
-                      onClick={() => handleRegister(occurrence.id)}
-                      disabled={isRegistered || fetcher.state === "submitting"}
-                    >
-                      {isRegistered ? "Already Registered" : "Register"}
-                    </Button>
               {workshop.occurrences.map((occurrence: Occurrence) => {
                 const startDate = new Date(occurrence.startDate);
                 const isExpired = startDate < new Date();
@@ -173,7 +138,7 @@ export default function WorkshopDetails() {
                     <Button
                       className="ml-2 bg-blue-500 text-white px-2 py-1 rounded mr-2"
                       onClick={() => handleRegister(occurrence.id)}
-                      disabled={isExpired || isRegistered}
+                      disabled={isExpired || isRegistered || fetcher.state === "submitting"}
                     >
                       {buttonText}
                     </Button>
