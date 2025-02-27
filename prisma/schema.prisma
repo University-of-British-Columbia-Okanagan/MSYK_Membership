@@ -83,6 +83,7 @@ model WorkshopOccurrence {
   endDate     DateTime
   startDatePST DateTime?
   endDatePST   DateTime?
+  status     String  @default("active") // "open", "closed", "cancelled"
 
   workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[] 

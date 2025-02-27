@@ -7,7 +7,12 @@ interface WorkshopData {
   location: string;
   capacity: number;
   type: string;
-  occurrences: { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date; }[];
+  occurrences: {
+    startDate: Date;
+    endDate: Date;
+    startDatePST?: Date;
+    endDatePST?: Date;
+  }[];
 }
 /**
  * Fetch all workshops with their occurrences sorted by date.
@@ -45,10 +50,10 @@ export async function addWorkshop(data: WorkshopData) {
         db.workshopOccurrence.create({
           data: {
             workshopId: newWorkshop.id, // Link the occurrence to the newly created workshop
-            startDate: occ.startDate,     // Local time as entered.
-            endDate: occ.endDate,         // Local time as entered.
+            startDate: occ.startDate, // Local time as entered.
+            endDate: occ.endDate, // Local time as entered.
             startDatePST: occ.startDatePST, // UTC-converted value.
-            endDatePST: occ.endDatePST,     // UTC-converted value.
+            endDatePST: occ.endDatePST, // UTC-converted value.
           },
         })
       )
@@ -72,6 +77,10 @@ export async function getWorkshopById(workshopId: number) {
         occurrences: {
           orderBy: {
             startDate: "asc",
+          },
+          include: {
+            // This includes all UserWorkshop rows for each occurrence
+            userWorkshops: true,
           },
         },
       },
@@ -136,10 +145,15 @@ export async function updateWorkshopWithOccurrences(
     location: string;
     capacity: number;
     type: string;
-    occurrences: { startDate: Date; endDate: Date, startDatePST?: Date, endDatePST?: Date }[];
+    occurrences: {
+      startDate: Date;
+      endDate: Date;
+      startDatePST?: Date;
+      endDatePST?: Date;
+    }[];
   }
 ) {
-  // 1) Update the Workshop table itself
+  // First, update the basic workshop details.
   await db.workshop.update({
     where: { id: workshopId },
     data: {
@@ -152,27 +166,33 @@ export async function updateWorkshopWithOccurrences(
     },
   });
 
-  // 2) Delete existing rows in WorkshopOccurrence for this workshop
-  await db.workshopOccurrence.deleteMany({
-    where: { workshopId },
+  // Optionally delete existing occurrences before re-creating them.
+  await db.workshopOccurrence.deleteMany({ where: { workshopId } });
+
+  // Get the current time for status comparison.
+  const now = new Date();
+
+  // Map each occurrence to include a computed status:
+  const occurrencesData = data.occurrences.map((occ) => {
+    // If the startDate is greater than or equal to now, set status to active; else past.
+    const status = occ.startDate >= now ? "active" : "past";
+    return {
+      workshopId,
+      startDate: occ.startDate,
+      endDate: occ.endDate,
+      startDatePST: occ.startDatePST,
+      endDatePST: occ.endDatePST,
+      status,
+    };
   });
 
-  // 3) Insert new occurrences
-  if (data.occurrences && data.occurrences.length > 0) {
-    const newOccurrences = data.occurrences.map((occ) => ({
-      workshopId: workshopId,
-      startDate: occ.startDate,      // Local time as entered
-      endDate: occ.endDate,          // Local time as entered
-      startDatePST: occ.startDatePST, // UTC-converted value
-      endDatePST: occ.endDatePST,     // UTC-converted value
-    }));
+  // Insert the new occurrences.
+  await db.workshopOccurrence.createMany({
+    data: occurrencesData,
+  });
 
-    await db.workshopOccurrence.createMany({
-      data: newOccurrences,
-    });
-  }
+  return db.workshop.findUnique({ where: { id: workshopId } });
 }
-
 /**
  * Delete a workshop and its occurrences.
  */
@@ -191,7 +211,10 @@ export async function deleteWorkshop(workshopId: number) {
 /**
  * Register a user for a specific workshop occurrence.
  */
-export async function registerForWorkshop(occurrenceId: number, userId: number) {
+export async function registerForWorkshop(
+  occurrenceId: number,
+  userId: number
+) {
   try {
     // Validate occurrence exists
     const occurrence = await db.workshopOccurrence.findUnique({
@@ -211,7 +234,7 @@ export async function registerForWorkshop(occurrenceId: number, userId: number) 
 
     // Check if the user is already registered for this occurrence
     const existingRegistration = await db.userWorkshop.findFirst({
-      where: { userId, occurrenceId }, 
+      where: { userId, occurrenceId },
     });
 
     if (existingRegistration) {
@@ -223,7 +246,7 @@ export async function registerForWorkshop(occurrenceId: number, userId: number) 
       data: {
         userId,
         workshopId: occurrence.workshop.id,
-        occurrenceId, 
+        occurrenceId,
       },
     });
 
@@ -280,7 +303,7 @@ export async function duplicateWorkshop(workshopId: number) {
       // 3. Duplicate all occurrences with new workshopId
       if (originalWorkshop.occurrences.length > 0) {
         await prisma.workshopOccurrence.createMany({
-          data: originalWorkshop.occurrences.map(occ => ({
+          data: originalWorkshop.occurrences.map((occ) => ({
             workshopId: newWorkshop.id,
             startDate: occ.startDate,
             endDate: occ.endDate,
@@ -334,7 +357,12 @@ export async function getWorkshopOccurrence(
 export async function duplicateOccurrence(
   workshopId: number,
   occurrenceId: number, // original occurrence id; you might use it for logging or additional logic if needed
-  data: { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }
+  data: {
+    startDate: Date;
+    endDate: Date;
+    startDatePST?: Date;
+    endDatePST?: Date;
+  }
 ) {
   try {
     const newOccurrence = await db.workshopOccurrence.create({
@@ -343,7 +371,7 @@ export async function duplicateOccurrence(
         startDate: data.startDate,
         endDate: data.endDate,
         startDatePST: data.startDatePST, // if you need to store UTC conversion, compute it before passing
-        endDatePST: data.endDatePST,     // likewise for endDatePST
+        endDatePST: data.endDatePST, // likewise for endDatePST
       },
     });
     return newOccurrence;
@@ -351,4 +379,10 @@ export async function duplicateOccurrence(
     console.error("Error duplicating occurrence:", error);
     throw new Error("Failed to duplicate occurrence");
   }
+}
+
+export async function getRegistrationCountForOccurrence(occurrenceId: number) {
+  return db.userWorkshop.count({
+    where: { occurrenceId },
+  });
 }

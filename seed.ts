@@ -17,6 +17,7 @@ async function main() {
   await prisma.$executeRaw`ALTER SEQUENCE "WorkshopOccurrence_id_seq" RESTART WITH 1`;
 
   const hashedPassword = await bcrypt.hash("password", 10);
+  const now = new Date();
 
   await prisma.roleUser.createMany({
     data: [{ name: "User" }, { name: "Admin" }],
@@ -162,29 +163,41 @@ async function main() {
     ],
   });
 
+  const baseOccurrencesData = [
+    {
+      workshopId: 1, // Laser Cutting
+      startDate: new Date("2025-02-10T10:00:00Z"),
+      endDate: new Date("2025-02-10T12:00:00Z"),
+    },
+    {
+      workshopId: 1, // Laser Cutting again
+      startDate: new Date("2025-03-17T10:00:00Z"),
+      endDate: new Date("2025-03-17T12:00:00Z"),
+    },
+    {
+      workshopId: 2, // Pottery
+      startDate: new Date("2025-06-10T14:00:00Z"),
+      endDate: new Date("2025-06-10T16:00:00Z"),
+    },
+    {
+      workshopId: 3, // Knitting
+      startDate: new Date("2025-08-10T10:00:00Z"),
+      endDate: new Date("2025-08-10T12:00:00Z"),
+    },
+  ];
+
+  // Map over each occurrence to set status based on startDate
+  const workshopOccurrencesData = baseOccurrencesData.map((occ) => {
+    const isFuture = occ.startDate > now;
+    return {
+      ...occ,
+      status: isFuture ? "active" : "past",
+    };
+  });
+
+  // Now insert them into the database
   await prisma.workshopOccurrence.createMany({
-    data: [
-      {
-        workshopId: 1, // Laser Cutting
-        startDate: new Date("2025-02-10T10:00:00Z"),
-        endDate: new Date("2025-02-10T12:00:00Z"),
-      },
-      {
-        workshopId: 1, // Laser Cutting again
-        startDate: new Date("2025-03-17T10:00:00Z"),
-        endDate: new Date("2025-03-17T12:00:00Z"),
-      },
-      {
-        workshopId: 2, // Pottery
-        startDate: new Date("2025-06-10T14:00:00Z"),
-        endDate: new Date("2025-06-10T16:00:00Z"),
-      },
-      {
-        workshopId: 3, // Knitting
-        startDate: new Date("2025-08-10T10:00:00Z"),
-        endDate: new Date("2025-08-10T12:00:00Z"),
-      },
-    ],
+    data: workshopOccurrencesData,
   });
 
   console.log("✅ Database seeded successfully!");
