@@ -412,7 +412,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("custom")}
                         />
                         <label htmlFor="customDate" className="text-sm">
-                          Enter custom dates
+                          Enter dates
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -425,7 +425,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("weekly")}
                         />
                         <label htmlFor="weeklyDate" className="text-sm">
-                          Create weekly schedule
+                          Append/add weekly dates
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -438,7 +438,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("monthly")}
                         />
                         <label htmlFor="monthlyDate" className="text-sm">
-                          Create monthly schedule
+                            Append/add monthly dates
                         </label>
                       </div>
                     </div>
@@ -611,7 +611,7 @@ export default function AddWorkshop() {
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
-                          Generate Weekly Dates
+                          Append/add weekly dates
                         </Button>
                       </div>
                     )}
@@ -721,7 +721,7 @@ export default function AddWorkshop() {
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
-                          Generate Monthly Dates
+                          Append/add monthly dates
                         </Button>
                       </div>
                     )}

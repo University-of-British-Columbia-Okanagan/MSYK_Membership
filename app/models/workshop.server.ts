@@ -107,12 +107,27 @@ export async function getWorkshopById(workshopId: number) {
             userWorkshops: true,
           },
         },
+        prerequisites: {
+          select: {
+            prerequisiteId: true,
+          },
+        },
       },
     });
 
     if (!workshop) {
       throw new Error("Workshop not found");
     }
+
+    // Convert the workshopPrerequisites array into a plain array of IDs
+    const prerequisites = workshop.prerequisites.map(
+      (p) => p.prerequisiteId
+    );
+
+    return {
+      ...workshop,
+      prerequisites, // put them directly on the returned workshop object
+    };
 
     return workshop;
   } catch (error) {
@@ -169,13 +184,14 @@ export async function updateWorkshopWithOccurrences(
     location: string;
     capacity: number;
     type: string;
+    prerequisites?: number[];
     occurrences: {
       id?: number; // optional: if already exists, it will be provided
       startDate: Date;
       endDate: Date;
       startDatePST?: Date;
       endDatePST?: Date;
-      status? : string;
+      status?: string;
     }[];
   }
 ) {
@@ -191,6 +207,22 @@ export async function updateWorkshopWithOccurrences(
       type: data.type,
     },
   });
+
+  // Update prerequisites:
+  // Remove all existing prerequisite relationships.
+  await db.workshopPrerequisite.deleteMany({
+    where: { workshopId },
+  });
+  // If new prerequisites exist, sort them and create new relationships.
+  if (data.prerequisites && data.prerequisites.length > 0) {
+    const sortedPrerequisites = [...data.prerequisites].sort((a, b) => a - b);
+    await db.workshopPrerequisite.createMany({
+      data: sortedPrerequisites.map((prereq) => ({
+        workshopId,
+        prerequisiteId: prereq,
+      })),
+    });
+  }
 
   // Get existing occurrences for this workshop.
   const existingOccurrences = await db.workshopOccurrence.findMany({
@@ -211,11 +243,13 @@ export async function updateWorkshopWithOccurrences(
 
   // Update existing occurrences.
   const occurrencesData = data.occurrences.map((occ) => {
-    // If the occurrence is already cancelled, keep it cancelled.
     const status =
-      occ.status === "cancelled" ? "cancelled" : (occ.startDate >= now ? "active" : "past");
+      occ.status === "cancelled"
+        ? "cancelled"
+        : occ.startDate >= now
+        ? "active"
+        : "past";
     return {
-      // Include any other fields as needed:
       workshopId,
       startDate: occ.startDate,
       endDate: occ.endDate,
