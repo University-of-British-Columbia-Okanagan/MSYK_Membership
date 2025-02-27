@@ -317,21 +317,22 @@ export async function deleteWorkshop(workshopId: number) {
  * Register a user for a specific workshop occurrence.
  */
 export async function registerForWorkshop(
+  workshopId: number,
   occurrenceId: number,
   userId: number
 ) {
   try {
-    // Validate occurrence exists
+    // Validate occurrence exists and belongs to the specified workshop
     const occurrence = await db.workshopOccurrence.findUnique({
       where: { id: occurrenceId },
       include: { workshop: true },
     });
 
-    if (!occurrence) {
-      throw new Error("Workshop occurrence not found");
+    if (!occurrence || occurrence.workshop.id !== workshopId) {
+      throw new Error("Workshop occurrence not found for the specified workshop");
     }
 
-    // Prevent past registrations
+    // Prevent registrations for past occurrences
     const now = new Date();
     if (new Date(occurrence.startDate) < now) {
       throw new Error("Cannot register for past workshops.");
@@ -366,6 +367,7 @@ export async function registerForWorkshop(
     throw error;
   }
 }
+
 
 /**
  * Check if a user is registered for a specific workshop occurrence.

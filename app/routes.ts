@@ -53,4 +53,8 @@ export default [
     "dashboard/paymentprocess",
     "routes/dashboard/paymentprocess.tsx"
   ),
+  route(
+    "dashboard/payment/success",
+    "routes/dashboard/paymentsuccess.tsx"
+  ),
 ] satisfies RouteConfig;
