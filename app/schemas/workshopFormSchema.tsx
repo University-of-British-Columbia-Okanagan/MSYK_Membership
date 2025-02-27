@@ -10,6 +10,12 @@ export const workshopFormSchema = z.object({
   occurrences: z
     .array(
       z.object({
+        // New optional fields:
+        id: z.number().optional(),
+        status: z.string().optional(),
+        userCount: z.number().optional(),
+
+        // Existing fields:
         startDate: z.coerce.date().refine((date) => !isNaN(date.getTime()), {
           message: "Invalid start date format",
         }),

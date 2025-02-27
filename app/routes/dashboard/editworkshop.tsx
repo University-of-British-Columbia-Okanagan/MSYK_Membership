@@ -26,6 +26,16 @@ import {
   updateWorkshopWithOccurrences,
 } from "~/models/workshop.server";
 
+interface Occurrence {
+  id?: number;
+  startDate: Date;
+  endDate: Date;
+  startDatePST?: Date;
+  endDatePST?: Date;
+  status?: string;
+  userCount?: number;
+}
+
 /* ──────────────────────────────────────────────────────────────────────────────
    1) Loader: fetch the Workshop + its WorkshopOccurrences
    ---------------------------------------------------------------------------*/
@@ -59,32 +69,58 @@ export async function action({
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
-  // Convert local occurrences -> UTC (NOT DOING THIS ANYMORE)
+  // Declare occurrences with an explicit type
   let occurrences: {
+    id?: number;
+    status?: string;
+    userCount?: number;
     startDate: Date;
     endDate: Date;
     startDatePST: Date;
     endDatePST: Date;
   }[] = [];
+
   try {
+    // Parse the JSON string from rawValues and process each occurrence
     occurrences = JSON.parse(rawValues.occurrences as string).map(
-      (occ: { startDate: string; endDate: string }) => {
+      (occ: {
+        id?: number;
+        status?: string;
+        userCount?: number;
+        startDate: string;
+        endDate: string;
+        startDatePST?: string;
+        endDatePST?: string;
+      }) => {
+        // If either date is an empty string, throw an error.
+        if (!occ.startDate || !occ.endDate) {
+          throw new Error("Occurrence dates cannot be empty");
+        }
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
+
         if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
           throw new Error("Invalid date format");
         }
-        // Shift local times to UTC
+
+        // Calculate PST (or UTC-shifted) times
         const startOffset = localStart.getTimezoneOffset();
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+
         return {
+          id: occ.id, // preserve if provided
+          status: occ.status, // preserve if provided
+          userCount: occ.userCount, // preserve if provided
           startDate: localStart,
           endDate: localEnd,
-          startDatePST: utcStart,
-          endDatePST: utcEnd,
-        }; // local start and end and utc start and end
+          // If PST dates were sent, parse them; otherwise, use computed UTC values
+          startDatePST: occ.startDatePST
+            ? new Date(occ.startDatePST)
+            : utcStart,
+          endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : utcEnd,
+        };
       }
     );
   } catch (error) {
@@ -156,6 +192,7 @@ export default function EditWorkshop() {
       const localEnd = new Date(occ.endDate);
       // We interpret them in UTC (NOT DOING THIS ANYMORE), so to show local we just use them directly as Date
       return {
+        id: occ.id,
         startDate: localStart,
         endDate: localEnd,
         status: occ.status,
@@ -179,18 +216,8 @@ export default function EditWorkshop() {
 
   // We store occurrences in local state for the UI
   const [occurrences, setOccurrences] =
-    useState<{ startDate: Date; endDate: Date; status?: string, userCount?: number; }[]>(
-      initialOccurrences
-    );
+    useState<Occurrence[]>(initialOccurrences);
 
-  // Split occurrences into active and past
-  // const now = new Date();
-  // const activeOccurrences = occurrences.filter(occ =>
-  //   !isNaN(occ.startDate.getTime()) && occ.startDate > now
-  // );
-  // const pastOccurrences = occurrences.filter(occ =>
-  //   !isNaN(occ.startDate.getTime()) && occ.startDate <= now
-  // );
   const activeOccurrences = occurrences.filter(
     (occ) => occ.status === "active"
   );
@@ -529,6 +556,7 @@ export default function EditWorkshop() {
                               startDate: Date;
                               endDate: Date;
                               status?: string;
+                              userCount?: number;
                             }[] = [];
                             const start = parseDateTimeAsLocal(weeklyStartDate);
                             const end = parseDateTimeAsLocal(weeklyEndDate);
@@ -569,6 +597,7 @@ export default function EditWorkshop() {
                                 newOccurrences.push({
                                   ...occurrence,
                                   status: computedStatus,
+                                  userCount: 0,
                                 });
                               }
                             }
@@ -654,6 +683,7 @@ export default function EditWorkshop() {
                               startDate: Date;
                               endDate: Date;
                               status?: string;
+                              userCount?: number;
                             }[] = [];
                             const start =
                               parseDateTimeAsLocal(monthlyStartDate);
@@ -695,6 +725,7 @@ export default function EditWorkshop() {
                                 newOccurrences.push({
                                   ...occurrence,
                                   status: computedStatus,
+                                  userCount: 0,
                                 });
                               }
                             }
@@ -880,16 +911,20 @@ export default function EditWorkshop() {
             )}
           />
 
-          {/* Hidden input for occurrences */}
           <input
             type="hidden"
             name="occurrences"
             value={JSON.stringify(
-              occurrences.filter(
-                (occ) =>
-                  !isNaN(occ.startDate.getTime()) &&
-                  !isNaN(occ.endDate.getTime())
-              )
+              occurrences.map((occ) => ({
+                // Keep the ID if it exists
+                id: occ.id,
+                startDate: occ.startDate,
+                endDate: occ.endDate,
+                startDatePST: occ.startDatePST,
+                endDatePST: occ.endDatePST,
+                status: occ.status,
+                userCount: occ.userCount,
+              }))
             )}
           />
 
