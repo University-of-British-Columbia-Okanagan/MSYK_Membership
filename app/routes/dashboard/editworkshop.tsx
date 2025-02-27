@@ -149,7 +149,7 @@ export async function action({
   });
 
   if (!parsed.success) {
-    console.log(parsed.error.flatten().fieldErrors );
+    console.log(parsed.error.flatten().fieldErrors);
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
@@ -285,17 +285,30 @@ export default function EditWorkshop() {
   };
 
   // For custom approach, update a row's start or end
-  const updateOccurrence = (
+  function updateOccurrence(
     index: number,
     field: "startDate" | "endDate",
     value: string
-  ) => {
+  ) {
+    const now = new Date();
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
+
+    // Update the chosen field
     updatedOccurrences[index][field] = localDate;
+
+    // If it's not already cancelled, compute a new status based on the start date.
+    if (updatedOccurrences[index].status !== "cancelled") {
+      const start = updatedOccurrences[index].startDate;
+      if (!isNaN(start.getTime())) {
+        // If the start date is in the future or now => "active", else "past".
+        updatedOccurrences[index].status = start >= now ? "active" : "past";
+      }
+    }
+
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
-  };
+  }
 
   // Remove a row
   const removeOccurrence = (index: number) => {
