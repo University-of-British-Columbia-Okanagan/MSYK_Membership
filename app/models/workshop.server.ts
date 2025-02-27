@@ -501,3 +501,40 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     data: { status: "cancelled" },
   });
 }
+
+/**
+ * Get the list of prerequisite workshop IDs that a user has successfully completed
+ */
+export async function getUserCompletedPrerequisites(userId: number, workshopId: number) {
+  if (!userId) return [];
+
+  // First, get all prerequisite IDs for the workshop
+  const workshop = await db.workshop.findUnique({
+    where: { id: workshopId },
+    include: {
+      prerequisites: {
+        select: { prerequisiteId: true }
+      }
+    }
+  });
+
+  if (!workshop || !workshop.prerequisites.length) return [];
+
+  // Get the list of prerequisite IDs
+  const prerequisiteIds = workshop.prerequisites.map(p => p.prerequisiteId);
+
+  // Find all workshop occurrences the user has completed successfully
+  const completedWorkshops = await db.userWorkshop.findMany({
+    where: {
+      userId: userId,
+      workshopId: { in: prerequisiteIds },
+      result: "passed"
+    },
+    select: {
+      workshopId: true
+    }
+  });
+
+  // Return array of completed prerequisite workshop IDs
+  return [...new Set(completedWorkshops.map(cw => cw.workshopId))];
+}
