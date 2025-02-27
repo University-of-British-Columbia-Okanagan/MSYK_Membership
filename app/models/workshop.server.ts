@@ -7,6 +7,7 @@ interface WorkshopData {
   location: string;
   capacity: number;
   type: string;
+  prerequisites?: number[];
   occurrences: {
     startDate: Date;
     endDate: Date;
@@ -33,6 +34,7 @@ export async function getWorkshops() {
  */
 export async function addWorkshop(data: WorkshopData) {
   try {
+    // First create the workshop without prerequisites
     const newWorkshop = await db.workshop.create({
       data: {
         name: data.name,
@@ -43,6 +45,24 @@ export async function addWorkshop(data: WorkshopData) {
         type: data.type,
       },
     });
+
+    // Then create the prerequisite relationships if there are any
+    if (data.prerequisites && data.prerequisites.length > 0) {
+      // Sort prerequisites
+      const sortedPrerequisites = [...data.prerequisites].sort((a, b) => a - b);
+      
+      // Create prerequisites relationships
+      await Promise.all(
+        sortedPrerequisites.map(prerequisiteId => 
+          db.workshopPrerequisite.create({
+            data: {
+              workshopId: newWorkshop.id,
+              prerequisiteId: prerequisiteId,
+            }
+          })
+        )
+      );
+    }
 
     // Get current date to compare with occurrence dates
     const now = new Date();
