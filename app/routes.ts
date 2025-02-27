@@ -51,4 +51,6 @@ export default [
   ),
   route("dashboard/paymentprocess", "routes/dashboard/paymentprocess.tsx"),
   route("dashboard/equipmentbooking", "routes/dashboard/equipmentbooking.tsx"),
+  route("dashboard/equipments", "routes/dashboard/equipments.tsx"),
+  route("dashboard/equipmentdetails", "routes/dashboard/equipmentdetails.tsx")
 ] satisfies RouteConfig;

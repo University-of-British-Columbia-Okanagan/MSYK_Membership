@@ -1,4 +1,20 @@
 import { db } from "../utils/db.server";
+interface EquipmentData {
+  name: string;
+  description: string;
+  availability: boolean;
+}
+console.log(db.equipment);
+
+/**
+ * Fetch equipment details by ID
+ */
+export async function getEquipmentById(equipmentId: number) {
+  return await db.equipment.findUnique({
+    where: { id: equipmentId },
+    include: { bookings: true }, // Include related bookings if needed
+  });
+}
 
 /**
  * Fetch all available equipment
@@ -13,13 +29,15 @@ export async function getAvailableEquipment() {
 /**
  * Check if a booking conflicts with existing bookings
  */
-async function checkBookingConflict(equipmentId: number, startTime: Date, endTime: Date) {
+async function checkBookingConflict(
+  equipmentId: number,
+  startTime: Date,
+  endTime: Date
+) {
   const existingBooking = await db.equipmentBooking.findFirst({
     where: {
       equipmentId,
-      OR: [
-        { startTime: { lte: endTime }, endTime: { gte: startTime } },
-      ],
+      OR: [{ startTime: { lte: endTime }, endTime: { gte: startTime } }],
     },
   });
   return !!existingBooking;
@@ -28,7 +46,12 @@ async function checkBookingConflict(equipmentId: number, startTime: Date, endTim
 /**
  * Book equipment
  */
-export async function bookEquipment(userId: number, equipmentId: number, startTime: string, endTime: string) {
+export async function bookEquipment(
+  userId: number,
+  equipmentId: number,
+  startTime: string,
+  endTime: string
+) {
   const start = new Date(startTime);
   const end = new Date(endTime);
 
@@ -56,7 +79,10 @@ export async function bookEquipment(userId: number, equipmentId: number, startTi
     const { start: allowedStart, end: allowedEnd } = membership.accessHours;
     const bookingHour = start.getHours();
 
-    if (bookingHour < Number(allowedStart) || bookingHour >= Number(allowedEnd)) {
+    if (
+      bookingHour < Number(allowedStart) ||
+      bookingHour >= Number(allowedEnd)
+    ) {
       throw new Error("Booking time is outside your membership hours");
     }
   }

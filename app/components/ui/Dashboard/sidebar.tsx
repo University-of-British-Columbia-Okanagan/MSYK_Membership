@@ -6,7 +6,14 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Link } from "react-router-dom";
-import { Home, Calendar, User, LogOut, ClipboardList, Package } from "lucide-react"; // ✅ Import Equipment Icon
+import {
+  Home,
+  Calendar,
+  User,
+  LogOut,
+  ClipboardList,
+  Package,
+} from "lucide-react"; 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -16,7 +23,7 @@ export function AppSidebar() {
       {/* Sidebar Header with Logo */}
       <SidebarHeader className="flex justify-center p-4">
         <img
-          src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
+          src="/images/Makerspace Horizontal Text Logo Colour-01.avif"
           alt="Makerspace YK"
           className="h-30"
         />
@@ -47,10 +54,10 @@ export function AppSidebar() {
             Events
           </Link>
           <Link
-            to="/equipments"  // ✅ New Equipments Tab
+            to="/dashboard/equipments"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
-            <Package className="w-5 h-5" /> 
+            <Package className="w-5 h-5" />
             Equipments
           </Link>
           <Link
