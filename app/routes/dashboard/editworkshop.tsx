@@ -234,7 +234,8 @@ function getWorkshopPrerequsities(
   availableWorkshops: { id: number; name: string }[],
   selectedPrerequisites: number[],
   handlePrerequisiteSelect: (workshopId: number) => void,
-  removePrerequisite: (workshopId: number) => void
+  removePrerequisite: (workshopId: number) => void,
+  currentWorkshopId: number
 ) {
   const sortedSelected = [...selectedPrerequisites].sort((a, b) => a - b);
   return (
@@ -265,11 +266,16 @@ function getWorkshopPrerequsities(
         </SelectTrigger>
         <SelectContent>
           {availableWorkshops
-            .filter((workshop) => !selectedPrerequisites.includes(workshop.id))
+            // Filter out the current workshop as well as already selected prerequisites.
+            .filter(
+              (w) =>
+                w.id !== currentWorkshopId &&
+                !selectedPrerequisites.includes(w.id)
+            )
             .sort((a, b) => a.id - b.id)
-            .map((workshop) => (
-              <SelectItem key={workshop.id} value={workshop.id.toString()}>
-                {workshop.name}
+            .map((w) => (
+              <SelectItem key={w.id} value={w.id.toString()}>
+                {w.name}
               </SelectItem>
             ))}
         </SelectContent>
@@ -280,6 +286,7 @@ function getWorkshopPrerequsities(
     </div>
   );
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
@@ -1157,7 +1164,8 @@ export default function EditWorkshop() {
                     availableWorkshops,
                     selectedPrerequisites,
                     handlePrerequisiteSelect,
-                    removePrerequisite
+                    removePrerequisite,
+                    workshop.id 
                   )}
                 </FormControl>
                 <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
