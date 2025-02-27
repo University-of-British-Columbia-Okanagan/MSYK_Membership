@@ -6,7 +6,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import { Link } from "react-router-dom";
-import { Home, Calendar, User, LogOut, ClipboardList } from "lucide-react";
+import { Home, Calendar, User, LogOut, ClipboardList, Package } from "lucide-react"; // ✅ Import Equipment Icon
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -47,6 +47,13 @@ export function AppSidebar() {
             Events
           </Link>
           <Link
+            to="/equipments"  // ✅ New Equipments Tab
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <Package className="w-5 h-5" /> 
+            Equipments
+          </Link>
+          <Link
             to="/get-involved"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
@@ -67,4 +74,5 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
 export default AppSidebar;

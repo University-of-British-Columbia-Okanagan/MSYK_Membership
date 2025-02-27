@@ -42,17 +42,7 @@ model User {
   roleLevel Int @default(1)
 
   userWorkshops UserWorkshop[] // Many-to-many relationship with User
-}
-
-model MembershipPlan {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  title       String
-  description String
-  price       Float // Float is used for numeric values like 35.0
-  feature     Json // JSON type for structured data like descriptions
+  equipmentbookings EquipmentBooking[] 
 }
 
 model RoleUser {
@@ -114,4 +104,40 @@ model UserWorkshop {
   occurrence   WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)  
 
   @@unique([userId, occurrenceId]) // Ensure a user cannot register for the same occurrence twice
+}
+model Equipment {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String
+  availability Boolean @default(true) // Whether it's currently available for booking
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bookings EquipmentBooking[] // One-to-many relationship with bookings
+}
+
+model EquipmentBooking {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  equipmentId  Int
+  startTime    DateTime
+  endTime      DateTime
+  status       String   @default("pending") // Can be "pending", "approved", "cancelled"
+  
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment   Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([equipmentId, startTime]) // Ensure one booking per equipment per time slot
+}
+
+model MembershipPlan {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title       String
+  description String
+  price       Float
+  feature     Json
+  accessHours Json // Stores allowed booking hours for limited access members (e.g., {"start": "09:00", "end": "18:00"})
 }
