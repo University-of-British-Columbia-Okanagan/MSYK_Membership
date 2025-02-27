@@ -317,21 +317,22 @@ export async function deleteWorkshop(workshopId: number) {
  * Register a user for a specific workshop occurrence.
  */
 export async function registerForWorkshop(
+  workshopId: number,
   occurrenceId: number,
   userId: number
 ) {
   try {
-    // Validate occurrence exists
+    // Validate occurrence exists and belongs to the specified workshop
     const occurrence = await db.workshopOccurrence.findUnique({
       where: { id: occurrenceId },
       include: { workshop: true },
     });
 
-    if (!occurrence) {
-      throw new Error("Workshop occurrence not found");
+    if (!occurrence || occurrence.workshop.id !== workshopId) {
+      throw new Error("Workshop occurrence not found for the specified workshop");
     }
 
-    // Prevent past registrations
+    // Prevent registrations for past occurrences
     const now = new Date();
     if (new Date(occurrence.startDate) < now) {
       throw new Error("Cannot register for past workshops.");
@@ -367,15 +368,17 @@ export async function registerForWorkshop(
   }
 }
 
+
 /**
  * Check if a user is registered for a specific workshop occurrence.
  */
 export async function checkUserRegistration(
-  occurrenceId: number,
-  userId: number
+  workshopId: number,
+  userId: number,
+  occurrenceId: number
 ) {
   const registration = await db.userWorkshop.findFirst({
-    where: { occurrenceId, userId }, // Check against occurrence, not just workshop
+    where: { workshopId, userId, occurrenceId,}, // Check against occurrence, not just workshop
   });
   return !!registration;
 }
@@ -461,30 +464,47 @@ export async function getWorkshopOccurrence(
  */
 export async function duplicateOccurrence(
   workshopId: number,
-  occurrenceId: number, // original occurrence id; you might use it for logging or additional logic if needed
-  data: {
+  occurrenceId: number,
+  newDates: {
     startDate: Date;
     endDate: Date;
-    startDatePST?: Date;
-    endDatePST?: Date;
+    startDatePST: Date;
+    endDatePST: Date;
   }
 ) {
-  try {
-    const newOccurrence = await db.workshopOccurrence.create({
-      data: {
-        workshopId: workshopId,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        startDatePST: data.startDatePST, // if you need to store UTC conversion, compute it before passing
-        endDatePST: data.endDatePST, // likewise for endDatePST
-      },
-    });
-    return newOccurrence;
-  } catch (error) {
-    console.error("Error duplicating occurrence:", error);
-    throw new Error("Failed to duplicate occurrence");
+  // Fetch the original occurrence for reference
+  const original = await db.workshopOccurrence.findUnique({
+    where: { id: occurrenceId },
+  });
+  if (!original) {
+    throw new Error("Occurrence not found");
   }
+
+  // Calculate new status based on the new startDate
+  const now = new Date();
+  let newStatus: "active" | "past" | "cancelled" = "active";
+  if (newDates.startDate < now) {
+    newStatus = "past";
+  }
+  // (Optionally, you can also add logic to preserve a cancelled flag,
+  //  if you want cancelled occurrences to require special handling.)
+
+  // Create a new occurrence with the new dates and computed status.
+  const newOccurrence = await db.workshopOccurrence.create({
+    data: {
+      workshopId,
+      startDate: newDates.startDate,
+      endDate: newDates.endDate,
+      startDatePST: newDates.startDatePST,
+      endDatePST: newDates.endDatePST,
+      status: newStatus,
+      // Copy additional fields as needed (capacity, etc.)
+    },
+  });
+
+  return newOccurrence;
 }
+
 
 export async function getRegistrationCountForOccurrence(occurrenceId: number) {
   return db.userWorkshop.count({
@@ -497,4 +517,41 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     where: { id: occurrenceId },
     data: { status: "cancelled" },
   });
+}
+
+/**
+ * Get the list of prerequisite workshop IDs that a user has successfully completed
+ */
+export async function getUserCompletedPrerequisites(userId: number, workshopId: number) {
+  if (!userId) return [];
+
+  // First, get all prerequisite IDs for the workshop
+  const workshop = await db.workshop.findUnique({
+    where: { id: workshopId },
+    include: {
+      prerequisites: {
+        select: { prerequisiteId: true }
+      }
+    }
+  });
+
+  if (!workshop || !workshop.prerequisites.length) return [];
+
+  // Get the list of prerequisite IDs
+  const prerequisiteIds = workshop.prerequisites.map(p => p.prerequisiteId);
+
+  // Find all workshop occurrences the user has completed successfully
+  const completedWorkshops = await db.userWorkshop.findMany({
+    where: {
+      userId: userId,
+      workshopId: { in: prerequisiteIds },
+      result: "passed"
+    },
+    select: {
+      workshopId: true
+    }
+  });
+
+  // Return array of completed prerequisite workshop IDs
+  return [...new Set(completedWorkshops.map(cw => cw.workshopId))];
 }
