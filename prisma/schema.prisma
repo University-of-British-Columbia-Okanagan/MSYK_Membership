@@ -61,6 +61,22 @@ model RoleUser {
 
   users User[] // Back-reference for the relation
 }
+// model Workshop {
+//   id          Int      @id @default(autoincrement())
+//   name        String
+//   description String
+//   price       Float
+//   createdAt   DateTime @default(now())
+//   updatedAt   DateTime @updatedAt
+//   location    String
+//   capacity    Int
+//   type      String  // "workshop" or "orientation"
+//   prerequisites Int[] @default([])
+
+//   occurrences WorkshopOccurrence[] // Relationship to occurrences
+//   userWorkshops UserWorkshop[] // Many-to-many relationship with User
+// }
+
 model Workshop {
   id          Int      @id @default(autoincrement())
   name        String
@@ -70,10 +86,30 @@ model Workshop {
   updatedAt   DateTime @updatedAt
   location    String
   capacity    Int
-  type      String  // "workshop" or "orientation"
-
+  type        String  // "workshop" or "orientation"
+  // Remove the prerequisites Int[] field
+  
+  // Add relationships
   occurrences WorkshopOccurrence[] // Relationship to occurrences
   userWorkshops UserWorkshop[] // Many-to-many relationship with User
+  
+  // Add new relationships for prerequisites
+  prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
+  prerequisites   WorkshopPrerequisite[] @relation("WorkshopWithPrerequisite")
+}
+
+// Create the new WorkshopPrerequisite model
+model WorkshopPrerequisite {
+  id                Int      @id @default(autoincrement())
+  workshopId        Int      // The workshop that has prerequisites
+  prerequisiteId    Int      // The workshop that is a prerequisite
+  
+  // Relationships
+  workshop          Workshop @relation("WorkshopWithPrerequisite", fields: [workshopId], references: [id], onDelete: Cascade)
+  prerequisiteWorkshop Workshop @relation("PrerequisiteWorkshop", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+  
+  // Ensure uniqueness - a workshop can only have the same prerequisite once
+  @@unique([workshopId, prerequisiteId])
 }
 
 model WorkshopOccurrence {
@@ -83,6 +119,7 @@ model WorkshopOccurrence {
   endDate     DateTime
   startDatePST DateTime?
   endDatePST   DateTime?
+  status     String  @default("active") // "open", "closed", "cancelled"
 
   workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[] 

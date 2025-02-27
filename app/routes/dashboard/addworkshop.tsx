@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { redirect, useActionData } from "react-router";
+import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -11,75 +12,28 @@ import {
   FormMessage,
   FormField,
 } from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
-import { addWorkshop } from "~/models/workshop.server";
+import { addWorkshop, getWorkshops } from "~/models/workshop.server";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CheckIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 /**
- * Server Action:
- * Convert each occurrence (which are local ISO strings) to UTC before saving.
+ * Loader to fetch available workshops for prerequisites.
  */
-export async function action({ request }: { request: Request }) {
-  const formData = await request.formData();
-  const rawValues = Object.fromEntries(formData.entries());
-
-  const price = parseFloat(rawValues.price as string);
-  const capacity = parseInt(rawValues.capacity as string, 10);
-
-  // Get occurrences from hidden input field (local ISO strings)
-  let occurrences: { startDate: Date; endDate: Date; startDatePST: Date; endDatePST: Date; }[] = [];
-  try {
-    occurrences = JSON.parse(rawValues.occurrences as string).map(
-      (occ: { startDate: string; endDate: string }) => {
-        // Parse the stored local ISO strings as Dates
-        const localStart = new Date(occ.startDate);
-        const localEnd = new Date(occ.endDate);
-        if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
-          throw new Error("Invalid date format");
-        }
-        // Convert local to UTC by subtracting the timezone offset
-        const startOffset = localStart.getTimezoneOffset();
-        const utcStart = new Date(localStart.getTime() - startOffset * 60000);
-        const endOffset = localEnd.getTimezoneOffset();
-        const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
-        return { startDate: localStart, endDate: localEnd, startDatePST: utcStart, endDatePST: utcEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
-      }
-    );
-  } catch (error) {
-    console.error("Error parsing occurrences:", error);
-    return { errors: { occurrences: ["Invalid date format"] } };
-  }
-
-  const parsed = workshopFormSchema.safeParse({
-    ...rawValues,
-    price,
-    capacity,
-    occurrences,
-  });
-
-  if (!parsed.success) {
-    console.log("Validation Errors:", parsed.error.flatten().fieldErrors);
-    return { errors: parsed.error.flatten().fieldErrors };
-  }
-
-  try {
-    await addWorkshop({
-      name: parsed.data.name,
-      description: parsed.data.description,
-      price: parsed.data.price,
-      location: parsed.data.location,
-      capacity: parsed.data.capacity,
-      type: parsed.data.type,
-      occurrences: parsed.data.occurrences, // Includes local and UTC dates
-    });
-  } catch (error) {
-    console.error("Error adding workshop:", error);
-    return { errors: { database: ["Failed to add workshop"] } };
-  }
-
-  return redirect("/dashboard/admin");
+export async function loader() {
+  const workshops = await getWorkshops();
+  return { workshops };
 }
 
 /**
@@ -106,8 +60,104 @@ function formatLocalDatetime(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function formatDisplayDate(date: Date): string {
+  // Format example: Thu, Feb 27, 2025, 01:24 AM
+  return date.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const rawValues = Object.fromEntries(formData.entries());
+
+  const price = parseFloat(rawValues.price as string);
+  const capacity = parseInt(rawValues.capacity as string, 10);
+
+  // Parse prerequisites from JSON string to array of numbers
+  let prerequisites: number[] = [];
+  try {
+    prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
+  } catch (error) {
+    console.error("Error parsing prerequisites:", error);
+    return { errors: { prerequisites: ["Invalid prerequisites format"] } };
+  }
+
+  let occurrences: {
+    startDate: Date;
+    endDate: Date;
+    startDatePST: Date;
+    endDatePST: Date;
+  }[] = [];
+  try {
+    occurrences = JSON.parse(rawValues.occurrences as string).map(
+      (occ: { startDate: string; endDate: string }) => {
+        const localStart = new Date(occ.startDate);
+        const localEnd = new Date(occ.endDate);
+        if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
+          throw new Error("Invalid date format");
+        }
+        const startOffset = localStart.getTimezoneOffset();
+        const utcStart = new Date(localStart.getTime() - startOffset * 60000);
+        const endOffset = localEnd.getTimezoneOffset();
+        const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+        return {
+          startDate: localStart,
+          endDate: localEnd,
+          startDatePST: utcStart,
+          endDatePST: utcEnd,
+        };
+      }
+    );
+  } catch (error) {
+    console.error("Error parsing occurrences:", error);
+    return { errors: { occurrences: ["Invalid date format"] } };
+  }
+
+  const parsed = workshopFormSchema.safeParse({
+    ...rawValues,
+    price,
+    capacity,
+    occurrences,
+    prerequisites,
+  });
+
+  if (!parsed.success) {
+    console.log("Validation Errors:", parsed.error.flatten().fieldErrors);
+    return { errors: parsed.error.flatten().fieldErrors };
+  }
+
+  try {
+    await addWorkshop({
+      name: parsed.data.name,
+      description: parsed.data.description,
+      price: parsed.data.price,
+      location: parsed.data.location,
+      capacity: parsed.data.capacity,
+      type: parsed.data.type,
+      occurrences: parsed.data.occurrences,
+      prerequisites: parsed.data.prerequisites,
+    });
+  } catch (error) {
+    console.error("Error adding workshop:", error);
+    return { errors: { database: ["Failed to add workshop"] } };
+  }
+
+  return redirect("/dashboard/admin");
+}
+
 export default function AddWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const { workshops: availableWorkshops } = useLoaderData() as {
+    workshops: { id: number; name: string }[];
+  };
+
   const form = useForm<WorkshopFormValues>({
     resolver: zodResolver(workshopFormSchema),
     defaultValues: {
@@ -118,6 +168,7 @@ export default function AddWorkshop() {
       capacity: 0,
       type: "workshop",
       occurrences: [],
+      prerequisites: [],
     },
   });
 
@@ -128,6 +179,14 @@ export default function AddWorkshop() {
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
   >("custom");
+
+  // This will track the selected prerequisites
+  const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
+    []
+  );
+  const sortedSelectedPrerequisites = [...selectedPrerequisites].sort(
+    (a, b) => a - b
+  );
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -141,30 +200,69 @@ export default function AddWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  // For custom dates, add an empty occurrence (local)
+  // For custom dates, add an empty occurrence.
   const addOccurrence = () => {
-    setOccurrences((prev) => [
-      ...prev,
-      { startDate: new Date(""), endDate: new Date("") },
-    ]);
-  };
-
-  // When user changes a datetime input for custom dates, parse as local.
-  const updateOccurrence = (
-    index: number,
-    field: "startDate" | "endDate",
-    value: string
-  ) => {
-    const localDate = parseDateTimeAsLocal(value);
-    const updatedOccurrences = [...occurrences];
-    updatedOccurrences[index][field] = localDate;
+    const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
+    const updatedOccurrences = [...occurrences, newOccurrence];
+    // Sort by startDate (if dates are valid)
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
   };
 
-  // Remove an occurrence from the list.
+  // Update an occurrence when its datetime input changes.
+  function updateOccurrence(
+    index: number,
+    field: "startDate" | "endDate",
+    value: string
+  ) {
+    const localDate = parseDateTimeAsLocal(value);
+    const updatedOccurrences = [...occurrences];
+    updatedOccurrences[index][field] = localDate;
+    // Re-sort the list after updating.
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
+    setOccurrences(updatedOccurrences);
+    form.setValue("occurrences", updatedOccurrences);
+  }
+
+  // Remove an occurrence.
   const removeOccurrence = (index: number) => {
-    setOccurrences(occurrences.filter((_, i) => i !== index));
+    const updated = occurrences.filter((_, i) => i !== index);
+    setOccurrences(updated);
+    form.setValue("occurrences", updated);
+  };
+
+  // Check for duplicate dates.
+  const isDuplicateDate = (newDate: Date, existingDates: Date[]): boolean => {
+    return existingDates.some(
+      (existingDate) => existingDate.getTime() === newDate.getTime()
+    );
+  };
+
+  // Add this function to handle prerequisite selection
+  const handlePrerequisiteSelect = (workshopId: number) => {
+    if (selectedPrerequisites.includes(workshopId)) {
+      // Remove if already selected
+      const updated = selectedPrerequisites.filter((id) => id !== workshopId);
+      setSelectedPrerequisites(updated);
+      form.setValue("prerequisites", updated);
+    } else {
+      // Add if not already selected
+      const updated = [...selectedPrerequisites, workshopId];
+      setSelectedPrerequisites(updated);
+      form.setValue("prerequisites", updated);
+    }
+  };
+
+  // Add this function to remove a prerequisite
+  const removePrerequisite = (workshopId: number) => {
+    const updated = selectedPrerequisites.filter((id) => id !== workshopId);
+    setSelectedPrerequisites(updated);
+    form.setValue("prerequisites", updated);
   };
 
   return (
@@ -180,7 +278,7 @@ export default function AddWorkshop() {
 
       <Form {...form}>
         <form method="post">
-          {/* Name */}
+          {/* Workshop Fields */}
           <FormField
             control={form.control}
             name="name"
@@ -202,8 +300,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Description */}
           <FormField
             control={form.control}
             name="description"
@@ -226,8 +322,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Price */}
           <FormField
             control={form.control}
             name="price"
@@ -251,8 +345,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Location */}
           <FormField
             control={form.control}
             name="location"
@@ -274,8 +366,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Capacity */}
           <FormField
             control={form.control}
             name="capacity"
@@ -299,18 +389,18 @@ export default function AddWorkshop() {
             )}
           />
 
-          {/* Occurrences (Date Selection) */}
+          {/* Occurrences (Dates) Section */}
           <FormField
             control={form.control}
             name="occurrences"
             render={() => (
-              <FormItem>
+              <FormItem className="mt-6">
                 <FormLabel htmlFor="occurrences">
                   Workshop Dates <span className="text-red-500">*</span>
                 </FormLabel>
                 <FormControl>
-                  <div className="flex flex-col items-start space-y-4">
-                    {/* Radio Buttons */}
+                  <div className="flex flex-col items-start space-y-4 w-full">
+                    {/* Radio Buttons for selecting date input type */}
                     <div className="flex flex-col items-start gap-4">
                       <div className="flex items-center space-x-2">
                         <input
@@ -319,13 +409,10 @@ export default function AddWorkshop() {
                           name="dateType"
                           value="custom"
                           checked={dateSelectionType === "custom"}
-                          onChange={() => {
-                            setDateSelectionType("custom");
-                            // setOccurrences([]);
-                          }}
+                          onChange={() => setDateSelectionType("custom")}
                         />
                         <label htmlFor="customDate" className="text-sm">
-                          Enter custom dates
+                          Enter dates
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -335,13 +422,10 @@ export default function AddWorkshop() {
                           name="dateType"
                           value="weekly"
                           checked={dateSelectionType === "weekly"}
-                          onChange={() => {
-                            setDateSelectionType("weekly");
-                            // setOccurrences([]);
-                          }}
+                          onChange={() => setDateSelectionType("weekly")}
                         />
                         <label htmlFor="weeklyDate" className="text-sm">
-                          Create weekly schedule
+                          Append/add weekly dates
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -351,18 +435,15 @@ export default function AddWorkshop() {
                           name="dateType"
                           value="monthly"
                           checked={dateSelectionType === "monthly"}
-                          onChange={() => {
-                            setDateSelectionType("monthly");
-                            // setOccurrences([]);
-                          }}
+                          onChange={() => setDateSelectionType("monthly")}
                         />
                         <label htmlFor="monthlyDate" className="text-sm">
-                          Create monthly schedule
+                            Append/add monthly dates
                         </label>
                       </div>
                     </div>
 
-                    {/* Custom Date Inputs */}
+                    {/* Custom Dates Input */}
                     {dateSelectionType === "custom" && (
                       <div className="flex flex-col items-center w-full">
                         {occurrences.map((occ, index) => (
@@ -376,7 +457,6 @@ export default function AddWorkshop() {
                                 isNaN(occ.startDate.getTime())
                                   ? ""
                                   : formatLocalDatetime(occ.startDate)
-                                  // : occ.startDate.toISOString().slice(0,16)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -393,7 +473,6 @@ export default function AddWorkshop() {
                                 isNaN(occ.endDate.getTime())
                                   ? ""
                                   : formatLocalDatetime(occ.endDate)
-                                  // : occ.endDate.toISOString().slice(0,16)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -404,13 +483,7 @@ export default function AddWorkshop() {
                               }
                               className="flex-1"
                             />
-                            <Button
-                              type="button"
-                              onClick={() => removeOccurrence(index)}
-                              className="bg-red-500 text-white px-2 py-1"
-                            >
-                              X
-                            </Button>
+                            {/* You could also add a confirm delete here if desired */}
                           </div>
                         ))}
                         <Button
@@ -423,7 +496,7 @@ export default function AddWorkshop() {
                       </div>
                     )}
 
-                    {/* Weekly Repetition Inputs */}
+                    {/* Weekly Schedule Inputs */}
                     {dateSelectionType === "weekly" && (
                       <div className="flex flex-col items-start w-full space-y-4">
                         <div className="grid grid-cols-2 gap-4 w-full">
@@ -491,7 +564,6 @@ export default function AddWorkshop() {
                               startDate: Date;
                               endDate: Date;
                             }[] = [];
-                            // Parse as local dates
                             const start = parseDateTimeAsLocal(weeklyStartDate);
                             const end = parseDateTimeAsLocal(weeklyEndDate);
                             const baseOccurrence = {
@@ -511,37 +583,42 @@ export default function AddWorkshop() {
                                 baseOccurrence.endDate.getDate() +
                                   weeklyInterval * 7 * i
                               );
-                              newOccurrences.push(occurrence);
+                              // Prevent duplicate dates.
+                              const existingStartDates = occurrences.map(
+                                (o) => o.startDate
+                              );
+                              if (
+                                !isDuplicateDate(
+                                  occurrence.startDate,
+                                  existingStartDates
+                                )
+                              ) {
+                                newOccurrences.push(occurrence);
+                              }
                             }
-                            setOccurrences(newOccurrences);
-                            form.setValue("occurrences", newOccurrences);
+                            const updatedOccurrences = [
+                              ...occurrences,
+                              ...newOccurrences,
+                            ];
+                            updatedOccurrences.sort(
+                              (a, b) =>
+                                a.startDate.getTime() - b.startDate.getTime()
+                            );
+                            setOccurrences(updatedOccurrences);
+                            form.setValue("occurrences", updatedOccurrences);
+                            // After appending, revert back to custom view.
+                            setDateSelectionType("custom");
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
-                          Generate Weekly Dates
+                          Append/add weekly dates
                         </Button>
-                        {occurrences.length > 0 && (
-                          <div className="mt-4 w-full">
-                            <h3 className="font-medium mb-2">
-                              Generated Dates:
-                            </h3>
-                            <div className="space-y-2">
-                              {occurrences.map((occ, index) => (
-                                <div key={index} className="text-sm">
-                                  {formatLocalDatetime(occ.startDate)} -{" "}
-                                  {formatLocalDatetime(occ.endDate)}
-                                  {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
 
-                    {/* Monthly Repetition Inputs */}
+                    {/* Monthly Schedule Inputs */}
                     {dateSelectionType === "monthly" && (
-                      <>
+                      <div className="flex flex-col items-start w-full space-y-4">
                         <div className="grid grid-cols-2 gap-4 w-full">
                           <div className="flex flex-col space-y-2">
                             <FormLabel>First Occurrence Start</FormLabel>
@@ -607,7 +684,6 @@ export default function AddWorkshop() {
                               startDate: Date;
                               endDate: Date;
                             }[] = [];
-                            // Parse as local dates
                             const start =
                               parseDateTimeAsLocal(monthlyStartDate);
                             const end = parseDateTimeAsLocal(monthlyEndDate);
@@ -630,34 +706,139 @@ export default function AddWorkshop() {
                               );
                               newOccurrences.push(occurrence);
                             }
-                            setOccurrences(newOccurrences);
-                            form.setValue("occurrences", newOccurrences);
+                            const updatedOccurrences = [
+                              ...occurrences,
+                              ...newOccurrences,
+                            ];
+                            updatedOccurrences.sort(
+                              (a, b) =>
+                                a.startDate.getTime() - b.startDate.getTime()
+                            );
+                            setOccurrences(updatedOccurrences);
+                            form.setValue("occurrences", updatedOccurrences);
+                            // Revert back to custom view
+                            setDateSelectionType("custom");
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
-                          Generate Monthly Dates
+                          Append/add monthly dates
                         </Button>
-                        {occurrences.length > 0 && (
-                          <div className="mt-4 w-full">
-                            <h3 className="font-medium mb-2">
-                              Generated Dates:
-                            </h3>
-                            <div className="space-y-2">
-                              {occurrences.map((occ, index) => (
-                                <div key={index} className="text-sm">
-                                  {formatLocalDatetime(occ.startDate)} -{" "}
-                                  {formatLocalDatetime(occ.endDate)}
-                                  {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
+                      </div>
+                    )}
+
+                    {/* If we have occurrences, show them in a single tab */}
+                    {occurrences.length > 0 && (
+                      <div className="w-full mt-4">
+                        <h3 className="font-medium mb-4">Dates:</h3>
+                        <Tabs defaultValue="all" className="w-full">
+                          {/* Center the tab trigger */}
+                          <TabsList className="flex justify-center">
+                            <TabsTrigger value="all">
+                              My Workshop Dates
+                            </TabsTrigger>
+                          </TabsList>
+                          <TabsContent
+                            value="all"
+                            className="border rounded-md p-4 mt-2"
+                          >
+                            {occurrences.map((occ, index) => (
+                              <div
+                                key={index}
+                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
+                              >
+                                <div className="text-sm">
+                                  <div className="font-medium">
+                                    {formatDisplayDate(occ.startDate)}
+                                  </div>
+                                  <div className="text-xs text-gray-600">
+                                    to {formatDisplayDate(occ.endDate)}
+                                  </div>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
+                                <ConfirmButton
+                                  confirmTitle="Delete Occurrence"
+                                  confirmDescription="Are you sure you want to delete this occurrence?"
+                                  onConfirm={() => removeOccurrence(index)}
+                                  buttonLabel="X"
+                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                />
+                              </div>
+                            ))}
+                          </TabsContent>
+                        </Tabs>
+                      </div>
                     )}
                   </div>
                 </FormControl>
                 <FormMessage>{actionData?.errors?.occurrences}</FormMessage>
+              </FormItem>
+            )}
+          />
+
+          {/* Prerequisites */}
+          <FormField
+            control={form.control}
+            name="prerequisites"
+            render={({ field }) => (
+              <FormItem className="">
+                <FormLabel>Prerequisites</FormLabel>
+                <FormControl>
+                  <div className="">
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {sortedSelectedPrerequisites.map((prereqId) => {
+                        const workshop = availableWorkshops.find(
+                          (w) => w.id === prereqId
+                        );
+                        return workshop ? (
+                          <Badge
+                            key={prereqId}
+                            variant="secondary"
+                            className="py-1 px-2"
+                          >
+                            {workshop.name}
+                            <button
+                              type="button"
+                              onClick={() => removePrerequisite(prereqId)}
+                              className="ml-2 text-xs"
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        ) : null;
+                      })}
+                    </div>
+                    <Select
+                      onValueChange={(value) =>
+                        handlePrerequisiteSelect(Number(value))
+                      }
+                      value=""
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select prerequisites..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableWorkshops
+                          .filter(
+                            (workshop) =>
+                              !selectedPrerequisites.includes(workshop.id)
+                          )
+                          .sort((a, b) => a.id - b.id)
+                          .map((workshop) => (
+                            <SelectItem
+                              key={workshop.id}
+                              value={workshop.id.toString()}
+                            >
+                              {workshop.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </FormControl>
+                <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
+                <div className="text-xs text-gray-500 mt-1">
+                  Select workshops that must be completed before enrolling in
+                  this one
+                </div>
               </FormItem>
             )}
           />
@@ -668,15 +849,11 @@ export default function AddWorkshop() {
             name="type"
             render={({ field }) => (
               <FormItem>
-                <FormLabel htmlFor="type">
+                <FormLabel>
                   Workshop Type <span className="text-red-500">*</span>
                 </FormLabel>
                 <FormControl>
-                  <select
-                    id="type"
-                    {...field}
-                    className="w-full border rounded-md p-2"
-                  >
+                  <select {...field} className="w-full border rounded-md p-2">
                     <option value="workshop">Workshop</option>
                     <option value="orientation">Orientation</option>
                   </select>
@@ -686,7 +863,7 @@ export default function AddWorkshop() {
             )}
           />
 
-          {/* Hidden Input for Occurrences */}
+          {/* Hidden input for occurrences */}
           <input
             type="hidden"
             name="occurrences"
@@ -697,6 +874,12 @@ export default function AddWorkshop() {
                   !isNaN(occ.endDate.getTime())
               )
             )}
+          />
+          {/* Hidden input for prerequisites */}
+          <input
+            type="hidden"
+            name="prerequisites"
+            value={JSON.stringify(selectedPrerequisites || [])}
           />
 
           {/* Submit Button */}

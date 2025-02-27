@@ -7,9 +7,16 @@ export const workshopFormSchema = z.object({
   location: z.string().min(1, "Location is required"),
   capacity: z.number().int().min(1, "Capacity must be at least 1"),
   type: z.enum(["workshop", "orientation"]),
+  prerequisites: z.array(z.number()).optional(),
   occurrences: z
     .array(
       z.object({
+        // New optional fields:
+        id: z.number().optional(),
+        status: z.string().optional(),
+        userCount: z.number().optional(),
+
+        // Existing fields:
         startDate: z.coerce.date().refine((date) => !isNaN(date.getTime()), {
           message: "Invalid start date format",
         }),
