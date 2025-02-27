@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { redirect, useActionData } from "react-router";
+import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,24 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
-import { addWorkshop } from "~/models/workshop.server";
+import { addWorkshop, getWorkshops } from "~/models/workshop.server";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CheckIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+
+/**
+ * Loader to fetch available workshops for prerequisites.
+ */
+export async function loader() {
+  const workshops = await getWorkshops();
+  return { workshops };
+}
 
 /**
  * Helper: Parse a datetime-local string as a local Date.
@@ -63,6 +80,15 @@ export async function action({ request }: { request: Request }) {
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
+  // Parse prerequisites from JSON string to array of numbers
+  let prerequisites: number[] = [];
+  try {
+    prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
+  } catch (error) {
+    console.error("Error parsing prerequisites:", error);
+    return { errors: { prerequisites: ["Invalid prerequisites format"] } };
+  }
+
   let occurrences: {
     startDate: Date;
     endDate: Date;
@@ -99,6 +125,7 @@ export async function action({ request }: { request: Request }) {
     price,
     capacity,
     occurrences,
+    prerequisites,
   });
 
   if (!parsed.success) {
@@ -115,6 +142,7 @@ export async function action({ request }: { request: Request }) {
       capacity: parsed.data.capacity,
       type: parsed.data.type,
       occurrences: parsed.data.occurrences,
+      prerequisites: parsed.data.prerequisites,
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
@@ -126,6 +154,10 @@ export async function action({ request }: { request: Request }) {
 
 export default function AddWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const { workshops: availableWorkshops } = useLoaderData() as {
+    workshops: { id: number; name: string }[];
+  };
+
   const form = useForm<WorkshopFormValues>({
     resolver: zodResolver(workshopFormSchema),
     defaultValues: {
@@ -136,6 +168,7 @@ export default function AddWorkshop() {
       capacity: 0,
       type: "workshop",
       occurrences: [],
+      prerequisites: [],
     },
   });
 
@@ -146,6 +179,14 @@ export default function AddWorkshop() {
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
   >("custom");
+
+  // This will track the selected prerequisites
+  const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
+    []
+  );
+  const sortedSelectedPrerequisites = [...selectedPrerequisites].sort(
+    (a, b) => a - b
+  );
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -200,6 +241,28 @@ export default function AddWorkshop() {
     return existingDates.some(
       (existingDate) => existingDate.getTime() === newDate.getTime()
     );
+  };
+
+  // Add this function to handle prerequisite selection
+  const handlePrerequisiteSelect = (workshopId: number) => {
+    if (selectedPrerequisites.includes(workshopId)) {
+      // Remove if already selected
+      const updated = selectedPrerequisites.filter((id) => id !== workshopId);
+      setSelectedPrerequisites(updated);
+      form.setValue("prerequisites", updated);
+    } else {
+      // Add if not already selected
+      const updated = [...selectedPrerequisites, workshopId];
+      setSelectedPrerequisites(updated);
+      form.setValue("prerequisites", updated);
+    }
+  };
+
+  // Add this function to remove a prerequisite
+  const removePrerequisite = (workshopId: number) => {
+    const updated = selectedPrerequisites.filter((id) => id !== workshopId);
+    setSelectedPrerequisites(updated);
+    form.setValue("prerequisites", updated);
   };
 
   return (
@@ -349,7 +412,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("custom")}
                         />
                         <label htmlFor="customDate" className="text-sm">
-                          Enter custom dates
+                          Enter dates
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -362,7 +425,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("weekly")}
                         />
                         <label htmlFor="weeklyDate" className="text-sm">
-                          Create weekly schedule
+                          Append/add weekly dates
                         </label>
                       </div>
                       <div className="flex items-center space-x-2">
@@ -375,7 +438,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("monthly")}
                         />
                         <label htmlFor="monthlyDate" className="text-sm">
-                          Create monthly schedule
+                            Append/add monthly dates
                         </label>
                       </div>
                     </div>
@@ -548,7 +611,7 @@ export default function AddWorkshop() {
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
-                          Generate Weekly Dates
+                          Append/add weekly dates
                         </Button>
                       </div>
                     )}
@@ -658,7 +721,7 @@ export default function AddWorkshop() {
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
-                          Generate Monthly Dates
+                          Append/add monthly dates
                         </Button>
                       </div>
                     )}
@@ -711,6 +774,75 @@ export default function AddWorkshop() {
             )}
           />
 
+          {/* Prerequisites */}
+          <FormField
+            control={form.control}
+            name="prerequisites"
+            render={({ field }) => (
+              <FormItem className="">
+                <FormLabel>Prerequisites</FormLabel>
+                <FormControl>
+                  <div className="">
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {sortedSelectedPrerequisites.map((prereqId) => {
+                        const workshop = availableWorkshops.find(
+                          (w) => w.id === prereqId
+                        );
+                        return workshop ? (
+                          <Badge
+                            key={prereqId}
+                            variant="secondary"
+                            className="py-1 px-2"
+                          >
+                            {workshop.name}
+                            <button
+                              type="button"
+                              onClick={() => removePrerequisite(prereqId)}
+                              className="ml-2 text-xs"
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        ) : null;
+                      })}
+                    </div>
+                    <Select
+                      onValueChange={(value) =>
+                        handlePrerequisiteSelect(Number(value))
+                      }
+                      value=""
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select prerequisites..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableWorkshops
+                          .filter(
+                            (workshop) =>
+                              !selectedPrerequisites.includes(workshop.id)
+                          )
+                          .sort((a, b) => a.id - b.id)
+                          .map((workshop) => (
+                            <SelectItem
+                              key={workshop.id}
+                              value={workshop.id.toString()}
+                            >
+                              {workshop.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </FormControl>
+                <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
+                <div className="text-xs text-gray-500 mt-1">
+                  Select workshops that must be completed before enrolling in
+                  this one
+                </div>
+              </FormItem>
+            )}
+          />
+
           {/* Type */}
           <FormField
             control={form.control}
@@ -742,6 +874,12 @@ export default function AddWorkshop() {
                   !isNaN(occ.endDate.getTime())
               )
             )}
+          />
+          {/* Hidden input for prerequisites */}
+          <input
+            type="hidden"
+            name="prerequisites"
+            value={JSON.stringify(selectedPrerequisites || [])}
           />
 
           {/* Submit Button */}

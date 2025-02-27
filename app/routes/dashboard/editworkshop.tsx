@@ -25,8 +25,18 @@ import {
   getWorkshopById,
   updateWorkshopWithOccurrences,
   cancelWorkshopOccurrence,
+  getWorkshops,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { CheckIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Occurrence {
   id?: number;
@@ -43,13 +53,15 @@ interface Occurrence {
    ---------------------------------------------------------------------------*/
 export async function loader({ params }: { params: { workshopId: string } }) {
   const workshop = await getWorkshopById(Number(params.workshopId));
+  const availableWorkshops = await getWorkshops();
 
   if (!workshop) {
     throw new Response("Workshop Not Found", { status: 404 });
   }
 
   return {
-    ...workshop,
+    workshop,
+    availableWorkshops,
   };
 }
 
@@ -82,6 +94,9 @@ export async function action({
   // Convert price & capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
+  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
+    Number
+  );
 
   // Declare occurrences with an explicit type
   let occurrences: {
@@ -147,12 +162,15 @@ export async function action({
     price,
     capacity,
     occurrences,
+    prerequisites,
   });
 
   if (!parsed.success) {
     console.log(parsed.error.flatten().fieldErrors);
     return { errors: parsed.error.flatten().fieldErrors };
   }
+
+  console.log(parsed.data.occurrences);
 
   try {
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
@@ -163,6 +181,7 @@ export async function action({
       capacity: parsed.data.capacity,
       type: parsed.data.type,
       occurrences: parsed.data.occurrences,
+      prerequisites: parsed.data.prerequisites,
     });
   } catch (error) {
     console.error("Error updating workshop:", error);
@@ -211,12 +230,65 @@ function handleCancelOccurrence(occurrenceId?: number) {
   formEl?.submit();
 }
 
+function getWorkshopPrerequsities(
+  availableWorkshops: { id: number; name: string }[],
+  selectedPrerequisites: number[],
+  handlePrerequisiteSelect: (workshopId: number) => void,
+  removePrerequisite: (workshopId: number) => void
+) {
+  const sortedSelected = [...selectedPrerequisites].sort((a, b) => a - b);
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {sortedSelected.map((prereqId) => {
+          const workshop = availableWorkshops.find((w) => w.id === prereqId);
+          return workshop ? (
+            <Badge key={prereqId} variant="secondary" className="py-1 px-2">
+              {workshop.name}
+              <button
+                type="button"
+                onClick={() => removePrerequisite(prereqId)}
+                className="ml-2 text-xs"
+              >
+                ×
+              </button>
+            </Badge>
+          ) : null;
+        })}
+      </div>
+      <Select
+        onValueChange={(value) => handlePrerequisiteSelect(Number(value))}
+        value=""
+      >
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="Select prerequisites..." />
+        </SelectTrigger>
+        <SelectContent>
+          {availableWorkshops
+            .filter((workshop) => !selectedPrerequisites.includes(workshop.id))
+            .sort((a, b) => a.id - b.id)
+            .map((workshop) => (
+              <SelectItem key={workshop.id} value={workshop.id.toString()}>
+                {workshop.name}
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
+      <div className="text-xs text-gray-500 mt-1">
+        Select workshops that must be completed before enrolling in this one
+      </div>
+    </div>
+  );
+}
+
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
    ---------------------------------------------------------------------------*/
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
-  const workshop = useLoaderData<typeof loader>();
+  // const workshop = useLoaderData<typeof loader>();
+  const { workshop, availableWorkshops } =
+    useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
   const initialOccurrences =
@@ -244,6 +316,12 @@ export default function EditWorkshop() {
       capacity: workshop.capacity,
       // type: (workshop.type as "workshop" | "orientation") || "workshop",
       occurrences: initialOccurrences,
+      // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
+      prerequisites:
+        (Array.isArray(workshop.prerequisites) &&
+        typeof workshop.prerequisites[0] === "object"
+          ? workshop.prerequisites.map((p: any) => p.prerequisiteId)
+          : workshop.prerequisites) || [],
     },
   });
 
@@ -257,6 +335,16 @@ export default function EditWorkshop() {
   const pastOccurrences = occurrences.filter((occ) => occ.status === "past");
   const cancelledOccurrences = occurrences.filter(
     (occ) => occ.status === "cancelled"
+  );
+
+  // New state for prerequisites – initialize from the workshop data.
+  // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
+  const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
+    Array.isArray(workshop.prerequisites) &&
+      workshop.prerequisites.length &&
+      typeof workshop.prerequisites[0] === "object"
+      ? workshop.prerequisites.map((p: any) => p.prerequisiteId)
+      : workshop.prerequisites || []
   );
 
   // Let's track the date selection approach (custom, weekly, monthly).
@@ -297,6 +385,18 @@ export default function EditWorkshop() {
     field: "startDate" | "endDate",
     value: string
   ) {
+    const occurrence = occurrences[index];
+
+    // Check if there are registered users
+    if (occurrence.userCount && occurrence.userCount > 0) {
+      const confirmed = window.confirm(
+        "Are you sure about changing the date? Users are registered here."
+      );
+      if (!confirmed) {
+        return; // Exit if the user cancels
+      }
+    }
+
     const now = new Date();
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
@@ -346,6 +446,25 @@ export default function EditWorkshop() {
     return existingDates.some(
       (existingDate) => existingDate.getTime() === newDate.getTime()
     );
+  };
+
+  // Helper functions for prerequisites.
+  const handlePrerequisiteSelect = (workshopId: number) => {
+    let updated: number[];
+    if (selectedPrerequisites.includes(workshopId)) {
+      updated = selectedPrerequisites.filter((id) => id !== workshopId);
+    } else {
+      updated = [...selectedPrerequisites, workshopId];
+    }
+    updated.sort((a, b) => a - b);
+    setSelectedPrerequisites(updated);
+    form.setValue("prerequisites", updated);
+  };
+
+  const removePrerequisite = (workshopId: number) => {
+    const updated = selectedPrerequisites.filter((id) => id !== workshopId);
+    setSelectedPrerequisites(updated);
+    form.setValue("prerequisites", updated);
   };
 
   return (
@@ -1026,6 +1145,26 @@ export default function EditWorkshop() {
             )}
           />
 
+          {/* New Prerequisites Field */}
+          <FormField
+            control={form.control}
+            name="prerequisites"
+            render={() => (
+              <FormItem>
+                <FormLabel>Prerequisites</FormLabel>
+                <FormControl>
+                  {getWorkshopPrerequsities(
+                    availableWorkshops,
+                    selectedPrerequisites,
+                    handlePrerequisiteSelect,
+                    removePrerequisite
+                  )}
+                </FormControl>
+                <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
+              </FormItem>
+            )}
+          />
+
           {/* Type */}
           {/* <FormField
             control={form.control}
@@ -1062,13 +1201,20 @@ export default function EditWorkshop() {
               }))
             )}
           />
+          <input type="hidden" name="type" value={workshop.type} />
           <input
             type="hidden"
             id="cancelOccurrenceId"
             name="cancelOccurrenceId"
             value=""
           />
-          <input type="hidden" name="type" value={workshop.type} />
+          <input
+            type="hidden"
+            name="prerequisites"
+            value={JSON.stringify(
+              [...selectedPrerequisites].sort((a, b) => a - b)
+            )}
+          />
 
           <Button
             type="submit"
