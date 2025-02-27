@@ -6,7 +6,7 @@ export const workshopFormSchema = z.object({
   price: z.number().min(0, "Price must be a positive number"),
   location: z.string().min(1, "Location is required"),
   capacity: z.number().int().min(1, "Capacity must be at least 1"),
-  type: z.enum(["workshop", "orientation"]),
+  // type: z.enum(["workshop", "orientation"]),
   occurrences: z
     .array(
       z.object({

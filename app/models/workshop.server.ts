@@ -144,13 +144,14 @@ export async function updateWorkshopWithOccurrences(
     price: number;
     location: string;
     capacity: number;
-    type: string;
+    // type: string;
     occurrences: {
       id?: number; // optional: if already exists, it will be provided
       startDate: Date;
       endDate: Date;
       startDatePST?: Date;
       endDatePST?: Date;
+      status? : string;
     }[];
   }
 ) {
@@ -163,7 +164,7 @@ export async function updateWorkshopWithOccurrences(
       price: data.price,
       location: data.location,
       capacity: data.capacity,
-      type: data.type,
+      // type: data.type,
     },
   });
 
@@ -185,19 +186,20 @@ export async function updateWorkshopWithOccurrences(
   const now = new Date();
 
   // Update existing occurrences.
-  for (const occ of updateOccurrences) {
-    const status = occ.startDate >= now ? "active" : "past";
-    await db.workshopOccurrence.update({
-      where: { id: occ.id! },
-      data: {
-        startDate: occ.startDate,
-        endDate: occ.endDate,
-        startDatePST: occ.startDatePST,
-        endDatePST: occ.endDatePST,
-        status,
-      },
-    });
-  }
+  const occurrencesData = data.occurrences.map((occ) => {
+    // If the occurrence is already cancelled, keep it cancelled.
+    const status =
+      occ.status === "cancelled" ? "cancelled" : (occ.startDate >= now ? "active" : "past");
+    return {
+      // Include any other fields as needed:
+      workshopId,
+      startDate: occ.startDate,
+      endDate: occ.endDate,
+      startDatePST: occ.startDatePST,
+      endDatePST: occ.endDatePST,
+      status,
+    };
+  });
 
   // Create new occurrences.
   if (createOccurrences.length > 0) {
