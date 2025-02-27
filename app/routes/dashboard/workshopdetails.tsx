@@ -29,6 +29,11 @@ interface Occurrence {
   status: string; // Add status field
 }
 
+interface PrerequisiteWorkshop {
+  id: number;
+  name: string;
+}
+
 export async function loader({
   params,
   request,
@@ -59,11 +64,27 @@ export async function loader({
     });
   }
 
-  return { workshop, user, registrations, roleUser };
+  // Fetch prerequisite workshop names
+  let prerequisiteWorkshops: PrerequisiteWorkshop[] = [];
+  if (workshop.prerequisites && workshop.prerequisites.length > 0) {
+    prerequisiteWorkshops = await Promise.all(
+      workshop.prerequisites.map(async (prereq) => {
+        // Check if prereq is an object or a number
+        const id = typeof prereq === "object" ? prereq.prerequisiteId : prereq;
+        const prereqWorkshop = await getWorkshopById(id);
+        return prereqWorkshop
+          ? { id, name: prereqWorkshop.name }
+          : { id, name: `Workshop #${id}` };
+      })
+    );
+  }
+
+  return { workshop, user, registrations, roleUser, prerequisiteWorkshops };
 }
 
 export default function WorkshopDetails() {
-  const { workshop, user, registrations, roleUser } = useLoaderData();
+  const { workshop, user, registrations, roleUser, prerequisiteWorkshops } =
+    useLoaderData();
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
@@ -132,6 +153,26 @@ export default function WorkshopDetails() {
           </div>
 
           <Separator className="my-6" />
+
+          {/* Updated Prerequisites section */}
+          {prerequisiteWorkshops && prerequisiteWorkshops.length > 0 && (
+            <>
+              <h2 className="text-lg font-semibold">Prerequisites</h2>
+              <ul className="list-disc pl-5 mb-4">
+                {prerequisiteWorkshops.map((prereq: PrerequisiteWorkshop) => (
+                  <li key={prereq.id} className="text-gray-600">
+                    <Link
+                      to={`/dashboard/workshops/${prereq.id}`}
+                      className="text-blue-500 hover:underline"
+                    >
+                      {prereq.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <Separator className="my-6" />
+            </>
+          )}
 
           {/* Display Available Dates Here */}
           <h2 className="text-lg font-semibold">Available Dates</h2>
