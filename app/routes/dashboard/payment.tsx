@@ -75,8 +75,8 @@ export async function action({ request }) {
         },
       ],
       customer_email: user.email,
-      success_url: `http://localhost:5174/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5174/dashboard/workshops`,
+      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `http://localhost:5173/dashboard/workshops`,
       metadata: {
         workshopId: workshopId.toString(),
         occurrenceId: occurrenceId.toString(),
