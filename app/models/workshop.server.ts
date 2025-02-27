@@ -371,11 +371,12 @@ export async function registerForWorkshop(
  * Check if a user is registered for a specific workshop occurrence.
  */
 export async function checkUserRegistration(
-  occurrenceId: number,
-  userId: number
+  workshopId: number,
+  userId: number,
+  occurrenceId: number
 ) {
   const registration = await db.userWorkshop.findFirst({
-    where: { occurrenceId, userId }, // Check against occurrence, not just workshop
+    where: { workshopId, userId, occurrenceId,}, // Check against occurrence, not just workshop
   });
   return !!registration;
 }

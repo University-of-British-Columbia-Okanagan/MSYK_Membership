@@ -1,4 +1,9 @@
-import { useParams, useLoaderData, useFetcher, useNavigate } from "react-router-dom";
+import {
+  useParams,
+  useLoaderData,
+  useFetcher,
+  useNavigate,
+} from "react-router-dom";
 import {
   Card,
   CardHeader,
@@ -10,7 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { getWorkshopById, checkUserRegistration } from "../../models/workshop.server";
+import {
+  getWorkshopById,
+  checkUserRegistration,
+} from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
 
@@ -18,6 +26,7 @@ interface Occurrence {
   id: number;
   startDate: Date;
   endDate: Date;
+  status: string; // Add status field
 }
 
 export async function loader({
@@ -36,20 +45,27 @@ export async function loader({
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
 
-  let isRegistered = false;
+  // Create a mapping of occurrenceId -> registration status.
+  let registrations: { [occurrenceId: number]: boolean } = {};
   if (user) {
-    const registration = await checkUserRegistration(workshopId, user.id);
-    isRegistered = !!registration;
+    // For each occurrence in the workshop, check if the user is registered.
+    const registrationChecks = await Promise.all(
+      workshop.occurrences.map((occurrence) =>
+        checkUserRegistration(workshopId, user.id, occurrence.id)
+      )
+    );
+    workshop.occurrences.forEach((occurrence, index) => {
+      registrations[occurrence.id] = registrationChecks[index];
+    });
   }
 
-  return { workshop, user, isRegistered, roleUser };
+  return { workshop, user, registrations, roleUser };
 }
 
 export default function WorkshopDetails() {
-  const { workshop, user, isRegistered: initialIsRegistered, roleUser } = useLoaderData();
+  const { workshop, user, registrations, roleUser } = useLoaderData();
   const fetcher = useFetcher();
   const navigate = useNavigate();
-  const [isRegistered, setIsRegistered] = useState(initialIsRegistered);
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
   const [popupType, setPopupType] = useState("success");
@@ -61,7 +77,6 @@ export default function WorkshopDetails() {
 
   useEffect(() => {
     if (fetcher.data?.success) {
-      setIsRegistered(true);
       setPopupMessage("🎉 Registration successful!");
       setPopupType("success");
       setShowPopup(true);
@@ -72,7 +87,7 @@ export default function WorkshopDetails() {
       setShowPopup(true);
     }
   }, [fetcher.data]);
-  
+
   const handleRegister = (occurrenceId: number) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
@@ -80,7 +95,7 @@ export default function WorkshopDetails() {
       setShowPopup(true);
       return;
     }
-  
+
     // Navigate to the payment page
     navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
   };
@@ -120,44 +135,44 @@ export default function WorkshopDetails() {
 
           {/* Display Available Dates Here */}
           <h2 className="text-lg font-semibold">Available Dates</h2>
-          {workshop.occurrences.length > 0 ? (
-            <ul>
-              {workshop.occurrences.map((occurrence: Occurrence) => {
-                const startDate = new Date(occurrence.startDate);
-                const isExpired = startDate < new Date();
-                const buttonText = isExpired
-                  ? "Expired"
-                  : isRegistered
-                  ? "Already Registered"
-                  : "Register";
+          {workshop.occurrences.map((occurrence: Occurrence) => {
+            // Check if the user is registered for this specific occurrence
+            const isOccurrenceRegistered =
+              registrations[occurrence.id] || false;
+            const buttonText =
+              occurrence.status === "cancelled"
+                ? "Cancelled"
+                : occurrence.status === "past"
+                ? "Past"
+                : isOccurrenceRegistered
+                ? "Already Registered"
+                : "Register";
 
-                return (
-                  <li key={occurrence.id} className="text-gray-600 mb-2">
-                    📅 {startDate.toLocaleString()} -{" "}
-                    {new Date(occurrence.endDate).toLocaleString()}
-                    <Button
-                      className="ml-2 bg-blue-500 text-white px-2 py-1 rounded mr-2"
-                      onClick={() => handleRegister(occurrence.id)}
-                      disabled={isExpired || isRegistered || fetcher.state === "submitting"}
-                    >
-                      {buttonText}
-                    </Button>
-                    {isExpired && isAdmin && (
-                      <Button
-                        variant="outline"
-                        className="text-green-600 border-green-500 hover:bg-green-50"
-                        onClick={() => handleOfferAgain(occurrence.id)}
-                      >
-                        Offer Again
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="text-gray-500">No available dates.</p>
-          )}
+            return (
+              <li key={occurrence.id} className="text-gray-600 mb-2">
+                📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
+                {new Date(occurrence.endDate).toLocaleString()}
+                <Button
+                  className="ml-2 bg-blue-500 text-white px-2 py-1 rounded mr-2"
+                  onClick={() => handleRegister(occurrence.id)}
+                  disabled={
+                    occurrence.status !== "active" || isOccurrenceRegistered
+                  }
+                >
+                  {buttonText}
+                </Button>
+                {occurrence.status === "past" && isAdmin && (
+                  <Button
+                    variant="outline"
+                    className="text-green-600 border-green-500 hover:bg-green-50"
+                    onClick={() => handleOfferAgain(occurrence.id)}
+                  >
+                    Offer Again
+                  </Button>
+                )}
+              </li>
+            );
+          })}
 
           <Separator className="my-6" />
 
