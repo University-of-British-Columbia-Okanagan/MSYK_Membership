@@ -418,3 +418,10 @@ export async function getRegistrationCountForOccurrence(occurrenceId: number) {
     where: { occurrenceId },
   });
 }
+
+export async function cancelWorkshopOccurrence(occurrenceId: number) {
+  return db.workshopOccurrence.update({
+    where: { id: occurrenceId },
+    data: { status: "cancelled" },
+  });
+}

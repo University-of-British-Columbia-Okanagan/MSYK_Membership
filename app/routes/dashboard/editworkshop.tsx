@@ -24,6 +24,7 @@ import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
 import {
   getWorkshopById,
   updateWorkshopWithOccurrences,
+  cancelWorkshopOccurrence,
 } from "~/models/workshop.server";
 
 interface Occurrence {
@@ -64,6 +65,18 @@ export async function action({
 }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
+
+  // Check if this submission is a cancellation request.
+  if (rawValues.cancelOccurrenceId) {
+    const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
+    try {
+      await cancelWorkshopOccurrence(occurrenceId);
+    } catch (error) {
+      console.error("Error cancelling occurrence:", error);
+      return { errors: { cancel: ["Failed to cancel occurrence"] } };
+    }
+    return redirect("/admindashboardlayout");
+  }
 
   // Convert price & capacity
   const price = parseFloat(rawValues.price as string);
@@ -179,7 +192,25 @@ function formatLocalDatetime(date: Date): string {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
-   4) The EditWorkshop component
+   4) Other functions
+   ---------------------------------------------------------------------------*/
+
+function handleCancelOccurrence(occurrenceId?: number) {
+  if (!occurrenceId) return;
+  // Set the hidden input's value.
+  const cancelInput = document.getElementById(
+    "cancelOccurrenceId"
+  ) as HTMLInputElement;
+  if (cancelInput) {
+    cancelInput.value = occurrenceId.toString();
+  }
+  // Use the native submit() method to trigger the form submission.
+  const formEl = document.querySelector("form") as HTMLFormElement;
+  formEl?.submit();
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   5) The EditWorkshop component
    ---------------------------------------------------------------------------*/
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
@@ -222,6 +253,9 @@ export default function EditWorkshop() {
     (occ) => occ.status === "active"
   );
   const pastOccurrences = occurrences.filter((occ) => occ.status === "past");
+  const cancelledOccurrences = occurrences.filter(
+    (occ) => occ.status === "cancelled"
+  );
 
   // Let's track the date selection approach (custom, weekly, monthly).
   // Default to "custom" if we already have occurrences, but you can tweak if desired.
@@ -751,7 +785,7 @@ export default function EditWorkshop() {
                         <h3 className="font-medium mb-4">Workshop Dates:</h3>
 
                         <Tabs defaultValue="active" className="w-full">
-                          <TabsList className="grid w-full grid-cols-2">
+                          <TabsList className="grid w-full grid-cols-3">
                             <TabsTrigger
                               value="active"
                               className="data-[state=active]:bg-yellow-500 data-[state=active]:text-white"
@@ -763,6 +797,12 @@ export default function EditWorkshop() {
                               className="data-[state=active]:bg-gray-500 data-[state=active]:text-white"
                             >
                               Past ({pastOccurrences.length})
+                            </TabsTrigger>
+                            <TabsTrigger
+                              value="cancelled"
+                              className="data-[state=active]:bg-red-500 data-[state=active]:text-white"
+                            >
+                              Cancelled ({cancelledOccurrences.length})
                             </TabsTrigger>
                           </TabsList>
 
@@ -781,11 +821,8 @@ export default function EditWorkshop() {
                                       o.endDate.getTime() ===
                                         occ.endDate.getTime()
                                   );
-
-                                  // If userCount > 0, show a "Cancel" button; otherwise show an "X"
                                   const hasUsers =
                                     occ.userCount && occ.userCount > 0;
-
                                   return (
                                     <div
                                       key={index}
@@ -799,29 +836,29 @@ export default function EditWorkshop() {
                                           to {formatDateForDisplay(occ.endDate)}
                                         </div>
                                       </div>
-
-                                      <Button
-                                        type="button"
-                                        onClick={() => {
-                                          if (hasUsers) {
-                                            // If you want "cancel" to do something special (e.g. update DB status),
-                                            // you'd call a different function or show a modal. For now, just alert:
-                                            alert(
-                                              "Canceling this occurrence. (Has registered users!)"
-                                            );
-                                          } else {
-                                            // If no users, remove from state
-                                            removeOccurrence(originalIndex);
-                                          }
-                                        }}
-                                        className={`${
-                                          hasUsers
-                                            ? "bg-blue-500 hover:bg-blue-600"
-                                            : "bg-red-500 hover:bg-red-600"
-                                        } text-white h-8 px-3 rounded-full`}
-                                      >
-                                        {hasUsers ? "Cancel" : "X"}
-                                      </Button>
+                                      <div className="flex items-center">
+                                        <span className="mr-2 text-sm font-bold text-gray-800">
+                                          {occ.userCount ?? 0} users registered
+                                        </span>
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            if (hasUsers) {
+                                              // Call the cancel function to set the hidden field and submit.
+                                              handleCancelOccurrence(occ.id);
+                                            } else {
+                                              removeOccurrence(originalIndex);
+                                            }
+                                          }}
+                                          className={`${
+                                            hasUsers
+                                              ? "bg-blue-500 hover:bg-blue-600"
+                                              : "bg-red-500 hover:bg-red-600"
+                                          } text-white h-8 px-3 rounded-full`}
+                                        >
+                                          {hasUsers ? "Cancel" : "X"}
+                                        </Button>
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -840,7 +877,6 @@ export default function EditWorkshop() {
                             {pastOccurrences.length > 0 ? (
                               <div className="space-y-3">
                                 {pastOccurrences.map((occ, index) => {
-                                  // Find the original index in the complete occurrences array
                                   const originalIndex = occurrences.findIndex(
                                     (o) =>
                                       o.startDate.getTime() ===
@@ -848,7 +884,6 @@ export default function EditWorkshop() {
                                       o.endDate.getTime() ===
                                         occ.endDate.getTime()
                                   );
-
                                   return (
                                     <div
                                       key={index}
@@ -862,15 +897,20 @@ export default function EditWorkshop() {
                                           to {formatDateForDisplay(occ.endDate)}
                                         </div>
                                       </div>
-                                      <Button
-                                        type="button"
-                                        onClick={() =>
-                                          removeOccurrence(originalIndex)
-                                        }
-                                        className="bg-red-500 hover:bg-red-600 text-white h-8 w-8 p-0 rounded-full"
-                                      >
-                                        X
-                                      </Button>
+                                      <div className="flex items-center">
+                                        <span className="mr-2 text-sm font-bold text-gray-800">
+                                          {occ.userCount ?? 0} users registered
+                                        </span>
+                                        <Button
+                                          type="button"
+                                          onClick={() =>
+                                            removeOccurrence(originalIndex)
+                                          }
+                                          className="bg-red-500 hover:bg-red-600 text-white h-8 w-8 p-0 rounded-full"
+                                        >
+                                          X
+                                        </Button>
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -878,6 +918,58 @@ export default function EditWorkshop() {
                             ) : (
                               <div className="text-center py-6 text-gray-500">
                                 No past workshop dates
+                              </div>
+                            )}
+                          </TabsContent>
+
+                          <TabsContent
+                            value="cancelled"
+                            className="border rounded-md p-4 mt-2"
+                          >
+                            {cancelledOccurrences.length > 0 ? (
+                              <div className="space-y-3">
+                                {cancelledOccurrences.map((occ, index) => {
+                                  const originalIndex = occurrences.findIndex(
+                                    (o) =>
+                                      o.startDate.getTime() ===
+                                        occ.startDate.getTime() &&
+                                      o.endDate.getTime() ===
+                                        occ.endDate.getTime()
+                                  );
+                                  return (
+                                    <div
+                                      key={index}
+                                      className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md"
+                                    >
+                                      <div className="text-sm">
+                                        <div className="font-medium text-red-700">
+                                          {formatDateForDisplay(occ.startDate)}
+                                        </div>
+                                        <div className="text-xs text-gray-600">
+                                          to {formatDateForDisplay(occ.endDate)}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center">
+                                        <span className="mr-2 text-sm font-bold text-gray-800">
+                                          {occ.userCount ?? 0} users registered
+                                        </span>
+                                        <Button
+                                          type="button"
+                                          onClick={() =>
+                                            removeOccurrence(originalIndex)
+                                          }
+                                          className="bg-red-500 hover:bg-red-600 text-white h-8 w-8 p-0 rounded-full"
+                                        >
+                                          X
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center py-6 text-gray-500">
+                                No cancelled workshop dates
                               </div>
                             )}
                           </TabsContent>
@@ -892,7 +984,7 @@ export default function EditWorkshop() {
           />
 
           {/* Type */}
-          <FormField
+          {/* <FormField
             control={form.control}
             name="type"
             render={({ field }) => (
@@ -909,7 +1001,7 @@ export default function EditWorkshop() {
                 <FormMessage>{actionData?.errors?.type}</FormMessage>
               </FormItem>
             )}
-          />
+          /> */}
 
           <input
             type="hidden"
@@ -926,6 +1018,12 @@ export default function EditWorkshop() {
                 userCount: occ.userCount,
               }))
             )}
+          />
+          <input
+            type="hidden"
+            id="cancelOccurrenceId"
+            name="cancelOccurrenceId"
+            value=""
           />
 
           <Button
