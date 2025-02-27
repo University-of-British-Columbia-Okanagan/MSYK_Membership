@@ -385,6 +385,18 @@ export default function EditWorkshop() {
     field: "startDate" | "endDate",
     value: string
   ) {
+    const occurrence = occurrences[index];
+
+    // Check if there are registered users
+    if (occurrence.userCount && occurrence.userCount > 0) {
+      const confirmed = window.confirm(
+        "Are you sure about changing the date? Users are registered here."
+      );
+      if (!confirmed) {
+        return; // Exit if the user cancels
+      }
+    }
+
     const now = new Date();
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
