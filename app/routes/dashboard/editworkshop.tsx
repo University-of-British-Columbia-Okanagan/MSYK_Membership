@@ -26,6 +26,7 @@ import {
   updateWorkshopWithOccurrences,
   cancelWorkshopOccurrence,
 } from "~/models/workshop.server";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 interface Occurrence {
   id?: number;
@@ -874,24 +875,27 @@ export default function EditWorkshop() {
                                         <span className="mr-2 text-sm font-bold text-gray-800">
                                           {occ.userCount ?? 0} users registered
                                         </span>
-                                        <Button
-                                          type="button"
-                                          onClick={() => {
-                                            if (hasUsers) {
-                                              // Call the cancel function to set the hidden field and submit.
-                                              handleCancelOccurrence(occ.id);
-                                            } else {
-                                              removeOccurrence(originalIndex);
+                                        {hasUsers ? (
+                                          <ConfirmButton
+                                            confirmTitle="Cancel Occurrence"
+                                            confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
+                                            onConfirm={() =>
+                                              handleCancelOccurrence(occ.id)
                                             }
-                                          }}
-                                          className={`${
-                                            hasUsers
-                                              ? "bg-blue-500 hover:bg-blue-600"
-                                              : "bg-red-500 hover:bg-red-600"
-                                          } text-white h-8 px-3 rounded-full`}
-                                        >
-                                          {hasUsers ? "Cancel" : "X"}
-                                        </Button>
+                                            buttonLabel="Cancel"
+                                            buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+                                          />
+                                        ) : (
+                                          <ConfirmButton
+                                            confirmTitle="Delete Occurrence"
+                                            confirmDescription="Are you sure you want to delete this occurrence?"
+                                            onConfirm={() =>
+                                              removeOccurrence(originalIndex)
+                                            }
+                                            buttonLabel="X"
+                                            buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                          />
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -935,15 +939,16 @@ export default function EditWorkshop() {
                                         <span className="mr-2 text-sm font-bold text-gray-800">
                                           {occ.userCount ?? 0} users registered
                                         </span>
-                                        <Button
-                                          type="button"
-                                          onClick={() =>
+
+                                        <ConfirmButton
+                                          confirmTitle="Delete Occurrence"
+                                          confirmDescription="Are you sure you want to delete this occurrence?"
+                                          onConfirm={() =>
                                             removeOccurrence(originalIndex)
                                           }
-                                          className="bg-red-500 hover:bg-red-600 text-white h-8 w-8 p-0 rounded-full"
-                                        >
-                                          X
-                                        </Button>
+                                          buttonLabel="X"
+                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                        />
                                       </div>
                                     </div>
                                   );
@@ -987,15 +992,15 @@ export default function EditWorkshop() {
                                         <span className="mr-2 text-sm font-bold text-gray-800">
                                           {occ.userCount ?? 0} users registered
                                         </span>
-                                        <Button
-                                          type="button"
-                                          onClick={() =>
+                                        <ConfirmButton
+                                          confirmTitle="Delete Occurrence"
+                                          confirmDescription="Are you sure you want to delete this occurrence?"
+                                          onConfirm={() =>
                                             removeOccurrence(originalIndex)
                                           }
-                                          className="bg-red-500 hover:bg-red-600 text-white h-8 w-8 p-0 rounded-full"
-                                        >
-                                          X
-                                        </Button>
+                                          buttonLabel="X"
+                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                        />
                                       </div>
                                     </div>
                                   );
