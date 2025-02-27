@@ -6,16 +6,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
 });
 
-// ✅ Fix JSON Parsing: Handle both JSON & FormData requests
+// Fix JSON Parsing: Handle both JSON & FormData requests
 export async function createCheckoutSession(request: Request) {
   try {
     let body;
     const contentType = request.headers.get("Content-Type");
 
     if (contentType?.includes("application/json")) {
-      body = await request.json(); // ✅ Parse JSON
+      body = await request.json(); 
     } else {
-      const formData = await request.formData(); // ✅ Parse FormData
+      const formData = await request.formData(); 
       body = {
         workshopId: Number(formData.get("workshopId")),
         occurrenceId: Number(formData.get("occurrenceId")),
@@ -24,7 +24,7 @@ export async function createCheckoutSession(request: Request) {
       };
     }
 
-    // ✅ Validate Inputs
+    // Validate Inputs
     const { workshopId, occurrenceId, price, userId } = body;
     if (!workshopId || !occurrenceId || !price || !userId) {
       return new Response(JSON.stringify({ error: "Missing required payment data" }), {
@@ -33,7 +33,7 @@ export async function createCheckoutSession(request: Request) {
       });
     }
 
-    // ✅ Fetch Workshop & Occurrence
+    //  Fetch Workshop & Occurrence
     const workshop = await getWorkshopById(workshopId);
     const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
     if (!workshop || !occurrence) {
@@ -43,7 +43,7 @@ export async function createCheckoutSession(request: Request) {
       });
     }
 
-    // ✅ Create Stripe Checkout Session
+    // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -60,8 +60,8 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `http://localhost:5174/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5174/dashboard/workshops`,
+      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `http://localhost:5173/dashboard/workshops`,
       metadata: {
         workshopId: workshopId.toString(),
         occurrenceId: occurrenceId.toString(),
