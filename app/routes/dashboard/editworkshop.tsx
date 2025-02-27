@@ -170,6 +170,8 @@ export async function action({
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
+  console.log(parsed.data.occurrences);
+
   try {
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
       name: parsed.data.name,
@@ -315,7 +317,11 @@ export default function EditWorkshop() {
       // type: (workshop.type as "workshop" | "orientation") || "workshop",
       occurrences: initialOccurrences,
       // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
-      prerequisites: (Array.isArray(workshop.prerequisites) && typeof workshop.prerequisites[0] === "object" ? workshop.prerequisites.map((p: any) => p.prerequisiteId) : workshop.prerequisites) || []
+      prerequisites:
+        (Array.isArray(workshop.prerequisites) &&
+        typeof workshop.prerequisites[0] === "object"
+          ? workshop.prerequisites.map((p: any) => p.prerequisiteId)
+          : workshop.prerequisites) || [],
     },
   });
 
@@ -333,8 +339,13 @@ export default function EditWorkshop() {
 
   // New state for prerequisites – initialize from the workshop data.
   // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
-  const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(Array.isArray(workshop.prerequisites) && workshop.prerequisites.length && typeof workshop.prerequisites[0] === "object" ? workshop.prerequisites.map((p: any) => p.prerequisiteId) : workshop.prerequisites || []);
-
+  const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
+    Array.isArray(workshop.prerequisites) &&
+      workshop.prerequisites.length &&
+      typeof workshop.prerequisites[0] === "object"
+      ? workshop.prerequisites.map((p: any) => p.prerequisiteId)
+      : workshop.prerequisites || []
+  );
 
   // Let's track the date selection approach (custom, weekly, monthly).
   // Default to "custom" if we already have occurrences, but you can tweak if desired.

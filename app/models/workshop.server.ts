@@ -15,6 +15,28 @@ interface WorkshopData {
     endDatePST?: Date;
   }[];
 }
+
+interface OccurrenceData {
+  id?: number;
+  status?: string;
+  userCount?: number;
+  startDate: Date;
+  endDate: Date;
+  startDatePST?: Date;
+  endDatePST?: Date;
+}
+
+interface UpdateWorkshopData {
+  name: string;
+  description: string;
+  price: number;
+  location: string;
+  capacity: number;
+  type: string;
+  prerequisites?: number[];
+  occurrences: OccurrenceData[];
+}
+
 /**
  * Fetch all workshops with their occurrences sorted by date.
  */
@@ -50,15 +72,15 @@ export async function addWorkshop(data: WorkshopData) {
     if (data.prerequisites && data.prerequisites.length > 0) {
       // Sort prerequisites
       const sortedPrerequisites = [...data.prerequisites].sort((a, b) => a - b);
-      
+
       // Create prerequisites relationships
       await Promise.all(
-        sortedPrerequisites.map(prerequisiteId => 
+        sortedPrerequisites.map((prerequisiteId) =>
           db.workshopPrerequisite.create({
             data: {
               workshopId: newWorkshop.id,
               prerequisiteId: prerequisiteId,
-            }
+            },
           })
         )
       );
@@ -120,9 +142,7 @@ export async function getWorkshopById(workshopId: number) {
     }
 
     // Convert the workshopPrerequisites array into a plain array of IDs
-    const prerequisites = workshop.prerequisites.map(
-      (p) => p.prerequisiteId
-    );
+    const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
 
     return {
       ...workshop,
@@ -177,25 +197,9 @@ export async function updateWorkshop(workshopId: number, data: WorkshopData) {
  */
 export async function updateWorkshopWithOccurrences(
   workshopId: number,
-  data: {
-    name: string;
-    description: string;
-    price: number;
-    location: string;
-    capacity: number;
-    type: string;
-    prerequisites?: number[];
-    occurrences: {
-      id?: number; // optional: if already exists, it will be provided
-      startDate: Date;
-      endDate: Date;
-      startDatePST?: Date;
-      endDatePST?: Date;
-      status?: string;
-    }[];
-  }
+  data: UpdateWorkshopData
 ) {
-  // Update basic workshop details.
+  // 1) Update the basic workshop fields
   await db.workshop.update({
     where: { id: workshopId },
     data: {
@@ -208,80 +212,89 @@ export async function updateWorkshopWithOccurrences(
     },
   });
 
-  // Update prerequisites:
-  // Remove all existing prerequisite relationships.
-  await db.workshopPrerequisite.deleteMany({
-    where: { workshopId },
-  });
-  // If new prerequisites exist, sort them and create new relationships.
-  if (data.prerequisites && data.prerequisites.length > 0) {
-    const sortedPrerequisites = [...data.prerequisites].sort((a, b) => a - b);
-    await db.workshopPrerequisite.createMany({
-      data: sortedPrerequisites.map((prereq) => ({
-        workshopId,
-        prerequisiteId: prereq,
-      })),
-    });
+  // 2) Update prerequisites (if included in data)
+  if (data.prerequisites) {
+    // Delete existing prerequisites
+    await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
+
+    // If new prerequisites exist, insert them
+    if (data.prerequisites.length > 0) {
+      const sortedPrereqs = [...data.prerequisites].sort((a, b) => a - b);
+      await db.workshopPrerequisite.createMany({
+        data: sortedPrereqs.map((prereqId) => ({
+          workshopId,
+          prerequisiteId: prereqId,
+        })),
+      });
+    }
   }
 
-  // Get existing occurrences for this workshop.
+  // 3) Update occurrences
+  // a) Find existing occurrences in DB
   const existingOccurrences = await db.workshopOccurrence.findMany({
     where: { workshopId },
   });
   const existingIds = existingOccurrences.map((occ) => occ.id);
 
-  // Partition incoming occurrences.
-  const updateOccurrences = data.occurrences.filter((occ) => occ.id);
-  const createOccurrences = data.occurrences.filter((occ) => !occ.id);
-
-  // Determine which existing occurrences should be deleted.
-  const updateIds = updateOccurrences.map((occ) => occ.id!);
+  // b) Partition the incoming occurrences into "create" vs. "update"
+  const updateOccurrences = data.occurrences.filter((o) => o.id);
+  const createOccurrences = data.occurrences.filter((o) => !o.id);
+  const updateIds = updateOccurrences.map((o) => o.id!);
   const deleteIds = existingIds.filter((id) => !updateIds.includes(id));
 
-  // Current time for status computation.
-  const now = new Date();
+  // c) Create any new occurrences
+  if (createOccurrences.length > 0) {
+    const now = new Date();
+    await db.workshopOccurrence.createMany({
+      data: createOccurrences.map((occ) => {
+        const status =
+          occ.status === "cancelled"
+            ? "cancelled"
+            : occ.startDate >= now
+            ? "active"
+            : "past";
+        return {
+          workshopId,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status,
+        };
+      }),
+    });
+  }
 
-  // Update existing occurrences.
-  const occurrencesData = data.occurrences.map((occ) => {
+  // d) Update any existing occurrences (this is the crucial step)
+  for (const occ of updateOccurrences) {
+    const now = new Date();
     const status =
       occ.status === "cancelled"
         ? "cancelled"
         : occ.startDate >= now
         ? "active"
         : "past";
-    return {
-      workshopId,
-      startDate: occ.startDate,
-      endDate: occ.endDate,
-      startDatePST: occ.startDatePST,
-      endDatePST: occ.endDatePST,
-      status,
-    };
-  });
 
-  // Create new occurrences.
-  if (createOccurrences.length > 0) {
-    const createData = createOccurrences.map((occ) => {
-      const status = occ.startDate >= now ? "active" : "past";
-      return {
-        workshopId,
+    await db.workshopOccurrence.update({
+      where: { id: occ.id },
+      data: {
         startDate: occ.startDate,
         endDate: occ.endDate,
         startDatePST: occ.startDatePST,
         endDatePST: occ.endDatePST,
         status,
-      };
+      },
     });
-    await db.workshopOccurrence.createMany({ data: createData });
   }
 
-  // Delete occurrences that are no longer present.
+  // e) Delete occurrences no longer in the list
   if (deleteIds.length > 0) {
     await db.workshopOccurrence.deleteMany({
       where: { id: { in: deleteIds } },
     });
   }
 
+  // 4) Return the updated workshop
   return db.workshop.findUnique({ where: { id: workshopId } });
 }
 
