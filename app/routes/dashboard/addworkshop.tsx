@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { redirect, useActionData } from "react-router";
 import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -11,6 +12,7 @@ import {
   FormMessage,
   FormField,
 } from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
@@ -18,9 +20,42 @@ import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
 import { addWorkshop } from "~/models/workshop.server";
 
 /**
- * Server Action:
- * Convert each occurrence (which are local ISO strings) to UTC before saving.
+ * Helper: Parse a datetime-local string as a local Date.
  */
+function parseDateTimeAsLocal(value: string): Date {
+  if (!value) return new Date("");
+  const [datePart, timePart] = value.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+  return new Date(year, month - 1, day, hours, minutes);
+}
+
+/**
+ * Helper: Format a Date as a datetime-local string using local time.
+ */
+function formatLocalDatetime(date: Date): string {
+  if (isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function formatDisplayDate(date: Date): string {
+  // Format example: Thu, Feb 27, 2025, 01:24 AM
+  return date.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
@@ -28,23 +63,30 @@ export async function action({ request }: { request: Request }) {
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
-  // Get occurrences from hidden input field (local ISO strings)
-  let occurrences: { startDate: Date; endDate: Date; startDatePST: Date; endDatePST: Date; }[] = [];
+  let occurrences: {
+    startDate: Date;
+    endDate: Date;
+    startDatePST: Date;
+    endDatePST: Date;
+  }[] = [];
   try {
     occurrences = JSON.parse(rawValues.occurrences as string).map(
       (occ: { startDate: string; endDate: string }) => {
-        // Parse the stored local ISO strings as Dates
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
         if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
           throw new Error("Invalid date format");
         }
-        // Convert local to UTC by subtracting the timezone offset
         const startOffset = localStart.getTimezoneOffset();
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
-        return { startDate: localStart, endDate: localEnd, startDatePST: utcStart, endDatePST: utcEnd }; // EDITED TO SHOW LOCAL START, LOCAL END
+        return {
+          startDate: localStart,
+          endDate: localEnd,
+          startDatePST: utcStart,
+          endDatePST: utcEnd,
+        };
       }
     );
   } catch (error) {
@@ -72,7 +114,7 @@ export async function action({ request }: { request: Request }) {
       location: parsed.data.location,
       capacity: parsed.data.capacity,
       type: parsed.data.type,
-      occurrences: parsed.data.occurrences, // Includes local and UTC dates
+      occurrences: parsed.data.occurrences,
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
@@ -80,30 +122,6 @@ export async function action({ request }: { request: Request }) {
   }
 
   return redirect("/dashboard/admin");
-}
-
-/**
- * Helper: Parse a datetime-local string as a local Date.
- */
-function parseDateTimeAsLocal(value: string): Date {
-  if (!value) return new Date("");
-  const [datePart, timePart] = value.split("T");
-  const [year, month, day] = datePart.split("-").map(Number);
-  const [hours, minutes] = timePart.split(":").map(Number);
-  return new Date(year, month - 1, day, hours, minutes);
-}
-
-/**
- * Helper: Format a Date as a datetime-local string using local time.
- */
-function formatLocalDatetime(date: Date): string {
-  if (isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 export default function AddWorkshop() {
@@ -141,30 +159,47 @@ export default function AddWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  // For custom dates, add an empty occurrence (local)
+  // For custom dates, add an empty occurrence.
   const addOccurrence = () => {
-    setOccurrences((prev) => [
-      ...prev,
-      { startDate: new Date(""), endDate: new Date("") },
-    ]);
-  };
-
-  // When user changes a datetime input for custom dates, parse as local.
-  const updateOccurrence = (
-    index: number,
-    field: "startDate" | "endDate",
-    value: string
-  ) => {
-    const localDate = parseDateTimeAsLocal(value);
-    const updatedOccurrences = [...occurrences];
-    updatedOccurrences[index][field] = localDate;
+    const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
+    const updatedOccurrences = [...occurrences, newOccurrence];
+    // Sort by startDate (if dates are valid)
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
   };
 
-  // Remove an occurrence from the list.
+  // Update an occurrence when its datetime input changes.
+  function updateOccurrence(
+    index: number,
+    field: "startDate" | "endDate",
+    value: string
+  ) {
+    const localDate = parseDateTimeAsLocal(value);
+    const updatedOccurrences = [...occurrences];
+    updatedOccurrences[index][field] = localDate;
+    // Re-sort the list after updating.
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
+    setOccurrences(updatedOccurrences);
+    form.setValue("occurrences", updatedOccurrences);
+  }
+
+  // Remove an occurrence.
   const removeOccurrence = (index: number) => {
-    setOccurrences(occurrences.filter((_, i) => i !== index));
+    const updated = occurrences.filter((_, i) => i !== index);
+    setOccurrences(updated);
+    form.setValue("occurrences", updated);
+  };
+
+  // Check for duplicate dates.
+  const isDuplicateDate = (newDate: Date, existingDates: Date[]): boolean => {
+    return existingDates.some(
+      (existingDate) => existingDate.getTime() === newDate.getTime()
+    );
   };
 
   return (
@@ -180,7 +215,7 @@ export default function AddWorkshop() {
 
       <Form {...form}>
         <form method="post">
-          {/* Name */}
+          {/* Workshop Fields */}
           <FormField
             control={form.control}
             name="name"
@@ -202,8 +237,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Description */}
           <FormField
             control={form.control}
             name="description"
@@ -226,8 +259,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Price */}
           <FormField
             control={form.control}
             name="price"
@@ -251,8 +282,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Location */}
           <FormField
             control={form.control}
             name="location"
@@ -274,8 +303,6 @@ export default function AddWorkshop() {
               </FormItem>
             )}
           />
-
-          {/* Capacity */}
           <FormField
             control={form.control}
             name="capacity"
@@ -299,18 +326,18 @@ export default function AddWorkshop() {
             )}
           />
 
-          {/* Occurrences (Date Selection) */}
+          {/* Occurrences (Dates) Section */}
           <FormField
             control={form.control}
             name="occurrences"
             render={() => (
-              <FormItem>
+              <FormItem className="mt-6">
                 <FormLabel htmlFor="occurrences">
                   Workshop Dates <span className="text-red-500">*</span>
                 </FormLabel>
                 <FormControl>
-                  <div className="flex flex-col items-start space-y-4">
-                    {/* Radio Buttons */}
+                  <div className="flex flex-col items-start space-y-4 w-full">
+                    {/* Radio Buttons for selecting date input type */}
                     <div className="flex flex-col items-start gap-4">
                       <div className="flex items-center space-x-2">
                         <input
@@ -319,10 +346,7 @@ export default function AddWorkshop() {
                           name="dateType"
                           value="custom"
                           checked={dateSelectionType === "custom"}
-                          onChange={() => {
-                            setDateSelectionType("custom");
-                            // setOccurrences([]);
-                          }}
+                          onChange={() => setDateSelectionType("custom")}
                         />
                         <label htmlFor="customDate" className="text-sm">
                           Enter custom dates
@@ -335,10 +359,7 @@ export default function AddWorkshop() {
                           name="dateType"
                           value="weekly"
                           checked={dateSelectionType === "weekly"}
-                          onChange={() => {
-                            setDateSelectionType("weekly");
-                            // setOccurrences([]);
-                          }}
+                          onChange={() => setDateSelectionType("weekly")}
                         />
                         <label htmlFor="weeklyDate" className="text-sm">
                           Create weekly schedule
@@ -351,10 +372,7 @@ export default function AddWorkshop() {
                           name="dateType"
                           value="monthly"
                           checked={dateSelectionType === "monthly"}
-                          onChange={() => {
-                            setDateSelectionType("monthly");
-                            // setOccurrences([]);
-                          }}
+                          onChange={() => setDateSelectionType("monthly")}
                         />
                         <label htmlFor="monthlyDate" className="text-sm">
                           Create monthly schedule
@@ -362,7 +380,7 @@ export default function AddWorkshop() {
                       </div>
                     </div>
 
-                    {/* Custom Date Inputs */}
+                    {/* Custom Dates Input */}
                     {dateSelectionType === "custom" && (
                       <div className="flex flex-col items-center w-full">
                         {occurrences.map((occ, index) => (
@@ -376,7 +394,6 @@ export default function AddWorkshop() {
                                 isNaN(occ.startDate.getTime())
                                   ? ""
                                   : formatLocalDatetime(occ.startDate)
-                                  // : occ.startDate.toISOString().slice(0,16)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -393,7 +410,6 @@ export default function AddWorkshop() {
                                 isNaN(occ.endDate.getTime())
                                   ? ""
                                   : formatLocalDatetime(occ.endDate)
-                                  // : occ.endDate.toISOString().slice(0,16)
                               }
                               onChange={(e) =>
                                 updateOccurrence(
@@ -404,13 +420,7 @@ export default function AddWorkshop() {
                               }
                               className="flex-1"
                             />
-                            <Button
-                              type="button"
-                              onClick={() => removeOccurrence(index)}
-                              className="bg-red-500 text-white px-2 py-1"
-                            >
-                              X
-                            </Button>
+                            {/* You could also add a confirm delete here if desired */}
                           </div>
                         ))}
                         <Button
@@ -423,7 +433,7 @@ export default function AddWorkshop() {
                       </div>
                     )}
 
-                    {/* Weekly Repetition Inputs */}
+                    {/* Weekly Schedule Inputs */}
                     {dateSelectionType === "weekly" && (
                       <div className="flex flex-col items-start w-full space-y-4">
                         <div className="grid grid-cols-2 gap-4 w-full">
@@ -491,7 +501,6 @@ export default function AddWorkshop() {
                               startDate: Date;
                               endDate: Date;
                             }[] = [];
-                            // Parse as local dates
                             const start = parseDateTimeAsLocal(weeklyStartDate);
                             const end = parseDateTimeAsLocal(weeklyEndDate);
                             const baseOccurrence = {
@@ -511,37 +520,42 @@ export default function AddWorkshop() {
                                 baseOccurrence.endDate.getDate() +
                                   weeklyInterval * 7 * i
                               );
-                              newOccurrences.push(occurrence);
+                              // Prevent duplicate dates.
+                              const existingStartDates = occurrences.map(
+                                (o) => o.startDate
+                              );
+                              if (
+                                !isDuplicateDate(
+                                  occurrence.startDate,
+                                  existingStartDates
+                                )
+                              ) {
+                                newOccurrences.push(occurrence);
+                              }
                             }
-                            setOccurrences(newOccurrences);
-                            form.setValue("occurrences", newOccurrences);
+                            const updatedOccurrences = [
+                              ...occurrences,
+                              ...newOccurrences,
+                            ];
+                            updatedOccurrences.sort(
+                              (a, b) =>
+                                a.startDate.getTime() - b.startDate.getTime()
+                            );
+                            setOccurrences(updatedOccurrences);
+                            form.setValue("occurrences", updatedOccurrences);
+                            // After appending, revert back to custom view.
+                            setDateSelectionType("custom");
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
                           Generate Weekly Dates
                         </Button>
-                        {occurrences.length > 0 && (
-                          <div className="mt-4 w-full">
-                            <h3 className="font-medium mb-2">
-                              Generated Dates:
-                            </h3>
-                            <div className="space-y-2">
-                              {occurrences.map((occ, index) => (
-                                <div key={index} className="text-sm">
-                                  {formatLocalDatetime(occ.startDate)} -{" "}
-                                  {formatLocalDatetime(occ.endDate)}
-                                  {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
 
-                    {/* Monthly Repetition Inputs */}
+                    {/* Monthly Schedule Inputs */}
                     {dateSelectionType === "monthly" && (
-                      <>
+                      <div className="flex flex-col items-start w-full space-y-4">
                         <div className="grid grid-cols-2 gap-4 w-full">
                           <div className="flex flex-col space-y-2">
                             <FormLabel>First Occurrence Start</FormLabel>
@@ -607,7 +621,6 @@ export default function AddWorkshop() {
                               startDate: Date;
                               endDate: Date;
                             }[] = [];
-                            // Parse as local dates
                             const start =
                               parseDateTimeAsLocal(monthlyStartDate);
                             const end = parseDateTimeAsLocal(monthlyEndDate);
@@ -630,30 +643,66 @@ export default function AddWorkshop() {
                               );
                               newOccurrences.push(occurrence);
                             }
-                            setOccurrences(newOccurrences);
-                            form.setValue("occurrences", newOccurrences);
+                            const updatedOccurrences = [
+                              ...occurrences,
+                              ...newOccurrences,
+                            ];
+                            updatedOccurrences.sort(
+                              (a, b) =>
+                                a.startDate.getTime() - b.startDate.getTime()
+                            );
+                            setOccurrences(updatedOccurrences);
+                            form.setValue("occurrences", updatedOccurrences);
+                            // Revert back to custom view
+                            setDateSelectionType("custom");
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
                           Generate Monthly Dates
                         </Button>
-                        {occurrences.length > 0 && (
-                          <div className="mt-4 w-full">
-                            <h3 className="font-medium mb-2">
-                              Generated Dates:
-                            </h3>
-                            <div className="space-y-2">
-                              {occurrences.map((occ, index) => (
-                                <div key={index} className="text-sm">
-                                  {formatLocalDatetime(occ.startDate)} -{" "}
-                                  {formatLocalDatetime(occ.endDate)}
-                                  {/* {occ.startDate.toISOString().slice(0,16)} - {occ.endDate.toISOString().slice(0,16)} */}
+                      </div>
+                    )}
+
+                    {/* If we have occurrences, show them in a single tab */}
+                    {occurrences.length > 0 && (
+                      <div className="w-full mt-4">
+                        <h3 className="font-medium mb-4">Dates:</h3>
+                        <Tabs defaultValue="all" className="w-full">
+                          {/* Center the tab trigger */}
+                          <TabsList className="flex justify-center">
+                            <TabsTrigger value="all">
+                              My Workshop Dates
+                            </TabsTrigger>
+                          </TabsList>
+                          <TabsContent
+                            value="all"
+                            className="border rounded-md p-4 mt-2"
+                          >
+                            {occurrences.map((occ, index) => (
+                              <div
+                                key={index}
+                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
+                              >
+                                <div className="text-sm">
+                                  <div className="font-medium">
+                                    {formatDisplayDate(occ.startDate)}
+                                  </div>
+                                  <div className="text-xs text-gray-600">
+                                    to {formatDisplayDate(occ.endDate)}
+                                  </div>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
+                                <ConfirmButton
+                                  confirmTitle="Delete Occurrence"
+                                  confirmDescription="Are you sure you want to delete this occurrence?"
+                                  onConfirm={() => removeOccurrence(index)}
+                                  buttonLabel="X"
+                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                />
+                              </div>
+                            ))}
+                          </TabsContent>
+                        </Tabs>
+                      </div>
                     )}
                   </div>
                 </FormControl>
@@ -668,15 +717,11 @@ export default function AddWorkshop() {
             name="type"
             render={({ field }) => (
               <FormItem>
-                <FormLabel htmlFor="type">
+                <FormLabel>
                   Workshop Type <span className="text-red-500">*</span>
                 </FormLabel>
                 <FormControl>
-                  <select
-                    id="type"
-                    {...field}
-                    className="w-full border rounded-md p-2"
-                  >
+                  <select {...field} className="w-full border rounded-md p-2">
                     <option value="workshop">Workshop</option>
                     <option value="orientation">Orientation</option>
                   </select>
@@ -686,7 +731,7 @@ export default function AddWorkshop() {
             )}
           />
 
-          {/* Hidden Input for Occurrences */}
+          {/* Hidden input for occurrences */}
           <input
             type="hidden"
             name="occurrences"

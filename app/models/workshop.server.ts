@@ -44,6 +44,9 @@ export async function addWorkshop(data: WorkshopData) {
       },
     });
 
+    // Get current date to compare with occurrence dates
+    const now = new Date();
+
     // Insert occurrences separately after the workshop is created
     const occurrences = await Promise.all(
       data.occurrences.map((occ) =>
@@ -54,6 +57,7 @@ export async function addWorkshop(data: WorkshopData) {
             endDate: occ.endDate, // Local time as entered.
             startDatePST: occ.startDatePST, // UTC-converted value.
             endDatePST: occ.endDatePST, // UTC-converted value.
+            status: occ.startDate >= now ? "active" : "past", // Set status based on date
           },
         })
       )
