@@ -67,7 +67,7 @@ export default function EquipmentDetails() {
 
           {/* Book Equipment Button */}
           <Button
-            className="w-full bg-blue-500 text-white"
+            className="w-full bg-yellow-500 text-white"
             onClick={handleBooking}
             disabled={!equipment.availability}
           >

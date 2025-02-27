@@ -49,8 +49,8 @@ export default [
     "dashboard/payment/:workshopId/:occurrenceId",
     "routes/dashboard/payment.tsx"
   ),
-  route("dashboard/paymentprocess", "routes/dashboard/paymentprocess.tsx"),
-  route("dashboard/equipmentbooking", "routes/dashboard/equipmentbooking.tsx"),
-  route("dashboard/equipments", "routes/dashboard/equipments.tsx"),
-  route("dashboard/equipmentdetails", "routes/dashboard/equipmentdetails.tsx")
+  route("/dashboard/paymentprocess", "routes/dashboard/paymentprocess.tsx"),
+  route("/dashboard/equipmentbooking/:id", "routes/dashboard/equipmentbooking.tsx"),
+  route("/dashboard/equipments", "routes/dashboard/equipments.tsx"),
+  route("/dashboard/equipments/:id", "routes/dashboard/equipmentdetails.tsx"),
 ] satisfies RouteConfig;

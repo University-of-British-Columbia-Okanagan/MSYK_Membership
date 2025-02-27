@@ -19,7 +19,7 @@ import {
     return json({ equipment: await getAvailableEquipment() });
   }
   
-  // Handle form submission (Fix: Now returns JSON instead of redirecting)
+  // Handles form submission
   export async function action({ request }) {
     const formData = await request.formData();
     const userId = Number(formData.get("userId"));
@@ -33,17 +33,17 @@ import {
   
     try {
       const booking = await bookEquipment(userId, equipmentId, startTime, endTime);
-      return json({ success: `✅ You have booked the equipment from ${startTime} to ${endTime}.` });
+      return json({ success: `You have booked the equipment from ${startTime} to ${endTime}.` });
     } catch (error) {
       console.error(error);
       return json({ errors: { message: error.message } }, { status: 400 });
     }
   }
   
-  // 📌 Equipment Booking Form
+  // Equipment Booking Form
   export default function EquipmentBookingForm() {
     const { equipment } = useLoaderData();
-    const actionData = useActionData(); // ✅ Captures success/error messages
+    const actionData = useActionData(); 
     const navigation = useNavigation();
   
     const formMethods = useForm({
@@ -55,21 +55,21 @@ import {
       },
     });
   
-    // ✅ State to track if booking was successful
+ 
     const [bookingConfirmed, setBookingConfirmed] = useState(false);
   
     return (
       <div className="max-w-lg mx-auto p-6">
         <h1 className="text-2xl font-bold mb-6 text-center">Book Equipment</h1>
   
-        {/* ✅ Show success message */}
+     
         {actionData?.success && (
           <div className="mb-4 text-green-600 bg-green-100 p-3 rounded border border-green-400">
             {actionData.success}
           </div>
         )}
   
-        {/* ✅ Show error message */}
+    
         {actionData?.errors && (
           <div className="mb-4 text-red-500 bg-red-100 p-3 rounded border border-red-400">
             {actionData.errors.message}
@@ -136,7 +136,7 @@ import {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="mt-4 w-full bg-blue-500 text-white py-2 rounded-md"
+                className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md"
                 disabled={navigation.state === "submitting"}
               >
                 {navigation.state === "submitting" ? "Booking..." : "Book Equipment"}
@@ -145,7 +145,7 @@ import {
           </Form>
         </FormProvider>
   
-        {/* ✅ Show confirmation without redirecting */}
+
         {bookingConfirmed && actionData?.success && (
           <p className="mt-4 text-green-600 text-center font-bold">
             {actionData.success}

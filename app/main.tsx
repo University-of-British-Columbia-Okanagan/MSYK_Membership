@@ -30,6 +30,7 @@ import Events from "./routes/dashboard/events";
 import Membership from "./routes/dashboard/memberships";
 import WorkshopDetails from "./routes/dashboard/workshopdetails";
 import Payment from "./routes/dashboard/payment";
+import EquipmentDetails from "./routes/dashboard/equipmentdetails";
 
 const App = () => (
   <Router>
@@ -68,6 +69,7 @@ const App = () => (
         <Route path="workshopdetails" element={<WorkshopDetails />} />
         <Route path="payment" element={<Payment />} />
         <Route path = "equipmentbooking" element = {<EquipmentBookingForm />} />
+        <Route path = "equipmentdetails" element = {<EquipmentDetails />} />
        
       </Route>
     </Routes>
