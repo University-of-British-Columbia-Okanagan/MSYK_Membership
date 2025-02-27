@@ -144,7 +144,7 @@ export async function updateWorkshopWithOccurrences(
     price: number;
     location: string;
     capacity: number;
-    // type: string;
+    type: string;
     occurrences: {
       id?: number; // optional: if already exists, it will be provided
       startDate: Date;
@@ -164,7 +164,7 @@ export async function updateWorkshopWithOccurrences(
       price: data.price,
       location: data.location,
       capacity: data.capacity,
-      // type: data.type,
+      type: data.type,
     },
   });
 

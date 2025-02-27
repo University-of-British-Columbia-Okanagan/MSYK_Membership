@@ -160,7 +160,7 @@ export async function action({
       price: parsed.data.price,
       location: parsed.data.location,
       capacity: parsed.data.capacity,
-      // type: parsed.data.type,
+      type: parsed.data.type,
       occurrences: parsed.data.occurrences,
     });
   } catch (error) {
@@ -1059,6 +1059,7 @@ export default function EditWorkshop() {
             name="cancelOccurrenceId"
             value=""
           />
+          <input type="hidden" name="type" value={workshop.type} />
 
           <Button
             type="submit"
