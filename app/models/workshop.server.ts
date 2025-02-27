@@ -464,30 +464,47 @@ export async function getWorkshopOccurrence(
  */
 export async function duplicateOccurrence(
   workshopId: number,
-  occurrenceId: number, // original occurrence id; you might use it for logging or additional logic if needed
-  data: {
+  occurrenceId: number,
+  newDates: {
     startDate: Date;
     endDate: Date;
-    startDatePST?: Date;
-    endDatePST?: Date;
+    startDatePST: Date;
+    endDatePST: Date;
   }
 ) {
-  try {
-    const newOccurrence = await db.workshopOccurrence.create({
-      data: {
-        workshopId: workshopId,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        startDatePST: data.startDatePST, // if you need to store UTC conversion, compute it before passing
-        endDatePST: data.endDatePST, // likewise for endDatePST
-      },
-    });
-    return newOccurrence;
-  } catch (error) {
-    console.error("Error duplicating occurrence:", error);
-    throw new Error("Failed to duplicate occurrence");
+  // Fetch the original occurrence for reference
+  const original = await db.workshopOccurrence.findUnique({
+    where: { id: occurrenceId },
+  });
+  if (!original) {
+    throw new Error("Occurrence not found");
   }
+
+  // Calculate new status based on the new startDate
+  const now = new Date();
+  let newStatus: "active" | "past" | "cancelled" = "active";
+  if (newDates.startDate < now) {
+    newStatus = "past";
+  }
+  // (Optionally, you can also add logic to preserve a cancelled flag,
+  //  if you want cancelled occurrences to require special handling.)
+
+  // Create a new occurrence with the new dates and computed status.
+  const newOccurrence = await db.workshopOccurrence.create({
+    data: {
+      workshopId,
+      startDate: newDates.startDate,
+      endDate: newDates.endDate,
+      startDatePST: newDates.startDatePST,
+      endDatePST: newDates.endDatePST,
+      status: newStatus,
+      // Copy additional fields as needed (capacity, etc.)
+    },
+  });
+
+  return newOccurrence;
 }
+
 
 export async function getRegistrationCountForOccurrence(occurrenceId: number) {
   return db.userWorkshop.count({
