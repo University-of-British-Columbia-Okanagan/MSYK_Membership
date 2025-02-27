@@ -67,7 +67,7 @@ export async function action({ params, request }: { params: { id: string }, requ
     }
 
     // Check if the user is already registered for this occurrence
-    const existingRegistration = await checkUserRegistration(occurrenceId, user.id);
+    const existingRegistration = await checkUserRegistration(workshopId, occurrenceId, user.id);
 
     if (existingRegistration) {
       return new Response(
@@ -77,7 +77,7 @@ export async function action({ params, request }: { params: { id: string }, requ
     }
 
     // Register the user for the selected occurrence
-    const registration = await registerForWorkshop(occurrenceId, user.id);
+    const registration = await registerForWorkshop(workshopId, occurrenceId, user.id);
 
     // Send confirmation email to the user with the occurrence details
     await sendConfirmationEmail(user.email, registration.workshopName, registration.startDate, registration.endDate);
