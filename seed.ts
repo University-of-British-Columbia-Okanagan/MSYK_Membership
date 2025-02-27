@@ -9,12 +9,14 @@ async function main() {
   await prisma.roleUser.deleteMany();
   await prisma.workshop.deleteMany();
   await prisma.workshopOccurrence.deleteMany();
+  await prisma.equipment.deleteMany();
 
   await prisma.$executeRaw`ALTER SEQUENCE "User_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "MembershipPlan_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "RoleUser_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "Workshop_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "WorkshopOccurrence_id_seq" RESTART WITH 1`;
+  await prisma.$executeRaw`ALTER SEQUENCE "Equipment_id_seq" RESTART WITH 1`;
 
   const hashedPassword = await bcrypt.hash("password", 10);
   const now = new Date();
@@ -99,6 +101,10 @@ async function main() {
           Feature3: "Social media promotion for your startup or initiative",
           Feature4: "5% discount on all MSYK workshops",
         },
+        accessHours: {
+          start: "09:00", // Example: 9 AM start
+          end: "18:00", // Example: 6 PM end
+        },
       },
       {
         title: "Makerspace Member",
@@ -119,6 +125,10 @@ async function main() {
           Feature9: "60 minutes of laser/CNC cut time per month ($1/min after)",
           Feature10: "Additional Hackspace and Shop orientations required",
         },
+        accessHours: {
+          start: "00:00", // 24/7 Access
+          end: "23:59",
+        },
       },
       {
         title: "Drop-In 10 Pass",
@@ -131,9 +141,14 @@ async function main() {
           Feature2: "**Shop Orientation required for Wood Shop",
           Feature3: "**Training may be required for Hackspace equipment",
         },
+        accessHours: {
+          start: "10:00", // Example: 10 AM start
+          end: "16:00", // Example: 4 PM end
+        },
       },
     ],
   });
+
   await prisma.workshop.createMany({
     data: [
       {
@@ -199,8 +214,40 @@ async function main() {
   await prisma.workshopOccurrence.createMany({
     data: workshopOccurrencesData,
   });
+  await prisma.equipment.createMany({
+    data: [
+      {
+        name: "3D Printer",
+        description: "High-quality 3D printing machine for rapid prototyping.",
+        availability: true,
+      },
+      {
+        name: "Laser Cutter",
+        description:
+          "Precision cutting tool for wood, plastic, and metal sheets.",
+        availability: true,
+      },
+      {
+        name: "CNC Milling Machine",
+        description: "Computer-controlled milling machine for detailed cuts.",
+        availability: true,
+      },
+      {
+        name: "Soldering Station",
+        description:
+          "Professional soldering toolset for circuit board assembly.",
+        availability: true,
+      },
+      {
+        name: "Vinyl Cutter",
+        description:
+          "Machine for cutting adhesive vinyl for signs and stickers.",
+        availability: true,
+      },
+    ],
+  });
 
-  console.log("✅ Database seeded successfully!");
+  console.log("Database seeded successfully!");
 }
 
 main()

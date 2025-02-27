@@ -43,7 +43,7 @@ export async function action({ params, request }: { params: { id: string }, requ
   // Fetch form data
   const formData = await request.formData();
   const userId = parseInt(formData.get("userId") as string);
-  const occurrenceId = parseInt(formData.get("occurrenceId") as string); // 🛠 Get the selected occurrence
+  const occurrenceId = parseInt(formData.get("occurrenceId") as string); 
 
   console.log("🛠 Workshop ID:", workshopId);
   console.log("🛠 Occurrence ID:", occurrenceId);
