@@ -278,10 +278,16 @@ export default function EditWorkshop() {
 
   // For custom approach, add an empty row
   const addOccurrence = () => {
-    setOccurrences((prev) => [
-      ...prev,
-      { startDate: new Date(""), endDate: new Date("") },
-    ]);
+    const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
+    const updatedOccurrences = [...occurrences, newOccurrence];
+
+    // Sort by startDate
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
+
+    setOccurrences(updatedOccurrences);
+    form.setValue("occurrences", updatedOccurrences);
   };
 
   // For custom approach, update a row's start or end
@@ -301,10 +307,14 @@ export default function EditWorkshop() {
     if (updatedOccurrences[index].status !== "cancelled") {
       const start = updatedOccurrences[index].startDate;
       if (!isNaN(start.getTime())) {
-        // If the start date is in the future or now => "active", else "past".
         updatedOccurrences[index].status = start >= now ? "active" : "past";
       }
     }
+
+    // **Now sort** by startDate
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
 
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
@@ -655,6 +665,11 @@ export default function EditWorkshop() {
                               ...occurrences,
                               ...newOccurrences,
                             ];
+
+                            updatedOccurrences.sort(
+                              (a, b) =>
+                                a.startDate.getTime() - b.startDate.getTime()
+                            );
                             setOccurrences(updatedOccurrences);
                             form.setValue("occurrences", updatedOccurrences);
                           }}
@@ -783,6 +798,11 @@ export default function EditWorkshop() {
                               ...occurrences,
                               ...newOccurrences,
                             ];
+
+                            updatedOccurrences.sort(
+                              (a, b) =>
+                                a.startDate.getTime() - b.startDate.getTime()
+                            );
                             setOccurrences(updatedOccurrences);
                             form.setValue("occurrences", updatedOccurrences);
                           }}
