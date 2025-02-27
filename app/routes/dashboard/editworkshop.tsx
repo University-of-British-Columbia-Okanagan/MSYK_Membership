@@ -673,6 +673,8 @@ export default function EditWorkshop() {
                             );
                             setOccurrences(updatedOccurrences);
                             form.setValue("occurrences", updatedOccurrences);
+
+                            setDateSelectionType("custom");
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
@@ -806,6 +808,8 @@ export default function EditWorkshop() {
                             );
                             setOccurrences(updatedOccurrences);
                             form.setValue("occurrences", updatedOccurrences);
+
+                            setDateSelectionType("custom");
                           }}
                           className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                         >
