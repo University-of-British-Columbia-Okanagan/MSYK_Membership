@@ -13,7 +13,8 @@ import {
   LogOut,
   ClipboardList,
   Package,
-} from "lucide-react"; 
+  BookOpen,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -40,11 +41,18 @@ export function AppSidebar() {
             Profile
           </Link>
           <Link
-            to="/workshops"
+            to="/dashboard/myworkshops"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <BookOpen className="w-5 h-5" />
+            My Workshops
+          </Link>
+          <Link
+            to="/dashboard/workshops"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <ClipboardList className="w-5 h-5" />
-            Workshops
+            All Workshops
           </Link>
           <Link
             to="/dashboard/events"

@@ -1,4 +1,5 @@
 import { db } from "../utils/db.server";
+import { getUser } from "~/utils/session.server";
 
 interface WorkshopData {
   name: string;
@@ -42,15 +43,26 @@ interface UpdateWorkshopData {
  */
 export async function getWorkshops() {
   const workshops = await db.workshop.findMany({
-    orderBy: { id: "asc" },
     include: {
       occurrences: {
         orderBy: { startDate: "asc" },
       },
     },
   });
-  return workshops;
+
+  return workshops.map((workshop) => {
+    // Get the latest status from the most recent occurrence
+    const latestStatus = workshop.occurrences.length > 0
+      ? workshop.occurrences[workshop.occurrences.length - 1].status
+      : "expired"; // Default to expired if no occurrences exist
+
+    return {
+      ...workshop,
+      status: latestStatus, 
+    };
+  });
 }
+
 /**
  * Add a new workshop along with its occurrences.
  */
@@ -329,7 +341,9 @@ export async function registerForWorkshop(
     });
 
     if (!occurrence || occurrence.workshop.id !== workshopId) {
-      throw new Error("Workshop occurrence not found for the specified workshop");
+      throw new Error(
+        "Workshop occurrence not found for the specified workshop"
+      );
     }
 
     // Prevent registrations for past occurrences
@@ -368,7 +382,6 @@ export async function registerForWorkshop(
   }
 }
 
-
 /**
  * Check if a user is registered for a specific workshop occurrence.
  */
@@ -378,7 +391,7 @@ export async function checkUserRegistration(
   occurrenceId: number
 ) {
   const registration = await db.userWorkshop.findFirst({
-    where: { workshopId, userId, occurrenceId,}, // Check against occurrence, not just workshop
+    where: { workshopId, userId, occurrenceId }, // Check against occurrence, not just workshop
   });
   return !!registration;
 }
@@ -505,7 +518,6 @@ export async function duplicateOccurrence(
   return newOccurrence;
 }
 
-
 export async function getRegistrationCountForOccurrence(occurrenceId: number) {
   return db.userWorkshop.count({
     where: { occurrenceId },
@@ -522,7 +534,10 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
 /**
  * Get the list of prerequisite workshop IDs that a user has successfully completed
  */
-export async function getUserCompletedPrerequisites(userId: number, workshopId: number) {
+export async function getUserCompletedPrerequisites(
+  userId: number,
+  workshopId: number
+) {
   if (!userId) return [];
 
   // First, get all prerequisite IDs for the workshop
@@ -530,28 +545,44 @@ export async function getUserCompletedPrerequisites(userId: number, workshopId: 
     where: { id: workshopId },
     include: {
       prerequisites: {
-        select: { prerequisiteId: true }
-      }
-    }
+        select: { prerequisiteId: true },
+      },
+    },
   });
 
   if (!workshop || !workshop.prerequisites.length) return [];
 
   // Get the list of prerequisite IDs
-  const prerequisiteIds = workshop.prerequisites.map(p => p.prerequisiteId);
+  const prerequisiteIds = workshop.prerequisites.map((p) => p.prerequisiteId);
 
   // Find all workshop occurrences the user has completed successfully
   const completedWorkshops = await db.userWorkshop.findMany({
     where: {
       userId: userId,
       workshopId: { in: prerequisiteIds },
-      result: "passed"
+      result: "passed",
     },
     select: {
-      workshopId: true
-    }
+      workshopId: true,
+    },
   });
 
   // Return array of completed prerequisite workshop IDs
-  return [...new Set(completedWorkshops.map(cw => cw.workshopId))];
+  return [...new Set(completedWorkshops.map((cw) => cw.workshopId))];
+}
+export async function getUserWorkshops(request: Request) {
+  // Get the logged-in user
+  const user = await getUser(request);
+
+  if (!user) {
+    throw new Response("Not authenticated", { status: 401 });
+  }
+
+  // Fetch workshops the user is registered for
+  const userWorkshops = await db.userWorkshop.findMany({
+    where: { userId: user.id },
+    include: { workshop: true },
+  });
+
+  return userWorkshops.map((entry) => entry.workshop);
 }
