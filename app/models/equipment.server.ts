@@ -3,6 +3,7 @@ interface EquipmentData {
   name: string;
   description: string;
   availability: boolean;
+  price: number;
 }
 console.log(db.equipment);
 
@@ -55,44 +56,67 @@ export async function bookEquipment(
   const start = new Date(startTime);
   const end = new Date(endTime);
 
-  // Check if user exists
+  // Ensure booking follows 30-minute slot rules
+  if (end.getTime() - start.getTime() !== 30 * 60 * 1000) {
+    throw new Error("Bookings must be in 30-minute slots.");
+  }
+
+  // Check if user exists and fetch membership details
   const user = await db.user.findUnique({
     where: { id: userId },
-    include: { roleUser: true },
+    include: { membership: true },
   });
 
-  if (!user) {
-    throw new Error("User not found");
+  if (!user || !user.membership) {
+    throw new Error("You need an active membership to book equipment.");
   }
 
-  // Check if user has a membership plan
-  const membership = await db.membershipPlan.findFirst({
-    where: { id: user.roleUserId },
-  });
-
-  if (!membership) {
-    throw new Error("Membership plan not found");
+  // Only allow members with a monthly subscription to book
+  if (user.membership.type !== "monthly") {
+    throw new Error(
+      "Only members with a monthly subscription can book equipment."
+    );
   }
 
-  // Enforce booking hours for limited members
-  if (membership.accessHours) {
-    const { start: allowedStart, end: allowedEnd } = membership.accessHours;
+  // Enforce booking rules for limited access members
+  if (user.membership.accessHours) {
+    const { start: allowedStart, end: allowedEnd } =
+      user.membership.accessHours;
     const bookingHour = start.getHours();
 
     if (
       bookingHour < Number(allowedStart) ||
       bookingHour >= Number(allowedEnd)
     ) {
-      throw new Error("Booking time is outside your membership hours");
+      throw new Error("Your membership only allows booking within set hours.");
     }
+  }
+
+  // Check if equipment is needed for a workshop during the requested time
+  const conflictingWorkshop = await db.workshopOccurrence.findFirst({
+    where: {
+      startDate: { lte: end },
+      endDate: { gte: start },
+      workshop: {
+        occurrences: {
+          some: { id: equipmentId }, // Assuming there's a relation between equipment and workshops
+        },
+      },
+    },
+  });
+
+  if (conflictingWorkshop) {
+    throw new Error(
+      "This equipment is reserved for a workshop during this time."
+    );
   }
 
   // Prevent double booking for the same time slot
   if (await checkBookingConflict(equipmentId, start, end)) {
-    throw new Error("Equipment is already booked for this time slot");
+    throw new Error("Equipment is already booked for this time slot.");
   }
 
-  // Create booking
+  //Create the booking
   return await db.equipmentBooking.create({
     data: {
       userId,
@@ -126,5 +150,26 @@ export async function approveEquipmentBooking(bookingId: number) {
   return await db.equipmentBooking.update({
     where: { id: bookingId },
     data: { status: "approved" },
+  });
+}
+//for admins to add an equipment
+export async function addEquipment({
+  name,
+  description,
+  price,
+  availability,
+}: {
+  name: string;
+  description: string;
+  price: number;
+  availability: boolean;
+}) {
+  return await db.equipment.create({
+    data: {
+      name,
+      description,
+      price,
+      availability,
+    },
   });
 }
