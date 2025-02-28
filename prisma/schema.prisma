@@ -36,14 +36,21 @@ model User {
   emergencyContactEmail  String
   trainingCardUserNumber Int
 
-  // roleUser  Int @default(1)
-  roleUserId             Int      @default(1) // Default to 1
-  roleUser               RoleUser @relation(fields: [roleUserId], references: [id]) // Relation to RoleUser
-  roleLevel Int @default(1)
+  // Role Connection
+  roleUserId  Int      @default(1)
+  roleUser    RoleUser @relation(fields: [roleUserId], references: [id]) 
 
-  userWorkshops UserWorkshop[] // Many-to-many relationship with User
-  equipmentbookings EquipmentBooking[] 
+  roleLevel   Int      @default(1)
+
+  //Membership Connection
+  membershipId Int? // Nullable: some users may not have a membership
+  membership   MembershipPlan? @relation(fields: [membershipId], references: [id])
+
+  // Relationships
+  userWorkshops      UserWorkshop[] 
+  equipmentbookings  EquipmentBooking[] 
 }
+
 
 model RoleUser {
   id   Int    @id @default(autoincrement()) // Primary key with auto-increment
@@ -110,11 +117,13 @@ model WorkshopOccurrence {
   startDatePST DateTime?
   endDatePST   DateTime?
   status     String  @default("active") // "open", "closed", "cancelled"
+  equipmentId Int? 
 
   workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[] 
 
   @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id])
 }
 
 
@@ -146,11 +155,13 @@ model Equipment {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   description String
+  price       Float    @default(0.0) 
   availability Boolean @default(true) // Whether it's currently available for booking
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   bookings EquipmentBooking[] // One-to-many relationship with bookings
+   workshopOccurrences WorkshopOccurrence[]
 }
 
 model EquipmentBooking {
@@ -176,5 +187,11 @@ model MembershipPlan {
   description String
   price       Float
   feature     Json
-  accessHours Json // Stores allowed booking hours for limited access members (e.g., {"start": "09:00", "end": "18:00"})
+  accessHours Json // Example: {"start": "09:00", "end": "18:00"}
+
+  
+  type        String // "monthly", "one-time", "limited", "24/7"
+
+  //One membership can have multiple users
+  users       User[] 
 }

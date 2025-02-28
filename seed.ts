@@ -105,6 +105,7 @@ async function main() {
           start: "09:00", // Example: 9 AM start
           end: "18:00", // Example: 6 PM end
         },
+        type: "monthly"
       },
       {
         title: "Makerspace Member",
@@ -129,6 +130,7 @@ async function main() {
           start: "00:00", // 24/7 Access
           end: "23:59",
         },
+        type: "monthly"
       },
       {
         title: "Drop-In 10 Pass",
@@ -145,6 +147,7 @@ async function main() {
           start: "10:00", // Example: 10 AM start
           end: "16:00", // Example: 4 PM end
         },
+        type: "monthly"
       },
     ],
   });
@@ -220,29 +223,34 @@ async function main() {
         name: "3D Printer",
         description: "High-quality 3D printing machine for rapid prototyping.",
         availability: true,
+        price: 10,
       },
       {
         name: "Laser Cutter",
         description:
           "Precision cutting tool for wood, plastic, and metal sheets.",
         availability: true,
+        price: 15,
       },
       {
         name: "CNC Milling Machine",
         description: "Computer-controlled milling machine for detailed cuts.",
         availability: true,
+        price: 20,
       },
       {
         name: "Soldering Station",
         description:
           "Professional soldering toolset for circuit board assembly.",
         availability: true,
+        price: 25,
       },
       {
         name: "Vinyl Cutter",
         description:
           "Machine for cutting adhesive vinyl for signs and stickers.",
         availability: true,
+        price: 30.
       },
     ],
   });
