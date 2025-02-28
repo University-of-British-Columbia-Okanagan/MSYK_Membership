@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Card,
   CardContent,
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "react-router-dom";
 import { useFetcher } from "react-router";
-import { FiEdit, FiTrash2, FiMoreVertical } from "react-icons/fi"; // Import Icons
+import { FiMoreVertical } from "react-icons/fi";
 
 interface WorkshopProps {
   id: number;
@@ -23,6 +23,8 @@ interface WorkshopProps {
   description: string;
   price: number;
   isAdmin: boolean;
+  isRegistered?: boolean;
+  isPast?: boolean; 
 }
 
 export default function WorkshopCard({
@@ -31,16 +33,16 @@ export default function WorkshopCard({
   description,
   price,
   isAdmin,
+  isRegistered,
+  isPast, 
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
     <Card className="w-full md:w-80 min-h-[260px] rounded-lg shadow-md flex flex-col justify-between relative">
       {isAdmin && (
         <div className="absolute top-3 right-3 flex space-x-2">
-          {/* Options Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -105,7 +107,16 @@ export default function WorkshopCard({
       <CardContent className="flex flex-col gap-4 flex-grow">
         <p className="text-lg font-semibold text-gray-900">Price: ${price}</p>
 
-        {/* Align View Button to Bottom */}
+        {/* Show Registration Status */}
+        {/* Show Registration Status */}
+        {isPast ? (
+          <p className="text-gray-500 font-medium text-md">EXPIRED</p> 
+        ) : isRegistered ? (
+          <p className="text-green-600 font-medium text-md">REGISTERED</p>
+        ) : (
+          <p className="text-red-500 font-medium text-md">NOT REGISTERED</p>
+        )}
+
         <div className="mt-auto">
           <Button
             className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"

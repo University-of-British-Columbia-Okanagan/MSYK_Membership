@@ -11,22 +11,50 @@ export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const workshops = await getWorkshops();
 
-  // if (roleUser && roleUser.roleName.toLowerCase() === "admin") {
-  //   return redirect("/dashboard/admin"); // Redirect admin to Admin Dashboard
-  // }
-
   return { workshops };
 }
 
 export default function UserDashboard() {
   const { workshops } = useLoaderData();
 
+  // Get current date
+  const now = new Date();
+
+  // Filter workshops based on the `status` field
+  const activeWorkshops = workshops.filter(
+    (workshop) => workshop.status === "active"
+  );
+  const pastWorkshops = workshops.filter(
+    (workshop) => workshop.status === "past"
+  );
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
         <AppSidebar />
         <main className="flex-grow p-6">
-          <WorkshopList workshops={workshops} isAdmin={false} />
+          <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+
+          {/* Active Workshops Section */}
+          <h2 className="text-xl font-semibold mt-6">Active Workshops</h2>
+          {activeWorkshops.length > 0 ? (
+            <WorkshopList workshops={activeWorkshops} isAdmin={false} />
+          ) : (
+            <p className="text-gray-600 mt-4">No active workshops available.</p>
+          )}
+
+          {/* Past Workshops Section */}
+          <h2 className="text-xl font-semibold mt-8">Past Workshops</h2>
+          {pastWorkshops.length > 0 ? (
+            <WorkshopList
+              workshops={pastWorkshops}
+              isAdmin={false}
+              isPast={true}
+            />
+          ) : (
+            <p className="text-gray-600 mt-4">No past workshops available.</p>
+          )}
+
           <Outlet />
         </main>
       </div>

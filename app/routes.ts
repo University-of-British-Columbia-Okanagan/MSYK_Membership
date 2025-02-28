@@ -31,7 +31,7 @@ export default [
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
   route("/admindashboardlayout", "routes/dashboard/admindashboardlayout.tsx"),
   route("/userdashboardlayout", "routes/dashboard/userdashboardlayout.tsx"),
-  route("/workshops", "routes/dashboard/workshops.tsx"),
+  route("/dashboard/workshops", "routes/dashboard/workshops.tsx"),
   route("/dashboard/workshops/:id", "routes/dashboard/workshopdetails.tsx"),
   route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
   route(
@@ -58,4 +58,6 @@ export default [
   route("/dashboard/equipments", "routes/dashboard/equipments.tsx"),
   route("/dashboard/equipments/:id", "routes/dashboard/equipmentdetails.tsx"),
   route("/dashboard/addequipment", "routes/dashboard/addequipment.tsx"),
+  route("/dashboard/myworkshops", "routes/dashboard/myworkshops.tsx"),
+
 ] satisfies RouteConfig;
