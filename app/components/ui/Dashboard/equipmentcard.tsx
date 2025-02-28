@@ -20,18 +20,17 @@ export default function EquipmentCard({ id, name, description, availability }: E
   const navigate = useNavigate();
 
   return (
-    <Card className="w-full md:w-80 min-h-[220px] rounded-lg shadow-md flex flex-col justify-between">
+    <Card className="w-full md:w-80 min-h-[200px] rounded-lg shadow-md flex flex-col justify-between relative">
       <CardHeader>
         <CardTitle>{name}</CardTitle>
         <CardDescription className="line-clamp-2">{description}</CardDescription>
       </CardHeader>
-
-      <CardContent className="flex flex-col gap-2 flex-grow">
-        <p className="text-md font-semibold">
-          Availability: {availability ? "✅ Available" : "❌ Unavailable"}
+      <CardContent className="flex flex-col gap-4 flex-grow">
+        {/* Availability Text in Green */}
+        <p className={`font-medium text-md ${availability ? "text-green-600" : "text-red-500"}`}>
+          {availability ? "AVAILABLE" : "Not Available"}
         </p>
 
-        {/* Align View Button to Bottom */}
         <div className="mt-auto">
           <Button
             className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
