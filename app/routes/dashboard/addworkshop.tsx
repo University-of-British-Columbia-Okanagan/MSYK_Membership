@@ -28,6 +28,7 @@ import {
 import { CheckIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
+import DateTypeRadioGroup from "@/components/ui/DateTypeRadioGroup";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -338,47 +339,20 @@ export default function AddWorkshop() {
                 <FormControl>
                   <div className="flex flex-col items-start space-y-4 w-full">
                     {/* Radio Buttons for selecting date input type */}
-                    <div className="flex flex-col items-start gap-4">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="customDate"
-                          name="dateType"
-                          value="custom"
-                          checked={dateSelectionType === "custom"}
-                          onChange={() => setDateSelectionType("custom")}
-                        />
-                        <label htmlFor="customDate" className="text-sm">
-                          Enter dates
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="weeklyDate"
-                          name="dateType"
-                          value="weekly"
-                          checked={dateSelectionType === "weekly"}
-                          onChange={() => setDateSelectionType("weekly")}
-                        />
-                        <label htmlFor="weeklyDate" className="text-sm">
-                          Append/add weekly dates
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="monthlyDate"
-                          name="dateType"
-                          value="monthly"
-                          checked={dateSelectionType === "monthly"}
-                          onChange={() => setDateSelectionType("monthly")}
-                        />
-                        <label htmlFor="monthlyDate" className="text-sm">
-                          Append/add monthly dates
-                        </label>
-                      </div>
-                    </div>
+                    <DateTypeRadioGroup
+                      options={[
+                        { value: "custom", label: "Manage dates" },
+                        { value: "weekly", label: "Append weekly dates" },
+                        { value: "monthly", label: "Append monthly dates" },
+                      ]}
+                      selectedValue={dateSelectionType}
+                      onChange={(val) =>
+                        setDateSelectionType(
+                          val as "custom" | "weekly" | "monthly"
+                        )
+                      }
+                      name="dateType"
+                    />
 
                     {/* Custom Dates Input */}
                     {dateSelectionType === "custom" && (

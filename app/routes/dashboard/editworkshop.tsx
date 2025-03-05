@@ -38,6 +38,7 @@ import {
 import { CheckIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
+import DateTypeRadioGroup from "@/components/ui/DateTypeRadioGroup";
 
 interface Occurrence {
   id?: number;
@@ -548,38 +549,20 @@ export default function EditWorkshop() {
                 <FormControl>
                   <div className="flex flex-col items-start space-y-4 w-full">
                     {/* Radio Buttons for date selection type */}
-                    <div className="flex flex-col items-start gap-4">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="dateType"
-                          value="custom"
-                          checked={dateSelectionType === "custom"}
-                          onChange={() => setDateSelectionType("custom")}
-                        />
-                        <span className="text-sm">Manage dates</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="dateType"
-                          value="weekly"
-                          checked={dateSelectionType === "weekly"}
-                          onChange={() => setDateSelectionType("weekly")}
-                        />
-                        <span className="text-sm">Append weekly dates</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="dateType"
-                          value="monthly"
-                          checked={dateSelectionType === "monthly"}
-                          onChange={() => setDateSelectionType("monthly")}
-                        />
-                        <span className="text-sm">Append monthly dates</span>
-                      </label>
-                    </div>
+                    <DateTypeRadioGroup
+                      options={[
+                        { value: "custom", label: "Manage dates" },
+                        { value: "weekly", label: "Append weekly dates" },
+                        { value: "monthly", label: "Append monthly dates" },
+                      ]}
+                      selectedValue={dateSelectionType}
+                      onChange={(val) =>
+                        setDateSelectionType(
+                          val as "custom" | "weekly" | "monthly"
+                        )
+                      }
+                      name="dateType"
+                    />
 
                     {/* Custom Dates */}
                     {dateSelectionType === "custom" && (
