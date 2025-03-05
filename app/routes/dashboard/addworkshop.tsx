@@ -26,7 +26,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CheckIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "~/components/ui/badge";
+import GenericFormField from "~/components/ui/GenericFormField";
+import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/OccurrenceRow";
+import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
+import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
+import PrerequisitesField from "@/components/ui/PrerequisitesField";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -279,114 +285,50 @@ export default function AddWorkshop() {
       <Form {...form}>
         <form method="post">
           {/* Workshop Fields */}
-          <FormField
+          <GenericFormField
             control={form.control}
             name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="name">
-                  Name <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="name"
-                    placeholder="Workshop Name"
-                    {...field}
-                    className="w-full lg:w-[500px]"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.name}</FormMessage>
-              </FormItem>
-            )}
+            label="Name"
+            placeholder="Workshop Name"
+            required
+            error={actionData?.errors?.name}
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="description">
-                  Description <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Textarea
-                    id="description"
-                    placeholder="Workshop Description"
-                    {...field}
-                    className="w-full"
-                    rows={5}
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.description}</FormMessage>
-              </FormItem>
-            )}
+            label="Description"
+            placeholder="Workshop Description"
+            required
+            error={actionData?.errors?.description}
+            component={Textarea} // use Textarea instead of Input
+            className="w-full" // override default if needed
+            rows={5}
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="price">
-                  Price <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="price"
-                    type="number"
-                    placeholder="Price"
-                    {...field}
-                    step="0.01"
-                    className="w-full"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.price}</FormMessage>
-              </FormItem>
-            )}
+            label="Price"
+            placeholder="Price"
+            required
+            error={actionData?.errors?.price}
+            type="number"
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="location">
-                  Location <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="location"
-                    placeholder="Workshop Location"
-                    {...field}
-                    className="w-full"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.location}</FormMessage>
-              </FormItem>
-            )}
+            label="Location"
+            placeholder="Workshop Location"
+            required
+            error={actionData?.errors?.location}
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="capacity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="capacity">
-                  Capacity <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="capacity"
-                    type="number"
-                    placeholder="Capacity"
-                    {...field}
-                    className="w-full"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.capacity}</FormMessage>
-              </FormItem>
-            )}
+            label="Capacity"
+            placeholder="Capacity"
+            required
+            error={actionData?.errors?.capacity}
+            type="number"
           />
 
           {/* Occurrences (Dates) Section */}
@@ -401,90 +343,32 @@ export default function AddWorkshop() {
                 <FormControl>
                   <div className="flex flex-col items-start space-y-4 w-full">
                     {/* Radio Buttons for selecting date input type */}
-                    <div className="flex flex-col items-start gap-4">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="customDate"
-                          name="dateType"
-                          value="custom"
-                          checked={dateSelectionType === "custom"}
-                          onChange={() => setDateSelectionType("custom")}
-                        />
-                        <label htmlFor="customDate" className="text-sm">
-                          Enter dates
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="weeklyDate"
-                          name="dateType"
-                          value="weekly"
-                          checked={dateSelectionType === "weekly"}
-                          onChange={() => setDateSelectionType("weekly")}
-                        />
-                        <label htmlFor="weeklyDate" className="text-sm">
-                          Append/add weekly dates
-                        </label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="monthlyDate"
-                          name="dateType"
-                          value="monthly"
-                          checked={dateSelectionType === "monthly"}
-                          onChange={() => setDateSelectionType("monthly")}
-                        />
-                        <label htmlFor="monthlyDate" className="text-sm">
-                            Append/add monthly dates
-                        </label>
-                      </div>
-                    </div>
+                    <DateTypeRadioGroup
+                      options={[
+                        { value: "custom", label: "Manage dates" },
+                        { value: "weekly", label: "Append weekly dates" },
+                        { value: "monthly", label: "Append monthly dates" },
+                      ]}
+                      selectedValue={dateSelectionType}
+                      onChange={(val) =>
+                        setDateSelectionType(
+                          val as "custom" | "weekly" | "monthly"
+                        )
+                      }
+                      name="dateType"
+                    />
 
                     {/* Custom Dates Input */}
                     {dateSelectionType === "custom" && (
                       <div className="flex flex-col items-center w-full">
                         {occurrences.map((occ, index) => (
-                          <div
+                          <OccurrenceRow
                             key={index}
-                            className="flex gap-2 items-center mb-2 w-full"
-                          >
-                            <Input
-                              type="datetime-local"
-                              value={
-                                isNaN(occ.startDate.getTime())
-                                  ? ""
-                                  : formatLocalDatetime(occ.startDate)
-                              }
-                              onChange={(e) =>
-                                updateOccurrence(
-                                  index,
-                                  "startDate",
-                                  e.target.value
-                                )
-                              }
-                              className="flex-1"
-                            />
-                            <Input
-                              type="datetime-local"
-                              value={
-                                isNaN(occ.endDate.getTime())
-                                  ? ""
-                                  : formatLocalDatetime(occ.endDate)
-                              }
-                              onChange={(e) =>
-                                updateOccurrence(
-                                  index,
-                                  "endDate",
-                                  e.target.value
-                                )
-                              }
-                              className="flex-1"
-                            />
-                            {/* You could also add a confirm delete here if desired */}
-                          </div>
+                            index={index}
+                            occurrence={occ}
+                            updateOccurrence={updateOccurrence}
+                            formatLocalDatetime={formatLocalDatetime}
+                          />
                         ))}
                         <Button
                           type="button"
@@ -496,276 +380,93 @@ export default function AddWorkshop() {
                       </div>
                     )}
 
-                    {/* Weekly Schedule Inputs */}
                     {dateSelectionType === "weekly" && (
-                      <div className="flex flex-col items-start w-full space-y-4">
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence Start</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={weeklyStartDate}
-                              onChange={(e) =>
-                                setWeeklyStartDate(e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence End</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={weeklyEndDate}
-                              onChange={(e) => setWeeklyEndDate(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Repeat every (weeks)</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={weeklyInterval}
-                              onChange={(e) =>
-                                setWeeklyInterval(Number(e.target.value))
-                              }
-                              placeholder="Week interval"
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Number of repetitions</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={weeklyCount}
-                              onChange={(e) =>
-                                setWeeklyCount(Number(e.target.value))
-                              }
-                              placeholder="Total occurrences"
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (!weeklyStartDate || !weeklyEndDate) {
-                              alert(
-                                "Please select initial start and end dates"
-                              );
-                              return;
-                            }
-                            if (weeklyInterval < 1 || weeklyCount < 1) {
-                              alert(
-                                "Please enter valid interval and repetition numbers"
-                              );
-                              return;
-                            }
-                            const newOccurrences: {
-                              startDate: Date;
-                              endDate: Date;
-                            }[] = [];
-                            const start = parseDateTimeAsLocal(weeklyStartDate);
-                            const end = parseDateTimeAsLocal(weeklyEndDate);
-                            const baseOccurrence = {
-                              startDate: new Date(start),
-                              endDate: new Date(end),
-                            };
-                            for (let i = 0; i < weeklyCount; i++) {
-                              const occurrence = {
-                                startDate: new Date(baseOccurrence.startDate),
-                                endDate: new Date(baseOccurrence.endDate),
-                              };
-                              occurrence.startDate.setDate(
-                                baseOccurrence.startDate.getDate() +
-                                  weeklyInterval * 7 * i
-                              );
-                              occurrence.endDate.setDate(
-                                baseOccurrence.endDate.getDate() +
-                                  weeklyInterval * 7 * i
-                              );
-                              // Prevent duplicate dates.
-                              const existingStartDates = occurrences.map(
-                                (o) => o.startDate
-                              );
-                              if (
-                                !isDuplicateDate(
-                                  occurrence.startDate,
-                                  existingStartDates
-                                )
-                              ) {
-                                newOccurrences.push(occurrence);
-                              }
-                            }
-                            const updatedOccurrences = [
-                              ...occurrences,
-                              ...newOccurrences,
-                            ];
-                            updatedOccurrences.sort(
-                              (a, b) =>
-                                a.startDate.getTime() - b.startDate.getTime()
-                            );
-                            setOccurrences(updatedOccurrences);
-                            form.setValue("occurrences", updatedOccurrences);
-                            // After appending, revert back to custom view.
-                            setDateSelectionType("custom");
-                          }}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-                        >
-                          Append/add weekly dates
-                        </Button>
-                      </div>
+                      <RepetitionScheduleInputs
+                        scheduleType="weekly"
+                        startDate={weeklyStartDate}
+                        setStartDate={setWeeklyStartDate}
+                        endDate={weeklyEndDate}
+                        setEndDate={setWeeklyEndDate}
+                        interval={weeklyInterval}
+                        setInterval={setWeeklyInterval}
+                        count={weeklyCount}
+                        setCount={setWeeklyCount}
+                        occurrences={occurrences}
+                        setOccurrences={setOccurrences}
+                        updateFormOccurrences={(updatedOccurrences) =>
+                          form.setValue("occurrences", updatedOccurrences)
+                        }
+                        parseDateTimeAsLocal={parseDateTimeAsLocal}
+                        isDuplicateDate={isDuplicateDate}
+                        onRevert={() => setDateSelectionType("custom")}
+                      />
                     )}
 
-                    {/* Monthly Schedule Inputs */}
+                    {/* Monthly Repetition */}
                     {dateSelectionType === "monthly" && (
-                      <div className="flex flex-col items-start w-full space-y-4">
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence Start</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={monthlyStartDate}
-                              onChange={(e) =>
-                                setMonthlyStartDate(e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence End</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={monthlyEndDate}
-                              onChange={(e) =>
-                                setMonthlyEndDate(e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Repeat every (months)</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={monthlyInterval}
-                              onChange={(e) =>
-                                setMonthlyInterval(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Number of repetitions</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={monthlyCount}
-                              onChange={(e) =>
-                                setMonthlyCount(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (!monthlyStartDate || !monthlyEndDate) {
-                              alert(
-                                "Please select initial start and end dates"
-                              );
-                              return;
-                            }
-                            if (monthlyInterval < 1 || monthlyCount < 1) {
-                              alert(
-                                "Please enter valid interval and repetition numbers"
-                              );
-                              return;
-                            }
-                            const newOccurrences: {
-                              startDate: Date;
-                              endDate: Date;
-                            }[] = [];
-                            const start =
-                              parseDateTimeAsLocal(monthlyStartDate);
-                            const end = parseDateTimeAsLocal(monthlyEndDate);
-                            const baseOccurrence = {
-                              startDate: new Date(start),
-                              endDate: new Date(end),
-                            };
-                            for (let i = 0; i < monthlyCount; i++) {
-                              const occurrence = {
-                                startDate: new Date(baseOccurrence.startDate),
-                                endDate: new Date(baseOccurrence.endDate),
-                              };
-                              occurrence.startDate.setMonth(
-                                baseOccurrence.startDate.getMonth() +
-                                  monthlyInterval * i
-                              );
-                              occurrence.endDate.setMonth(
-                                baseOccurrence.endDate.getMonth() +
-                                  monthlyInterval * i
-                              );
-                              newOccurrences.push(occurrence);
-                            }
-                            const updatedOccurrences = [
-                              ...occurrences,
-                              ...newOccurrences,
-                            ];
-                            updatedOccurrences.sort(
-                              (a, b) =>
-                                a.startDate.getTime() - b.startDate.getTime()
-                            );
-                            setOccurrences(updatedOccurrences);
-                            form.setValue("occurrences", updatedOccurrences);
-                            // Revert back to custom view
-                            setDateSelectionType("custom");
-                          }}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-                        >
-                          Append/add monthly dates
-                        </Button>
-                      </div>
+                      <RepetitionScheduleInputs
+                        scheduleType="monthly"
+                        startDate={monthlyStartDate}
+                        setStartDate={setMonthlyStartDate}
+                        endDate={monthlyEndDate}
+                        setEndDate={setMonthlyEndDate}
+                        interval={monthlyInterval}
+                        setInterval={setMonthlyInterval}
+                        count={monthlyCount}
+                        setCount={setMonthlyCount}
+                        occurrences={occurrences}
+                        setOccurrences={setOccurrences}
+                        updateFormOccurrences={(updatedOccurrences) =>
+                          form.setValue("occurrences", updatedOccurrences)
+                        }
+                        parseDateTimeAsLocal={parseDateTimeAsLocal}
+                        isDuplicateDate={isDuplicateDate}
+                        onRevert={() => setDateSelectionType("custom")}
+                      />
                     )}
 
                     {/* If we have occurrences, show them in a single tab */}
                     {occurrences.length > 0 && (
-                      <div className="w-full mt-4">
+                      <>
                         <h3 className="font-medium mb-4">Dates:</h3>
-                        <Tabs defaultValue="all" className="w-full">
-                          {/* Center the tab trigger */}
-                          <TabsList className="flex justify-center">
-                            <TabsTrigger value="all">
-                              My Workshop Dates
-                            </TabsTrigger>
-                          </TabsList>
-                          <TabsContent
-                            value="all"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {occurrences.map((occ, index) => (
-                              <div
-                                key={index}
-                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
-                              >
-                                <div className="text-sm">
-                                  <div className="font-medium">
-                                    {formatDisplayDate(occ.startDate)}
-                                  </div>
-                                  <div className="text-xs text-gray-600">
-                                    to {formatDisplayDate(occ.endDate)}
-                                  </div>
-                                </div>
-                                <ConfirmButton
-                                  confirmTitle="Delete Occurrence"
-                                  confirmDescription="Are you sure you want to delete this occurrence?"
-                                  onConfirm={() => removeOccurrence(index)}
-                                  buttonLabel="X"
-                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                />
-                              </div>
-                            ))}
-                          </TabsContent>
-                        </Tabs>
-                      </div>
+                        <OccurrencesTabs
+                          defaultValue="all"
+                          tabs={[
+                            {
+                              value: "all",
+                              label: "My Workshop Dates",
+                              content: (
+                                <>
+                                  {occurrences.map((occ, index) => (
+                                    <div
+                                      key={index}
+                                      className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
+                                    >
+                                      <div className="text-sm">
+                                        <div className="font-medium">
+                                          {formatDisplayDate(occ.startDate)}
+                                        </div>
+                                        <div className="text-xs text-gray-600">
+                                          to {formatDisplayDate(occ.endDate)}
+                                        </div>
+                                      </div>
+                                      <ConfirmButton
+                                        confirmTitle="Delete Occurrence"
+                                        confirmDescription="Are you sure you want to delete this occurrence?"
+                                        onConfirm={() =>
+                                          removeOccurrence(index)
+                                        }
+                                        buttonLabel="X"
+                                        buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                      />
+                                    </div>
+                                  ))}
+                                </>
+                              ),
+                            },
+                          ]}
+                        />
+                      </>
                     )}
                   </div>
                 </FormControl>
@@ -775,93 +476,28 @@ export default function AddWorkshop() {
           />
 
           {/* Prerequisites */}
-          <FormField
-            control={form.control}
-            name="prerequisites"
-            render={({ field }) => (
-              <FormItem className="">
-                <FormLabel>Prerequisites</FormLabel>
-                <FormControl>
-                  <div className="">
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {sortedSelectedPrerequisites.map((prereqId) => {
-                        const workshop = availableWorkshops.find(
-                          (w) => w.id === prereqId
-                        );
-                        return workshop ? (
-                          <Badge
-                            key={prereqId}
-                            variant="secondary"
-                            className="py-1 px-2"
-                          >
-                            {workshop.name}
-                            <button
-                              type="button"
-                              onClick={() => removePrerequisite(prereqId)}
-                              className="ml-2 text-xs"
-                            >
-                              ×
-                            </button>
-                          </Badge>
-                        ) : null;
-                      })}
-                    </div>
-                    <Select
-                      onValueChange={(value) =>
-                        handlePrerequisiteSelect(Number(value))
-                      }
-                      value=""
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select prerequisites..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableWorkshops
-                          .filter(
-                            (workshop) =>
-                              !selectedPrerequisites.includes(workshop.id)
-                          )
-                          .sort((a, b) => a.id - b.id)
-                          .map((workshop) => (
-                            <SelectItem
-                              key={workshop.id}
-                              value={workshop.id.toString()}
-                            >
-                              {workshop.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
-                <div className="text-xs text-gray-500 mt-1">
-                  Select workshops that must be completed before enrolling in
-                  this one
-                </div>
-              </FormItem>
-            )}
-          />
+          <PrerequisitesField
+  control={form.control}
+  availableWorkshops={availableWorkshops}
+  selectedPrerequisites={selectedPrerequisites}
+  handlePrerequisiteSelect={handlePrerequisiteSelect}
+  removePrerequisite={removePrerequisite}
+  error={actionData?.errors?.prerequisites}
+/>
 
           {/* Type */}
-          <FormField
+          <GenericFormField
             control={form.control}
             name="type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Workshop Type <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full border rounded-md p-2">
-                    <option value="workshop">Workshop</option>
-                    <option value="orientation">Orientation</option>
-                  </select>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.type}</FormMessage>
-              </FormItem>
-            )}
-          />
+            label="Workshop Type"
+            required
+            error={actionData?.errors?.type}
+            component="select" // Render a native select element
+            className="w-full border rounded-md p-2"
+          >
+            <option value="workshop">Workshop</option>
+            <option value="orientation">Orientation</option>
+          </GenericFormField>
 
           {/* Hidden input for occurrences */}
           <input

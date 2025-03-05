@@ -37,6 +37,12 @@ import {
 } from "@/components/ui/select";
 import { CheckIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import GenericFormField from "~/components/ui/GenericFormField";
+import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/OccurrenceRow";
+import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
+import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
+import PrerequisitesField from "@/components/ui/PrerequisitesField";
 
 interface Occurrence {
   id?: number;
@@ -170,8 +176,6 @@ export async function action({
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  console.log(parsed.data.occurrences);
-
   try {
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
       name: parsed.data.name,
@@ -229,64 +233,6 @@ function handleCancelOccurrence(occurrenceId?: number) {
   const formEl = document.querySelector("form") as HTMLFormElement;
   formEl?.submit();
 }
-
-function getWorkshopPrerequsities(
-  availableWorkshops: { id: number; name: string }[],
-  selectedPrerequisites: number[],
-  handlePrerequisiteSelect: (workshopId: number) => void,
-  removePrerequisite: (workshopId: number) => void,
-  currentWorkshopId: number
-) {
-  const sortedSelected = [...selectedPrerequisites].sort((a, b) => a - b);
-  return (
-    <div>
-      <div className="flex flex-wrap gap-2 mb-2">
-        {sortedSelected.map((prereqId) => {
-          const workshop = availableWorkshops.find((w) => w.id === prereqId);
-          return workshop ? (
-            <Badge key={prereqId} variant="secondary" className="py-1 px-2">
-              {workshop.name}
-              <button
-                type="button"
-                onClick={() => removePrerequisite(prereqId)}
-                className="ml-2 text-xs"
-              >
-                ×
-              </button>
-            </Badge>
-          ) : null;
-        })}
-      </div>
-      <Select
-        onValueChange={(value) => handlePrerequisiteSelect(Number(value))}
-        value=""
-      >
-        <SelectTrigger className="w-full">
-          <SelectValue placeholder="Select prerequisites..." />
-        </SelectTrigger>
-        <SelectContent>
-          {availableWorkshops
-            // Filter out the current workshop as well as already selected prerequisites.
-            .filter(
-              (w) =>
-                w.id !== currentWorkshopId &&
-                !selectedPrerequisites.includes(w.id)
-            )
-            .sort((a, b) => a.id - b.id)
-            .map((w) => (
-              <SelectItem key={w.id} value={w.id.toString()}>
-                {w.name}
-              </SelectItem>
-            ))}
-        </SelectContent>
-      </Select>
-      <div className="text-xs text-gray-500 mt-1">
-        Select workshops that must be completed before enrolling in this one
-      </div>
-    </div>
-  );
-}
-
 
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
@@ -488,98 +434,54 @@ export default function EditWorkshop() {
       <Form {...form}>
         <form method="post">
           {/* Basic Workshop Fields */}
-          <FormField
+          <GenericFormField
             control={form.control}
             name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Name <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    placeholder="Workshop Name"
-                    className="w-full lg:w-[500px]"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.name}</FormMessage>
-              </FormItem>
-            )}
+            label="Name"
+            placeholder="Workshop Name"
+            required
+            error={actionData?.errors?.name}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Description <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Textarea
-                    {...field}
-                    placeholder="Workshop Description"
-                    className="w-full"
-                    rows={5}
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.description}</FormMessage>
-              </FormItem>
-            )}
+            label="Description"
+            placeholder="Workshop Description"
+            required
+            error={actionData?.errors?.description}
+            component={Textarea}
+            className="w-full" // override if needed
+            rows={5}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Price <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    type="number"
-                    placeholder="Price"
-                    step="0.01"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.price}</FormMessage>
-              </FormItem>
-            )}
+            label="Price"
+            placeholder="Price"
+            required
+            type="number"
+            error={actionData?.errors?.price}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Location <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="Workshop Location" />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.location}</FormMessage>
-              </FormItem>
-            )}
+            label="Location"
+            placeholder="Workshop Location"
+            required
+            error={actionData?.errors?.location}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="capacity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Capacity <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input {...field} type="number" placeholder="Capacity" />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.capacity}</FormMessage>
-              </FormItem>
-            )}
+            label="Capacity"
+            placeholder="Capacity"
+            required
+            type="number"
+            error={actionData?.errors?.capacity}
           />
 
           {/* Occurrences (Dates) with Tabs */}
@@ -594,80 +496,32 @@ export default function EditWorkshop() {
                 <FormControl>
                   <div className="flex flex-col items-start space-y-4 w-full">
                     {/* Radio Buttons for date selection type */}
-                    <div className="flex flex-col items-start gap-4">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="dateType"
-                          value="custom"
-                          checked={dateSelectionType === "custom"}
-                          onChange={() => setDateSelectionType("custom")}
-                        />
-                        <span className="text-sm">Manage dates</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="dateType"
-                          value="weekly"
-                          checked={dateSelectionType === "weekly"}
-                          onChange={() => setDateSelectionType("weekly")}
-                        />
-                        <span className="text-sm">Append weekly dates</span>
-                      </label>
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="dateType"
-                          value="monthly"
-                          checked={dateSelectionType === "monthly"}
-                          onChange={() => setDateSelectionType("monthly")}
-                        />
-                        <span className="text-sm">Append monthly dates</span>
-                      </label>
-                    </div>
+                    <DateTypeRadioGroup
+                      options={[
+                        { value: "custom", label: "Manage dates" },
+                        { value: "weekly", label: "Append weekly dates" },
+                        { value: "monthly", label: "Append monthly dates" },
+                      ]}
+                      selectedValue={dateSelectionType}
+                      onChange={(val) =>
+                        setDateSelectionType(
+                          val as "custom" | "weekly" | "monthly"
+                        )
+                      }
+                      name="dateType"
+                    />
 
                     {/* Custom Dates */}
                     {dateSelectionType === "custom" && (
                       <div className="flex flex-col items-center w-full">
                         {occurrences.map((occ, index) => (
-                          <div
+                          <OccurrenceRow
                             key={index}
-                            className="flex gap-2 items-center mb-2 w-full"
-                          >
-                            <Input
-                              type="datetime-local"
-                              value={
-                                isNaN(occ.startDate.getTime())
-                                  ? ""
-                                  : formatLocalDatetime(occ.startDate)
-                              }
-                              onChange={(e) =>
-                                updateOccurrence(
-                                  index,
-                                  "startDate",
-                                  e.target.value
-                                )
-                              }
-                              className="flex-1"
-                            />
-                            <Input
-                              type="datetime-local"
-                              value={
-                                isNaN(occ.endDate.getTime())
-                                  ? ""
-                                  : formatLocalDatetime(occ.endDate)
-                              }
-                              onChange={(e) =>
-                                updateOccurrence(
-                                  index,
-                                  "endDate",
-                                  e.target.value
-                                )
-                              }
-                              className="flex-1"
-                            />
-                          </div>
+                            index={index}
+                            occurrence={occ}
+                            updateOccurrence={updateOccurrence}
+                            formatLocalDatetime={formatLocalDatetime}
+                          />
                         ))}
                         <Button
                           type="button"
@@ -681,469 +535,256 @@ export default function EditWorkshop() {
 
                     {/* Weekly Repetition */}
                     {dateSelectionType === "weekly" && (
-                      <div className="flex flex-col items-start w-full space-y-4">
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence Start</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={weeklyStartDate}
-                              onChange={(e) =>
-                                setWeeklyStartDate(e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence End</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={weeklyEndDate}
-                              onChange={(e) => setWeeklyEndDate(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Repeat every (weeks)</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={weeklyInterval}
-                              onChange={(e) =>
-                                setWeeklyInterval(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Number of repetitions</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={weeklyCount}
-                              onChange={(e) =>
-                                setWeeklyCount(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (!weeklyStartDate || !weeklyEndDate) {
-                              alert("Please select initial start/end dates");
-                              return;
-                            }
-                            if (weeklyInterval < 1 || weeklyCount < 1) {
-                              alert("Invalid interval or repetition");
-                              return;
-                            }
-                            const newOccurrences: {
-                              startDate: Date;
-                              endDate: Date;
-                              status?: string;
-                              userCount?: number;
-                            }[] = [];
-                            const start = parseDateTimeAsLocal(weeklyStartDate);
-                            const end = parseDateTimeAsLocal(weeklyEndDate);
-                            const baseOccurrence = {
-                              startDate: new Date(start),
-                              endDate: new Date(end),
-                            };
-
-                            // Generate new occurrences
-                            for (let i = 0; i < weeklyCount; i++) {
-                              const occurrence = {
-                                startDate: new Date(baseOccurrence.startDate),
-                                endDate: new Date(baseOccurrence.endDate),
-                              };
-                              occurrence.startDate.setDate(
-                                baseOccurrence.startDate.getDate() +
-                                  weeklyInterval * 7 * i
-                              );
-                              occurrence.endDate.setDate(
-                                baseOccurrence.endDate.getDate() +
-                                  weeklyInterval * 7 * i
-                              );
-
-                              // Check if this date already exists in the current occurrences
-                              const existingStartDates = occurrences.map(
-                                (o) => o.startDate
-                              );
-                              if (
-                                !isDuplicateDate(
-                                  occurrence.startDate,
-                                  existingStartDates
-                                )
-                              ) {
-                                const computedStatus =
-                                  occurrence.startDate >= new Date()
-                                    ? "active"
-                                    : "past";
-                                newOccurrences.push({
-                                  ...occurrence,
-                                  status: computedStatus,
-                                  userCount: 0,
-                                });
-                              }
-                            }
-
-                            // Append new occurrences to existing ones instead of replacing
-                            const updatedOccurrences = [
-                              ...occurrences,
-                              ...newOccurrences,
-                            ];
-
-                            updatedOccurrences.sort(
-                              (a, b) =>
-                                a.startDate.getTime() - b.startDate.getTime()
-                            );
-                            setOccurrences(updatedOccurrences);
-                            form.setValue("occurrences", updatedOccurrences);
-
-                            setDateSelectionType("custom");
-                          }}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-                        >
-                          Append Weekly Dates
-                        </Button>
-                      </div>
+                      <RepetitionScheduleInputs
+                        scheduleType="weekly"
+                        startDate={weeklyStartDate}
+                        setStartDate={setWeeklyStartDate}
+                        endDate={weeklyEndDate}
+                        setEndDate={setWeeklyEndDate}
+                        interval={weeklyInterval}
+                        setInterval={setWeeklyInterval}
+                        count={weeklyCount}
+                        setCount={setWeeklyCount}
+                        occurrences={occurrences}
+                        setOccurrences={setOccurrences}
+                        updateFormOccurrences={(updatedOccurrences) =>
+                          form.setValue("occurrences", updatedOccurrences)
+                        }
+                        parseDateTimeAsLocal={parseDateTimeAsLocal}
+                        isDuplicateDate={isDuplicateDate}
+                        onRevert={() => setDateSelectionType("custom")}
+                      />
                     )}
 
                     {/* Monthly Repetition */}
                     {dateSelectionType === "monthly" && (
-                      <>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence Start</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={monthlyStartDate}
-                              onChange={(e) =>
-                                setMonthlyStartDate(e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence End</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={monthlyEndDate}
-                              onChange={(e) =>
-                                setMonthlyEndDate(e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Repeat every (months)</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={monthlyInterval}
-                              onChange={(e) =>
-                                setMonthlyInterval(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Number of repetitions</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={monthlyCount}
-                              onChange={(e) =>
-                                setMonthlyCount(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (!monthlyStartDate || !monthlyEndDate) {
-                              alert(
-                                "Please select initial start and end dates"
-                              );
-                              return;
-                            }
-                            if (monthlyInterval < 1 || monthlyCount < 1) {
-                              alert("Invalid interval or repetition");
-                              return;
-                            }
-                            const newOccurrences: {
-                              startDate: Date;
-                              endDate: Date;
-                              status?: string;
-                              userCount?: number;
-                            }[] = [];
-                            const start =
-                              parseDateTimeAsLocal(monthlyStartDate);
-                            const end = parseDateTimeAsLocal(monthlyEndDate);
-                            const baseOccurrence = {
-                              startDate: new Date(start),
-                              endDate: new Date(end),
-                            };
-
-                            // Generate new occurrences
-                            for (let i = 0; i < monthlyCount; i++) {
-                              const occurrence = {
-                                startDate: new Date(baseOccurrence.startDate),
-                                endDate: new Date(baseOccurrence.endDate),
-                              };
-                              occurrence.startDate.setMonth(
-                                baseOccurrence.startDate.getMonth() +
-                                  monthlyInterval * i
-                              );
-                              occurrence.endDate.setMonth(
-                                baseOccurrence.endDate.getMonth() +
-                                  monthlyInterval * i
-                              );
-
-                              // Check if this date already exists in the current occurrences
-                              const existingStartDates = occurrences.map(
-                                (o) => o.startDate
-                              );
-                              if (
-                                !isDuplicateDate(
-                                  occurrence.startDate,
-                                  existingStartDates
-                                )
-                              ) {
-                                const computedStatus =
-                                  occurrence.startDate >= new Date()
-                                    ? "active"
-                                    : "past";
-                                newOccurrences.push({
-                                  ...occurrence,
-                                  status: computedStatus,
-                                  userCount: 0,
-                                });
-                              }
-                            }
-
-                            // Append new occurrences to existing ones instead of replacing
-                            const updatedOccurrences = [
-                              ...occurrences,
-                              ...newOccurrences,
-                            ];
-
-                            updatedOccurrences.sort(
-                              (a, b) =>
-                                a.startDate.getTime() - b.startDate.getTime()
-                            );
-                            setOccurrences(updatedOccurrences);
-                            form.setValue("occurrences", updatedOccurrences);
-
-                            setDateSelectionType("custom");
-                          }}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-                        >
-                          Append Monthly Dates
-                        </Button>
-                      </>
+                      <RepetitionScheduleInputs
+                        scheduleType="monthly"
+                        startDate={monthlyStartDate}
+                        setStartDate={setMonthlyStartDate}
+                        endDate={monthlyEndDate}
+                        setEndDate={setMonthlyEndDate}
+                        interval={monthlyInterval}
+                        setInterval={setMonthlyInterval}
+                        count={monthlyCount}
+                        setCount={setMonthlyCount}
+                        occurrences={occurrences}
+                        setOccurrences={setOccurrences}
+                        updateFormOccurrences={(updatedOccurrences) =>
+                          form.setValue("occurrences", updatedOccurrences)
+                        }
+                        parseDateTimeAsLocal={parseDateTimeAsLocal}
+                        isDuplicateDate={isDuplicateDate}
+                        onRevert={() => setDateSelectionType("custom")}
+                      />
                     )}
 
                     {/* If we have generated occurrences, display them in Tabs */}
                     {occurrences.length > 0 && (
-                      <div className="w-full mt-4">
+                      <>
                         <h3 className="font-medium mb-4">Workshop Dates:</h3>
-
-                        <Tabs defaultValue="active" className="w-full">
-                          <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger
-                              value="active"
-                              className="data-[state=active]:bg-yellow-500 data-[state=active]:text-white"
-                            >
-                              Active ({activeOccurrences.length})
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="past"
-                              className="data-[state=active]:bg-gray-500 data-[state=active]:text-white"
-                            >
-                              Past ({pastOccurrences.length})
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="cancelled"
-                              className="data-[state=active]:bg-red-500 data-[state=active]:text-white"
-                            >
-                              Cancelled ({cancelledOccurrences.length})
-                            </TabsTrigger>
-                          </TabsList>
-
-                          <TabsContent
-                            value="active"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {activeOccurrences.length > 0 ? (
-                              <div className="space-y-3">
-                                {activeOccurrences.map((occ, index) => {
-                                  // Find the original index in the complete occurrences array
-                                  const originalIndex = occurrences.findIndex(
-                                    (o) =>
-                                      o.startDate.getTime() ===
-                                        occ.startDate.getTime() &&
-                                      o.endDate.getTime() ===
-                                        occ.endDate.getTime()
-                                  );
-                                  const hasUsers =
-                                    occ.userCount && occ.userCount > 0;
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium text-green-700">
-                                          {formatDateForDisplay(occ.startDate)}
+                        <OccurrencesTabs
+                          defaultValue="active"
+                          tabs={[
+                            {
+                              value: "active",
+                              label: `Active (${activeOccurrences.length})`,
+                              triggerClassName:
+                                "data-[state=active]:bg-yellow-500 data-[state=active]:text-white",
+                              content:
+                                activeOccurrences.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {activeOccurrences.map((occ, index) => {
+                                      const originalIndex =
+                                        occurrences.findIndex(
+                                          (o) =>
+                                            o.startDate.getTime() ===
+                                              occ.startDate.getTime() &&
+                                            o.endDate.getTime() ===
+                                              occ.endDate.getTime()
+                                        );
+                                      const hasUsers =
+                                        occ.userCount && occ.userCount > 0;
+                                      return (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
+                                        >
+                                          <div className="text-sm">
+                                            <div className="font-medium text-green-700">
+                                              {formatDateForDisplay(
+                                                occ.startDate
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              to{" "}
+                                              {formatDateForDisplay(
+                                                occ.endDate
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center">
+                                            <span className="mr-2 text-sm font-bold text-gray-800">
+                                              {occ.userCount ?? 0} users
+                                              registered
+                                            </span>
+                                            {hasUsers ? (
+                                              <ConfirmButton
+                                                confirmTitle="Cancel Occurrence"
+                                                confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
+                                                onConfirm={() =>
+                                                  handleCancelOccurrence(occ.id)
+                                                }
+                                                buttonLabel="Cancel"
+                                                buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+                                              />
+                                            ) : (
+                                              <ConfirmButton
+                                                confirmTitle="Delete Occurrence"
+                                                confirmDescription="Are you sure you want to delete this occurrence?"
+                                                onConfirm={() =>
+                                                  removeOccurrence(
+                                                    originalIndex
+                                                  )
+                                                }
+                                                buttonLabel="X"
+                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                              />
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDateForDisplay(occ.endDate)}
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-gray-500">
+                                    No active workshop dates scheduled
+                                  </div>
+                                ),
+                            },
+                            {
+                              value: "past",
+                              label: `Past (${pastOccurrences.length})`,
+                              triggerClassName:
+                                "data-[state=active]:bg-gray-500 data-[state=active]:text-white",
+                              content:
+                                pastOccurrences.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {pastOccurrences.map((occ, index) => {
+                                      const originalIndex =
+                                        occurrences.findIndex(
+                                          (o) =>
+                                            o.startDate.getTime() ===
+                                              occ.startDate.getTime() &&
+                                            o.endDate.getTime() ===
+                                              occ.endDate.getTime()
+                                        );
+                                      return (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md"
+                                        >
+                                          <div className="text-sm">
+                                            <div className="font-medium text-gray-700">
+                                              {formatDateForDisplay(
+                                                occ.startDate
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              to{" "}
+                                              {formatDateForDisplay(
+                                                occ.endDate
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center">
+                                            <span className="mr-2 text-sm font-bold text-gray-800">
+                                              {occ.userCount ?? 0} users
+                                              registered
+                                            </span>
+                                            <ConfirmButton
+                                              confirmTitle="Delete Occurrence"
+                                              confirmDescription="Are you sure you want to delete this occurrence?"
+                                              onConfirm={() =>
+                                                removeOccurrence(originalIndex)
+                                              }
+                                              buttonLabel="X"
+                                              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                            />
+                                          </div>
                                         </div>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className="mr-2 text-sm font-bold text-gray-800">
-                                          {occ.userCount ?? 0} users registered
-                                        </span>
-                                        {hasUsers ? (
-                                          <ConfirmButton
-                                            confirmTitle="Cancel Occurrence"
-                                            confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
-                                            onConfirm={() =>
-                                              handleCancelOccurrence(occ.id)
-                                            }
-                                            buttonLabel="Cancel"
-                                            buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
-                                          />
-                                        ) : (
-                                          <ConfirmButton
-                                            confirmTitle="Delete Occurrence"
-                                            confirmDescription="Are you sure you want to delete this occurrence?"
-                                            onConfirm={() =>
-                                              removeOccurrence(originalIndex)
-                                            }
-                                            buttonLabel="X"
-                                            buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                          />
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                No active workshop dates scheduled
-                              </div>
-                            )}
-                          </TabsContent>
-
-                          <TabsContent
-                            value="past"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {pastOccurrences.length > 0 ? (
-                              <div className="space-y-3">
-                                {pastOccurrences.map((occ, index) => {
-                                  const originalIndex = occurrences.findIndex(
-                                    (o) =>
-                                      o.startDate.getTime() ===
-                                        occ.startDate.getTime() &&
-                                      o.endDate.getTime() ===
-                                        occ.endDate.getTime()
-                                  );
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium text-gray-700">
-                                          {formatDateForDisplay(occ.startDate)}
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-gray-500">
+                                    No past workshop dates
+                                  </div>
+                                ),
+                            },
+                            {
+                              value: "cancelled",
+                              label: `Cancelled (${cancelledOccurrences.length})`,
+                              triggerClassName:
+                                "data-[state=active]:bg-red-500 data-[state=active]:text-white",
+                              content:
+                                cancelledOccurrences.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {cancelledOccurrences.map((occ, index) => {
+                                      const originalIndex =
+                                        occurrences.findIndex(
+                                          (o) =>
+                                            o.startDate.getTime() ===
+                                              occ.startDate.getTime() &&
+                                            o.endDate.getTime() ===
+                                              occ.endDate.getTime()
+                                        );
+                                      return (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md"
+                                        >
+                                          <div className="text-sm">
+                                            <div className="font-medium text-red-700">
+                                              {formatDateForDisplay(
+                                                occ.startDate
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              to{" "}
+                                              {formatDateForDisplay(
+                                                occ.endDate
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center">
+                                            <span className="mr-2 text-sm font-bold text-gray-800">
+                                              {occ.userCount ?? 0} users
+                                              registered
+                                            </span>
+                                            <ConfirmButton
+                                              confirmTitle="Delete Occurrence"
+                                              confirmDescription="Are you sure you want to delete this occurrence?"
+                                              onConfirm={() =>
+                                                removeOccurrence(originalIndex)
+                                              }
+                                              buttonLabel="X"
+                                              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                            />
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDateForDisplay(occ.endDate)}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className="mr-2 text-sm font-bold text-gray-800">
-                                          {occ.userCount ?? 0} users registered
-                                        </span>
-
-                                        <ConfirmButton
-                                          confirmTitle="Delete Occurrence"
-                                          confirmDescription="Are you sure you want to delete this occurrence?"
-                                          onConfirm={() =>
-                                            removeOccurrence(originalIndex)
-                                          }
-                                          buttonLabel="X"
-                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                No past workshop dates
-                              </div>
-                            )}
-                          </TabsContent>
-
-                          <TabsContent
-                            value="cancelled"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {cancelledOccurrences.length > 0 ? (
-                              <div className="space-y-3">
-                                {cancelledOccurrences.map((occ, index) => {
-                                  const originalIndex = occurrences.findIndex(
-                                    (o) =>
-                                      o.startDate.getTime() ===
-                                        occ.startDate.getTime() &&
-                                      o.endDate.getTime() ===
-                                        occ.endDate.getTime()
-                                  );
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium text-red-700">
-                                          {formatDateForDisplay(occ.startDate)}
-                                        </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDateForDisplay(occ.endDate)}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className="mr-2 text-sm font-bold text-gray-800">
-                                          {occ.userCount ?? 0} users registered
-                                        </span>
-                                        <ConfirmButton
-                                          confirmTitle="Delete Occurrence"
-                                          confirmDescription="Are you sure you want to delete this occurrence?"
-                                          onConfirm={() =>
-                                            removeOccurrence(originalIndex)
-                                          }
-                                          buttonLabel="X"
-                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                No cancelled workshop dates
-                              </div>
-                            )}
-                          </TabsContent>
-                        </Tabs>
-                      </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-gray-500">
+                                    No cancelled workshop dates
+                                  </div>
+                                ),
+                            },
+                          ]}
+                        />
+                      </>
                     )}
                   </div>
                 </FormControl>
@@ -1153,45 +794,15 @@ export default function EditWorkshop() {
           />
 
           {/* New Prerequisites Field */}
-          <FormField
+          <PrerequisitesField
             control={form.control}
-            name="prerequisites"
-            render={() => (
-              <FormItem>
-                <FormLabel>Prerequisites</FormLabel>
-                <FormControl>
-                  {getWorkshopPrerequsities(
-                    availableWorkshops,
-                    selectedPrerequisites,
-                    handlePrerequisiteSelect,
-                    removePrerequisite,
-                    workshop.id 
-                  )}
-                </FormControl>
-                <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
-              </FormItem>
-            )}
+            availableWorkshops={availableWorkshops}
+            selectedPrerequisites={selectedPrerequisites}
+            handlePrerequisiteSelect={handlePrerequisiteSelect}
+            removePrerequisite={removePrerequisite}
+            currentWorkshopId={workshop.id}
+            error={actionData?.errors?.prerequisites}
           />
-
-          {/* Type */}
-          {/* <FormField
-            control={form.control}
-            name="type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Workshop Type <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full border rounded-md p-2">
-                    <option value="workshop">Workshop</option>
-                    <option value="orientation">Orientation</option>
-                  </select>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.type}</FormMessage>
-              </FormItem>
-            )}
-          /> */}
 
           <input
             type="hidden"
