@@ -6,7 +6,7 @@ interface TimeIntervalPickerProps {
   value?: string;
   onChange: (value: string) => void;
   className?: string;
-  disabled?: boolean;
+  date?: string; // Add a new prop to track the associated date
 }
 
 const generateTimeIntervals = () => {
@@ -25,7 +25,7 @@ export const TimeIntervalPicker: React.FC<TimeIntervalPickerProps> = ({
   value,
   onChange,
   className,
-  disabled = false,
+  date, // New prop to check if a date is selected
 }) => {
   const timeIntervals = generateTimeIntervals();
   
@@ -66,22 +66,27 @@ export const TimeIntervalPicker: React.FC<TimeIntervalPickerProps> = ({
     setSelectedTime(newTime);
     
     // If a date input exists (for datetime-local), preserve the date
-    if (value && value.includes('T')) {
-      const [datePart] = value.split('T');
-      onChange(`${datePart}T${newTime}`);
+    if (date) {
+      onChange(`${date}T${newTime}`);
     } else {
       onChange(newTime);
     }
   };
 
+  // Determine if the time picker should be disabled
+  const isDisabled = !date;
+
   return (
     <Select 
       value={selectedTime} 
       onValueChange={handleTimeChange}
-      disabled={disabled}
+      disabled={isDisabled}
     >
-      <SelectTrigger className={`w-full ${className}`} disabled={disabled}>
-        <SelectValue placeholder={disabled ? "Select date first" : "Select time"}>
+      <SelectTrigger 
+        className={`w-full ${className}`} 
+        disabled={isDisabled}
+      >
+        <SelectValue placeholder={isDisabled ? "Select date first" : "Select time"}>
           {selectedTime}
         </SelectValue>
       </SelectTrigger>

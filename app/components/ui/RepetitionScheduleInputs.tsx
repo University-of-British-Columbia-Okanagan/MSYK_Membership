@@ -149,6 +149,7 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
             <TimeIntervalPicker
               value={startDate}
               onChange={(value) => setStartDate(value)}
+              date={startDate ? startDate.split('T')[0] : undefined} // Pass the date
               className="flex-1"
             />
           </div>
@@ -168,6 +169,7 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
             <TimeIntervalPicker
               value={endDate}
               onChange={(value) => setEndDate(value)}
+              date={endDate ? endDate.split('T')[0] : undefined} // Pass the date
               className="flex-1"
             />
           </div>

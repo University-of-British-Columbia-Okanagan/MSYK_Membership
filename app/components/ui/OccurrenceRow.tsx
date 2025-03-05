@@ -1,6 +1,6 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
-import { TimeIntervalPicker } from "./TimeIntervalPicker"; // Import the new component
+import { TimeIntervalPicker } from "./TimeIntervalPicker";
 
 export interface Occurrence {
   startDate: Date;
@@ -50,7 +50,11 @@ const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
           value={formatLocalDatetime(occurrence.startDate)}
           onChange={(value) => updateOccurrence(index, "startDate", value)}
           className="flex-1"
-          disabled={!startDateValid}
+          date={
+            startDateValid
+              ? formatLocalDatetime(occurrence.startDate).split('T')[0]
+              : undefined
+          }
         />
       </div>
       <div className="flex items-center gap-2 flex-1">
@@ -73,7 +77,11 @@ const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
           value={formatLocalDatetime(occurrence.endDate)}
           onChange={(value) => updateOccurrence(index, "endDate", value)}
           className="flex-1"
-          disabled={!endDateValid}
+          date={
+            endDateValid
+              ? formatLocalDatetime(occurrence.endDate).split('T')[0]
+              : undefined
+          }
         />
       </div>
     </div>
