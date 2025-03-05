@@ -3,6 +3,7 @@ import {
   useLoaderData,
   useFetcher,
   useNavigate,
+  Link,
 } from "react-router-dom";
 import {
   Card,
@@ -14,7 +15,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
 import {
   getWorkshopById,
   checkUserRegistration,
@@ -29,6 +29,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Link as RouterLink } from "react-router-dom";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 interface Occurrence {
   id: number;
@@ -59,23 +61,28 @@ export async function loader({
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
 
-  // Create a mapping of occurrenceId -> registration status.
-  let registrations: { [occurrenceId: number]: boolean } = {};
+  // Instead of storing just a boolean, we'll store { registered, registeredAt } for each occurrence
+  let registrations: {
+    [occurrenceId: number]: {
+      registered: boolean;
+      registeredAt: Date | null;
+    };
+  } = {};
 
   // Track completed prerequisites and prerequisite workshop details
   let prerequisiteWorkshops: PrerequisiteWorkshop[] = [];
   let hasCompletedAllPrerequisites = false;
 
   if (user) {
-    // For each occurrence in the workshop, check if the user is registered.
-    const registrationChecks = await Promise.all(
-      workshop.occurrences.map((occurrence) =>
-        checkUserRegistration(workshopId, user.id, occurrence.id)
-      )
-    );
-    workshop.occurrences.forEach((occurrence, index) => {
-      registrations[occurrence.id] = registrationChecks[index];
-    });
+    // For each occurrence, check if the user is registered and get the registration time
+    for (const occ of workshop.occurrences) {
+      const regRow = await checkUserRegistration(workshopId, user.id, occ.id);
+      // regRow returns { registered, registeredAt }
+      registrations[occ.id] = {
+        registered: regRow.registered,
+        registeredAt: regRow.registeredAt,
+      };
+    }
 
     // Fetch user's completed prerequisites for this workshop
     const completedPrerequisites = await getUserCompletedPrerequisites(
@@ -87,7 +94,6 @@ export async function loader({
     if (workshop.prerequisites && workshop.prerequisites.length > 0) {
       prerequisiteWorkshops = await Promise.all(
         workshop.prerequisites.map(async (prereq) => {
-          // Check if prereq is an object or a number
           const id =
             typeof prereq === "object" ? prereq.prerequisiteId : prereq;
           const prereqWorkshop = await getWorkshopById(id);
@@ -144,7 +150,20 @@ export default function WorkshopDetails() {
     roleUser,
     prerequisiteWorkshops,
     hasCompletedAllPrerequisites,
-  } = useLoaderData();
+  } = useLoaderData() as {
+    workshop: any;
+    user: any;
+    registrations: {
+      [occurrenceId: number]: {
+        registered: boolean;
+        registeredAt: Date | null;
+      };
+    };
+    roleUser: any;
+    prerequisiteWorkshops: PrerequisiteWorkshop[];
+    hasCompletedAllPrerequisites: boolean;
+  };
+
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
@@ -194,10 +213,22 @@ export default function WorkshopDetails() {
     navigate(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
   };
 
+  const handleCancel = (occurrenceId: number) => {
+    if (!user) return;
+    fetcher.submit(
+      {
+        occurrenceId: occurrenceId.toString(),
+        actionType: "cancelRegistration",
+      },
+      { method: "post" }
+    );
+  };
+
   // Get list of incomplete prerequisites
   const incompletePrerequisites = prerequisiteWorkshops.filter(
     (prereq: PrerequisiteWorkshop) => !prereq.completed
   );
+
   return (
     <div className="max-w-3xl mx-auto p-6">
       {/* Popup Notification */}
@@ -227,7 +258,7 @@ export default function WorkshopDetails() {
 
           <Separator className="my-6" />
 
-          {/* Updated Prerequisites section with completion status */}
+          {/* Prerequisites Section */}
           {prerequisiteWorkshops && prerequisiteWorkshops.length > 0 && (
             <>
               <h2 className="text-lg font-semibold mb-2">Prerequisites</h2>
@@ -254,7 +285,6 @@ export default function WorkshopDetails() {
                 ))}
               </ul>
 
-              {/* Show warning if prerequisites are not complete */}
               {user && !hasCompletedAllPrerequisites && (
                 <div className="bg-amber-50 border border-amber-300 p-3 rounded-md mb-4 flex items-start">
                   <AlertCircle className="text-amber-500 mr-2 h-5 w-5 mt-1 flex-shrink-0" />
@@ -266,16 +296,18 @@ export default function WorkshopDetails() {
                       Complete the following prerequisites before registering:
                     </p>
                     <ul className="list-disc pl-5 text-amber-700">
-                      {incompletePrerequisites.map((prereq: PrerequisiteWorkshop) => (
-                        <li key={prereq.id}>
-                          <Link
-                            to={`/dashboard/workshops/${prereq.id}`}
-                            className="text-amber-800 hover:underline"
-                          >
-                            {prereq.name}
-                          </Link>
-                        </li>
-                      ))}
+                      {incompletePrerequisites.map(
+                        (prereq: PrerequisiteWorkshop) => (
+                          <li key={prereq.id}>
+                            <Link
+                              to={`/dashboard/workshops/${prereq.id}`}
+                              className="text-amber-800 hover:underline"
+                            >
+                              {prereq.name}
+                            </Link>
+                          </li>
+                        )
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -284,21 +316,26 @@ export default function WorkshopDetails() {
             </>
           )}
 
-          {/* Display Available Dates */}
+          {/* Available Dates Section */}
           <h2 className="text-lg font-semibold">Available Dates</h2>
           {workshop.occurrences.map((occurrence: Occurrence) => {
-            // Check if the user is registered for this specific occurrence
-            const isOccurrenceRegistered =
-              registrations[occurrence.id] || false;
+            const regData = registrations[occurrence.id] || {
+              registered: false,
+              registeredAt: null,
+            };
+            const isOccurrenceRegistered = regData.registered;
 
-            // Determine button state
-            const isDisabled =
-              occurrence.status !== "active" ||
-              isOccurrenceRegistered ||
-              (user && !hasCompletedAllPrerequisites) ||
-              !user;
+            // If the user is registered, calculate hours since registration
+            let canCancel = false;
+            if (isOccurrenceRegistered && regData.registeredAt) {
+              const now = new Date();
+              const regTime = new Date(regData.registeredAt);
+              const hoursSinceRegistration =
+                (now.getTime() - regTime.getTime()) / (1000 * 60 * 60);
+              // Allow cancellation if within 48 hours since registration
+              canCancel = hoursSinceRegistration <= 48;
+            }
 
-            // Determine button text based on status
             let buttonText = "";
             let tooltipText = "";
 
@@ -308,9 +345,6 @@ export default function WorkshopDetails() {
             } else if (occurrence.status === "past") {
               buttonText = "Past";
               tooltipText = "This workshop occurrence has already taken place.";
-            } else if (isOccurrenceRegistered) {
-              buttonText = "Already Registered";
-              tooltipText = "You are already registered for this occurrence.";
             } else if (!user) {
               buttonText = "Register";
               tooltipText = "Please log in to register for this workshop.";
@@ -327,26 +361,68 @@ export default function WorkshopDetails() {
               <li key={occurrence.id} className="text-gray-600 mb-2">
                 📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
                 {new Date(occurrence.endDate).toLocaleString()}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
+                {isOccurrenceRegistered ? (
+                  canCancel ? (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <ConfirmButton
+                            confirmTitle="Cancel Registration"
+                            confirmDescription="Are you sure you want to cancel your registration for this workshop time? You will be refunded."
+                            onConfirm={() => handleCancel(occurrence.id)}
+                            buttonLabel="Cancel Registration"
+                            buttonClassName="ml-2 bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded mr-2"
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Cancellation allowed: You will be refunded.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Button
+                            className="ml-2 bg-gray-300 cursor-not-allowed text-gray-600 px-2 py-1 rounded mr-2"
+                            disabled
+                          >
+                            Cancel Registration
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>
+                            Cancellation not allowed (over 48 hours since
+                            registration).
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )
+                ) : (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
                         <Button
                           className="ml-2 bg-blue-500 text-white px-2 py-1 rounded mr-2"
                           onClick={() => handleRegister(occurrence.id)}
-                          disabled={isDisabled}
+                          disabled={
+                            occurrence.status !== "active" ||
+                            (user && !hasCompletedAllPrerequisites) ||
+                            !user
+                          }
                         >
                           {buttonText}
                         </Button>
-                      </span>
-                    </TooltipTrigger>
-                    {tooltipText && (
-                      <TooltipContent>
-                        <p>{tooltipText}</p>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                </TooltipProvider>
+                      </TooltipTrigger>
+                      {tooltipText && (
+                        <TooltipContent>
+                          <p>{tooltipText}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {occurrence.status === "past" && isAdmin && (
                   <Button
                     variant="outline"
@@ -361,16 +437,17 @@ export default function WorkshopDetails() {
           })}
 
           <Separator className="my-6" />
-
+          
           <h2 className="text-lg font-semibold">Cancellation Policy</h2>
-          <p className="text-gray-600">
-            Can't make it? Email{" "}
-            <a href="mailto:info@makerspaceyk.com" className="text-blue-500">
-              info@makerspaceyk.com
-            </a>
-            . Full refunds are only available if canceled 48 hours in advance.
-          </p>
-
+          <p
+            className="text-gray-600"
+            dangerouslySetInnerHTML={{
+              __html: workshop.cancellationPolicy.replace(
+                "info@makerspaceyk.com",
+                `<a href="mailto:info@makerspaceyk.com" class="text-blue-500">info@makerspaceyk.com</a>`
+              ),
+            }}
+          />
           <Button variant="outline" asChild className="mt-4">
             <Link to="/dashboardlayout/workshops">Back to Workshops</Link>
           </Button>
