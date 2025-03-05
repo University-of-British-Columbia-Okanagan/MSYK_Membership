@@ -1,8 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { type ActionFunctionArgs, redirect } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -13,11 +11,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import type { Route } from "./+types/login";
+import { useLoaderData, Form as RouterForm } from "react-router";
 import { loginSchema } from "../../schemas/loginSchema";
 import type { LoginFormValues } from "../../schemas/loginSchema";
+import type { Route } from "./+types/login";
 import { login, createUserSession, getUser } from "~/utils/session.server";
-import { useLoaderData, Form as RouterForm } from "react-router";
+import GenericFormField from "@/components/ui/GenericFormField";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -26,8 +25,6 @@ export async function loader({ request }: { request: Request }) {
 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
-
-  // Convert FormData to a plain object
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
   const result = await login(rawValues);
@@ -40,7 +37,7 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: result.errors };
   }
 
-  return createUserSession(result.id, "/dashboardlayout"); // Redirect to a protected route on success
+  return createUserSession(result.id, "/dashboardlayout");
 }
 
 interface ActionData {
@@ -61,7 +58,6 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
   });
 
   const { user } = loaderData;
-
   const [loading, setLoading] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
 
@@ -74,11 +70,10 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
 
   React.useEffect(() => {
     if (formRef.current) {
-      const formElement = formRef.current;
       const listener = () => handleSubmission();
-      formElement.addEventListener("submit", listener);
-
-      return () => formElement.removeEventListener("submit", listener);
+      formRef.current.addEventListener("submit", listener);
+      return () =>
+        formRef.current?.removeEventListener("submit", listener);
     }
   }, []);
 
@@ -105,7 +100,6 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
         </div>
       ) : (
         <>
-          {/* Show error message for invalid credentials */}
           {hasErrors && (
             <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
               Invalid email or password. Please try again.
@@ -114,38 +108,25 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
 
           <Form {...form}>
             <form method="post" ref={formRef}>
-              {/* Email */}
-              <FormField
+              {/* Email Field using GenericFormField */}
+              <GenericFormField
                 control={form.control}
                 name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input placeholder="your@email.com" {...field} />
-                    </FormControl>
-                    <FormMessage>{actionData?.errors?.email}</FormMessage>
-                  </FormItem>
-                )}
+                label="Email"
+                placeholder="your@email.com"
+                required
+                error={actionData?.errors?.email}
               />
 
-              {/* Password */}
-              <FormField
+              {/* Password Field using GenericFormField */}
+              <GenericFormField
                 control={form.control}
                 name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="password"
-                        placeholder="Password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage>{actionData?.errors?.password}</FormMessage>
-                  </FormItem>
-                )}
+                label="Password"
+                placeholder="Password"
+                type="password"
+                required
+                error={actionData?.errors?.password}
               />
 
               {/* Submit Button */}
