@@ -52,16 +52,21 @@ export async function getWorkshops() {
 
   return workshops.map((workshop) => {
     // Get the latest status from the most recent occurrence
-    const latestStatus = workshop.occurrences.length > 0
-      ? workshop.occurrences[workshop.occurrences.length - 1].status
-      : "expired"; // Default to expired if no occurrences exist
+    const latestStatus =
+      workshop.occurrences.length > 0
+        ? workshop.occurrences[workshop.occurrences.length - 1].status
+        : "expired"; // Default to expired if no occurrences exist
 
+    // Keep all existing fields in 'workshop',
+    // then add/override status, and ensure 'type' is included.
     return {
       ...workshop,
-      status: latestStatus, 
+      status: latestStatus,
+      type: workshop.type, // explicitly include workshop.type
     };
   });
 }
+
 
 /**
  * Add a new workshop along with its occurrences.

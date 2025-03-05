@@ -793,16 +793,22 @@ export default function EditWorkshop() {
             )}
           />
 
-          {/* New Prerequisites Field */}
-          <PrerequisitesField
-            control={form.control}
-            availableWorkshops={availableWorkshops}
-            selectedPrerequisites={selectedPrerequisites}
-            handlePrerequisiteSelect={handlePrerequisiteSelect}
-            removePrerequisite={removePrerequisite}
-            currentWorkshopId={workshop.id}
-            error={actionData?.errors?.prerequisites}
-          />
+          {/* Prerequisites */}
+          {workshop.type !== "orientation" ? (
+            <PrerequisitesField
+              control={form.control}
+              availableWorkshops={availableWorkshops}
+              selectedPrerequisites={selectedPrerequisites}
+              handlePrerequisiteSelect={handlePrerequisiteSelect}
+              removePrerequisite={removePrerequisite}
+              currentWorkshopId={workshop.id}
+              error={actionData?.errors?.prerequisites}
+            />
+          ) : (
+            <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
+              This is an orientation and does not have prerequisites.
+            </div>
+          )}
 
           <input
             type="hidden"
