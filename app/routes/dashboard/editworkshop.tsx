@@ -104,7 +104,6 @@ export async function action({
     Number
   );
 
-  // Declare occurrences with an explicit type
   let occurrences: {
     id?: number;
     status?: string;
@@ -114,9 +113,7 @@ export async function action({
     startDatePST: Date;
     endDatePST: Date;
   }[] = [];
-
   try {
-    // Parse the JSON string from rawValues and process each occurrence
     occurrences = JSON.parse(rawValues.occurrences as string).map(
       (occ: {
         id?: number;
@@ -124,43 +121,43 @@ export async function action({
         userCount?: number;
         startDate: string;
         endDate: string;
-        startDatePST?: string;
-        endDatePST?: string;
       }) => {
-        // If either date is an empty string, throw an error.
-        if (!occ.startDate || !occ.endDate) {
-          throw new Error("Occurrence dates cannot be empty");
-        }
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
 
-        if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
-          throw new Error("Invalid date format");
+        // VALIDATION CHECK: Ensure end date is later than start date
+        if (localEnd.getTime() <= localStart.getTime()) {
+          throw new Error("End date must be later than start date");
         }
 
-        // Calculate PST (or UTC-shifted) times
         const startOffset = localStart.getTimezoneOffset();
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
 
         return {
-          id: occ.id, // preserve if provided
-          status: occ.status, // preserve if provided
-          userCount: occ.userCount, // preserve if provided
+          id: occ.id,
+          status: occ.status,
+          userCount: occ.userCount,
           startDate: localStart,
           endDate: localEnd,
-          // If PST dates were sent, parse them; otherwise, use computed UTC values
-          startDatePST: occ.startDatePST
-            ? new Date(occ.startDatePST)
-            : utcStart,
-          endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : utcEnd,
+          startDatePST: utcStart,
+          endDatePST: utcEnd,
         };
       }
     );
   } catch (error) {
     console.error("Error parsing occurrences:", error);
-    return { errors: { occurrences: ["Invalid date format"] } };
+    return {
+      errors: {
+        occurrences: [
+          error instanceof Error &&
+          error.message === "End date must be later than start date"
+            ? error.message
+            : "Invalid date format",
+        ],
+      },
+    };
   }
 
   const parsed = workshopFormSchema.safeParse({
