@@ -15,14 +15,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+export interface Workshop {
+  id: number;
+  name: string;
+  type: string;
+}
+
 export interface PrerequisitesFieldProps {
-  control: any; // Replace with proper type from react-hook-form if desired
-  availableWorkshops: { id: number; name: string }[];
+  control: any;
+  availableWorkshops: Workshop[];
   selectedPrerequisites: number[];
   handlePrerequisiteSelect: (workshopId: number) => void;
   removePrerequisite: (workshopId: number) => void;
   /**
-   * Optional current workshop id. If provided, this workshop will be filtered out.
+   * Optional current workshop id. When provided, it is filtered out.
    */
   currentWorkshopId?: number;
   error?: string | React.ReactNode;
@@ -37,11 +43,15 @@ const PrerequisitesField: React.FC<PrerequisitesFieldProps> = ({
   currentWorkshopId,
   error,
 }) => {
-  // Sort the selected prerequisites for consistent ordering.
+  // Sort selected prerequisites for consistent display.
   const sortedSelected = [...selectedPrerequisites].sort((a, b) => a - b);
 
-  // Filter available workshops. If currentWorkshopId is provided, filter it out.
+  // Filter available workshops:
+  // - Only include workshops whose type is "orientation"
+  // - Filter out any already selected workshops
+  // - If currentWorkshopId is provided, filter it out as well
   const filteredWorkshops = availableWorkshops.filter((workshop) => {
+    if (workshop.type.toLowerCase() !== "orientation") return false;
     if (currentWorkshopId !== undefined && workshop.id === currentWorkshopId) {
       return false;
     }
@@ -106,7 +116,7 @@ const PrerequisitesField: React.FC<PrerequisitesFieldProps> = ({
           </FormControl>
           <FormMessage>{error}</FormMessage>
           <div className="text-xs text-gray-500 mt-1">
-            Select workshops that must be completed before enrolling in this one
+            Select workshops of type Orientation that must be completed before enrolling.
           </div>
         </FormItem>
       )}
