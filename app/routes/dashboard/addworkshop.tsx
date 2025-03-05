@@ -32,6 +32,7 @@ import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
+import PrerequisitesField from "@/components/ui/PrerequisitesField";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -475,73 +476,14 @@ export default function AddWorkshop() {
           />
 
           {/* Prerequisites */}
-          <FormField
-            control={form.control}
-            name="prerequisites"
-            render={({ field }) => (
-              <FormItem className="">
-                <FormLabel>Prerequisites</FormLabel>
-                <FormControl>
-                  <div className="">
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {sortedSelectedPrerequisites.map((prereqId) => {
-                        const workshop = availableWorkshops.find(
-                          (w) => w.id === prereqId
-                        );
-                        return workshop ? (
-                          <Badge
-                            key={prereqId}
-                            variant="secondary"
-                            className="py-1 px-2"
-                          >
-                            {workshop.name}
-                            <button
-                              type="button"
-                              onClick={() => removePrerequisite(prereqId)}
-                              className="ml-2 text-xs"
-                            >
-                              ×
-                            </button>
-                          </Badge>
-                        ) : null;
-                      })}
-                    </div>
-                    <Select
-                      onValueChange={(value) =>
-                        handlePrerequisiteSelect(Number(value))
-                      }
-                      value=""
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select prerequisites..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableWorkshops
-                          .filter(
-                            (workshop) =>
-                              !selectedPrerequisites.includes(workshop.id)
-                          )
-                          .sort((a, b) => a.id - b.id)
-                          .map((workshop) => (
-                            <SelectItem
-                              key={workshop.id}
-                              value={workshop.id.toString()}
-                            >
-                              {workshop.name}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
-                <div className="text-xs text-gray-500 mt-1">
-                  Select workshops that must be completed before enrolling in
-                  this one
-                </div>
-              </FormItem>
-            )}
-          />
+          <PrerequisitesField
+  control={form.control}
+  availableWorkshops={availableWorkshops}
+  selectedPrerequisites={selectedPrerequisites}
+  handlePrerequisiteSelect={handlePrerequisiteSelect}
+  removePrerequisite={removePrerequisite}
+  error={actionData?.errors?.prerequisites}
+/>
 
           {/* Type */}
           <GenericFormField
