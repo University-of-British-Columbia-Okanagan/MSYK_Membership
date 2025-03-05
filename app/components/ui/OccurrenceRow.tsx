@@ -28,6 +28,7 @@ const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
     <div className="flex gap-2 items-center mb-2 w-full">
       <Input
         type="datetime-local"
+        step="900"
         value={
           isNaN(occurrence.startDate.getTime())
             ? ""
@@ -40,6 +41,7 @@ const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
       />
       <Input
         type="datetime-local"
+        step="900"
         value={
           isNaN(occurrence.endDate.getTime())
             ? ""
