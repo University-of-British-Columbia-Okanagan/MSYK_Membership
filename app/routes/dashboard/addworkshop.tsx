@@ -26,9 +26,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CheckIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "~/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
-import DateTypeRadioGroup from "@/components/ui/DateTypeRadioGroup";
+import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/OccurrenceRow";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -358,44 +359,13 @@ export default function AddWorkshop() {
                     {dateSelectionType === "custom" && (
                       <div className="flex flex-col items-center w-full">
                         {occurrences.map((occ, index) => (
-                          <div
-                            key={index}
-                            className="flex gap-2 items-center mb-2 w-full"
-                          >
-                            <Input
-                              type="datetime-local"
-                              value={
-                                isNaN(occ.startDate.getTime())
-                                  ? ""
-                                  : formatLocalDatetime(occ.startDate)
-                              }
-                              onChange={(e) =>
-                                updateOccurrence(
-                                  index,
-                                  "startDate",
-                                  e.target.value
-                                )
-                              }
-                              className="flex-1"
-                            />
-                            <Input
-                              type="datetime-local"
-                              value={
-                                isNaN(occ.endDate.getTime())
-                                  ? ""
-                                  : formatLocalDatetime(occ.endDate)
-                              }
-                              onChange={(e) =>
-                                updateOccurrence(
-                                  index,
-                                  "endDate",
-                                  e.target.value
-                                )
-                              }
-                              className="flex-1"
-                            />
-                            {/* You could also add a confirm delete here if desired */}
-                          </div>
+                          <OccurrenceRow
+                          key={index}
+                          index={index}
+                          occurrence={occ}
+                          updateOccurrence={updateOccurrence}
+                          formatLocalDatetime={formatLocalDatetime}
+                          />
                         ))}
                         <Button
                           type="button"
