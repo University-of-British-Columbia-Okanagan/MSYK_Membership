@@ -366,12 +366,20 @@ export async function registerForWorkshop(
       throw new Error("User already registered for this session.");
     }
 
-    // Register user for this occurrence
+    // Determine registration result based on workshop type.
+    // If the workshop type is "orientation", set result to "pending".
+    const registrationResult =
+      occurrence.workshop.type.toLowerCase() === "orientation"
+        ? "pending"
+        : undefined;
+
+    // Register user for this occurrence, including the result field if applicable.
     await db.userWorkshop.create({
       data: {
         userId,
         workshopId: occurrence.workshop.id,
         occurrenceId,
+        ...(registrationResult ? { result: registrationResult } : {}),
       },
     });
 
