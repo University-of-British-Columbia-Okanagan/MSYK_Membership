@@ -45,12 +45,38 @@ export async function loader() {
 /**
  * Helper: Parse a datetime-local string as a local Date.
  */
+// function parseDateTimeAsLocal(value: string): Date {
+//   if (!value) return new Date("");
+//   const [datePart, timePart] = value.split("T");
+//   const [year, month, day] = datePart.split("-").map(Number);
+//   const [hours, minutes] = timePart.split(":").map(Number);
+//   return new Date(year, month - 1, day, hours, minutes);
+// }
 function parseDateTimeAsLocal(value: string): Date {
-  if (!value) return new Date("");
-  const [datePart, timePart] = value.split("T");
-  const [year, month, day] = datePart.split("-").map(Number);
-  const [hours, minutes] = timePart.split(":").map(Number);
-  return new Date(year, month - 1, day, hours, minutes);
+  try {
+    if (!value) return new Date("");
+    
+    // Use Date.parse to handle various date input formats
+    const timestamp = Date.parse(value);
+    
+    if (isNaN(timestamp)) {
+      console.error('Failed to parse date:', value);
+      return new Date("");
+    }
+
+    const date = new Date(timestamp);
+    
+    // Ensure the date is valid
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date after parsing:', value);
+      return new Date("");
+    }
+
+    return date;
+  } catch (error) {
+    console.error('Error parsing date:', error);
+    return new Date("");
+  }
 }
 
 /**
@@ -106,9 +132,12 @@ export async function action({ request }: { request: Request }) {
       (occ: { startDate: string; endDate: string }) => {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
-        if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
-          throw new Error("Invalid date format");
+
+        // VALIDATION CHECK: Ensure end date is later than start date
+        if (localEnd.getTime() <= localStart.getTime()) {
+          throw new Error("End date must be later than start date");
         }
+
         const startOffset = localStart.getTimezoneOffset();
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
@@ -123,7 +152,16 @@ export async function action({ request }: { request: Request }) {
     );
   } catch (error) {
     console.error("Error parsing occurrences:", error);
-    return { errors: { occurrences: ["Invalid date format"] } };
+    return {
+      errors: {
+        occurrences: [
+          error instanceof Error &&
+          error.message === "End date must be later than start date"
+            ? error.message
+            : "Invalid date format",
+        ],
+      },
+    };
   }
 
   const parsed = workshopFormSchema.safeParse({
@@ -394,7 +432,8 @@ export default function AddWorkshop() {
                         occurrences={occurrences}
                         setOccurrences={setOccurrences}
                         updateFormOccurrences={(updatedOccurrences) =>
-                          form.setValue("occurrences", updatedOccurrences)
+                        {console.log("Updating Form Occurrences:", updatedOccurrences)
+                          form.setValue("occurrences", updatedOccurrences)}
                         }
                         parseDateTimeAsLocal={parseDateTimeAsLocal}
                         isDuplicateDate={isDuplicateDate}
@@ -417,7 +456,8 @@ export default function AddWorkshop() {
                         occurrences={occurrences}
                         setOccurrences={setOccurrences}
                         updateFormOccurrences={(updatedOccurrences) =>
-                          form.setValue("occurrences", updatedOccurrences)
+                          {console.log("Updating Form Occurrences:", updatedOccurrences)
+                          form.setValue("occurrences", updatedOccurrences)}
                         }
                         parseDateTimeAsLocal={parseDateTimeAsLocal}
                         isDuplicateDate={isDuplicateDate}

@@ -1,10 +1,10 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
+import { TimeIntervalPicker } from "./TimeIntervalPicker"; // Import the new component
 
 export interface Occurrence {
   startDate: Date;
   endDate: Date;
-  // You can add additional fields if needed.
 }
 
 export interface OccurrenceRowProps {
@@ -24,32 +24,58 @@ const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
   updateOccurrence,
   formatLocalDatetime,
 }) => {
+  // Determine if a valid date has been selected for each occurrence.
+  const startDateValid = !isNaN(occurrence.startDate.getTime());
+  const endDateValid = !isNaN(occurrence.endDate.getTime());
+
   return (
     <div className="flex gap-2 items-center mb-2 w-full">
-      <Input
-        type="datetime-local"
-        value={
-          isNaN(occurrence.startDate.getTime())
-            ? ""
-            : formatLocalDatetime(occurrence.startDate)
-        }
-        onChange={(e) =>
-          updateOccurrence(index, "startDate", e.target.value)
-        }
-        className="flex-1"
-      />
-      <Input
-        type="datetime-local"
-        value={
-          isNaN(occurrence.endDate.getTime())
-            ? ""
-            : formatLocalDatetime(occurrence.endDate)
-        }
-        onChange={(e) =>
-          updateOccurrence(index, "endDate", e.target.value)
-        }
-        className="flex-1"
-      />
+      <div className="flex items-center gap-2 flex-1">
+        <Input
+          type="date"
+          value={
+            startDateValid
+              ? formatLocalDatetime(occurrence.startDate).split('T')[0]
+              : ""
+          }
+          onChange={(e) => {
+            const currentTime = startDateValid
+              ? formatLocalDatetime(occurrence.startDate).split('T')[1]
+              : '00:00';
+            updateOccurrence(index, "startDate", `${e.target.value}T${currentTime}`);
+          }}
+          className="flex-1"
+        />
+        <TimeIntervalPicker
+          value={formatLocalDatetime(occurrence.startDate)}
+          onChange={(value) => updateOccurrence(index, "startDate", value)}
+          className="flex-1"
+          disabled={!startDateValid}
+        />
+      </div>
+      <div className="flex items-center gap-2 flex-1">
+        <Input
+          type="date"
+          value={
+            endDateValid
+              ? formatLocalDatetime(occurrence.endDate).split('T')[0]
+              : ""
+          }
+          onChange={(e) => {
+            const currentTime = endDateValid
+              ? formatLocalDatetime(occurrence.endDate).split('T')[1]
+              : '00:00';
+            updateOccurrence(index, "endDate", `${e.target.value}T${currentTime}`);
+          }}
+          className="flex-1"
+        />
+        <TimeIntervalPicker
+          value={formatLocalDatetime(occurrence.endDate)}
+          onChange={(value) => updateOccurrence(index, "endDate", value)}
+          className="flex-1"
+          disabled={!endDateValid}
+        />
+      </div>
     </div>
   );
 };

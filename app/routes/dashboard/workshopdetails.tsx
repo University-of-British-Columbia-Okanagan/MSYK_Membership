@@ -319,6 +319,30 @@ export default function WorkshopDetails() {
           {/* Available Dates Section */}
           <h2 className="text-lg font-semibold">Available Dates</h2>
           {workshop.occurrences.map((occurrence: Occurrence) => {
+             if (occurrence.status === "cancelled") {
+              return (
+                <li key={occurrence.id} className="text-gray-600 mb-2">
+                  📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
+                  {new Date(occurrence.endDate).toLocaleString()}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <Button
+                          className="ml-2 bg-gray-300 cursor-not-allowed text-gray-600 px-2 py-1 rounded mr-2"
+                          disabled
+                        >
+                          Cancelled
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>This workshop occurrence has been cancelled.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </li>
+              );
+            }
+            
             const regData = registrations[occurrence.id] || {
               registered: false,
               registeredAt: null,

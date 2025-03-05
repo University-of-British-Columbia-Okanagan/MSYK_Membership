@@ -43,6 +43,9 @@ interface UpdateWorkshopData {
  */
 export async function getWorkshops() {
   const workshops = await db.workshop.findMany({
+    orderBy: {
+      id: "asc", // or "asc" if you prefer oldest-first
+    },
     include: {
       occurrences: {
         orderBy: { startDate: "asc" },
