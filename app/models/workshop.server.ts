@@ -67,7 +67,6 @@ export async function getWorkshops() {
   });
 }
 
-
 /**
  * Add a new workshop along with its occurrences.
  */
@@ -417,7 +416,7 @@ export async function checkUserRegistration(
     return { registered: false, registeredAt: null };
   }
 
-  return { registered: true, registeredAt: userWorkshop.date }; 
+  return { registered: true, registeredAt: userWorkshop.date };
   // or userWorkshop.createdAt, whichever column holds the registration time
 }
 
@@ -610,4 +609,43 @@ export async function getUserWorkshops(request: Request) {
   });
 
   return userWorkshops.map((entry) => entry.workshop);
+}
+
+export async function getAllRegistrations() {
+  return db.userWorkshop.findMany({
+    orderBy: {
+      date: "asc", // or "asc" if you prefer oldest-first
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
+      workshop: {
+        select: {
+          name: true,
+          type: true, // Include the workshop type
+        },
+      },
+      occurrence: {
+        select: {
+          startDate: true,
+          endDate: true,
+        },
+      },
+    },
+  });
+}
+
+export async function updateRegistrationResult(
+  registrationId: number,
+  newResult: string
+) {
+  // newResult should be one of "passed", "failed", or "pending"
+  return db.userWorkshop.update({
+    where: { id: registrationId },
+    data: { result: newResult },
+  });
 }

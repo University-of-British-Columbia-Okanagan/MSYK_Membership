@@ -29,7 +29,7 @@ export default [
   route("/volunteer", "routes/getinvolved/volunteer.tsx"),
   route("/membership", "routes/getinvolved/membership.tsx"),
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
-  route("/admindashboardlayout", "routes/dashboard/admindashboardlayout.tsx"),
+  route("/dashboard/admin", "routes/dashboard/admindashboardlayout.tsx"),
   route("/userdashboardlayout", "routes/dashboard/userdashboardlayout.tsx"),
   route("/dashboard/workshops", "routes/dashboard/workshops.tsx"),
   route("/dashboard/workshops/:id", "routes/dashboard/workshopdetails.tsx"),
