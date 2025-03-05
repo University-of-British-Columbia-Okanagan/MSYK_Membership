@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { CheckIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import GenericFormField from "~/components/ui/GenericFormField";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -279,114 +280,50 @@ export default function AddWorkshop() {
       <Form {...form}>
         <form method="post">
           {/* Workshop Fields */}
-          <FormField
+          <GenericFormField
             control={form.control}
             name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="name">
-                  Name <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="name"
-                    placeholder="Workshop Name"
-                    {...field}
-                    className="w-full lg:w-[500px]"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.name}</FormMessage>
-              </FormItem>
-            )}
+            label="Name"
+            placeholder="Workshop Name"
+            required
+            error={actionData?.errors?.name}
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="description">
-                  Description <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Textarea
-                    id="description"
-                    placeholder="Workshop Description"
-                    {...field}
-                    className="w-full"
-                    rows={5}
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.description}</FormMessage>
-              </FormItem>
-            )}
+            label="Description"
+            placeholder="Workshop Description"
+            required
+            error={actionData?.errors?.description}
+            component={Textarea} // use Textarea instead of Input
+            className="w-full" // override default if needed
+            rows={5}
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="price">
-                  Price <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="price"
-                    type="number"
-                    placeholder="Price"
-                    {...field}
-                    step="0.01"
-                    className="w-full"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.price}</FormMessage>
-              </FormItem>
-            )}
+            label="Price"
+            placeholder="Price"
+            required
+            error={actionData?.errors?.price}
+            type="number"
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="location">
-                  Location <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="location"
-                    placeholder="Workshop Location"
-                    {...field}
-                    className="w-full"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.location}</FormMessage>
-              </FormItem>
-            )}
+            label="Location"
+            placeholder="Workshop Location"
+            required
+            error={actionData?.errors?.location}
           />
-          <FormField
+          <GenericFormField
             control={form.control}
             name="capacity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor="capacity">
-                  Capacity <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    id="capacity"
-                    type="number"
-                    placeholder="Capacity"
-                    {...field}
-                    className="w-full"
-                    autoComplete="off"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.capacity}</FormMessage>
-              </FormItem>
-            )}
+            label="Capacity"
+            placeholder="Capacity"
+            required
+            error={actionData?.errors?.capacity}
+            type="number"
           />
 
           {/* Occurrences (Dates) Section */}
@@ -438,7 +375,7 @@ export default function AddWorkshop() {
                           onChange={() => setDateSelectionType("monthly")}
                         />
                         <label htmlFor="monthlyDate" className="text-sm">
-                            Append/add monthly dates
+                          Append/add monthly dates
                         </label>
                       </div>
                     </div>
@@ -844,24 +781,18 @@ export default function AddWorkshop() {
           />
 
           {/* Type */}
-          <FormField
+          <GenericFormField
             control={form.control}
             name="type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Workshop Type <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full border rounded-md p-2">
-                    <option value="workshop">Workshop</option>
-                    <option value="orientation">Orientation</option>
-                  </select>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.type}</FormMessage>
-              </FormItem>
-            )}
-          />
+            label="Workshop Type"
+            required
+            error={actionData?.errors?.type}
+            component="select" // Render a native select element
+            className="w-full border rounded-md p-2"
+          >
+            <option value="workshop">Workshop</option>
+            <option value="orientation">Orientation</option>
+          </GenericFormField>
 
           {/* Hidden input for occurrences */}
           <input

@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { CheckIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import GenericFormField from "~/components/ui/GenericFormField";
 
 interface Occurrence {
   id?: number;
@@ -170,8 +171,6 @@ export async function action({
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  console.log(parsed.data.occurrences);
-
   try {
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
       name: parsed.data.name,
@@ -286,7 +285,6 @@ function getWorkshopPrerequsities(
     </div>
   );
 }
-
 
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
@@ -488,98 +486,54 @@ export default function EditWorkshop() {
       <Form {...form}>
         <form method="post">
           {/* Basic Workshop Fields */}
-          <FormField
+          <GenericFormField
             control={form.control}
             name="name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Name <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    placeholder="Workshop Name"
-                    className="w-full lg:w-[500px]"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.name}</FormMessage>
-              </FormItem>
-            )}
+            label="Name"
+            placeholder="Workshop Name"
+            required
+            error={actionData?.errors?.name}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="description"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Description <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Textarea
-                    {...field}
-                    placeholder="Workshop Description"
-                    className="w-full"
-                    rows={5}
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.description}</FormMessage>
-              </FormItem>
-            )}
+            label="Description"
+            placeholder="Workshop Description"
+            required
+            error={actionData?.errors?.description}
+            component={Textarea}
+            className="w-full" // override if needed
+            rows={5}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Price <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    type="number"
-                    placeholder="Price"
-                    step="0.01"
-                  />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.price}</FormMessage>
-              </FormItem>
-            )}
+            label="Price"
+            placeholder="Price"
+            required
+            type="number"
+            error={actionData?.errors?.price}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="location"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Location <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="Workshop Location" />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.location}</FormMessage>
-              </FormItem>
-            )}
+            label="Location"
+            placeholder="Workshop Location"
+            required
+            error={actionData?.errors?.location}
           />
 
-          <FormField
+          <GenericFormField
             control={form.control}
             name="capacity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Capacity <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <Input {...field} type="number" placeholder="Capacity" />
-                </FormControl>
-                <FormMessage>{actionData?.errors?.capacity}</FormMessage>
-              </FormItem>
-            )}
+            label="Capacity"
+            placeholder="Capacity"
+            required
+            type="number"
+            error={actionData?.errors?.capacity}
           />
 
           {/* Occurrences (Dates) with Tabs */}
@@ -1165,33 +1119,13 @@ export default function EditWorkshop() {
                     selectedPrerequisites,
                     handlePrerequisiteSelect,
                     removePrerequisite,
-                    workshop.id 
+                    workshop.id
                   )}
                 </FormControl>
                 <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
               </FormItem>
             )}
           />
-
-          {/* Type */}
-          {/* <FormField
-            control={form.control}
-            name="type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Workshop Type <span className="text-red-500">*</span>
-                </FormLabel>
-                <FormControl>
-                  <select {...field} className="w-full border rounded-md p-2">
-                    <option value="workshop">Workshop</option>
-                    <option value="orientation">Orientation</option>
-                  </select>
-                </FormControl>
-                <FormMessage>{actionData?.errors?.type}</FormMessage>
-              </FormItem>
-            )}
-          /> */}
 
           <input
             type="hidden"
