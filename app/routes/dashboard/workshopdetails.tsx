@@ -437,17 +437,17 @@ export default function WorkshopDetails() {
           })}
 
           <Separator className="my-6" />
-
+          
           <h2 className="text-lg font-semibold">Cancellation Policy</h2>
-          <p className="text-gray-600">
-            Can't make it? Email{" "}
-            <a href="mailto:info@makerspaceyk.com" className="text-blue-500">
-              info@makerspaceyk.com
-            </a>
-            . Full refunds are only available if canceled within 48 hours of
-            registration.
-          </p>
-
+          <p
+            className="text-gray-600"
+            dangerouslySetInnerHTML={{
+              __html: workshop.cancellationPolicy.replace(
+                "info@makerspaceyk.com",
+                `<a href="mailto:info@makerspaceyk.com" class="text-blue-500">info@makerspaceyk.com</a>`
+              ),
+            }}
+          />
           <Button variant="outline" asChild className="mt-4">
             <Link to="/dashboardlayout/workshops">Back to Workshops</Link>
           </Button>
