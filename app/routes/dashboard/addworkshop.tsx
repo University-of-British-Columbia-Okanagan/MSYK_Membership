@@ -30,6 +30,7 @@ import { Badge } from "~/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/OccurrenceRow";
+import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -360,11 +361,11 @@ export default function AddWorkshop() {
                       <div className="flex flex-col items-center w-full">
                         {occurrences.map((occ, index) => (
                           <OccurrenceRow
-                          key={index}
-                          index={index}
-                          occurrence={occ}
-                          updateOccurrence={updateOccurrence}
-                          formatLocalDatetime={formatLocalDatetime}
+                            key={index}
+                            index={index}
+                            occurrence={occ}
+                            updateOccurrence={updateOccurrence}
+                            formatLocalDatetime={formatLocalDatetime}
                           />
                         ))}
                         <Button
@@ -377,234 +378,49 @@ export default function AddWorkshop() {
                       </div>
                     )}
 
-                    {/* Weekly Schedule Inputs */}
                     {dateSelectionType === "weekly" && (
-                      <div className="flex flex-col items-start w-full space-y-4">
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence Start</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={weeklyStartDate}
-                              onChange={(e) =>
-                                setWeeklyStartDate(e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence End</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={weeklyEndDate}
-                              onChange={(e) => setWeeklyEndDate(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Repeat every (weeks)</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={weeklyInterval}
-                              onChange={(e) =>
-                                setWeeklyInterval(Number(e.target.value))
-                              }
-                              placeholder="Week interval"
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Number of repetitions</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={weeklyCount}
-                              onChange={(e) =>
-                                setWeeklyCount(Number(e.target.value))
-                              }
-                              placeholder="Total occurrences"
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (!weeklyStartDate || !weeklyEndDate) {
-                              alert(
-                                "Please select initial start and end dates"
-                              );
-                              return;
-                            }
-                            if (weeklyInterval < 1 || weeklyCount < 1) {
-                              alert(
-                                "Please enter valid interval and repetition numbers"
-                              );
-                              return;
-                            }
-                            const newOccurrences: {
-                              startDate: Date;
-                              endDate: Date;
-                            }[] = [];
-                            const start = parseDateTimeAsLocal(weeklyStartDate);
-                            const end = parseDateTimeAsLocal(weeklyEndDate);
-                            const baseOccurrence = {
-                              startDate: new Date(start),
-                              endDate: new Date(end),
-                            };
-                            for (let i = 0; i < weeklyCount; i++) {
-                              const occurrence = {
-                                startDate: new Date(baseOccurrence.startDate),
-                                endDate: new Date(baseOccurrence.endDate),
-                              };
-                              occurrence.startDate.setDate(
-                                baseOccurrence.startDate.getDate() +
-                                  weeklyInterval * 7 * i
-                              );
-                              occurrence.endDate.setDate(
-                                baseOccurrence.endDate.getDate() +
-                                  weeklyInterval * 7 * i
-                              );
-                              // Prevent duplicate dates.
-                              const existingStartDates = occurrences.map(
-                                (o) => o.startDate
-                              );
-                              if (
-                                !isDuplicateDate(
-                                  occurrence.startDate,
-                                  existingStartDates
-                                )
-                              ) {
-                                newOccurrences.push(occurrence);
-                              }
-                            }
-                            const updatedOccurrences = [
-                              ...occurrences,
-                              ...newOccurrences,
-                            ];
-                            updatedOccurrences.sort(
-                              (a, b) =>
-                                a.startDate.getTime() - b.startDate.getTime()
-                            );
-                            setOccurrences(updatedOccurrences);
-                            form.setValue("occurrences", updatedOccurrences);
-                            // After appending, revert back to custom view.
-                            setDateSelectionType("custom");
-                          }}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-                        >
-                          Append/add weekly dates
-                        </Button>
-                      </div>
+                      <RepetitionScheduleInputs
+                        scheduleType="weekly"
+                        startDate={weeklyStartDate}
+                        setStartDate={setWeeklyStartDate}
+                        endDate={weeklyEndDate}
+                        setEndDate={setWeeklyEndDate}
+                        interval={weeklyInterval}
+                        setInterval={setWeeklyInterval}
+                        count={weeklyCount}
+                        setCount={setWeeklyCount}
+                        occurrences={occurrences}
+                        setOccurrences={setOccurrences}
+                        updateFormOccurrences={(updatedOccurrences) =>
+                          form.setValue("occurrences", updatedOccurrences)
+                        }
+                        parseDateTimeAsLocal={parseDateTimeAsLocal}
+                        isDuplicateDate={isDuplicateDate}
+                        onRevert={() => setDateSelectionType("custom")}
+                      />
                     )}
 
-                    {/* Monthly Schedule Inputs */}
+                    {/* Monthly Repetition */}
                     {dateSelectionType === "monthly" && (
-                      <div className="flex flex-col items-start w-full space-y-4">
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence Start</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={monthlyStartDate}
-                              onChange={(e) =>
-                                setMonthlyStartDate(e.target.value)
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>First Occurrence End</FormLabel>
-                            <Input
-                              type="datetime-local"
-                              value={monthlyEndDate}
-                              onChange={(e) =>
-                                setMonthlyEndDate(e.target.value)
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 w-full">
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Repeat every (months)</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={monthlyInterval}
-                              onChange={(e) =>
-                                setMonthlyInterval(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <FormLabel>Number of repetitions</FormLabel>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={monthlyCount}
-                              onChange={(e) =>
-                                setMonthlyCount(Number(e.target.value))
-                              }
-                            />
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => {
-                            if (!monthlyStartDate || !monthlyEndDate) {
-                              alert(
-                                "Please select initial start and end dates"
-                              );
-                              return;
-                            }
-                            if (monthlyInterval < 1 || monthlyCount < 1) {
-                              alert(
-                                "Please enter valid interval and repetition numbers"
-                              );
-                              return;
-                            }
-                            const newOccurrences: {
-                              startDate: Date;
-                              endDate: Date;
-                            }[] = [];
-                            const start =
-                              parseDateTimeAsLocal(monthlyStartDate);
-                            const end = parseDateTimeAsLocal(monthlyEndDate);
-                            const baseOccurrence = {
-                              startDate: new Date(start),
-                              endDate: new Date(end),
-                            };
-                            for (let i = 0; i < monthlyCount; i++) {
-                              const occurrence = {
-                                startDate: new Date(baseOccurrence.startDate),
-                                endDate: new Date(baseOccurrence.endDate),
-                              };
-                              occurrence.startDate.setMonth(
-                                baseOccurrence.startDate.getMonth() +
-                                  monthlyInterval * i
-                              );
-                              occurrence.endDate.setMonth(
-                                baseOccurrence.endDate.getMonth() +
-                                  monthlyInterval * i
-                              );
-                              newOccurrences.push(occurrence);
-                            }
-                            const updatedOccurrences = [
-                              ...occurrences,
-                              ...newOccurrences,
-                            ];
-                            updatedOccurrences.sort(
-                              (a, b) =>
-                                a.startDate.getTime() - b.startDate.getTime()
-                            );
-                            setOccurrences(updatedOccurrences);
-                            form.setValue("occurrences", updatedOccurrences);
-                            // Revert back to custom view
-                            setDateSelectionType("custom");
-                          }}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-                        >
-                          Append/add monthly dates
-                        </Button>
-                      </div>
+                      <RepetitionScheduleInputs
+                        scheduleType="monthly"
+                        startDate={monthlyStartDate}
+                        setStartDate={setMonthlyStartDate}
+                        endDate={monthlyEndDate}
+                        setEndDate={setMonthlyEndDate}
+                        interval={monthlyInterval}
+                        setInterval={setMonthlyInterval}
+                        count={monthlyCount}
+                        setCount={setMonthlyCount}
+                        occurrences={occurrences}
+                        setOccurrences={setOccurrences}
+                        updateFormOccurrences={(updatedOccurrences) =>
+                          form.setValue("occurrences", updatedOccurrences)
+                        }
+                        parseDateTimeAsLocal={parseDateTimeAsLocal}
+                        isDuplicateDate={isDuplicateDate}
+                        onRevert={() => setDateSelectionType("custom")}
+                      />
                     )}
 
                     {/* If we have occurrences, show them in a single tab */}
