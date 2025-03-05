@@ -389,11 +389,23 @@ export async function checkUserRegistration(
   workshopId: number,
   userId: number,
   occurrenceId: number
-) {
-  const registration = await db.userWorkshop.findFirst({
-    where: { workshopId, userId, occurrenceId }, // Check against occurrence, not just workshop
+): Promise<{ registered: boolean; registeredAt: Date | null }> {
+  // Example: find the row in the UserWorkshop table
+  const userWorkshop = await db.userWorkshop.findFirst({
+    where: {
+      userId: userId,
+      workshopId: workshopId,
+      occurrenceId: occurrenceId,
+      // possibly filter by some "status": "active" if you track canceled status
+    },
   });
-  return !!registration;
+
+  if (!userWorkshop) {
+    return { registered: false, registeredAt: null };
+  }
+
+  return { registered: true, registeredAt: userWorkshop.date }; 
+  // or userWorkshop.createdAt, whichever column holds the registration time
 }
 
 export async function duplicateWorkshop(workshopId: number) {
