@@ -31,6 +31,7 @@ import GenericFormField from "~/components/ui/GenericFormField";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
+import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -425,44 +426,46 @@ export default function AddWorkshop() {
 
                     {/* If we have occurrences, show them in a single tab */}
                     {occurrences.length > 0 && (
-                      <div className="w-full mt-4">
+                      <>
                         <h3 className="font-medium mb-4">Dates:</h3>
-                        <Tabs defaultValue="all" className="w-full">
-                          {/* Center the tab trigger */}
-                          <TabsList className="flex justify-center">
-                            <TabsTrigger value="all">
-                              My Workshop Dates
-                            </TabsTrigger>
-                          </TabsList>
-                          <TabsContent
-                            value="all"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {occurrences.map((occ, index) => (
-                              <div
-                                key={index}
-                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
-                              >
-                                <div className="text-sm">
-                                  <div className="font-medium">
-                                    {formatDisplayDate(occ.startDate)}
-                                  </div>
-                                  <div className="text-xs text-gray-600">
-                                    to {formatDisplayDate(occ.endDate)}
-                                  </div>
-                                </div>
-                                <ConfirmButton
-                                  confirmTitle="Delete Occurrence"
-                                  confirmDescription="Are you sure you want to delete this occurrence?"
-                                  onConfirm={() => removeOccurrence(index)}
-                                  buttonLabel="X"
-                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                />
-                              </div>
-                            ))}
-                          </TabsContent>
-                        </Tabs>
-                      </div>
+                        <OccurrencesTabs
+                          defaultValue="all"
+                          tabs={[
+                            {
+                              value: "all",
+                              label: "My Workshop Dates",
+                              content: (
+                                <>
+                                  {occurrences.map((occ, index) => (
+                                    <div
+                                      key={index}
+                                      className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
+                                    >
+                                      <div className="text-sm">
+                                        <div className="font-medium">
+                                          {formatDisplayDate(occ.startDate)}
+                                        </div>
+                                        <div className="text-xs text-gray-600">
+                                          to {formatDisplayDate(occ.endDate)}
+                                        </div>
+                                      </div>
+                                      <ConfirmButton
+                                        confirmTitle="Delete Occurrence"
+                                        confirmDescription="Are you sure you want to delete this occurrence?"
+                                        onConfirm={() =>
+                                          removeOccurrence(index)
+                                        }
+                                        buttonLabel="X"
+                                        buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                      />
+                                    </div>
+                                  ))}
+                                </>
+                              ),
+                            },
+                          ]}
+                        />
+                      </>
                     )}
                   </div>
                 </FormControl>

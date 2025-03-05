@@ -41,6 +41,7 @@ import GenericFormField from "~/components/ui/GenericFormField";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
+import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 
 interface Occurrence {
   id?: number;
@@ -636,204 +637,210 @@ export default function EditWorkshop() {
 
                     {/* If we have generated occurrences, display them in Tabs */}
                     {occurrences.length > 0 && (
-                      <div className="w-full mt-4">
+                      <>
                         <h3 className="font-medium mb-4">Workshop Dates:</h3>
-
-                        <Tabs defaultValue="active" className="w-full">
-                          <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger
-                              value="active"
-                              className="data-[state=active]:bg-yellow-500 data-[state=active]:text-white"
-                            >
-                              Active ({activeOccurrences.length})
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="past"
-                              className="data-[state=active]:bg-gray-500 data-[state=active]:text-white"
-                            >
-                              Past ({pastOccurrences.length})
-                            </TabsTrigger>
-                            <TabsTrigger
-                              value="cancelled"
-                              className="data-[state=active]:bg-red-500 data-[state=active]:text-white"
-                            >
-                              Cancelled ({cancelledOccurrences.length})
-                            </TabsTrigger>
-                          </TabsList>
-
-                          <TabsContent
-                            value="active"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {activeOccurrences.length > 0 ? (
-                              <div className="space-y-3">
-                                {activeOccurrences.map((occ, index) => {
-                                  // Find the original index in the complete occurrences array
-                                  const originalIndex = occurrences.findIndex(
-                                    (o) =>
-                                      o.startDate.getTime() ===
-                                        occ.startDate.getTime() &&
-                                      o.endDate.getTime() ===
-                                        occ.endDate.getTime()
-                                  );
-                                  const hasUsers =
-                                    occ.userCount && occ.userCount > 0;
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium text-green-700">
-                                          {formatDateForDisplay(occ.startDate)}
+                        <OccurrencesTabs
+                          defaultValue="active"
+                          tabs={[
+                            {
+                              value: "active",
+                              label: `Active (${activeOccurrences.length})`,
+                              triggerClassName:
+                                "data-[state=active]:bg-yellow-500 data-[state=active]:text-white",
+                              content:
+                                activeOccurrences.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {activeOccurrences.map((occ, index) => {
+                                      const originalIndex =
+                                        occurrences.findIndex(
+                                          (o) =>
+                                            o.startDate.getTime() ===
+                                              occ.startDate.getTime() &&
+                                            o.endDate.getTime() ===
+                                              occ.endDate.getTime()
+                                        );
+                                      const hasUsers =
+                                        occ.userCount && occ.userCount > 0;
+                                      return (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
+                                        >
+                                          <div className="text-sm">
+                                            <div className="font-medium text-green-700">
+                                              {formatDateForDisplay(
+                                                occ.startDate
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              to{" "}
+                                              {formatDateForDisplay(
+                                                occ.endDate
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center">
+                                            <span className="mr-2 text-sm font-bold text-gray-800">
+                                              {occ.userCount ?? 0} users
+                                              registered
+                                            </span>
+                                            {hasUsers ? (
+                                              <ConfirmButton
+                                                confirmTitle="Cancel Occurrence"
+                                                confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
+                                                onConfirm={() =>
+                                                  handleCancelOccurrence(occ.id)
+                                                }
+                                                buttonLabel="Cancel"
+                                                buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+                                              />
+                                            ) : (
+                                              <ConfirmButton
+                                                confirmTitle="Delete Occurrence"
+                                                confirmDescription="Are you sure you want to delete this occurrence?"
+                                                onConfirm={() =>
+                                                  removeOccurrence(
+                                                    originalIndex
+                                                  )
+                                                }
+                                                buttonLabel="X"
+                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                              />
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDateForDisplay(occ.endDate)}
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-gray-500">
+                                    No active workshop dates scheduled
+                                  </div>
+                                ),
+                            },
+                            {
+                              value: "past",
+                              label: `Past (${pastOccurrences.length})`,
+                              triggerClassName:
+                                "data-[state=active]:bg-gray-500 data-[state=active]:text-white",
+                              content:
+                                pastOccurrences.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {pastOccurrences.map((occ, index) => {
+                                      const originalIndex =
+                                        occurrences.findIndex(
+                                          (o) =>
+                                            o.startDate.getTime() ===
+                                              occ.startDate.getTime() &&
+                                            o.endDate.getTime() ===
+                                              occ.endDate.getTime()
+                                        );
+                                      return (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md"
+                                        >
+                                          <div className="text-sm">
+                                            <div className="font-medium text-gray-700">
+                                              {formatDateForDisplay(
+                                                occ.startDate
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              to{" "}
+                                              {formatDateForDisplay(
+                                                occ.endDate
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center">
+                                            <span className="mr-2 text-sm font-bold text-gray-800">
+                                              {occ.userCount ?? 0} users
+                                              registered
+                                            </span>
+                                            <ConfirmButton
+                                              confirmTitle="Delete Occurrence"
+                                              confirmDescription="Are you sure you want to delete this occurrence?"
+                                              onConfirm={() =>
+                                                removeOccurrence(originalIndex)
+                                              }
+                                              buttonLabel="X"
+                                              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                            />
+                                          </div>
                                         </div>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className="mr-2 text-sm font-bold text-gray-800">
-                                          {occ.userCount ?? 0} users registered
-                                        </span>
-                                        {hasUsers ? (
-                                          <ConfirmButton
-                                            confirmTitle="Cancel Occurrence"
-                                            confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
-                                            onConfirm={() =>
-                                              handleCancelOccurrence(occ.id)
-                                            }
-                                            buttonLabel="Cancel"
-                                            buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
-                                          />
-                                        ) : (
-                                          <ConfirmButton
-                                            confirmTitle="Delete Occurrence"
-                                            confirmDescription="Are you sure you want to delete this occurrence?"
-                                            onConfirm={() =>
-                                              removeOccurrence(originalIndex)
-                                            }
-                                            buttonLabel="X"
-                                            buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                          />
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                No active workshop dates scheduled
-                              </div>
-                            )}
-                          </TabsContent>
-
-                          <TabsContent
-                            value="past"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {pastOccurrences.length > 0 ? (
-                              <div className="space-y-3">
-                                {pastOccurrences.map((occ, index) => {
-                                  const originalIndex = occurrences.findIndex(
-                                    (o) =>
-                                      o.startDate.getTime() ===
-                                        occ.startDate.getTime() &&
-                                      o.endDate.getTime() ===
-                                        occ.endDate.getTime()
-                                  );
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium text-gray-700">
-                                          {formatDateForDisplay(occ.startDate)}
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-gray-500">
+                                    No past workshop dates
+                                  </div>
+                                ),
+                            },
+                            {
+                              value: "cancelled",
+                              label: `Cancelled (${cancelledOccurrences.length})`,
+                              triggerClassName:
+                                "data-[state=active]:bg-red-500 data-[state=active]:text-white",
+                              content:
+                                cancelledOccurrences.length > 0 ? (
+                                  <div className="space-y-3">
+                                    {cancelledOccurrences.map((occ, index) => {
+                                      const originalIndex =
+                                        occurrences.findIndex(
+                                          (o) =>
+                                            o.startDate.getTime() ===
+                                              occ.startDate.getTime() &&
+                                            o.endDate.getTime() ===
+                                              occ.endDate.getTime()
+                                        );
+                                      return (
+                                        <div
+                                          key={index}
+                                          className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md"
+                                        >
+                                          <div className="text-sm">
+                                            <div className="font-medium text-red-700">
+                                              {formatDateForDisplay(
+                                                occ.startDate
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-gray-600">
+                                              to{" "}
+                                              {formatDateForDisplay(
+                                                occ.endDate
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center">
+                                            <span className="mr-2 text-sm font-bold text-gray-800">
+                                              {occ.userCount ?? 0} users
+                                              registered
+                                            </span>
+                                            <ConfirmButton
+                                              confirmTitle="Delete Occurrence"
+                                              confirmDescription="Are you sure you want to delete this occurrence?"
+                                              onConfirm={() =>
+                                                removeOccurrence(originalIndex)
+                                              }
+                                              buttonLabel="X"
+                                              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                            />
+                                          </div>
                                         </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDateForDisplay(occ.endDate)}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className="mr-2 text-sm font-bold text-gray-800">
-                                          {occ.userCount ?? 0} users registered
-                                        </span>
-
-                                        <ConfirmButton
-                                          confirmTitle="Delete Occurrence"
-                                          confirmDescription="Are you sure you want to delete this occurrence?"
-                                          onConfirm={() =>
-                                            removeOccurrence(originalIndex)
-                                          }
-                                          buttonLabel="X"
-                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                No past workshop dates
-                              </div>
-                            )}
-                          </TabsContent>
-
-                          <TabsContent
-                            value="cancelled"
-                            className="border rounded-md p-4 mt-2"
-                          >
-                            {cancelledOccurrences.length > 0 ? (
-                              <div className="space-y-3">
-                                {cancelledOccurrences.map((occ, index) => {
-                                  const originalIndex = occurrences.findIndex(
-                                    (o) =>
-                                      o.startDate.getTime() ===
-                                        occ.startDate.getTime() &&
-                                      o.endDate.getTime() ===
-                                        occ.endDate.getTime()
-                                  );
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium text-red-700">
-                                          {formatDateForDisplay(occ.startDate)}
-                                        </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDateForDisplay(occ.endDate)}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center">
-                                        <span className="mr-2 text-sm font-bold text-gray-800">
-                                          {occ.userCount ?? 0} users registered
-                                        </span>
-                                        <ConfirmButton
-                                          confirmTitle="Delete Occurrence"
-                                          confirmDescription="Are you sure you want to delete this occurrence?"
-                                          onConfirm={() =>
-                                            removeOccurrence(originalIndex)
-                                          }
-                                          buttonLabel="X"
-                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div className="text-center py-6 text-gray-500">
-                                No cancelled workshop dates
-                              </div>
-                            )}
-                          </TabsContent>
-                        </Tabs>
-                      </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-gray-500">
+                                    No cancelled workshop dates
+                                  </div>
+                                ),
+                            },
+                          ]}
+                        />
+                      </>
                     )}
                   </div>
                 </FormControl>
