@@ -161,7 +161,7 @@ export async function action({ request }: { request: Request }) {
 export default function AddWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
   const { workshops: availableWorkshops } = useLoaderData() as {
-    workshops: { id: number; name: string }[];
+    workshops: { id: number; name: string; type: string }[];
   };
 
   const form = useForm<WorkshopFormValues>({
@@ -476,14 +476,20 @@ export default function AddWorkshop() {
           />
 
           {/* Prerequisites */}
-          <PrerequisitesField
-  control={form.control}
-  availableWorkshops={availableWorkshops}
-  selectedPrerequisites={selectedPrerequisites}
-  handlePrerequisiteSelect={handlePrerequisiteSelect}
-  removePrerequisite={removePrerequisite}
-  error={actionData?.errors?.prerequisites}
-/>
+          {form.watch("type") !== "orientation" ? (
+            <PrerequisitesField
+              control={form.control}
+              availableWorkshops={availableWorkshops}
+              selectedPrerequisites={selectedPrerequisites}
+              handlePrerequisiteSelect={handlePrerequisiteSelect}
+              removePrerequisite={removePrerequisite}
+              error={actionData?.errors?.prerequisites}
+            />
+          ) : (
+            <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
+              Orientation workshops does not have prerequisites.
+            </div>
+          )}
 
           {/* Type */}
           <GenericFormField

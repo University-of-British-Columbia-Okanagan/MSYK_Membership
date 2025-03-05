@@ -52,13 +52,17 @@ export async function getWorkshops() {
 
   return workshops.map((workshop) => {
     // Get the latest status from the most recent occurrence
-    const latestStatus = workshop.occurrences.length > 0
-      ? workshop.occurrences[workshop.occurrences.length - 1].status
-      : "expired"; // Default to expired if no occurrences exist
+    const latestStatus =
+      workshop.occurrences.length > 0
+        ? workshop.occurrences[workshop.occurrences.length - 1].status
+        : "expired"; // Default to expired if no occurrences exist
 
+    // Keep all existing fields in 'workshop',
+    // then add/override status, and ensure 'type' is included.
     return {
       ...workshop,
-      status: latestStatus, 
+      status: latestStatus,
+      type: workshop.type, // explicitly include workshop.type
     };
   });
 }
@@ -361,12 +365,20 @@ export async function registerForWorkshop(
       throw new Error("User already registered for this session.");
     }
 
-    // Register user for this occurrence
+    // Determine registration result based on workshop type.
+    // If the workshop type is "orientation", set result to "pending".
+    const registrationResult =
+      occurrence.workshop.type.toLowerCase() === "orientation"
+        ? "pending"
+        : undefined;
+
+    // Register user for this occurrence, including the result field if applicable.
     await db.userWorkshop.create({
       data: {
         userId,
         workshopId: occurrence.workshop.id,
         occurrenceId,
+        ...(registrationResult ? { result: registrationResult } : {}),
       },
     });
 
@@ -404,7 +416,7 @@ export async function checkUserRegistration(
     return { registered: false, registeredAt: null };
   }
 
-  return { registered: true, registeredAt: userWorkshop.date }; 
+  return { registered: true, registeredAt: userWorkshop.date };
   // or userWorkshop.createdAt, whichever column holds the registration time
 }
 
@@ -597,4 +609,43 @@ export async function getUserWorkshops(request: Request) {
   });
 
   return userWorkshops.map((entry) => entry.workshop);
+}
+
+export async function getAllRegistrations() {
+  return db.userWorkshop.findMany({
+    orderBy: {
+      date: "asc", // or "asc" if you prefer oldest-first
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
+      workshop: {
+        select: {
+          name: true,
+          type: true, // Include the workshop type
+        },
+      },
+      occurrence: {
+        select: {
+          startDate: true,
+          endDate: true,
+        },
+      },
+    },
+  });
+}
+
+export async function updateRegistrationResult(
+  registrationId: number,
+  newResult: string
+) {
+  // newResult should be one of "passed", "failed", or "pending"
+  return db.userWorkshop.update({
+    where: { id: registrationId },
+    data: { result: newResult },
+  });
 }
