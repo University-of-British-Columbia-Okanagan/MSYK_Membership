@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
@@ -12,7 +12,7 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
-import { FiPlus } from "react-icons/fi";
+import { FiPlus, FiSearch } from "react-icons/fi";
 import {
   Table,
   TableBody,
@@ -28,6 +28,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -103,6 +104,34 @@ export default function AdminDashboard() {
     }[];
   };
 
+  // State for filters
+  const [workshopTypeFilter, setWorkshopTypeFilter] = useState<string>("all");
+  const [searchName, setSearchName] = useState<string>("");
+
+  // Get unique workshop types
+  const workshopTypes = useMemo(() => {
+    const types = new Set(registrations.map((reg) => reg.workshop.type));
+    return ["all", ...types];
+  }, [registrations]);
+
+  // Filter registrations based on workshop type and search name
+  const filteredRegistrations = useMemo(() => {
+    return registrations.filter((reg) => {
+      // Workshop type filter
+      const matchesType =
+        workshopTypeFilter === "all" ||
+        reg.workshop.type.toLowerCase() === workshopTypeFilter.toLowerCase();
+
+      // Name search filter (case-insensitive, matches first or last name)
+      const matchesName =
+        searchName === "" ||
+        reg.user.firstName.toLowerCase().includes(searchName.toLowerCase()) ||
+        reg.user.lastName.toLowerCase().includes(searchName.toLowerCase());
+
+      return matchesType && matchesName;
+    });
+  }, [registrations, workshopTypeFilter, searchName]);
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
@@ -122,6 +151,49 @@ export default function AdminDashboard() {
             <h2 className="text-3xl font-bold mt-8 mb-4">
               Users Registered in a Workshop
             </h2>
+
+            {/* Filtering Section */}
+            <div className="flex space-x-4 mb-4 items-center">
+              {/* Workshop Type Filter */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium whitespace-nowrap">
+                  Workshop Type:
+                </label>
+                <Select
+                  value={workshopTypeFilter}
+                  onValueChange={setWorkshopTypeFilter}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Select workshop type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workshopTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type === "all"
+                          ? "All Types"
+                          : type === "orientation"
+                          ? "Orientation"
+                          : type === "workshop"
+                          ? "Workshop"
+                          : type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Name Search */}
+              <div className="flex items-center space-x-2">
+                <FiSearch className="text-gray-500" />
+                <Input
+                  placeholder="Search by first or last name"
+                  value={searchName}
+                  onChange={(e) => setSearchName(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+            </div>
+
             <Table className="w-full mb-8">
               <TableHeader>
                 <TableRow>
@@ -136,7 +208,7 @@ export default function AdminDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {registrations.length === 0 ? (
+                {filteredRegistrations.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={8}
@@ -146,7 +218,7 @@ export default function AdminDashboard() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  registrations.map((reg) => (
+                  filteredRegistrations.map((reg) => (
                     <TableRow key={reg.id}>
                       <TableCell>{reg.user.firstName}</TableCell>
                       <TableCell>{reg.user.lastName}</TableCell>
