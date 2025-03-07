@@ -37,20 +37,19 @@ model User {
   trainingCardUserNumber Int
 
   // Role Connection
-  roleUserId  Int      @default(1)
-  roleUser    RoleUser @relation(fields: [roleUserId], references: [id]) 
+  roleUserId Int      @default(1)
+  roleUser   RoleUser @relation(fields: [roleUserId], references: [id])
 
-  roleLevel   Int      @default(1)
+  roleLevel Int @default(1)
 
   //Membership Connection
   membershipId Int? // Nullable: some users may not have a membership
   membership   MembershipPlan? @relation(fields: [membershipId], references: [id])
 
   // Relationships
-  userWorkshops      UserWorkshop[] 
-  equipmentbookings  EquipmentBooking[] 
+  userWorkshops     UserWorkshop[]
+  equipmentbookings EquipmentBooking[]
 }
-
 
 model RoleUser {
   id   Int    @id @default(autoincrement()) // Primary key with auto-increment
@@ -58,6 +57,7 @@ model RoleUser {
 
   users User[] // Back-reference for the relation
 }
+
 // model Workshop {
 //   id          Int      @id @default(autoincrement())
 //   name        String
@@ -75,21 +75,21 @@ model RoleUser {
 // }
 
 model Workshop {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String
-  price       Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  location    String
-  capacity    Int
-  type        String  // "workshop" or "orientation"
+  id                 Int      @id @default(autoincrement())
+  name               String
+  description        String
+  price              Float
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  location           String
+  capacity           Int
+  type               String // "workshop" or "orientation"
   cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.")
-  
+
   // Add relationships
-  occurrences WorkshopOccurrence[] // Relationship to occurrences
+  occurrences   WorkshopOccurrence[] // Relationship to occurrences
   userWorkshops UserWorkshop[] // Many-to-many relationship with User
-  
+
   // Add new relationships for prerequisites
   prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
   prerequisites   WorkshopPrerequisite[] @relation("WorkshopWithPrerequisite")
@@ -97,85 +97,94 @@ model Workshop {
 
 // Create the new WorkshopPrerequisite model
 model WorkshopPrerequisite {
-  id                Int      @id @default(autoincrement())
-  workshopId        Int      // The workshop that has prerequisites
-  prerequisiteId    Int      // The workshop that is a prerequisite
-  
+  id             Int @id @default(autoincrement())
+  workshopId     Int // The workshop that has prerequisites
+  prerequisiteId Int // The workshop that is a prerequisite
+
   // Relationships
-  workshop          Workshop @relation("WorkshopWithPrerequisite", fields: [workshopId], references: [id], onDelete: Cascade)
+  workshop             Workshop @relation("WorkshopWithPrerequisite", fields: [workshopId], references: [id], onDelete: Cascade)
   prerequisiteWorkshop Workshop @relation("PrerequisiteWorkshop", fields: [prerequisiteId], references: [id], onDelete: Cascade)
-  
+
   // Ensure uniqueness - a workshop can only have the same prerequisite once
   @@unique([workshopId, prerequisiteId])
 }
 
 model WorkshopOccurrence {
-  id          Int      @id @default(autoincrement())
-  workshopId  Int
-  startDate   DateTime
-  endDate     DateTime
+  id           Int       @id @default(autoincrement())
+  workshopId   Int
+  startDate    DateTime
+  endDate      DateTime
   startDatePST DateTime?
   endDatePST   DateTime?
-  status     String  @default("active") // "open", "closed", "cancelled"
-  equipmentId Int? 
+  status       String    @default("active") // "open", "closed", "cancelled"
+  equipmentId  Int?
 
-  workshop    Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  userWorkshops UserWorkshop[] 
+  workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  userWorkshops UserWorkshop[]
+  equipment     Equipment?     @relation(fields: [equipmentId], references: [id])
 
   @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
-  equipment   Equipment? @relation(fields: [equipmentId], references: [id])
 }
 
-
 // prerequisites
-  // - orientations or workshops (many to many)
-  // - at least level 1 member
-  // - not necessarily paid subscription as it only gives perks (discounts, etc)
-  // 
-  // users (many to many)
-  //   user - orientation - result (Passed, Failed) (pass by default for workshop), date
-  //
-  // type: orientation or workshop
+// - orientations or workshops (many to many)
+// - at least level 1 member
+// - not necessarily paid subscription as it only gives perks (discounts, etc)
+// 
+// users (many to many)
+//   user - orientation - result (Passed, Failed) (pass by default for workshop), date
+//
+// type: orientation or workshop
 
 model UserWorkshop {
   id           Int      @id @default(autoincrement())
   userId       Int
   workshopId   Int
-  occurrenceId Int      
+  occurrenceId Int
   result       String   @default("passed")
   date         DateTime @default(now())
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workshop     Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  occurrence   WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)  
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop   Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  occurrence WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, occurrenceId]) // Ensure a user cannot register for the same occurrence twice
 }
-model Equipment {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  description String
-  price       Float    @default(0.0) 
-  availability Boolean @default(true) // Whether it's currently available for booking
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  bookings EquipmentBooking[] // One-to-many relationship with bookings
-   workshopOccurrences WorkshopOccurrence[]
+model Equipment {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  description  String
+  price        Float    @default(0.0)
+  availability Boolean  @default(true) // Whether it's currently available for booking
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookings            EquipmentBooking[] // One-to-many relationship with bookings
+  slots               EquipmentSlot[] // One-to-many relationship with available slots
+  workshopOccurrences WorkshopOccurrence[]
+}
+
+model EquipmentSlot {
+  id          Int      @id @default(autoincrement())
+  equipmentId Int
+  startTime   DateTime @unique
+  isBooked    Boolean  @default(false)
+
+  equipment        Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  EquipmentBooking EquipmentBooking?
 }
 
 model EquipmentBooking {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  equipmentId  Int
-  startTime    DateTime
-  endTime      DateTime
-  status       String   @default("pending") // Can be "pending", "approved", "cancelled"
-  
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  equipment   Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  id          Int    @id @default(autoincrement())
+  userId      Int
+  equipmentId Int
+  slotId      Int    @unique
+  status      String @default("pending") // "pending", "approved", "cancelled"
 
-  @@unique([equipmentId, startTime]) // Ensure one booking per equipment per time slot
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
 }
 
 model MembershipPlan {
@@ -189,9 +198,8 @@ model MembershipPlan {
   feature     Json
   accessHours Json // Example: {"start": "09:00", "end": "18:00"}
 
-  
-  type        String // "monthly", "one-time", "limited", "24/7"
+  type String // "monthly", "one-time", "limited", "24/7"
 
   //One membership can have multiple users
-  users       User[] 
+  users User[]
 }

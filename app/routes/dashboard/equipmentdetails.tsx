@@ -9,16 +9,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { getEquipmentById } from "../../models/equipment.server";
+import  { getEquipmentById, getAvailableSlots} from "../../models/equipment.server";
 import { useState, useEffect } from "react";
 
 export async function loader({ params }: { params: { id: string } }) {
   const equipmentId = parseInt(params.id);
+  (equipmentId);
+  const slots = await getAvailableSlots(equipmentId)
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
     throw new Response("Equipment not found", { status: 404 });
   }
-  return { equipment };
+  return { equipment, slots };
 }
 
 export default function EquipmentDetails() {
