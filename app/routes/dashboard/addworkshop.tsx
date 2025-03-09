@@ -581,7 +581,7 @@ export default function AddWorkshop() {
             onRemove={removeEquipment}
             error={actionData?.errors?.equipments}
             placeholder="Select equipments..."
-            helperText="Choose equipment required for this workshop."
+            helperText="Choose equipment required for this workshop/orientation."
           />
 
           {/* Type */}

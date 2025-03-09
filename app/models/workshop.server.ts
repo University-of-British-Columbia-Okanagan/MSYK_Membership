@@ -36,6 +36,7 @@ interface UpdateWorkshopData {
   capacity: number;
   type: string;
   prerequisites?: number[];
+  equipments?: number[];
   occurrences: OccurrenceData[];
 }
 
@@ -157,13 +158,17 @@ export async function getWorkshopById(workshopId: number) {
             startDate: "asc",
           },
           include: {
-            // This includes all UserWorkshop rows for each occurrence
             userWorkshops: true,
           },
         },
         prerequisites: {
           select: {
             prerequisiteId: true,
+          },
+        },
+        equipments: {
+          select: {
+            equipmentId: true,
           },
         },
       },
@@ -173,15 +178,15 @@ export async function getWorkshopById(workshopId: number) {
       throw new Error("Workshop not found");
     }
 
-    // Convert the workshopPrerequisites array into a plain array of IDs
+    // Flatten prerequisites and equipmentIds
     const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
+    const equipments = workshop.equipments.map((e) => e.equipmentId);
 
     return {
       ...workshop,
-      prerequisites, // put them directly on the returned workshop object
+      prerequisites, // flat array of numbers
+      equipments,    // ✅ flat array of numbers
     };
-
-    return workshop;
   } catch (error) {
     console.error("Error fetching workshop by ID:", error);
     throw new Error("Failed to fetch workshop");
@@ -246,10 +251,8 @@ export async function updateWorkshopWithOccurrences(
 
   // 2) Update prerequisites (if included in data)
   if (data.prerequisites) {
-    // Delete existing prerequisites
     await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
 
-    // If new prerequisites exist, insert them
     if (data.prerequisites.length > 0) {
       const sortedPrereqs = [...data.prerequisites].sort((a, b) => a - b);
       await db.workshopPrerequisite.createMany({
@@ -261,20 +264,31 @@ export async function updateWorkshopWithOccurrences(
     }
   }
 
+  // ✅ 2b) Update equipment links (if included in data)
+  if (data.equipments) {
+    await db.workshopEquipment.deleteMany({ where: { workshopId } });
+
+    if (data.equipments.length > 0) {
+      await db.workshopEquipment.createMany({
+        data: data.equipments.map((equipmentId) => ({
+          workshopId,
+          equipmentId,
+        })),
+      });
+    }
+  }
+
   // 3) Update occurrences
-  // a) Find existing occurrences in DB
   const existingOccurrences = await db.workshopOccurrence.findMany({
     where: { workshopId },
   });
   const existingIds = existingOccurrences.map((occ) => occ.id);
 
-  // b) Partition the incoming occurrences into "create" vs. "update"
   const updateOccurrences = data.occurrences.filter((o) => o.id);
   const createOccurrences = data.occurrences.filter((o) => !o.id);
   const updateIds = updateOccurrences.map((o) => o.id!);
   const deleteIds = existingIds.filter((id) => !updateIds.includes(id));
 
-  // c) Create any new occurrences
   if (createOccurrences.length > 0) {
     const now = new Date();
     await db.workshopOccurrence.createMany({
@@ -297,7 +311,6 @@ export async function updateWorkshopWithOccurrences(
     });
   }
 
-  // d) Update any existing occurrences (this is the crucial step)
   for (const occ of updateOccurrences) {
     const now = new Date();
     const status =
@@ -319,14 +332,13 @@ export async function updateWorkshopWithOccurrences(
     });
   }
 
-  // e) Delete occurrences no longer in the list
   if (deleteIds.length > 0) {
     await db.workshopOccurrence.deleteMany({
       where: { id: { in: deleteIds } },
     });
   }
 
-  // 4) Return the updated workshop
+  // 4) Return updated workshop
   return db.workshop.findUnique({ where: { id: workshopId } });
 }
 
