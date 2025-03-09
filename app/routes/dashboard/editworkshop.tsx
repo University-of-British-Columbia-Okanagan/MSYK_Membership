@@ -43,6 +43,8 @@ import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 import PrerequisitesField from "@/components/ui/PrerequisitesField";
+import { getAvailableEquipment } from "~/models/equipment.server";
+import MultiSelectField from "@/components/ui/MultiSelectField";
 
 interface Occurrence {
   id?: number;
@@ -60,6 +62,7 @@ interface Occurrence {
 export async function loader({ params }: { params: { workshopId: string } }) {
   const workshop = await getWorkshopById(Number(params.workshopId));
   const availableWorkshops = await getWorkshops();
+  const availableEquipments = await getAvailableEquipment();
 
   if (!workshop) {
     throw new Response("Workshop Not Found", { status: 404 });
@@ -68,6 +71,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
   return {
     workshop,
     availableWorkshops,
+    availableEquipments,
   };
 }
 
@@ -103,6 +107,7 @@ export async function action({
   const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
     Number
   );
+  const equipments = JSON.parse(rawValues.equipments as string).map(Number);
 
   let occurrences: {
     id?: number;
@@ -166,6 +171,7 @@ export async function action({
     capacity,
     occurrences,
     prerequisites,
+    equipments,
   });
 
   if (!parsed.success) {
@@ -183,6 +189,7 @@ export async function action({
       type: parsed.data.type,
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
+      equipments: parsed.data.equipments,
     });
   } catch (error) {
     console.error("Error updating workshop:", error);
@@ -237,7 +244,7 @@ function handleCancelOccurrence(occurrenceId?: number) {
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
   // const workshop = useLoaderData<typeof loader>();
-  const { workshop, availableWorkshops } =
+  const { workshop, availableWorkshops, availableEquipments } =
     useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
@@ -272,6 +279,11 @@ export default function EditWorkshop() {
         typeof workshop.prerequisites[0] === "object"
           ? workshop.prerequisites.map((p: any) => p.prerequisiteId)
           : workshop.prerequisites) || [],
+      equipments:
+        Array.isArray(workshop.equipments) &&
+        typeof workshop.equipments[0] === "object"
+          ? workshop.equipments.map((e: any) => e.equipmentId)
+          : workshop.equipments || [],
     },
   });
 
@@ -295,6 +307,13 @@ export default function EditWorkshop() {
       typeof workshop.prerequisites[0] === "object"
       ? workshop.prerequisites.map((p: any) => p.prerequisiteId)
       : workshop.prerequisites || []
+  );
+
+  const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
+    Array.isArray(workshop.equipments) &&
+      typeof workshop.equipments[0] === "object"
+      ? workshop.equipments.map((e: any) => e.equipmentId)
+      : workshop.equipments || []
   );
 
   // Let's track the date selection approach (custom, weekly, monthly).
@@ -415,6 +434,20 @@ export default function EditWorkshop() {
     const updated = selectedPrerequisites.filter((id) => id !== workshopId);
     setSelectedPrerequisites(updated);
     form.setValue("prerequisites", updated);
+  };
+
+  const handleEquipmentSelect = (id: number) => {
+    const updated = selectedEquipments.includes(id)
+      ? selectedEquipments.filter((e) => e !== id)
+      : [...selectedEquipments, id];
+    setSelectedEquipments(updated);
+    form.setValue("equipments", updated);
+  };
+
+  const removeEquipment = (id: number) => {
+    const updated = selectedEquipments.filter((e) => e !== id);
+    setSelectedEquipments(updated);
+    form.setValue("equipments", updated);
   };
 
   return (
@@ -792,20 +825,41 @@ export default function EditWorkshop() {
 
           {/* Prerequisites */}
           {workshop.type !== "orientation" ? (
-            <PrerequisitesField
+            <MultiSelectField
               control={form.control}
-              availableWorkshops={availableWorkshops}
-              selectedPrerequisites={selectedPrerequisites}
-              handlePrerequisiteSelect={handlePrerequisiteSelect}
-              removePrerequisite={removePrerequisite}
-              currentWorkshopId={workshop.id}
+              name="prerequisites"
+              label="Prerequisites"
+              options={availableWorkshops}
+              selectedItems={selectedPrerequisites}
+              onSelect={handlePrerequisiteSelect}
+              onRemove={removePrerequisite}
               error={actionData?.errors?.prerequisites}
+              placeholder="Select prerequisites..."
+              helperText="Select workshops of type Orientation that must be completed before enrolling."
+              filterFn={(item) =>
+                item.type.toLowerCase() === "orientation" &&
+                item.id !== workshop.id
+              }
             />
           ) : (
             <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
               This is an orientation and does not have prerequisites.
             </div>
           )}
+
+          {/* Equipments */}
+          <MultiSelectField
+            control={form.control}
+            name="equipments"
+            label="Equipments"
+            options={availableEquipments}
+            selectedItems={selectedEquipments}
+            onSelect={handleEquipmentSelect}
+            onRemove={removeEquipment}
+            error={actionData?.errors?.equipments}
+            placeholder="Select equipments..."
+            helperText="Choose equipment required for this workshop/orientation."
+          />
 
           <input
             type="hidden"
@@ -836,6 +890,11 @@ export default function EditWorkshop() {
             value={JSON.stringify(
               [...selectedPrerequisites].sort((a, b) => a - b)
             )}
+          />
+          <input
+            type="hidden"
+            name="equipments"
+            value={JSON.stringify(selectedEquipments || [])}
           />
 
           <Button
