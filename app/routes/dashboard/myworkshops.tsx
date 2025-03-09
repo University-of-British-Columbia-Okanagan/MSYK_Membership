@@ -26,18 +26,21 @@ export default function MyWorkshops() {
         <AppSidebar />
 
         {/* Main Content */}
+        <main className="flex-grow p-6">
+          <h1 className="text-2xl font-bold mb-4">My Workshops</h1>
         <div className="p-6 flex-grow">
-          <h1 className="text-2xl font-bold">My Workshops</h1>
+          {/* <h1 className="text-2xl font-bold">My Workshops</h1> */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-fr">
             {workshops.length > 0 ? (
               workshops.map((workshop) => (
-                <WorkshopCard key={workshop.id} {...workshop} isAdmin={false} isRegistered={true} />
+                <WorkshopCard title="My Workshops" key={workshop.id} {...workshop} isAdmin={false} isRegistered={true} />
               ))
             ) : (
               <p className="text-gray-600 mt-4">You are not registered for any workshops.</p>
             )}
           </div>
         </div>
+        </main>
       </div>
     </SidebarProvider>
   );

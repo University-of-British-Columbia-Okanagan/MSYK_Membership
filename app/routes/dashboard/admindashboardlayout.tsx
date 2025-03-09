@@ -145,7 +145,7 @@ export default function AdminDashboard() {
             </Link>
           </div>
 
-          <WorkshopList workshops={workshops} isAdmin={true} />
+          <WorkshopList title="Workshops" workshops={workshops} isAdmin={true} />
 
           <div className="p-6">
             <h2 className="text-3xl font-bold mt-8 mb-4">
