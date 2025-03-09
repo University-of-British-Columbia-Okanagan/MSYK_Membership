@@ -9,6 +9,7 @@ interface WorkshopData {
   capacity: number;
   type: string;
   prerequisites?: number[];
+  equipments?: number[];
   occurrences: {
     startDate: Date;
     endDate: Date;
@@ -71,7 +72,7 @@ export async function getWorkshops() {
 }
 
 /**
- * Add a new workshop along with its occurrences.
+ * Add a new workshop along with its occurrences and equipment.
  */
 export async function addWorkshop(data: WorkshopData) {
   try {
@@ -89,16 +90,28 @@ export async function addWorkshop(data: WorkshopData) {
 
     // Then create the prerequisite relationships if there are any
     if (data.prerequisites && data.prerequisites.length > 0) {
-      // Sort prerequisites
       const sortedPrerequisites = [...data.prerequisites].sort((a, b) => a - b);
 
-      // Create prerequisites relationships
       await Promise.all(
         sortedPrerequisites.map((prerequisiteId) =>
           db.workshopPrerequisite.create({
             data: {
               workshopId: newWorkshop.id,
-              prerequisiteId: prerequisiteId,
+              prerequisiteId,
+            },
+          })
+        )
+      );
+    }
+
+    // ✅ Add equipment relationships if any
+    if (data.equipments && data.equipments.length > 0) {
+      await Promise.all(
+        data.equipments.map((equipmentId) =>
+          db.workshopEquipment.create({
+            data: {
+              workshopId: newWorkshop.id,
+              equipmentId,
             },
           })
         )
@@ -108,17 +121,17 @@ export async function addWorkshop(data: WorkshopData) {
     // Get current date to compare with occurrence dates
     const now = new Date();
 
-    // Insert occurrences separately after the workshop is created
+    // Insert occurrences
     const occurrences = await Promise.all(
       data.occurrences.map((occ) =>
         db.workshopOccurrence.create({
           data: {
-            workshopId: newWorkshop.id, // Link the occurrence to the newly created workshop
-            startDate: occ.startDate, // Local time as entered.
-            endDate: occ.endDate, // Local time as entered.
-            startDatePST: occ.startDatePST, // UTC-converted value.
-            endDatePST: occ.endDatePST, // UTC-converted value.
-            status: occ.startDate >= now ? "active" : "past", // Set status based on date
+            workshopId: newWorkshop.id,
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+            startDatePST: occ.startDatePST,
+            endDatePST: occ.endDatePST,
+            status: occ.startDate >= now ? "active" : "past",
           },
         })
       )

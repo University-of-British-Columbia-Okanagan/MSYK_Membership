@@ -7,7 +7,6 @@ export const workshopFormSchema = z.object({
   location: z.string().min(1, "Location is required"),
   capacity: z.number().int().min(1, "Capacity must be at least 1"),
   type: z.enum(["workshop", "orientation"]),
-  prerequisites: z.array(z.number()).optional(),
   occurrences: z
     .array(
       z.object({
@@ -38,6 +37,8 @@ export const workshopFormSchema = z.object({
         path: ["occurrences"], // this error appears on the occurrences field
       }
     ),
+    prerequisites: z.array(z.number()).optional(),
+    equipments: z.array(z.number()).optional(),
 });
 
 export type WorkshopFormValues = z.infer<typeof workshopFormSchema>;

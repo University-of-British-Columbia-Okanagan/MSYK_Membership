@@ -33,48 +33,44 @@ import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 import PrerequisitesField from "@/components/ui/PrerequisitesField";
+import { getAvailableEquipment } from "~/models/equipment.server";
+import MultiSelectField from "~/components/ui/MultiSelectField";
 
 /**
  * Loader to fetch available workshops for prerequisites.
  */
 export async function loader() {
   const workshops = await getWorkshops();
-  return { workshops };
+  const equipments = await getAvailableEquipment();
+  return { workshops, equipments };
 }
 
 /**
  * Helper: Parse a datetime-local string as a local Date.
  */
-// function parseDateTimeAsLocal(value: string): Date {
-//   if (!value) return new Date("");
-//   const [datePart, timePart] = value.split("T");
-//   const [year, month, day] = datePart.split("-").map(Number);
-//   const [hours, minutes] = timePart.split(":").map(Number);
-//   return new Date(year, month - 1, day, hours, minutes);
-// }
 function parseDateTimeAsLocal(value: string): Date {
   try {
     if (!value) return new Date("");
-    
+
     // Use Date.parse to handle various date input formats
     const timestamp = Date.parse(value);
-    
+
     if (isNaN(timestamp)) {
-      console.error('Failed to parse date:', value);
+      console.error("Failed to parse date:", value);
       return new Date("");
     }
 
     const date = new Date(timestamp);
-    
+
     // Ensure the date is valid
     if (isNaN(date.getTime())) {
-      console.error('Invalid date after parsing:', value);
+      console.error("Invalid date after parsing:", value);
       return new Date("");
     }
 
     return date;
   } catch (error) {
-    console.error('Error parsing date:', error);
+    console.error("Error parsing date:", error);
     return new Date("");
   }
 }
@@ -119,6 +115,15 @@ export async function action({ request }: { request: Request }) {
   } catch (error) {
     console.error("Error parsing prerequisites:", error);
     return { errors: { prerequisites: ["Invalid prerequisites format"] } };
+  }
+
+  // Parse equipments from JSON string to array of numbers
+  let equipments: number[] = [];
+  try {
+    equipments = JSON.parse(rawValues.equipments as string).map(Number);
+  } catch (error) {
+    console.error("Error parsing equipments:", error);
+    return { errors: { equipments: ["Invalid equipments format"] } };
   }
 
   let occurrences: {
@@ -170,6 +175,7 @@ export async function action({ request }: { request: Request }) {
     capacity,
     occurrences,
     prerequisites,
+    equipments,
   });
 
   if (!parsed.success) {
@@ -187,6 +193,7 @@ export async function action({ request }: { request: Request }) {
       type: parsed.data.type,
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
+      equipments: parsed.data.equipments,
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
@@ -198,9 +205,11 @@ export async function action({ request }: { request: Request }) {
 
 export default function AddWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
-  const { workshops: availableWorkshops } = useLoaderData() as {
-    workshops: { id: number; name: string; type: string }[];
-  };
+  const { workshops: availableWorkshops, equipments: availableEquipments } =
+    useLoaderData() as {
+      workshops: { id: number; name: string; type: string }[];
+      equipments: { id: number; name: string }[];
+    };
 
   const form = useForm<WorkshopFormValues>({
     resolver: zodResolver(workshopFormSchema),
@@ -213,6 +222,7 @@ export default function AddWorkshop() {
       type: "workshop",
       occurrences: [],
       prerequisites: [],
+      equipments : [],
     },
   });
 
@@ -231,6 +241,8 @@ export default function AddWorkshop() {
   const sortedSelectedPrerequisites = [...selectedPrerequisites].sort(
     (a, b) => a - b
   );
+
+  const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -307,6 +319,22 @@ export default function AddWorkshop() {
     const updated = selectedPrerequisites.filter((id) => id !== workshopId);
     setSelectedPrerequisites(updated);
     form.setValue("prerequisites", updated);
+  };
+
+  const handleEquipmentSelect = (id: number) => {
+    if (selectedEquipments.includes(id)) {
+      setSelectedEquipments(selectedEquipments.filter((e) => e !== id));
+    } else {
+      const updated = [...selectedEquipments, id];
+      setSelectedEquipments(updated);
+      form.setValue("equipments", updated);
+    }
+  };
+
+  const removeEquipment = (id: number) => {
+    const updated = selectedEquipments.filter((e) => e !== id);
+    setSelectedEquipments(updated);
+    form.setValue("equipments", updated);
   };
 
   return (
@@ -431,10 +459,13 @@ export default function AddWorkshop() {
                         setCount={setWeeklyCount}
                         occurrences={occurrences}
                         setOccurrences={setOccurrences}
-                        updateFormOccurrences={(updatedOccurrences) =>
-                        {console.log("Updating Form Occurrences:", updatedOccurrences)
-                          form.setValue("occurrences", updatedOccurrences)}
-                        }
+                        updateFormOccurrences={(updatedOccurrences) => {
+                          console.log(
+                            "Updating Form Occurrences:",
+                            updatedOccurrences
+                          );
+                          form.setValue("occurrences", updatedOccurrences);
+                        }}
                         parseDateTimeAsLocal={parseDateTimeAsLocal}
                         isDuplicateDate={isDuplicateDate}
                         onRevert={() => setDateSelectionType("custom")}
@@ -455,10 +486,13 @@ export default function AddWorkshop() {
                         setCount={setMonthlyCount}
                         occurrences={occurrences}
                         setOccurrences={setOccurrences}
-                        updateFormOccurrences={(updatedOccurrences) =>
-                          {console.log("Updating Form Occurrences:", updatedOccurrences)
-                          form.setValue("occurrences", updatedOccurrences)}
-                        }
+                        updateFormOccurrences={(updatedOccurrences) => {
+                          console.log(
+                            "Updating Form Occurrences:",
+                            updatedOccurrences
+                          );
+                          form.setValue("occurrences", updatedOccurrences);
+                        }}
                         parseDateTimeAsLocal={parseDateTimeAsLocal}
                         isDuplicateDate={isDuplicateDate}
                         onRevert={() => setDateSelectionType("custom")}
@@ -517,19 +551,38 @@ export default function AddWorkshop() {
 
           {/* Prerequisites */}
           {form.watch("type") !== "orientation" ? (
-            <PrerequisitesField
-              control={form.control}
-              availableWorkshops={availableWorkshops}
-              selectedPrerequisites={selectedPrerequisites}
-              handlePrerequisiteSelect={handlePrerequisiteSelect}
-              removePrerequisite={removePrerequisite}
-              error={actionData?.errors?.prerequisites}
+            <MultiSelectField
+            control={form.control}
+            name="prerequisites"
+            label="Prerequisites"
+            options={availableWorkshops}
+            selectedItems={selectedPrerequisites}
+            onSelect={handlePrerequisiteSelect}
+            onRemove={removePrerequisite}
+            error={actionData?.errors?.prerequisites}
+            placeholder="Select prerequisites..."
+            helperText="Select workshops of type Orientation that must be completed before enrolling."
+            filterFn={(item) => item.type.toLowerCase() === "orientation"}
             />
           ) : (
             <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
               Orientation workshops does not have prerequisites.
             </div>
           )}
+
+          {/* Equipments */}
+          <MultiSelectField
+            control={form.control}
+            name="equipments"
+            label="Equipments"
+            options={availableEquipments} // from loader
+            selectedItems={selectedEquipments}
+            onSelect={handleEquipmentSelect}
+            onRemove={removeEquipment}
+            error={actionData?.errors?.equipments}
+            placeholder="Select equipments..."
+            helperText="Choose equipment required for this workshop."
+          />
 
           {/* Type */}
           <GenericFormField
@@ -562,6 +615,12 @@ export default function AddWorkshop() {
             type="hidden"
             name="prerequisites"
             value={JSON.stringify(selectedPrerequisites || [])}
+          />
+          {/* Hidden input for equipments */}
+          <input
+            type="hidden"
+            name="equipments"
+            value={JSON.stringify(selectedEquipments || [])}
           />
 
           {/* Submit Button */}
