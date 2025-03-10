@@ -1,5 +1,4 @@
 // workshopcard.tsx
-
 import React from "react";
 import {
   Card,
@@ -35,9 +34,9 @@ export default function WorkshopCard({
   name,
   description,
   price,
-  type, // <-- Destructure type
+  type,
   isAdmin,
-  isRegistered,
+  isRegistered = false, // default to false if not provided
   isPast,
 }: WorkshopProps) {
   const navigate = useNavigate();
@@ -58,18 +57,14 @@ export default function WorkshopCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => navigate(`/editworkshop/${id}`)}
-              >
+              <DropdownMenuItem onSelect={() => navigate(`/editworkshop/${id}`)}>
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault();
                   if (
-                    window.confirm(
-                      "Are you sure you want to duplicate this workshop?"
-                    )
+                    window.confirm("Are you sure you want to duplicate this workshop?")
                   ) {
                     fetcher.submit(
                       { workshopId: id, action: "duplicate" },
@@ -83,9 +78,7 @@ export default function WorkshopCard({
               <DropdownMenuItem
                 onSelect={() => {
                   if (
-                    window.confirm(
-                      "Are you sure you want to delete this workshop?"
-                    )
+                    window.confirm("Are you sure you want to delete this workshop?")
                   ) {
                     fetcher.submit(
                       { workshopId: id, action: "delete" },
@@ -125,7 +118,6 @@ export default function WorkshopCard({
             className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
             onClick={() => navigate(`/dashboard/workshops/${id}`)}
           >
-            {/* Conditionally show button text */}
             {type === "orientation" ? "View Orientation" : "View Workshop"}
           </Button>
         </div>

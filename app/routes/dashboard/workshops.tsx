@@ -1,17 +1,41 @@
 // workshops.tsx
-
 import { useLoaderData } from "react-router";
 import { Outlet } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { getWorkshops } from "~/models/workshop.server";
+import { getWorkshops, getUserWorkshopRegistrations } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const workshops = await getWorkshops();
-  return { workshops };
+
+  console.log("hello1");
+  console.log(roleUser);
+
+  // First, attach a default isRegistered property (false) for every workshop.
+  let workshopsWithRegistration = workshops.map(workshop => ({
+    ...workshop,
+    isRegistered: false,
+  }));
+
+  // If a user is logged in, update each workshop's isRegistered flag
+  if (roleUser && roleUser.userId) {
+    const registrations = await getUserWorkshopRegistrations(roleUser.userId);
+    const registeredOccurrenceIds = new Set(registrations.map(reg => reg.occurrenceId));
+
+    console.log("hello2");
+    console.log(registrations);
+
+    workshopsWithRegistration = workshops.map(workshop => ({
+      ...workshop,
+      // Mark as registered if any occurrence id is in the user's registered occurrences.
+      isRegistered: workshop.occurrences.some(occurrence => registeredOccurrenceIds.has(occurrence.id)),
+    }));
+  }
+
+  return { workshops: workshopsWithRegistration };
 }
 
 export default function UserDashboard() {
@@ -23,6 +47,7 @@ export default function UserDashboard() {
       price: number;
       type: string;
       occurrences: { id: number; startDate: string; endDate: string }[];
+      isRegistered: boolean;
     }[];
   }>();
 

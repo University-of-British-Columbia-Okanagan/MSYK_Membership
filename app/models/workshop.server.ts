@@ -677,3 +677,14 @@ export async function updateRegistrationResult(
     data: { result: newResult },
   });
 }
+
+export async function getUserWorkshopRegistrations(userId: number) {
+  return db.userWorkshop.findMany({
+    where: {
+      userId,
+    },
+    select: {
+      occurrenceId: true,
+    },
+  });
+}

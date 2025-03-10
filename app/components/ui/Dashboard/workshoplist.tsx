@@ -1,5 +1,4 @@
 // workshoplist.tsx
-
 import React from "react";
 import WorkshopCard from "./workshopcard";
 
@@ -10,6 +9,7 @@ interface Workshop {
   price: number;
   type: string;
   occurrences: { id: number; startDate: string; endDate: string }[];
+  isRegistered: boolean; // <-- Make sure this is included
 }
 
 interface WorkshopListProps {
@@ -23,7 +23,10 @@ export default function WorkshopList({
   workshops,
   isAdmin,
 }: WorkshopListProps) {
-  const now = new Date(); // Get the current date
+  const now = new Date();
+
+  console.log("hello");
+  console.log(workshops);
 
   return (
     <div className="p-6">
@@ -37,9 +40,13 @@ export default function WorkshopList({
           return (
             <WorkshopCard
               key={workshop.id}
+              // Spread in basic workshop props:
               {...workshop}
+              // Then explicitly pass what you need:
               isAdmin={isAdmin}
               isPast={isPast}
+              // isRegistered is definitely passed:
+              isRegistered={workshop.isRegistered}
             />
           );
         })}
