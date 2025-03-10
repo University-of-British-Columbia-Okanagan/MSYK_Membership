@@ -1,20 +1,51 @@
-import { json, redirect } from "@remix-run/node";
-import { useLoaderData } from "react-router";
+import { useLoaderData, redirect } from "react-router";
+import {
+  getUserWorkshopsWithOccurrences,
+  getUserWorkshopRegistrations,
+} from "~/models/workshop.server";
+import { getRoleUser } from "~/utils/session.server";
+import AppSidebar from "@/components/ui/Dashboard/sidebar";
+import WorkshopList from "@/components/ui/Dashboard/workshoplist";
+import { SidebarProvider } from "@/components/ui/sidebar";
 
-import { getUserWorkshops } from "~/models/workshop.server";
-import WorkshopCard from "@/components/ui/Dashboard/workshopcard";
-import AppSidebar from "@/components/ui/Dashboard/sidebar"; 
-import { SidebarProvider } from "@/components/ui/sidebar"; 
-
-export const loader = async ({ request }) => {
+export async function loader({ request }: { request: Request }) {
   try {
-    const workshops = await getUserWorkshops(request);
-    console.log("Fetched Workshops:", workshops);
-    return json({ workshops });
+    // 1. Get the current user
+    const roleUser = await getRoleUser(request);
+    if (!roleUser || !roleUser.userId) {
+      return redirect("/login");
+    }
+
+    // 2. Fetch "my workshops" for this user, including occurrences:
+    const myWorkshops = await getUserWorkshopsWithOccurrences(roleUser.userId);
+
+    // 3. Transform each workshop to ensure "isRegistered" is initially false
+    let transformed = myWorkshops.map((w) => ({
+      ...w,
+      isRegistered: false,
+    }));
+
+    // 4. Find which occurrences this user is registered for
+    const registrations = await getUserWorkshopRegistrations(roleUser.userId);
+    const registeredOccurrenceIds = new Set(
+      registrations.map((reg: any) => reg.occurrenceId)
+    );
+
+    // 5. Mark each workshop as "isRegistered" if any occurrence is found in the user’s registrations
+    transformed = transformed.map((workshop) => ({
+      ...workshop,
+      isRegistered: workshop.occurrences.some((occ: any) =>
+        registeredOccurrenceIds.has(occ.id)
+      ),
+    }));
+
+    // 6. Return plain data (no json())
+    return { workshops: transformed };
   } catch (error) {
+    // If something goes wrong (e.g., user not logged in), redirect
     return redirect("/login");
   }
-};
+}
 
 export default function MyWorkshops() {
   const { workshops } = useLoaderData<typeof loader>();
@@ -22,24 +53,15 @@ export default function MyWorkshops() {
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        {/* Sidebar */}
         <AppSidebar />
-
-        {/* Main Content */}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">My Workshops</h1>
-        <div className="p-6 flex-grow">
-          {/* <h1 className="text-2xl font-bold">My Workshops</h1> */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-fr">
-            {workshops.length > 0 ? (
-              workshops.map((workshop) => (
-                <WorkshopCard title="My Workshops" key={workshop.id} {...workshop} isAdmin={false} isRegistered={true} />
-              ))
-            ) : (
-              <p className="text-gray-600 mt-4">You are not registered for any workshops.</p>
-            )}
-          </div>
-        </div>
+          {workshops.length > 0 ? (
+            <WorkshopList title="My Workshops" workshops={workshops} isAdmin={false} />
+          ) : (
+            <p className="text-gray-600 mt-4">
+              You are not registered for any workshops.
+            </p>
+          )}
         </main>
       </div>
     </SidebarProvider>

@@ -24,7 +24,7 @@ export async function loader({ request }: { request: Request }) {
 
     workshopsWithRegistration = workshops.map(workshop => ({
       ...workshop,
-      // Mark as registered if any occurrence id is in the user's registered occurrences.
+      // Mark as registered if any occurrence id is in the user's registered occurrences (at least one)
       isRegistered: workshop.occurrences.some(occurrence => registeredOccurrenceIds.has(occurrence.id)),
     }));
   }

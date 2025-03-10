@@ -688,3 +688,47 @@ export async function getUserWorkshopRegistrations(userId: number) {
     },
   });
 }
+
+// This function fetches all workshops for which a user is registered,
+// along with the full "occurrences" array for each workshop.
+export async function getUserWorkshopsWithOccurrences(userId: number) {
+  // 1. Find all userWorkshop records for the given user
+  const userWorkshops = await db.userWorkshop.findMany({
+    where: { userId },
+    // 2. Include the occurrence -> workshop -> occurrences
+    include: {
+      occurrence: {
+        include: {
+          workshop: {
+            include: {
+              occurrences: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // 3. userWorkshops is an array of { occurrence: { workshop: { ... } } }.
+  //    Transform it into a simple array of workshop objects with an occurrences array.
+  const workshopMap = new Map<number, any>();
+
+  for (const uw of userWorkshops) {
+    const w = uw.occurrence.workshop;
+    // If we haven't seen this workshop yet, store it
+    if (!workshopMap.has(w.id)) {
+      workshopMap.set(w.id, {
+        id: w.id,
+        name: w.name,
+        description: w.description,
+        price: w.price,
+        type: w.type,
+        // "occurrences" is already included because we used { include: { occurrences: true } }
+        occurrences: w.occurrences ?? [],
+      });
+    }
+  }
+
+  // Return a deduplicated array of workshop objects (each has an occurrences array)
+  return Array.from(workshopMap.values());
+}
