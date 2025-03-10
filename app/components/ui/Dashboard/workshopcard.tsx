@@ -1,3 +1,4 @@
+// workshopcard.tsx
 import React from "react";
 import {
   Card,
@@ -100,6 +101,7 @@ export default function WorkshopCard({
           {description}
         </CardDescription>
       </CardHeader>
+
       <CardContent className="flex flex-col gap-4 flex-grow">
         <p className="text-lg font-semibold text-gray-900">Price: ${price}</p>
 
@@ -113,12 +115,23 @@ export default function WorkshopCard({
         )}
 
         <div className="mt-auto">
+          {/* Existing "View Workshop" or "View Orientation" Button */}
           <Button
             className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
             onClick={() => navigate(`/dashboard/workshops/${id}`)}
           >
             {type === "orientation" ? "View Orientation" : "View Workshop"}
           </Button>
+
+          {/* New "View Users" Button for Admins */}
+          {isAdmin && (
+            <Button
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white mt-2"
+              onClick={() => navigate(`/dashboard/admin/workshop/${id}/users`)}
+            >
+              View Users
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

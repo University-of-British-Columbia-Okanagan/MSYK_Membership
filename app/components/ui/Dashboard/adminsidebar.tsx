@@ -15,6 +15,7 @@ import {
     Package,
     BookOpen,
     LayoutDashboard,
+    Users,
   } from "lucide-react";
   import { Button } from "@/components/ui/button";
   import { Separator } from "@/components/ui/separator";
@@ -47,6 +48,13 @@ import {
             >
               <LayoutDashboard className="w-5 h-5" />
               Admin Dashboard
+            </Link>
+            <Link
+              to="/dashboard/admin/workshop/users"
+              className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+            >
+              <Users className="w-5 h-5" />
+              User Registered in a Workshop
             </Link>
             <Link
               to="/dashboard/myworkshops"
