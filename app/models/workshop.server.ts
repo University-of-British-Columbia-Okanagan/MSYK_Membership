@@ -678,6 +678,15 @@ export async function updateRegistrationResult(
   });
 }
 
+export async function updateMultipleRegistrations(registrationIds: number[], newResult: string) {
+  return db.userWorkshop.updateMany({
+    where: {
+      id: { in: registrationIds },
+    },
+    data: { result: newResult },
+  });
+}
+
 export async function getUserWorkshopRegistrations(userId: number) {
   return db.userWorkshop.findMany({
     where: {
@@ -731,4 +740,21 @@ export async function getUserWorkshopsWithOccurrences(userId: number) {
 
   // Return a deduplicated array of workshop objects (each has an occurrences array)
   return Array.from(workshopMap.values());
+}
+
+export async function getUserWorkshopRegistrationsByWorkshopId(workshopId: number) {
+  return db.userWorkshop.findMany({
+    where: {
+      occurrence: {
+        workshopId,  // Only registrations for occurrences belonging to this workshop
+      },
+    },
+    include: {
+      user: true,
+      occurrence: true,
+      workshop: true,
+      // Optionally include workshop data if needed:
+      // occurrence: { include: { workshop: true } }
+    },
+  });
 }

@@ -1,4 +1,4 @@
-// userworkshop.tsx
+// alluserworkshop.tsx
 import React, { useState, useMemo } from "react";
 import { Outlet, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
@@ -17,6 +17,23 @@ import {
 } from "@/components/ui/select";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { getAllRegistrations } from "~/models/workshop.server";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
+
+interface LoaderData {
+  roleUser: {
+    roleId: number;
+    roleName: string;
+    userId: number;
+  };
+  registrations: Array<{
+    id: number;
+    result: string;
+    date: string | Date;
+    user: { id: number; firstName: string; lastName: string };
+    occurrence: { startDate: string; endDate: string } | null;
+    workshop: { name: string; type: string };
+  }>;
+}
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -25,7 +42,7 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export default function AllUserWorkshop() {
-  const { roleUser, registrations } = useLoaderData<typeof loader>();
+  const { roleUser, registrations } = useLoaderData<LoaderData>();
 
   const isAdmin =
     roleUser &&
@@ -34,40 +51,56 @@ export default function AllUserWorkshop() {
 
   // Filtering states
   const [workshopTypeFilter, setWorkshopTypeFilter] = useState<string>("all");
-  const [searchUser, setSearchUser] = useState<string>(""); // search by first/last name
-  const [searchWorkshop, setSearchWorkshop] = useState<string>(""); // search by workshop name
+  const [searchUser, setSearchUser] = useState<string>(""); // Filter by first/last name
+  const [searchWorkshop, setSearchWorkshop] = useState<string>(""); // Filter by workshop name
 
-  // Compute unique workshop types
+  // Compute unique workshop types from registrations
   const workshopTypes = useMemo(() => {
-    const types = new Set(registrations.map((reg: any) => reg.workshop.type));
+    const types = new Set(registrations.map((reg) => reg.workshop.type));
     return ["all", ...types];
   }, [registrations]);
 
   // Filter registrations based on workshop type, user name, and workshop name
   const filteredRegistrations = useMemo(() => {
-    return registrations.filter((reg: any) => {
+    return registrations.filter((reg) => {
       const matchesType =
         workshopTypeFilter === "all" ||
         reg.workshop.type.toLowerCase() === workshopTypeFilter.toLowerCase();
-      
       const matchesUser =
         searchUser === "" ||
         (reg.user.firstName &&
           reg.user.firstName.toLowerCase().includes(searchUser.toLowerCase())) ||
         (reg.user.lastName &&
           reg.user.lastName.toLowerCase().includes(searchUser.toLowerCase()));
-      
       const matchesWorkshop =
         searchWorkshop === "" ||
         (reg.workshop.name &&
           reg.workshop.name.toLowerCase().includes(searchWorkshop.toLowerCase()));
-      
       return matchesType && matchesUser && matchesWorkshop;
     });
   }, [registrations, workshopTypeFilter, searchUser, searchWorkshop]);
 
-  // Define the columns for the ShadTable.
-  type RegistrationRow = typeof registrations[number];
+  // Sort the filtered registrations by user.id in ascending order
+  const sortedRegistrations = useMemo(() => {
+    return filteredRegistrations.slice().sort((a, b) => a.user.id - b.user.id);
+  }, [filteredRegistrations]);
+
+  // "Pass All" action handler – marks all filtered registrations as passed.
+  const handlePassAll = async () => {
+    const registrationIds = sortedRegistrations.map((reg) => reg.id);
+    if (registrationIds.length === 0) return;
+    const formData = new FormData();
+    formData.append("action", "passAll");
+    formData.append("registrationIds", JSON.stringify(registrationIds));
+    await fetch("/dashboard/admin", {
+      method: "POST",
+      body: formData,
+    });
+    window.location.reload();
+  };
+
+  // Define columns for the ShadTable.
+  type RegistrationRow = LoaderData["registrations"][number];
   const columns: ColumnDefinition<RegistrationRow>[] = [
     {
       header: "First Name",
@@ -189,10 +222,18 @@ export default function AllUserWorkshop() {
                 className="w-full md:w-64"
               />
             </div>
+            {/* "Pass All" button */}
+            <ConfirmButton
+              confirmTitle="Confirm Pass All"
+              confirmDescription="Are you sure you want to mark all filtered registrations as passed?"
+              onConfirm={handlePassAll}
+              buttonLabel="Pass All"
+              buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white"
+            />
           </div>
           <ShadTable
             columns={columns}
-            data={filteredRegistrations}
+            data={sortedRegistrations}
             emptyMessage="No registrations found"
           />
           <Outlet />

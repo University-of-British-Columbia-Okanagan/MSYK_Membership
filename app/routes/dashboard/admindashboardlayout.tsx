@@ -12,6 +12,7 @@ import {
   getAllRegistrations,
   updateRegistrationResult,
   getUserWorkshopRegistrations,
+  updateMultipleRegistrations,
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
@@ -90,6 +91,20 @@ export async function action({ request }: { request: Request }) {
       } catch (error) {
         console.error("Error updating registration result:", error);
         return { error: "Failed to update registration result" };
+      }
+    }
+  }
+
+  if (action === "passAll") {
+    const registrationIdsStr = formData.get("registrationIds");
+    if (registrationIdsStr) {
+      const registrationIds = JSON.parse(registrationIdsStr as string) as number[];
+      try {
+        await updateMultipleRegistrations(registrationIds, "passed");
+        return redirect("/dashboard/admin");
+      } catch (error) {
+        console.error("Error updating multiple registrations:", error);
+        return { error: "Failed to pass all registrations" };
       }
     }
   }
