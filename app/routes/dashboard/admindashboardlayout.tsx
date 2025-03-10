@@ -1,4 +1,3 @@
-// admindashboardlayout.tsx
 import React, { useState, useMemo } from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";

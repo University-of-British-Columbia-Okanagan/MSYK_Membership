@@ -1,4 +1,3 @@
-// alluserworkshop.tsx
 import React, { useState, useMemo } from "react";
 import { Outlet, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
