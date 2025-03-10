@@ -1,4 +1,3 @@
-// allusersregistered.tsx
 import React, { useState, useMemo } from "react";
 import { Outlet, redirect, useLoaderData } from "react-router";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
