@@ -14,6 +14,7 @@ import {
     ClipboardList,
     Package,
     BookOpen,
+    LayoutDashboard,
   } from "lucide-react";
   import { Button } from "@/components/ui/button";
   import { Separator } from "@/components/ui/separator";
@@ -39,6 +40,13 @@ import {
             >
               <User className="w-5 h-5" />
               Profile
+            </Link>
+            <Link
+              to="/dashboard/admin"
+              className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              Admin Dashboard
             </Link>
             <Link
               to="/dashboard/myworkshops"
@@ -69,7 +77,7 @@ import {
               Equipments
             </Link>
             <Link
-              to="/get-involved"
+              to="/membership"
               className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
             >
               <Home className="w-5 h-5" />

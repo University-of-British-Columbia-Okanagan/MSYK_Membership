@@ -6,6 +6,7 @@ import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getWorkshops, getUserWorkshopRegistrations } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
+import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -29,11 +30,16 @@ export async function loader({ request }: { request: Request }) {
     }));
   }
 
-  return { workshops: workshopsWithRegistration };
+  return { roleUser, workshops: workshopsWithRegistration };
 }
 
 export default function UserDashboard() {
-  const { workshops } = useLoaderData<{
+  const { roleUser, workshops } = useLoaderData<{
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    };
     workshops: {
       id: number;
       name: string;
@@ -67,10 +73,15 @@ export default function UserDashboard() {
     event.occurrences.every((occurrence) => new Date(occurrence.endDate) < now)
   );
 
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        <AppSidebar />
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <h1 className="text-2xl font-bold mb-4">All Workshops</h1>
 

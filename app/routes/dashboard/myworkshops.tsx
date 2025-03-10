@@ -7,6 +7,7 @@ import { getRoleUser } from "~/utils/session.server";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   try {
@@ -40,7 +41,7 @@ export async function loader({ request }: { request: Request }) {
     }));
 
     // 6. Return plain data (no json())
-    return { workshops: transformed };
+    return { roleUser, workshops: transformed };
   } catch (error) {
     // If something goes wrong (e.g., user not logged in), redirect
     return redirect("/login");
@@ -48,12 +49,17 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export default function MyWorkshops() {
-  const { workshops } = useLoaderData<typeof loader>();
+  const { workshops, roleUser } = useLoaderData<typeof loader>();
+
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
 
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        <AppSidebar />
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           {workshops.length > 0 ? (
             <WorkshopList title="My Workshops" workshops={workshops} isAdmin={false} />

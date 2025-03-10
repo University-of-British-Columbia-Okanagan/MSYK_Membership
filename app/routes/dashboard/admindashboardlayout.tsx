@@ -31,6 +31,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -114,7 +115,12 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function AdminDashboard() {
-  const { workshops, registrations } = useLoaderData() as {
+  const { roleUser, workshops, registrations } = useLoaderData() as {
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    };
     workshops: {
       id: number;
       name: string;
@@ -133,6 +139,11 @@ export default function AdminDashboard() {
       occurrence: { startDate: string | Date; endDate: string | Date };
     }[];
   };
+
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
 
   // State for filters
   const [workshopTypeFilter, setWorkshopTypeFilter] = useState<string>("all");
@@ -165,7 +176,7 @@ export default function AdminDashboard() {
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        <AppSidebar />
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="flex justify-end mb-6 pr-4">
             <Link to="/addworkshop">
