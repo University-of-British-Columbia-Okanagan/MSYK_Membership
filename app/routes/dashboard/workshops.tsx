@@ -11,9 +11,6 @@ export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const workshops = await getWorkshops();
 
-  console.log("hello1");
-  console.log(roleUser);
-
   // First, attach a default isRegistered property (false) for every workshop.
   let workshopsWithRegistration = workshops.map(workshop => ({
     ...workshop,
@@ -24,9 +21,6 @@ export async function loader({ request }: { request: Request }) {
   if (roleUser && roleUser.userId) {
     const registrations = await getUserWorkshopRegistrations(roleUser.userId);
     const registeredOccurrenceIds = new Set(registrations.map(reg => reg.occurrenceId));
-
-    console.log("hello2");
-    console.log(registrations);
 
     workshopsWithRegistration = workshops.map(workshop => ({
       ...workshop,

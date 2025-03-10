@@ -1,3 +1,4 @@
+// admindashboardlayout.tsx
 import React, { useState, useMemo } from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
@@ -9,6 +10,7 @@ import {
   duplicateWorkshop,
   getAllRegistrations,
   updateRegistrationResult,
+  getUserWorkshopRegistrations, // added import for registration logic
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
@@ -39,7 +41,27 @@ export async function loader({ request }: { request: Request }) {
     return redirect("/dashboard/user"); // Redirect non-admins to User Dashboard
   }
 
-  return { roleUser, workshops, registrations };
+  // First, attach a default isRegistered property (false) for every workshop.
+  let workshopsWithRegistration = workshops.map(workshop => ({
+    ...workshop,
+    isRegistered: false,
+  }));
+
+  // If the admin is logged in and has a userId, update each workshop's isRegistered flag.
+  if (roleUser && roleUser.userId) {
+    const adminRegistrations = await getUserWorkshopRegistrations(roleUser.userId);
+    const registeredOccurrenceIds = new Set(adminRegistrations.map(reg => reg.occurrenceId));
+
+    workshopsWithRegistration = workshops.map(workshop => ({
+      ...workshop,
+      // Mark as registered if any occurrence id is in the admin's registered occurrences.
+      isRegistered: workshop.occurrences.some(occurrence =>
+        registeredOccurrenceIds.has(occurrence.id)
+      ),
+    }));
+  }
+
+  return { roleUser, workshops: workshopsWithRegistration, registrations };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -93,7 +115,15 @@ export async function action({ request }: { request: Request }) {
 
 export default function AdminDashboard() {
   const { workshops, registrations } = useLoaderData() as {
-    workshops: any[];
+    workshops: {
+      id: number;
+      name: string;
+      description: string;
+      price: number;
+      type: string;
+      occurrences: { id: number; startDate: string; endDate: string }[];
+      isRegistered: boolean;
+    }[];
     registrations: {
       id: number;
       result: string;
@@ -145,6 +175,7 @@ export default function AdminDashboard() {
             </Link>
           </div>
 
+          {/* Pass workshops with isRegistered to WorkshopList */}
           <WorkshopList title="Workshops" workshops={workshops} isAdmin={true} />
 
           <div className="p-6">
