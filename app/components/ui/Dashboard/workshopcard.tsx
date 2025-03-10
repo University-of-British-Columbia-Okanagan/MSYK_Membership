@@ -22,9 +22,10 @@ interface WorkshopProps {
   name: string;
   description: string;
   price: number;
+  type: "workshop" | "orientation" | string;
   isAdmin: boolean;
   isRegistered?: boolean;
-  isPast?: boolean; 
+  isPast?: boolean;
 }
 
 export default function WorkshopCard({
@@ -32,9 +33,10 @@ export default function WorkshopCard({
   name,
   description,
   price,
+  type,
   isAdmin,
-  isRegistered,
-  isPast, 
+  isRegistered = false, // default to false if not provided
+  isPast,
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -54,18 +56,14 @@ export default function WorkshopCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => navigate(`/editworkshop/${id}`)}
-              >
+              <DropdownMenuItem onSelect={() => navigate(`/editworkshop/${id}`)}>
                 Edit
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault();
                   if (
-                    window.confirm(
-                      "Are you sure you want to duplicate this workshop?"
-                    )
+                    window.confirm("Are you sure you want to duplicate this workshop?")
                   ) {
                     fetcher.submit(
                       { workshopId: id, action: "duplicate" },
@@ -79,9 +77,7 @@ export default function WorkshopCard({
               <DropdownMenuItem
                 onSelect={() => {
                   if (
-                    window.confirm(
-                      "Are you sure you want to delete this workshop?"
-                    )
+                    window.confirm("Are you sure you want to delete this workshop?")
                   ) {
                     fetcher.submit(
                       { workshopId: id, action: "delete" },
@@ -108,9 +104,8 @@ export default function WorkshopCard({
         <p className="text-lg font-semibold text-gray-900">Price: ${price}</p>
 
         {/* Show Registration Status */}
-        {/* Show Registration Status */}
         {isPast ? (
-          <p className="text-gray-500 font-medium text-md">EXPIRED</p> 
+          <p className="text-gray-500 font-medium text-md">EXPIRED</p>
         ) : isRegistered ? (
           <p className="text-green-600 font-medium text-md">REGISTERED</p>
         ) : (
@@ -122,7 +117,7 @@ export default function WorkshopCard({
             className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
             onClick={() => navigate(`/dashboard/workshops/${id}`)}
           >
-            View Workshop
+            {type === "orientation" ? "View Orientation" : "View Workshop"}
           </Button>
         </div>
       </CardContent>

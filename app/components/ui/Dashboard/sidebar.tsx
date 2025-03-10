@@ -69,7 +69,7 @@ export function AppSidebar() {
             Equipments
           </Link>
           <Link
-            to="/get-involved"
+            to="/membership"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <Home className="w-5 h-5" />

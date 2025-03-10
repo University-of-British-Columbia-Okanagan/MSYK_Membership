@@ -6,6 +6,7 @@ import { Outlet } from "react-router";
 import { getAvailableEquipment } from "~/models/equipment.server";
 import { getRoleUser } from "~/utils/session.server"; 
 import { Button } from "@/components/ui/button";
+import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const equipments = await getAvailableEquipment();
@@ -18,10 +19,15 @@ export default function Equipments() {
   const { equipments, roleUser } = useLoaderData();
   const navigate = useNavigate();
 
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        <AppSidebar />
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">Available Equipment</h1>

@@ -1,55 +1,127 @@
-import React from "react";
-import { Outlet, redirect } from "react-router-dom";
+// workshops.tsx
+import { useLoaderData } from "react-router";
+import { Outlet } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { getWorkshops } from "~/models/workshop.server";
+import { getWorkshops, getUserWorkshopRegistrations } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
-import { useLoaderData } from "react-router";
+import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const workshops = await getWorkshops();
 
-  return { workshops };
+  // First, attach a default isRegistered property (false) for every workshop.
+  let workshopsWithRegistration = workshops.map(workshop => ({
+    ...workshop,
+    isRegistered: false,
+  }));
+
+  // If a user is logged in, update each workshop's isRegistered flag
+  if (roleUser && roleUser.userId) {
+    const registrations = await getUserWorkshopRegistrations(roleUser.userId);
+    const registeredOccurrenceIds = new Set(registrations.map(reg => reg.occurrenceId));
+
+    workshopsWithRegistration = workshops.map(workshop => ({
+      ...workshop,
+      // Mark as registered if any occurrence id is in the user's registered occurrences (at least one)
+      isRegistered: workshop.occurrences.some(occurrence => registeredOccurrenceIds.has(occurrence.id)),
+    }));
+  }
+
+  return { roleUser, workshops: workshopsWithRegistration };
 }
 
 export default function UserDashboard() {
-  const { workshops } = useLoaderData();
+  const { roleUser, workshops } = useLoaderData<{
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    };
+    workshops: {
+      id: number;
+      name: string;
+      description: string;
+      price: number;
+      type: string;
+      occurrences: { id: number; startDate: string; endDate: string }[];
+      isRegistered: boolean;
+    }[];
+  }>();
 
-  // Get current date
   const now = new Date();
 
-  // Categorizing workshops based on their occurrences
-  const activeWorkshops = workshops.filter((workshop) =>
-    workshop.occurrences.some((occurrence) => new Date(occurrence.endDate) >= now)
+  const activeWorkshops = workshops.filter(
+    (event) =>
+      event.type === "workshop" &&
+      event.occurrences.some(
+        (occurrence) => new Date(occurrence.endDate) >= now
+      )
   );
 
-  const pastWorkshops = workshops.filter((workshop) =>
-    workshop.occurrences.every((occurrence) => new Date(occurrence.endDate) < now)
+  const activeOrientations = workshops.filter(
+    (event) =>
+      event.type === "orientation" &&
+      event.occurrences.some(
+        (occurrence) => new Date(occurrence.endDate) >= now
+      )
   );
+
+  const pastEvents = workshops.filter((event) =>
+    event.occurrences.every((occurrence) => new Date(occurrence.endDate) < now)
+  );
+
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
 
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        <AppSidebar />
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+          <h1 className="text-2xl font-bold mb-4">All Workshops</h1>
 
           {/* Active Workshops Section */}
-          <h2 className="text-xl font-semibold mt-6">Active Workshops</h2>
           {activeWorkshops.length > 0 ? (
-            <WorkshopList workshops={activeWorkshops} isAdmin={false} />
+            <WorkshopList
+              title="Active Workshops"
+              workshops={activeWorkshops}
+              isAdmin={false}
+            />
           ) : (
-            <p className="text-gray-600 mt-4">No active workshops available.</p>
+            <p className="text-gray-600 mt-4">
+              No active workshops available.
+            </p>
           )}
 
-          {/* Past Workshops Section */}
-          <h2 className="text-xl font-semibold mt-8">Past Workshops</h2>
-          {pastWorkshops.length > 0 ? (
-            <WorkshopList workshops={pastWorkshops} isAdmin={false} />
+          {/* Active Orientations Section */}
+          {activeOrientations.length > 0 ? (
+            <WorkshopList
+              title="Active Orientations"
+              workshops={activeOrientations}
+              isAdmin={false}
+            />
           ) : (
-            <p className="text-gray-600 mt-4">No past workshops available.</p>
+            <p className="text-gray-600 mt-4">
+              No active orientations available.
+            </p>
+          )}
+
+          {/* Past Events Section */}
+          {pastEvents.length > 0 ? (
+            <WorkshopList
+              title="Past Events"
+              workshops={pastEvents}
+              isAdmin={false}
+            />
+          ) : (
+            <p className="text-gray-600 mt-4">
+              No past events available.
+            </p>
           )}
 
           <Outlet />

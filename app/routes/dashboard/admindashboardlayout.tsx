@@ -1,3 +1,4 @@
+// admindashboardlayout.tsx
 import React, { useState, useMemo } from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
@@ -9,6 +10,7 @@ import {
   duplicateWorkshop,
   getAllRegistrations,
   updateRegistrationResult,
+  getUserWorkshopRegistrations, // added import for registration logic
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
@@ -29,6 +31,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -39,7 +42,27 @@ export async function loader({ request }: { request: Request }) {
     return redirect("/dashboard/user"); // Redirect non-admins to User Dashboard
   }
 
-  return { roleUser, workshops, registrations };
+  // First, attach a default isRegistered property (false) for every workshop.
+  let workshopsWithRegistration = workshops.map(workshop => ({
+    ...workshop,
+    isRegistered: false,
+  }));
+
+  // If the admin is logged in and has a userId, update each workshop's isRegistered flag.
+  if (roleUser && roleUser.userId) {
+    const adminRegistrations = await getUserWorkshopRegistrations(roleUser.userId);
+    const registeredOccurrenceIds = new Set(adminRegistrations.map(reg => reg.occurrenceId));
+
+    workshopsWithRegistration = workshops.map(workshop => ({
+      ...workshop,
+      // Mark as registered if any occurrence id is in the admin's registered occurrences.
+      isRegistered: workshop.occurrences.some(occurrence =>
+        registeredOccurrenceIds.has(occurrence.id)
+      ),
+    }));
+  }
+
+  return { roleUser, workshops: workshopsWithRegistration, registrations };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -92,8 +115,21 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function AdminDashboard() {
-  const { workshops, registrations } = useLoaderData() as {
-    workshops: any[];
+  const { roleUser, workshops, registrations } = useLoaderData() as {
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    };
+    workshops: {
+      id: number;
+      name: string;
+      description: string;
+      price: number;
+      type: string;
+      occurrences: { id: number; startDate: string; endDate: string }[];
+      isRegistered: boolean;
+    }[];
     registrations: {
       id: number;
       result: string;
@@ -103,6 +139,11 @@ export default function AdminDashboard() {
       occurrence: { startDate: string | Date; endDate: string | Date };
     }[];
   };
+
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
 
   // State for filters
   const [workshopTypeFilter, setWorkshopTypeFilter] = useState<string>("all");
@@ -135,7 +176,7 @@ export default function AdminDashboard() {
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        <AppSidebar />
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="flex justify-end mb-6 pr-4">
             <Link to="/addworkshop">
@@ -145,7 +186,8 @@ export default function AdminDashboard() {
             </Link>
           </div>
 
-          <WorkshopList workshops={workshops} isAdmin={true} />
+          {/* Pass workshops with isRegistered to WorkshopList */}
+          <WorkshopList title="Workshops" workshops={workshops} isAdmin={true} />
 
           <div className="p-6">
             <h2 className="text-3xl font-bold mt-8 mb-4">
