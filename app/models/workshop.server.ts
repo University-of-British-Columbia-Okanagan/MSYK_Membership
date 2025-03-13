@@ -89,38 +89,26 @@ export async function addWorkshop(data: WorkshopData) {
       },
     });
 
-    // Then create the prerequisite relationships if there are any
-    if (data.prerequisites && data.prerequisites.length > 0) {
-      const sortedPrerequisites = [...data.prerequisites].sort((a, b) => a - b);
-
-      await Promise.all(
-        sortedPrerequisites.map((prerequisiteId) =>
-          db.workshopPrerequisite.create({
-            data: {
-              workshopId: newWorkshop.id,
-              prerequisiteId,
-            },
-          })
-        )
-      );
-    }
-
-    // ✅ Add equipment relationships if any
+    // Check if the selected equipment is available
     if (data.equipments && data.equipments.length > 0) {
-      await Promise.all(
-        data.equipments.map((equipmentId) =>
-          db.workshopEquipment.create({
-            data: {
-              workshopId: newWorkshop.id,
-              equipmentId,
+      for (const equipmentId of data.equipments) {
+        const conflictingBooking = await db.equipmentSlot.findFirst({
+          where: {
+            equipmentId,
+            isBooked: true,
+            startTime: {
+              lte: new Date(data.occurrences[0].endDate), // Overlaps with existing booking
             },
-          })
-        )
-      );
-    }
+          },
+        });
 
-    // Get current date to compare with occurrence dates
-    const now = new Date();
+        if (conflictingBooking) {
+          throw new Error(
+            `Equipment ${equipmentId} is already booked for the selected time.`
+          );
+        }
+      }
+    }
 
     // Insert occurrences
     const occurrences = await Promise.all(
@@ -132,11 +120,27 @@ export async function addWorkshop(data: WorkshopData) {
             endDate: occ.endDate,
             startDatePST: occ.startDatePST,
             endDatePST: occ.endDatePST,
-            status: occ.startDate >= now ? "active" : "past",
+            status: occ.startDate >= new Date() ? "active" : "past",
           },
         })
       )
     );
+
+    // Assign equipment slots only if available
+    if (data.equipments && data.equipments.length > 0) {
+      await Promise.all(
+        data.equipments.map((equipmentId) =>
+          db.equipmentSlot.create({
+            data: {
+              equipmentId,
+              workshopId: newWorkshop.id,
+              startTime: occurrences[0].startDate, // Match workshop occurrence time
+              isBooked: true, // Mark as booked
+            },
+          })
+        )
+      );
+    }
 
     return { ...newWorkshop, occurrences };
   } catch (error) {
@@ -144,6 +148,7 @@ export async function addWorkshop(data: WorkshopData) {
     throw new Error("Failed to add workshop");
   }
 }
+
 
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
@@ -166,7 +171,7 @@ export async function getWorkshopById(workshopId: number) {
             prerequisiteId: true,
           },
         },
-        equipments: {
+        equipmentSlots: { 
           select: {
             equipmentId: true,
           },
@@ -180,18 +185,19 @@ export async function getWorkshopById(workshopId: number) {
 
     // Flatten prerequisites and equipmentIds
     const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
-    const equipments = workshop.equipments.map((e) => e.equipmentId);
+    const equipments = workshop.equipmentSlots.map((e) => e.equipmentId); 
 
     return {
       ...workshop,
-      prerequisites, // flat array of numbers
-      equipments,    // ✅ flat array of numbers
+      prerequisites, 
+      equipments,    
     };
   } catch (error) {
     console.error("Error fetching workshop by ID:", error);
     throw new Error("Failed to fetch workshop");
   }
 }
+
 /**
  * Update a workshop, including modifying occurrences.
  */
@@ -236,7 +242,7 @@ export async function updateWorkshopWithOccurrences(
   workshopId: number,
   data: UpdateWorkshopData
 ) {
-  // 1) Update the basic workshop fields
+
   await db.workshop.update({
     where: { id: workshopId },
     data: {
@@ -249,7 +255,7 @@ export async function updateWorkshopWithOccurrences(
     },
   });
 
-  // 2) Update prerequisites (if included in data)
+ 
   if (data.prerequisites) {
     await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
 
@@ -264,7 +270,7 @@ export async function updateWorkshopWithOccurrences(
     }
   }
 
-  // ✅ 2b) Update equipment links (if included in data)
+
   if (data.equipments) {
     await db.workshopEquipment.deleteMany({ where: { workshopId } });
 

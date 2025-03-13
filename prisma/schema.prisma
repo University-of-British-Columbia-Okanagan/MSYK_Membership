@@ -93,8 +93,8 @@ model Workshop {
   // Add new relationships for prerequisites
   prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
   prerequisites   WorkshopPrerequisite[] @relation("WorkshopWithPrerequisite")
+  equipmentSlots EquipmentSlot[]
 
-  equipments    WorkshopEquipment[]
 }
 
 // Create the new WorkshopPrerequisite model
@@ -123,7 +123,6 @@ model WorkshopOccurrence {
 
   workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[]
-  equipment     Equipment?     @relation(fields: [equipmentId], references: [id])
 
   @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
 }
@@ -158,46 +157,36 @@ model Equipment {
   name         String   @unique
   description  String
   price        Float    @default(0.0)
-  availability Boolean  @default(true) // Whether it's currently available for booking
+  availability Boolean  @default(true) 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  bookings            EquipmentBooking[] // One-to-many relationship with bookings
-  slots               EquipmentSlot[] // One-to-many relationship with available slots
-  workshopOccurrences WorkshopOccurrence[]
-  workshops          WorkshopEquipment[]
+  bookings EquipmentBooking[] 
+  slots    EquipmentSlot[] 
 }
 
 model EquipmentSlot {
   id          Int      @id @default(autoincrement())
   equipmentId Int
   startTime   DateTime @unique
+  endTime     DateTime
   isBooked    Boolean  @default(false)
 
   equipment        Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   EquipmentBooking EquipmentBooking?
+  workshopId       Int? 
+  workshop         Workshop? @relation(fields: [workshopId], references: [id]) 
 }
-
 model EquipmentBooking {
   id          Int    @id @default(autoincrement())
   userId      Int
   equipmentId Int
   slotId      Int    @unique
-  status      String @default("pending") // "pending", "approved", "cancelled"
+  status      String @default("pending")
 
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
-}
-
-model WorkshopEquipment {
-  id          Int        @id @default(autoincrement())
-  workshop    Workshop   @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  workshopId  Int
-  equipment   Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  equipmentId Int
-
-  @@unique([workshopId, equipmentId])
 }
 
 model MembershipPlan {

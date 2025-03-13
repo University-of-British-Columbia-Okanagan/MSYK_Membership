@@ -33,7 +33,7 @@ import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 import PrerequisitesField from "@/components/ui/PrerequisitesField";
-import { getAvailableEquipment } from "~/models/equipment.server";
+import { getAvailableEquipmentForAdmin } from "~/models/equipment.server";
 import MultiSelectField from "~/components/ui/MultiSelectField";
 
 /**
@@ -41,7 +41,8 @@ import MultiSelectField from "~/components/ui/MultiSelectField";
  */
 export async function loader() {
   const workshops = await getWorkshops();
-  const equipments = await getAvailableEquipment();
+  const equipments = await getAvailableEquipmentForAdmin();
+
   return { workshops, equipments };
 }
 
@@ -105,10 +106,11 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
 
+  // Parse price and capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
-  // Parse prerequisites from JSON string to array of numbers
+  // Parse prerequisites from JSON string
   let prerequisites: number[] = [];
   try {
     prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
@@ -117,7 +119,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: { prerequisites: ["Invalid prerequisites format"] } };
   }
 
-  // Parse equipments from JSON string to array of numbers
+  // Parse equipments from JSON string
   let equipments: number[] = [];
   try {
     equipments = JSON.parse(rawValues.equipments as string).map(Number);
@@ -126,6 +128,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: { equipments: ["Invalid equipments format"] } };
   }
 
+  // Parse occurrences and validate dates
   let occurrences: {
     startDate: Date;
     endDate: Date;
@@ -138,7 +141,7 @@ export async function action({ request }: { request: Request }) {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
 
-        // VALIDATION CHECK: Ensure end date is later than start date
+        // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
           throw new Error("End date must be later than start date");
         }
@@ -147,6 +150,7 @@ export async function action({ request }: { request: Request }) {
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+
         return {
           startDate: localStart,
           endDate: localEnd,
@@ -169,6 +173,51 @@ export async function action({ request }: { request: Request }) {
     };
   }
 
+  // Fetch up-to-date available equipment to avoid conflicts
+  const availableEquipments = await getAvailableEquipmentForAdmin();
+  const availableEquipmentIds = new Set(availableEquipments.map((e) => e.id));
+
+  //Ensure selected equipment is still available
+  const unavailableEquipments = equipments.filter(
+    (id) => !availableEquipmentIds.has(id)
+  );
+  if (unavailableEquipments.length > 0) {
+    return {
+      errors: {
+        equipments: ["One or more selected equipment are no longer available."],
+      },
+    };
+  }
+
+  //  Ensure no selected equipment conflicts with workshop occurrences
+  for (const equipmentId of equipments) {
+    const conflictingEquipment = availableEquipments.find(
+      (e) => e.id === equipmentId
+    );
+
+    if (conflictingEquipment?.slots) {
+      for (const occ of occurrences) {
+        const conflict = conflictingEquipment.slots.some(
+          (slot) =>
+            new Date(slot.startTime).getTime() >= occ.startDate.getTime() &&
+            new Date(slot.startTime).getTime() < occ.endDate.getTime() &&
+            slot.workshop !== null // 🛑 Fix: Check if already assigned to a workshop
+        );
+
+        if (conflict) {
+          return {
+            errors: {
+              equipments: [
+                `The equipment "${conflictingEquipment.name}" is booked during your workshop time.`,
+              ],
+            },
+          };
+        }
+      }
+    }
+  }
+
+  //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
     price,
@@ -183,6 +232,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
+  //  Save the workshop to the database
   try {
     await addWorkshop({
       name: parsed.data.name,
@@ -200,6 +250,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: { database: ["Failed to add workshop"] } };
   }
 
+  // Redirect to admin dashboard
   return redirect("/dashboard/admin");
 }
 
@@ -222,7 +273,7 @@ export default function AddWorkshop() {
       type: "workshop",
       occurrences: [],
       prerequisites: [],
-      equipments : [],
+      equipments: [],
     },
   });
 
@@ -552,17 +603,17 @@ export default function AddWorkshop() {
           {/* Prerequisites */}
           {form.watch("type") !== "orientation" ? (
             <MultiSelectField
-            control={form.control}
-            name="prerequisites"
-            label="Prerequisites"
-            options={availableWorkshops}
-            selectedItems={selectedPrerequisites}
-            onSelect={handlePrerequisiteSelect}
-            onRemove={removePrerequisite}
-            error={actionData?.errors?.prerequisites}
-            placeholder="Select prerequisites..."
-            helperText="Select workshops of type Orientation that must be completed before enrolling."
-            filterFn={(item) => item.type.toLowerCase() === "orientation"}
+              control={form.control}
+              name="prerequisites"
+              label="Prerequisites"
+              options={availableWorkshops}
+              selectedItems={selectedPrerequisites}
+              onSelect={handlePrerequisiteSelect}
+              onRemove={removePrerequisite}
+              error={actionData?.errors?.prerequisites}
+              placeholder="Select prerequisites..."
+              helperText="Select workshops of type Orientation that must be completed before enrolling."
+              filterFn={(item) => item.type.toLowerCase() === "orientation"}
             />
           ) : (
             <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
