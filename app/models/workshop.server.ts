@@ -261,18 +261,6 @@ export async function updateWorkshopWithOccurrences(
     }
   }
 
-  if (data.equipments) {
-    await db.workshopEquipment.deleteMany({ where: { workshopId } });
-
-    if (data.equipments.length > 0) {
-      await db.workshopEquipment.createMany({
-        data: data.equipments.map((equipmentId) => ({
-          workshopId,
-          equipmentId,
-        })),
-      });
-    }
-  }
 
   // 3) Update occurrences
   const existingOccurrences = await db.workshopOccurrence.findMany({

@@ -277,3 +277,82 @@ export async function getEquipmentSlotsWithStatus() {
   }));
 }
 
+/**
+ * Update existing equipment (Admin only)
+ */
+export async function updateEquipment(equipmentId: number, data: {
+  name?: string;
+  description?: string;
+  price?: number;
+  availability?: boolean;
+}) {
+  try {
+    return await db.equipment.update({
+      where: { id: equipmentId },
+      data,
+    });
+  } catch (error) {
+    console.error("Error updating equipment:", error);
+    throw new Error("Failed to update equipment.");
+  }
+}
+
+/**
+ * Delete equipment (Admin only)
+ */
+export async function deleteEquipment(equipmentId: number) {
+  try {
+    // Ensure the equipment exists before deleting
+    const existingEquipment = await db.equipment.findUnique({
+      where: { id: equipmentId },
+    });
+
+    if (!existingEquipment) {
+      throw new Error("Equipment not found.");
+    }
+
+    // Delete associated slots first (to prevent foreign key constraint issues)
+    await db.equipmentSlot.deleteMany({
+      where: { equipmentId },
+    });
+
+    // Delete the equipment
+    return await db.equipment.delete({
+      where: { id: equipmentId },
+    });
+  } catch (error) {
+    console.error("Error deleting equipment:", error);
+    throw new Error("Failed to delete equipment.");
+  }
+}
+
+
+/**
+ * Duplicate existing equipment (Admin only)
+ */
+export async function duplicateEquipment(equipmentId: number) {
+  try {
+    const existingEquipment = await db.equipment.findUnique({
+      where: { id: equipmentId },
+    });
+
+    if (!existingEquipment) {
+      throw new Error("Equipment not found.");
+    }
+
+    // Create a new equipment entry with the same details
+    const duplicatedEquipment = await db.equipment.create({
+      data: {
+        name: `${existingEquipment.name} (Copy)`,
+        description: existingEquipment.description,
+        price: existingEquipment.price,
+        availability: existingEquipment.availability,
+      },
+    });
+
+    return duplicatedEquipment;
+  } catch (error) {
+    console.error("Error duplicating equipment:", error);
+    throw new Error("Failed to duplicate equipment.");
+  }
+}
