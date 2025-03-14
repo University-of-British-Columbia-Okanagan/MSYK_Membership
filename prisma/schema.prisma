@@ -154,7 +154,7 @@ model Equipment {
 model EquipmentSlot {
   id          Int      @id @default(autoincrement())
   equipmentId Int
-  startTime   DateTime @unique
+  startTime   DateTime 
   endTime     DateTime
   isBooked    Boolean  @default(false)
 
