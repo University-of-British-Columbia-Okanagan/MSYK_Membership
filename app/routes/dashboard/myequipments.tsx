@@ -5,34 +5,49 @@ import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import EquipmentCard from "@/components/ui/Dashboard/equipmentcard";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import { cancelEquipmentBooking } from "~/models/equipment.server";
+
 
 export async function loader({ request }: { request: Request }) {
-    try {
-      // 🔍 DEBUG: Check if session retrieval works
-      console.log("Fetching user session...");
-      const roleUser = await getRoleUser(request);
-     
-  
-      
-      if (!roleUser || !roleUser.userId) {
-        console.log(" No valid user found, redirecting to login.");
-        return redirect("/login");
-      }
-  
-      // DEBUG: Fetch booked equipment
-      console.log(`Fetching booked equipment for userId: ${roleUser.userId}`);
-      const myEquipments = await getUserBookedEquipments(roleUser.userId);
-      
-      console.log("Fetched equipments:", myEquipments);
-  
-      return { roleUser, equipments: myEquipments };
-    } catch (error) {
-      console.error("Error in loader:", error);
+  try {
+    // 🔍 DEBUG: Check if session retrieval works
+    console.log("Fetching user session...");
+    const roleUser = await getRoleUser(request);
+
+    if (!roleUser || !roleUser.userId) {
+      console.log(" No valid user found, redirecting to login.");
       return redirect("/login");
     }
-  }
-  
 
+    // DEBUG: Fetch booked equipment
+    console.log(`Fetching booked equipment for userId: ${roleUser.userId}`);
+    const myEquipments = await getUserBookedEquipments(roleUser.userId);
+
+    console.log("Fetched equipments:", myEquipments);
+
+    return { roleUser, equipments: myEquipments };
+  } catch (error) {
+    console.error("Error in loader:", error);
+    return redirect("/login");
+  }
+}
+
+export async function action({ request }: { request: Request }) {
+    const formData = await request.formData();
+    const actionType = formData.get("action");
+    const bookingId = Number(formData.get("bookingId"));
+  
+    if (actionType === "cancel" && bookingId) {
+      try {
+        await cancelEquipmentBooking(bookingId);
+        return json({ success: "Booking cancelled successfully!" });
+      } catch (error) {
+        return json({ errors: { message: error.message } }, { status: 400 });
+      }
+    }
+  
+    return json({ errors: { message: "Invalid action." } }, { status: 400 });
+  }
   export default function MyEquipments() {
     const { equipments, roleUser } = useLoaderData<typeof loader>();
     const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
@@ -48,12 +63,13 @@ export async function loader({ request }: { request: Request }) {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {equipments.map((booking) => (
                   <EquipmentCard
-                    key={booking.equipment.id} // Use equipment ID for uniqueness
-                    id={booking.equipment.id}
-                    name={booking.equipment.name}
-                    description={booking.equipment.description}
-                    imageUrl={booking.equipment.imageUrl}
-                    status="booked" // Pass "booked" as status
+                    key={booking.id}
+                    id={booking.id}
+                    name={booking.name}
+                    description={booking.description}
+                    imageUrl={booking.imageUrl}
+                    status="booked" // Always "booked" in MyEquipments.tsx
+                    bookingId={booking.bookingId} // Required for cancel button
                   />
                 ))}
               </div>

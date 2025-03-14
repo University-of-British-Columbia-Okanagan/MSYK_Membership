@@ -1,5 +1,5 @@
 import { db } from "../utils/db.server";
-import { getUserId } from "../utils/session.server"; // Adjust the path as needed
+import { getUserId } from "../utils/session.server"; 
 
 interface EquipmentData {
   name: string;
@@ -27,29 +27,32 @@ export async function getEquipmentById(equipmentId: number) {
 /**
  * Fetch all available equipment
  */
-export async function getAvailableEquipment(
-  workshopStartTime: Date,
-  workshopEndTime: Date
-) {
+export async function getAvailableEquipment() {
   return await db.equipment.findMany({
-    where: {
-      id: {
-        notIn: (
-          await db.equipmentSlot.findMany({
-            where: {
-              startTime: {
-                gte: workshopStartTime,
-                lte: workshopEndTime, // Check if already booked
-              },
-              isBooked: true,
-            },
-            select: { equipmentId: true },
-          })
-        ).map((slot) => slot.equipmentId),
+    include: {
+      slots: {
+        select: { id: true, isBooked: true },
       },
     },
-  });
+  }).then((equipments) =>
+    equipments.map((eq) => ({
+      id: eq.id,
+      name: eq.name,
+      description: eq.description,
+      imageUrl: eq.imageUrl,
+      totalSlots: eq.slots.length,
+      bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
+      status:
+        eq.slots.length === 0
+          ? "unavailable" // No slots exist
+          : eq.slots.every((slot) => slot.isBooked)
+          ? "unavailable" // All slots taken
+          : "available", // Some slots are free
+    }))
+  );
 }
+
+
 
 /**
  * Book equipment using a predefined slot
@@ -125,8 +128,10 @@ export async function cancelEquipmentBooking(bookingId: number) {
     });
   }
 
+  // Delete booking record
   return await db.equipmentBooking.delete({ where: { id: bookingId } });
 }
+
 
 /**
  * Approve a booking (Admin only)
@@ -386,28 +391,27 @@ export async function duplicateEquipment(equipmentId: number) {
 }
 // Fetch booked equipment for a user
 export async function getUserBookedEquipments(userId: number) {
-  return await db.equipmentBooking.findMany({
+  const bookings = await db.equipmentBooking.findMany({
     where: { userId },
     include: {
       equipment: {
-        select: {
-          id: true,
-          name: true,
-          description: true,
-          imageUrl: true,
+        include: {
+          slots: {
+            select: { id: true, isBooked: true },
+          },
         },
-      },
-      slot: {
-        select: {
-          startTime: true,
-          endTime: true,
-        },
-      },
-    },
-    orderBy: {
-      slot: {
-        startTime: "asc",
       },
     },
   });
+
+  return bookings.map((booking) => ({
+    id: booking.id,
+    name: booking.equipment.name,
+    description: booking.equipment.description,
+    imageUrl: booking.equipment.imageUrl,
+    totalSlots: booking.equipment.slots.length,
+    bookedSlots: booking.equipment.slots.filter((slot) => slot.isBooked).length,
+    status: "booked", // Since this is user's booking, it's always "booked"
+    bookingId: booking.id,
+  }));
 }

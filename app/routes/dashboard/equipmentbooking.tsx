@@ -27,12 +27,18 @@ export async function action({ request }) {
 
   // Ensure user is logged in
   if (!userId) {
-    return json({ errors: { message: "User not authenticated. Please log in." } }, { status: 401 });
+    return json(
+      { errors: { message: "User not authenticated. Please log in." } },
+      { status: 401 }
+    );
   }
 
   // Ensure slotId is valid
   if (!slotId) {
-    return json({ errors: { message: "Please select a valid slot." } }, { status: 400 });
+    return json(
+      { errors: { message: "Please select a valid slot." } },
+      { status: 400 }
+    );
   }
 
   try {
@@ -48,7 +54,9 @@ export default function EquipmentBookingForm() {
   const { equipment } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
-  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
+    null
+  );
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
 
   const availableSlots = selectedEquipment
@@ -119,11 +127,16 @@ export default function EquipmentBookingForm() {
                       disabled={isBooked}
                       onClick={() => !isBooked && setSelectedSlot(slot.id)}
                     >
+                      {new Date(slot.startTime).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}{" "}
+                      at{" "}
                       {new Date(slot.startTime).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
-
                       {/* Show remark for workshop-booked slots */}
                       {isWorkshopBooked && (
                         <span className="block text-xs text-red-600">
@@ -153,5 +166,5 @@ export default function EquipmentBookingForm() {
         </Button>
       </Form>
     </div>
- 
-      )}
+  );
+}

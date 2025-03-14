@@ -7,6 +7,7 @@ import { getAvailableEquipment } from "~/models/equipment.server";
 import { getRoleUser } from "~/utils/session.server"; 
 import { Button } from "@/components/ui/button";
 import { deleteEquipment, duplicateEquipment, updateEquipment } from "~/models/equipment.server";
+import EquipmentCard from "@/components/ui/Dashboard/equipmentcard"; // Adjust the import path as necessary
 
 export async function loader({ request }: { request: Request }) {
   // Define default start and end time (or fetch dynamically if required)
@@ -22,7 +23,7 @@ export async function loader({ request }: { request: Request }) {
 
 
 export default function Equipments() {
-  const { equipments, roleUser } = useLoaderData();
+  const { equipments, roleUser } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const fetcher = useFetcher();
 
@@ -33,6 +34,8 @@ export default function Equipments() {
       <div className="flex h-screen">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
+          <h1 className="text-2xl font-bold mb-6">Available Equipment</h1>
+
           <div className="flex justify-end items-center mb-6">
             {isAdmin && (
               <Button
@@ -44,18 +47,29 @@ export default function Equipments() {
             )}
           </div>
 
-          {/* Equipment List */}
-          <EquipmentList equipments={equipments} isAdmin={isAdmin} />
-
-          <fetcher.Form method="post">
-            <input type="hidden" name="equipmentId" value="" />
-            <input type="hidden" name="action" value="" />
-          </fetcher.Form>
+          {equipments.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {equipments.map((equipment) => (
+                <EquipmentCard
+                  key={equipment.id}
+                  id={equipment.id}
+                  name={equipment.name}
+                  description={equipment.description}
+                  imageUrl={equipment.imageUrl}
+                  status={equipment.status} 
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600 mt-4">No equipment available.</p>
+          )}
         </main>
       </div>
     </SidebarProvider>
   );
 }
+
+
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const equipmentId = parseInt(formData.get("equipmentId") as string, 10);
