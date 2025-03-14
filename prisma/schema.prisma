@@ -58,22 +58,6 @@ model RoleUser {
   users User[] // Back-reference for the relation
 }
 
-// model Workshop {
-//   id          Int      @id @default(autoincrement())
-//   name        String
-//   description String
-//   price       Float
-//   createdAt   DateTime @default(now())
-//   updatedAt   DateTime @updatedAt
-//   location    String
-//   capacity    Int
-//   type      String  // "workshop" or "orientation"
-//   prerequisites Int[] @default([])
-
-//   occurrences WorkshopOccurrence[] // Relationship to occurrences
-//   userWorkshops UserWorkshop[] // Many-to-many relationship with User
-// }
-
 model Workshop {
   id                 Int      @id @default(autoincrement())
   name               String
@@ -84,6 +68,7 @@ model Workshop {
   location           String
   capacity           Int
   type               String // "workshop" or "orientation"
+  imageUrl           String?
   cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.")
 
   // Add relationships
@@ -160,6 +145,7 @@ model Equipment {
   availability Boolean  @default(true) 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  imageUrl     String?  // New field to store equipment images (nullable)
 
   bookings EquipmentBooking[] 
   slots    EquipmentSlot[] 
