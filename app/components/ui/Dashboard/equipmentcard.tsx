@@ -22,6 +22,7 @@ interface EquipmentProps {
   description: string;
   availability: boolean;
   imageUrl?: string;
+  status: "available" | "booked";
 }
 
 const SAMPLE_IMAGE = "/images/Fabricationservicesimg.avif";
@@ -93,12 +94,13 @@ export default function EquipmentCard({
 
       <CardContent className="p-4 flex flex-col gap-4">
         {/* Availability Badge */}
-        <span
+       {/* Status Badge - Change based on My Equipments or All Equipments */}
+       <span
           className={`text-sm font-medium px-3 py-1 rounded-lg w-fit ${
-            availability ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+            status === "available" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
           }`}
         >
-          {availability ? "Available" : "Not Available"}
+          {status === "available" ? "Available" : "Booked"}
         </span>
 
         <Button
