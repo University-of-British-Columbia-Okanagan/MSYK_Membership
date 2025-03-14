@@ -48,35 +48,14 @@ import {
               className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
             >
               <LayoutDashboard className="w-5 h-5" />
-              Admin Dashboard
-            </Link>
-            <Link
-              to="/dashboard/admin/workshop/users"
-              className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-            >
-              <Users className="w-5 h-5" />
-              User Registered in a Workshop
+              Workshops
             </Link>
             <Link
               to="/dashboard/admin/users"
               className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
             >
               <UserSearch className="w-5 h-5" />
-              Registered Users
-            </Link>
-            <Link
-              to="/dashboard/myworkshops"
-              className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-            >
-              <BookOpen className="w-5 h-5" />
-              My Workshops
-            </Link>
-            <Link
-              to="/dashboard/workshops"
-              className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-            >
-              <ClipboardList className="w-5 h-5" />
-              All Workshops
+              Users
             </Link>
             <Link
               to="/dashboard/events"
