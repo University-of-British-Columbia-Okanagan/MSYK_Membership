@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "EquipmentSlot" ALTER COLUMN "endTime" SET DATA TYPE TIMESTAMP(3);

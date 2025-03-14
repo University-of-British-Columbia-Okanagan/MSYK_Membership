@@ -1,5 +1,5 @@
-import React from "react";
-import { redirect, useActionData } from "react-router";
+import React, { useState } from "react";
+import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,7 +15,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { equipmentFormSchema } from "../../schemas/equipmentFormSchema";
 import type { EquipmentFormValues } from "../../schemas/equipmentFormSchema";
-import { addEquipment } from "~/models/equipment.server";
+import { getAvailableEquipmentForAdmin, addEquipment, getEquipmentByName } from "~/models/equipment.server";
 import {
   Select,
   SelectContent,
@@ -24,11 +24,52 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+
+/**
+ * Loader to fetch available equipment for admin.
+ */
+export async function loader() {
+  const equipments = await getAvailableEquipmentForAdmin();
+  return { equipments };
+}
+
+/**
+ * Helper: Parse a datetime-local string as a local Date.
+ */
+function parseDateTimeAsLocal(value: string): Date {
+  if (!value) return new Date("");
+  return new Date(value);
+}
+
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
 
   const price = parseFloat(rawValues.price as string);
+
+  // Parse slots and auto-calculate `endTime` (30 minutes later)
+  const slotsRaw = formData.getAll("slots");
+  const slots =
+    slotsRaw.length > 0
+      ? slotsRaw.map((slot) => {
+          try {
+            const parsedSlot = JSON.parse(slot as string);
+            const startTime = new Date(parsedSlot.startTime);
+            return {
+              startTime,
+              endTime: new Date(startTime.getTime() + 30 * 60000), // Auto-add 30 minutes
+              isBooked: false,
+            };
+          } catch (error) {
+            console.error("Error parsing slot:", error);
+            return null;
+          }
+        }).filter(Boolean)
+      : [];
+
+  console.log("Parsed Slots:", slots);
+
+  // Validate data
   const parsed = equipmentFormSchema.safeParse({
     ...rawValues,
     price,
@@ -40,22 +81,42 @@ export async function action({ request }: { request: Request }) {
   }
 
   try {
-    await addEquipment({
+    // Check if equipment name already exists
+    const existingEquipment = await getEquipmentByName(parsed.data.name);
+
+
+    if (existingEquipment) {
+      return { errors: { name: ["Equipment with this name already exists."] } };
+    }
+
+  
+    const newEquipment = await addEquipment({
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
       availability: parsed.data.availability === "true",
+      slots,
     });
-  } catch (error) {
+
+    console.log("New Equipment Added:", newEquipment);
+
+    return redirect("/dashboard/admin");
+  } catch (error: any) {
     console.error("Error adding equipment:", error);
+
+    if (error.code === "P2002") {
+      return { errors: { name: ["Equipment name must be unique."] } };
+    }
+
     return { errors: { database: ["Failed to add equipment"] } };
   }
-
-  return redirect("/dashboard/admin/equipments");
 }
 
 export default function AddEquipment() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const { equipments } = useLoaderData() as {
+    equipments: { id: number; name: string }[];
+  };
 
   const form = useForm<EquipmentFormValues>({
     resolver: zodResolver(equipmentFormSchema),
@@ -66,6 +127,23 @@ export default function AddEquipment() {
       availability: "true",
     },
   });
+
+  const [slots, setSlots] = useState<{ startTime: string }[]>([]);
+
+  const addSlot = () => {
+    setSlots([...slots, { startTime: "" }]);
+  };
+
+  const removeSlot = (index: number) => {
+    const updatedSlots = slots.filter((_, i) => i !== index);
+    setSlots(updatedSlots);
+  };
+
+  const updateSlot = (index: number, key: string, value: string) => {
+    const updatedSlots = [...slots];
+    updatedSlots[index] = { ...updatedSlots[index], [key]: value };
+    setSlots(updatedSlots);
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-8">
@@ -147,8 +225,42 @@ export default function AddEquipment() {
             )}
           />
 
+          {/* Equipment Slots */}
+          <div className="mt-6">
+            <h2 className="text-lg font-semibold">Equipment Slots</h2>
+            {slots.map((slot, index) => (
+              <div key={index} className="flex space-x-4 mt-2">
+                <input
+                  type="datetime-local"
+                  value={slot.startTime}
+                  onChange={(e) => updateSlot(index, "startTime", e.target.value)}
+                  className="border p-2 rounded w-full"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeSlot(index)}
+                  className="bg-red-500 text-white px-2 py-1 rounded"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addSlot}
+              className="mt-2 bg-blue-500 text-white px-4 py-2 rounded-md"
+            >
+              + Add Slot
+            </button>
+          </div>
+
+          {/* Hidden input for slots */}
+          {slots.map((slot, index) => (
+            <input key={index} type="hidden" name="slots" value={JSON.stringify(slot)} />
+          ))}
+
           {/* Submit Button */}
-          <Button type="submit" className="mt-6 w-full bg-blue-500 text-white px-4 py-2 rounded-md shadow hover:bg-blue-600 transition">
+          <Button type="submit" className="mt-6 w-full bg-green-500 text-white px-4 py-2 rounded-md shadow hover:bg-green-600 transition">
             Add Equipment
           </Button>
         </form>

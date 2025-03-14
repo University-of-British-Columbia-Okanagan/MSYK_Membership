@@ -25,6 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { CheckIcon } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
@@ -33,7 +36,10 @@ import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 import PrerequisitesField from "@/components/ui/PrerequisitesField";
-import { getAvailableEquipment } from "~/models/equipment.server";
+import {
+  getAvailableEquipmentForAdmin,
+  getEquipmentSlotsWithStatus,
+} from "~/models/equipment.server";
 import MultiSelectField from "~/components/ui/MultiSelectField";
 
 /**
@@ -41,7 +47,8 @@ import MultiSelectField from "~/components/ui/MultiSelectField";
  */
 export async function loader() {
   const workshops = await getWorkshops();
-  const equipments = await getAvailableEquipment();
+  const equipments = await getEquipmentSlotsWithStatus();
+
   return { workshops, equipments };
 }
 
@@ -105,10 +112,11 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
 
+  // Parse price and capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
-  // Parse prerequisites from JSON string to array of numbers
+  // Parse prerequisites from JSON string
   let prerequisites: number[] = [];
   try {
     prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
@@ -117,7 +125,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: { prerequisites: ["Invalid prerequisites format"] } };
   }
 
-  // Parse equipments from JSON string to array of numbers
+  // Parse equipments from JSON string
   let equipments: number[] = [];
   try {
     equipments = JSON.parse(rawValues.equipments as string).map(Number);
@@ -126,6 +134,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: { equipments: ["Invalid equipments format"] } };
   }
 
+  // Parse occurrences and validate dates
   let occurrences: {
     startDate: Date;
     endDate: Date;
@@ -138,7 +147,7 @@ export async function action({ request }: { request: Request }) {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
 
-        // VALIDATION CHECK: Ensure end date is later than start date
+        // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
           throw new Error("End date must be later than start date");
         }
@@ -147,6 +156,7 @@ export async function action({ request }: { request: Request }) {
         const utcStart = new Date(localStart.getTime() - startOffset * 60000);
         const endOffset = localEnd.getTimezoneOffset();
         const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+
         return {
           startDate: localStart,
           endDate: localEnd,
@@ -169,6 +179,51 @@ export async function action({ request }: { request: Request }) {
     };
   }
 
+  // Fetch up-to-date available equipment to avoid conflicts
+  const availableEquipments = await getAvailableEquipmentForAdmin();
+  const availableEquipmentIds = new Set(availableEquipments.map((e) => e.id));
+
+  //Ensure selected equipment is still available
+  const unavailableEquipments = equipments.filter(
+    (id) => !availableEquipmentIds.has(id)
+  );
+  if (unavailableEquipments.length > 0) {
+    return {
+      errors: {
+        equipments: ["One or more selected equipment are no longer available."],
+      },
+    };
+  }
+
+  //  Ensure no selected equipment conflicts with workshop occurrences
+  for (const equipmentId of equipments) {
+    const conflictingEquipment = availableEquipments.find(
+      (e) => e.id === equipmentId
+    );
+
+    if (conflictingEquipment?.slots) {
+      for (const occ of occurrences) {
+        const conflict = conflictingEquipment.slots.some(
+          (slot) =>
+            new Date(slot.startTime).getTime() >= occ.startDate.getTime() &&
+            new Date(slot.startTime).getTime() < occ.endDate.getTime() &&
+            slot.workshop !== null
+        );
+
+        if (conflict) {
+          return {
+            errors: {
+              equipments: [
+                `The equipment "${conflictingEquipment.name}" is booked during your workshop time.`,
+              ],
+            },
+          };
+        }
+      }
+    }
+  }
+
+  //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
     price,
@@ -183,6 +238,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
+  //  Save the workshop to the database
   try {
     await addWorkshop({
       name: parsed.data.name,
@@ -200,6 +256,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: { database: ["Failed to add workshop"] } };
   }
 
+  // Redirect to admin dashboard
   return redirect("/dashboard/admin");
 }
 
@@ -222,7 +279,7 @@ export default function AddWorkshop() {
       type: "workshop",
       occurrences: [],
       prerequisites: [],
-      equipments : [],
+      equipments: [],
     },
   });
 
@@ -242,7 +299,12 @@ export default function AddWorkshop() {
     (a, b) => a - b
   );
 
+  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
+    null
+  );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
+
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -321,13 +383,14 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
-  const handleEquipmentSelect = (id: number) => {
-    if (selectedEquipments.includes(id)) {
-      setSelectedEquipments(selectedEquipments.filter((e) => e !== id));
-    } else {
-      const updated = [...selectedEquipments, id];
-      setSelectedEquipments(updated);
-      form.setValue("equipments", updated);
+  const handleEquipmentSelect = (equipmentId: number) => {
+    setSelectedEquipment(equipmentId);
+    setSelectedSlot(null);
+  };
+  const handleSlotSelect = (slotId: number, isBooked: boolean) => {
+    if (!isBooked) {
+      setSelectedSlot(slotId);
+      form.setValue("selectedSlot", slotId); // Ensure it's saved in form state
     }
   };
 
@@ -552,17 +615,17 @@ export default function AddWorkshop() {
           {/* Prerequisites */}
           {form.watch("type") !== "orientation" ? (
             <MultiSelectField
-            control={form.control}
-            name="prerequisites"
-            label="Prerequisites"
-            options={availableWorkshops}
-            selectedItems={selectedPrerequisites}
-            onSelect={handlePrerequisiteSelect}
-            onRemove={removePrerequisite}
-            error={actionData?.errors?.prerequisites}
-            placeholder="Select prerequisites..."
-            helperText="Select workshops of type Orientation that must be completed before enrolling."
-            filterFn={(item) => item.type.toLowerCase() === "orientation"}
+              control={form.control}
+              name="prerequisites"
+              label="Prerequisites"
+              options={availableWorkshops}
+              selectedItems={selectedPrerequisites}
+              onSelect={handlePrerequisiteSelect}
+              onRemove={removePrerequisite}
+              error={actionData?.errors?.prerequisites}
+              placeholder="Select prerequisites..."
+              helperText="Select workshops of type Orientation that must be completed before enrolling."
+              filterFn={(item) => item.type.toLowerCase() === "orientation"}
             />
           ) : (
             <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
@@ -571,18 +634,74 @@ export default function AddWorkshop() {
           )}
 
           {/* Equipments */}
-          <MultiSelectField
-            control={form.control}
-            name="equipments"
-            label="Equipments"
-            options={availableEquipments} // from loader
-            selectedItems={selectedEquipments}
-            onSelect={handleEquipmentSelect}
-            onRemove={removeEquipment}
-            error={actionData?.errors?.equipments}
-            placeholder="Select equipments..."
-            helperText="Choose equipment required for this workshop/orientation."
-          />
+          <FormItem className="mt-6">
+            <FormLabel>Select Equipment</FormLabel>
+            <Select
+              onValueChange={(value) => setSelectedEquipment(Number(value))}
+            >
+              <SelectTrigger className="w-full border rounded-md p-2">
+                <SelectValue placeholder="Choose an equipment" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableEquipments.map((equipment) => (
+                  <SelectItem
+                    key={equipment.id}
+                    value={equipment.id.toString()}
+                  >
+                    {equipment.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormItem>
+
+          {/* Slot Picker */}
+          {selectedEquipment !== null && (
+            <div className="mt-4">
+              <h3 className="font-semibold text-lg">Select a Time Slot</h3>
+              <ScrollArea className="max-h-60 border rounded-md p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {availableEquipments
+                    .find((eq) => eq.id === selectedEquipment)
+                    ?.slots.map((slot) => (
+                      <Card
+                        key={slot.id}
+                        className={cn(
+                          "cursor-pointer text-center p-2 rounded-md transition",
+                          slot.isBooked
+                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                            : selectedSlot === slot.id
+                            ? "bg-blue-500 text-white"
+                            : "bg-white border hover:bg-blue-100"
+                        )}
+                        onClick={() =>
+                          !slot.isBooked && setSelectedSlot(slot.id)
+                        }
+                      >
+                        <CardContent>
+                          {new Date(slot.startTime).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+              </ScrollArea>
+
+              {/* Confirmation Button */}
+              <Button
+                type="button" // This ensures the button does NOT submit the form
+                disabled={!selectedSlot}
+                className="mt-4 w-full bg-blue-600 text-white py-2 rounded-md"
+                onClick={() => {
+                  console.log(`Slot ${selectedSlot} selected`); // Debugging
+                }}
+              >
+                Confirm Slot
+              </Button>
+            </div>
+          )}
 
           {/* Type */}
           <GenericFormField
@@ -616,11 +735,26 @@ export default function AddWorkshop() {
             name="prerequisites"
             value={JSON.stringify(selectedPrerequisites || [])}
           />
-          {/* Hidden input for equipments */}
           <input
             type="hidden"
             name="equipments"
-            value={JSON.stringify(selectedEquipments || [])}
+            value={
+              selectedEquipments.length > 0
+                ? JSON.stringify(selectedEquipments)
+                : "[]"
+            }
+          />
+          <input
+            type="hidden"
+            name="selectedSlot"
+            value={
+              selectedSlot
+                ? JSON.stringify({
+                    equipmentId: selectedEquipment,
+                    slotId: selectedSlot,
+                  })
+                : ""
+            }
           />
 
           {/* Submit Button */}

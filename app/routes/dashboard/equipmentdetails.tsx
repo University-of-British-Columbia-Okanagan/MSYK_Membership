@@ -61,7 +61,7 @@ export default function EquipmentDetails() {
         <CardContent>
           <div className="flex gap-2">
             <Badge variant="outline">
-              {equipment.availability ? "✅ Available" : "❌ Unavailable"}
+              {equipment.availability ? "Available" : "Unavailable"}
             </Badge>
           </div>
 
