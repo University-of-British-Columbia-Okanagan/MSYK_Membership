@@ -1,4 +1,5 @@
 import { db } from "../utils/db.server";
+import { getUserId } from "../utils/session.server"; 
 
 interface EquipmentData {
   name: string;
@@ -26,35 +27,47 @@ export async function getEquipmentById(equipmentId: number) {
 /**
  * Fetch all available equipment
  */
-export async function getAvailableEquipment(workshopStartTime: Date, workshopEndTime: Date) {
+export async function getAvailableEquipment() {
   return await db.equipment.findMany({
-    where: {
-      id: {
-        notIn: (
-          await db.equipmentSlot.findMany({
-            where: {
-              startTime: {
-                gte: workshopStartTime,
-                lte: workshopEndTime, // Check if already booked
-              },
-              isBooked: true,
-            },
-            select: { equipmentId: true },
-          })
-        ).map((slot) => slot.equipmentId),
+    include: {
+      slots: {
+        select: { id: true, isBooked: true },
       },
     },
-  });
+  }).then((equipments) =>
+    equipments.map((eq) => ({
+      id: eq.id,
+      name: eq.name,
+      description: eq.description,
+      imageUrl: eq.imageUrl,
+      totalSlots: eq.slots.length,
+      bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
+      status:
+        eq.slots.length === 0
+          ? "unavailable" // No slots exist
+          : eq.slots.every((slot) => slot.isBooked)
+          ? "unavailable" // All slots taken
+          : "available", // Some slots are free
+    }))
+  );
 }
+
 
 
 /**
  * Book equipment using a predefined slot
  */
-export async function bookEquipment(userId: number, slotId: number) {
+export async function bookEquipment(request: Request, slotId: number) {
+  const userId = await getUserId(request); // Ensure we fetch the correct userId from session
+  console.log("Booking Equipment for userId:", userId, "slotId:", slotId); // Debugging log
+
+  if (!userId) {
+    throw new Error("User is not authenticated.");
+  }
+
   const slot = await db.equipmentSlot.findUnique({
     where: { id: slotId },
-    include: { equipment: true }, // Include equipment relation
+    include: { equipment: true },
   });
 
   if (!slot) throw new Error("Slot not found.");
@@ -62,10 +75,13 @@ export async function bookEquipment(userId: number, slotId: number) {
   if (slot.workshopId !== null)
     throw new Error("This equipment is reserved for a workshop.");
 
+  // Fetch user from database
   const user = await db.user.findUnique({
-    where: { id: userId },
+    where: { id: parseInt(userId) },
     include: { membership: true },
   });
+
+  console.log("User Found in DB:", user);
 
   if (!user || !user.membership || user.membership.type !== "monthly") {
     throw new Error("You need an active monthly membership to book.");
@@ -76,9 +92,19 @@ export async function bookEquipment(userId: number, slotId: number) {
     data: { isBooked: true },
   });
 
-  return await db.equipmentBooking.create({
-    data: { userId, equipmentId: slot.equipment.id, slotId, status: "pending" },
+  console.log("Final Booking for userId:", userId, "slotId:", slotId);
+
+  const booking = await db.equipmentBooking.create({
+    data: {
+      userId: parseInt(userId),
+      equipmentId: slot.equipment.id,
+      slotId,
+      status: "pending",
+    },
   });
+
+  console.log("Created Booking:", booking);
+  return booking;
 }
 
 /**
@@ -102,8 +128,10 @@ export async function cancelEquipmentBooking(bookingId: number) {
     });
   }
 
+  // Delete booking record
   return await db.equipmentBooking.delete({ where: { id: bookingId } });
 }
+
 
 /**
  * Approve a booking (Admin only)
@@ -123,7 +151,7 @@ export async function addEquipment(data: {
   description: string;
   price: number;
   availability: boolean;
-  slots: { startTime: Date }[]; // No endTime needed
+  slots: { startTime: Date }[];
 }) {
   try {
     // Create Equipment
@@ -160,7 +188,6 @@ export async function addEquipment(data: {
     throw new Error("Failed to add equipment.");
   }
 }
-
 
 /**
  * Create an equipment slot (Admin only)
@@ -218,8 +245,6 @@ export async function createEquipmentSlotForWorkshop(
   });
 }
 
-
-
 /**
  * Fetch available slots for a particular equipment
  */
@@ -257,11 +282,11 @@ export async function getEquipmentSlotsWithStatus() {
         select: {
           id: true,
           startTime: true,
-          endTime: true, 
+          endTime: true,
           isBooked: true,
           workshop: {
             select: {
-              name: true, 
+              name: true,
             },
           },
         },
@@ -276,23 +301,25 @@ export async function getEquipmentSlotsWithStatus() {
     slots: eq.slots.map((slot) => ({
       id: slot.id,
       startTime: slot.startTime,
-      endTime: slot.endTime, 
-      isBooked: slot.isBooked, 
-      workshopName: slot.workshop ? slot.workshop.name : null, 
+      endTime: slot.endTime,
+      isBooked: slot.isBooked,
+      workshopName: slot.workshop ? slot.workshop.name : null,
     })),
   }));
 }
 
-
 /**
  * Update existing equipment (Admin only)
  */
-export async function updateEquipment(equipmentId: number, data: {
-  name?: string;
-  description?: string;
-  price?: number;
-  availability?: boolean;
-}) {
+export async function updateEquipment(
+  equipmentId: number,
+  data: {
+    name?: string;
+    description?: string;
+    price?: number;
+    availability?: boolean;
+  }
+) {
   try {
     return await db.equipment.update({
       where: { id: equipmentId },
@@ -333,7 +360,6 @@ export async function deleteEquipment(equipmentId: number) {
   }
 }
 
-
 /**
  * Duplicate existing equipment (Admin only)
  */
@@ -362,4 +388,30 @@ export async function duplicateEquipment(equipmentId: number) {
     console.error("Error duplicating equipment:", error);
     throw new Error("Failed to duplicate equipment.");
   }
+}
+// Fetch booked equipment for a user
+export async function getUserBookedEquipments(userId: number) {
+  const bookings = await db.equipmentBooking.findMany({
+    where: { userId },
+    include: {
+      equipment: {
+        include: {
+          slots: {
+            select: { id: true, isBooked: true },
+          },
+        },
+      },
+    },
+  });
+
+  return bookings.map((booking) => ({
+    id: booking.id,
+    name: booking.equipment.name,
+    description: booking.equipment.description,
+    imageUrl: booking.equipment.imageUrl,
+    totalSlots: booking.equipment.slots.length,
+    bookedSlots: booking.equipment.slots.filter((slot) => slot.isBooked).length,
+    status: "booked", // Since this is user's booking, it's always "booked"
+    bookingId: booking.id,
+  }));
 }

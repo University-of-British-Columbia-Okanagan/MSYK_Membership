@@ -11,6 +11,7 @@ import {
 } from "../../models/equipment.server";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { getUserId } from "../../utils/session.server";
 
 // **Fetch all equipment and their slot status**
 export async function loader() {
@@ -21,18 +22,27 @@ export async function loader() {
 // **Handles form submission**
 export async function action({ request }) {
   const formData = await request.formData();
-  const userId = Number(formData.get("userId"));
+  const userId = await getUserId(request);
   const slotId = Number(formData.get("slotId"));
 
-  if (!userId || !slotId) {
+  // Ensure user is logged in
+  if (!userId) {
     return json(
-      { errors: { message: "Please select a slot." } },
+      { errors: { message: "User not authenticated. Please log in." } },
+      { status: 401 }
+    );
+  }
+
+  // Ensure slotId is valid
+  if (!slotId) {
+    return json(
+      { errors: { message: "Please select a valid slot." } },
       { status: 400 }
     );
   }
 
   try {
-    await bookEquipment(userId, slotId);
+    await bookEquipment(request, slotId);
     return json({ success: "Equipment booked successfully!" });
   } catch (error) {
     return json({ errors: { message: error.message } }, { status: 400 });
@@ -70,14 +80,11 @@ export default function EquipmentBookingForm() {
       )}
 
       <Form method="post">
-        <input type="hidden" name="userId" value="1" />
-
         {/* Equipment Selection */}
         <label className="block text-gray-700 font-bold mb-2">
           Select Equipment
         </label>
         <select
-          name="equipmentId"
           className="w-full p-2 border rounded"
           value={selectedEquipment ?? ""}
           onChange={(e) => {
@@ -120,11 +127,16 @@ export default function EquipmentBookingForm() {
                       disabled={isBooked}
                       onClick={() => !isBooked && setSelectedSlot(slot.id)}
                     >
+                      {new Date(slot.startTime).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}{" "}
+                      at{" "}
                       {new Date(slot.startTime).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
-
                       {/* Show remark for workshop-booked slots */}
                       {isWorkshopBooked && (
                         <span className="block text-xs text-red-600">
@@ -144,7 +156,6 @@ export default function EquipmentBookingForm() {
         {/* Hidden input to store slot ID */}
         <input type="hidden" name="slotId" value={selectedSlot ?? ""} />
 
-        {/* Submit Button */}
         {/* Submit Button */}
         <Button
           type="submit"

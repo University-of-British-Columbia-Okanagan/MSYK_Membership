@@ -66,7 +66,14 @@ export function AppSidebar() {
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <Package className="w-5 h-5" />
-            Equipments
+            All Equipments
+          </Link>
+          <Link
+            to="/dashboard/myequipments"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <Package className="w-5 h-5" />
+            My Equipments
           </Link>
           <Link
             to="/membership"
