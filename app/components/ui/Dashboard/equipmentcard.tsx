@@ -23,6 +23,7 @@ interface EquipmentProps {
   availability: boolean;
   imageUrl?: string;
   status: "available" | "booked";
+  bookingId?: number; // Only needed for booked equipment
 }
 
 const SAMPLE_IMAGE = "/images/Fabricationservicesimg.avif";
@@ -32,7 +33,9 @@ export default function EquipmentCard({
   name,
   description,
   availability,
+  status,
   imageUrl,
+  bookingId,
 }: EquipmentProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -57,7 +60,15 @@ export default function EquipmentCard({
       { method: "post" }
     );
   };
-
+  const handleCancel = async () => {
+    const confirmCancel = window.confirm(`Are you sure you want to cancel booking for "${name}"?`);
+    if (confirmCancel && bookingId) {
+      fetcher.submit(
+        { bookingId, action: "cancel" },
+        { method: "post" }
+      );
+    }
+  };
   return (
     <Card className="w-full md:w-80 rounded-lg shadow-md flex flex-col overflow-hidden relative">
       {/* Three Dots Menu */}
@@ -94,14 +105,21 @@ export default function EquipmentCard({
 
       <CardContent className="p-4 flex flex-col gap-4">
         {/* Availability Badge */}
-       {/* Status Badge - Change based on My Equipments or All Equipments */}
-       <span
-          className={`text-sm font-medium px-3 py-1 rounded-lg w-fit ${
-            status === "available" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-          }`}
-        >
+       {/* Status Badge - Green for Booked, Gray for Available */}
+       <span className={`text-sm font-medium px-3 py-1 rounded-lg w-fit ${
+          status === "available" ? "bg-gray-100 text-gray-700" : "bg-green-100 text-green-700"
+        }`}>
           {status === "available" ? "Available" : "Booked"}
         </span>
+        {/* Cancel Booking Button - Only shown if booked */}
+        {status === "booked" && (
+          <Button
+            className="w-full bg-red-500 hover:bg-red-600 text-white"
+            onClick={handleCancel}
+          >
+            Cancel Booking
+          </Button>
+        )}
 
         <Button
           className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
