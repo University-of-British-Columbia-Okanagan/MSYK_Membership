@@ -105,33 +105,47 @@ export async function addWorkshop(data: WorkshopData) {
       )
     );
 
-    // Check if equipment is available before assigning it
     if (data.equipments && data.equipments.length > 0) {
       for (const equipmentId of data.equipments) {
-        // Fetch all slots for this equipment
-        const availableSlots = await db.equipmentSlot.findMany({
-          where: {
-            equipmentId,
-            isBooked: false, // Fetch only available slots
-          },
-        });
+        for (const occ of occurrences) {
+          // Find all available slots that match workshop time
+          const availableSlots = await db.equipmentSlot.findMany({
+            where: {
+              equipmentId,
+              isBooked: false,
+              workshopId: null,
+              startTime: { gte: occ.startDate },
+            },
+            orderBy: { startTime: "asc" },
+          });
 
-        if (availableSlots.length === 0) {
-          throw new Error(
-            `Equipment ID ${equipmentId} has no available slots.`
+          // Pick the first slot that fits the occurrence window
+          const selectedSlot = availableSlots.find(
+            (slot) => new Date(slot.endTime) <= new Date(occ.endDate)
           );
+
+          if (!selectedSlot) {
+            console.error(
+              `ERROR: No available slot found for Equipment ID ${equipmentId} during ${occ.startDate} - ${occ.endDate}`
+            );
+            throw new Error(
+              `No available slot found for Equipment ID ${equipmentId} in the given time range.`
+            );
+          }
+
+          console.log(
+            `Assigning slot ${selectedSlot.id} to Equipment ${equipmentId} for workshop ${newWorkshop.id}`
+          );
+
+          // Assign this slot to the workshop
+          await db.equipmentSlot.update({
+            where: { id: selectedSlot.id },
+            data: {
+              workshopId: newWorkshop.id,
+              isBooked: true, // Mark as booked
+            },
+          });
         }
-
-        // Assign the first available slot
-        const selectedSlot = availableSlots[0];
-
-        await db.equipmentSlot.update({
-          where: { id: selectedSlot.id },
-          data: {
-            workshopId: newWorkshop.id,
-            isBooked: true, // Mark as booked
-          },
-        });
       }
     }
 
@@ -141,7 +155,6 @@ export async function addWorkshop(data: WorkshopData) {
     throw new Error("Failed to add workshop");
   }
 }
-
 
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
@@ -260,7 +273,6 @@ export async function updateWorkshopWithOccurrences(
       });
     }
   }
-
 
   // 3) Update occurrences
   const existingOccurrences = await db.workshopOccurrence.findMany({

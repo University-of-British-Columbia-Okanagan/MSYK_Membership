@@ -207,7 +207,7 @@ export async function action({ request }: { request: Request }) {
           (slot) =>
             new Date(slot.startTime).getTime() >= occ.startDate.getTime() &&
             new Date(slot.startTime).getTime() < occ.endDate.getTime() &&
-            slot.workshop !== null
+            slot.workshopId !== null
         );
 
         if (conflict) {
@@ -663,39 +663,68 @@ export default function AddWorkshop() {
                 <div className="grid grid-cols-3 gap-2">
                   {availableEquipments
                     .find((eq) => eq.id === selectedEquipment)
-                    ?.slots.map((slot) => (
-                      <Card
-                        key={slot.id}
-                        className={cn(
-                          "cursor-pointer text-center p-2 rounded-md transition",
-                          slot.isBooked
-                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                            : selectedSlot === slot.id
-                            ? "bg-blue-500 text-white"
-                            : "bg-white border hover:bg-blue-100"
-                        )}
-                        onClick={() =>
-                          !slot.isBooked && setSelectedSlot(slot.id)
-                        }
-                      >
-                        <CardContent>
-                          {new Date(slot.startTime).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </CardContent>
-                      </Card>
-                    ))}
+                    ?.slots.map((slot) => {
+                      const isWorkshopBooked = slot.workshopName !== null; // Workshop booked
+                      const isBooked = slot.isBooked || isWorkshopBooked;
+
+                      return (
+                        <Card
+                          key={slot.id}
+                          className={cn(
+                            "cursor-pointer text-center p-2 rounded-md transition",
+                            isBooked
+                              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                              : selectedSlot === slot.id
+                              ? "bg-blue-500 text-white"
+                              : "bg-white border hover:bg-blue-100"
+                          )}
+                          onClick={() =>
+                            !isBooked && handleSlotSelect(slot.id, isBooked)
+                          }
+                        >
+                          <CardContent>
+                            {new Date(slot.startTime).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+
+                            {/* Show remark for workshop-booked slots */}
+                            {isWorkshopBooked && (
+                              <span className="block text-xs text-red-600">
+                                Reserved for {slot.workshopName}
+                              </span>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                 </div>
               </ScrollArea>
 
               {/* Confirmation Button */}
               <Button
-                type="button" // This ensures the button does NOT submit the form
+                type="button"
                 disabled={!selectedSlot}
                 className="mt-4 w-full bg-blue-600 text-white py-2 rounded-md"
                 onClick={() => {
-                  console.log(`Slot ${selectedSlot} selected`); // Debugging
+                  if (!selectedSlot) return;
+
+                  // Add selected slot to the list of confirmed slots
+                  setSelectedEquipments([
+                    ...selectedEquipments,
+                    selectedEquipment,
+                  ]);
+
+                  // Update form data
+                  form.setValue("equipments", [
+                    ...selectedEquipments,
+                    selectedEquipment,
+                  ]);
+                  form.setValue("selectedSlot", selectedSlot);
+
+                  console.log(
+                    `Slot ${selectedSlot} confirmed for Equipment ${selectedEquipment}`
+                  );
                 }}
               >
                 Confirm Slot
@@ -722,12 +751,30 @@ export default function AddWorkshop() {
             type="hidden"
             name="occurrences"
             value={JSON.stringify(
-              occurrences.filter(
-                (occ) =>
-                  !isNaN(occ.startDate.getTime()) &&
-                  !isNaN(occ.endDate.getTime())
-              )
+              occurrences
+                .filter(
+                  (occ) =>
+                    !isNaN(occ.startDate.getTime()) &&
+                    !isNaN(occ.endDate.getTime())
+                )
+                .map((occ) => ({
+                  startDate: occ.startDate.toISOString(),
+                  endDate: occ.endDate.toISOString(),
+                }))
             )}
+          />
+
+          <input
+            type="hidden"
+            name="selectedSlot"
+            value={
+              selectedSlot
+                ? JSON.stringify({
+                    equipmentId: selectedEquipment,
+                    slotId: selectedSlot,
+                  })
+                : ""
+            }
           />
           {/* Hidden input for prerequisites */}
           <input
@@ -738,12 +785,9 @@ export default function AddWorkshop() {
           <input
             type="hidden"
             name="equipments"
-            value={
-              selectedEquipments.length > 0
-                ? JSON.stringify(selectedEquipments)
-                : "[]"
-            }
+            value={JSON.stringify(selectedEquipments)}
           />
+
           <input
             type="hidden"
             name="selectedSlot"
@@ -761,6 +805,9 @@ export default function AddWorkshop() {
           <Button
             type="submit"
             className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+            onClick={() => {
+              console.log("Final Form Data:", form.getValues());
+            }}
           >
             Submit
           </Button>

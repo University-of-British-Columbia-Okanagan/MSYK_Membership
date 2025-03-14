@@ -54,7 +54,7 @@ export async function getAvailableEquipment(workshopStartTime: Date, workshopEnd
 export async function bookEquipment(userId: number, slotId: number) {
   const slot = await db.equipmentSlot.findUnique({
     where: { id: slotId },
-    include: { equipment: true, workshop: true }, // Include workshop relation
+    include: { equipment: true }, // Include equipment relation
   });
 
   if (!slot) throw new Error("Slot not found.");
@@ -182,6 +182,7 @@ export async function createEquipmentSlot(
     data: {
       equipmentId,
       startTime,
+      endTime: new Date(startTime.getTime() + 30 * 60000), // Auto-add 30 minutes
       isBooked: false,
     },
   });
@@ -197,23 +198,26 @@ export async function createEquipmentSlotForWorkshop(
       equipmentId,
       startTime,
       OR: [
-        { isBooked: true }, // Check if already booked by a user
-        { workshop: { isNot: null } }, // Check if already reserved for a workshop
+        { isBooked: true }, // Booked by a user
+        { workshopId: { not: null } }, // Assigned to another workshop
       ],
     },
   });
 
   if (existingSlot)
-    throw new Error("This slot is already booked or reserved for a workshop.");
+    throw new Error(
+      "This slot is either booked by a user or already assigned to a workshop."
+    );
 
-  return await db.equipmentSlot.create({
+  return await db.equipmentSlot.updateMany({
+    where: { equipmentId, startTime },
     data: {
-      equipmentId,
-      startTime,
-      workshop: { connect: { id: workshopId } }, // Correctly link workshop relation
+      workshopId: workshopId, // Assign to workshop
+      isBooked: true, // Mark as booked
     },
   });
 }
+
 
 
 /**
@@ -253,13 +257,15 @@ export async function getEquipmentSlotsWithStatus() {
         select: {
           id: true,
           startTime: true,
-          endTime: true,
+          endTime: true, 
+          isBooked: true,
           workshop: {
             select: {
-              name: true, // Show which workshop booked it
+              name: true, 
             },
           },
         },
+        orderBy: { startTime: "asc" },
       },
     },
   });
@@ -270,12 +276,13 @@ export async function getEquipmentSlotsWithStatus() {
     slots: eq.slots.map((slot) => ({
       id: slot.id,
       startTime: slot.startTime,
-      endTime: slot.endTime,
-      isBooked: slot.workshop !== null,
-      workshopName: slot.workshop ? slot.workshop.name : null,
+      endTime: slot.endTime, 
+      isBooked: slot.isBooked, 
+      workshopName: slot.workshop ? slot.workshop.name : null, 
     })),
   }));
 }
+
 
 /**
  * Update existing equipment (Admin only)

@@ -102,31 +102,38 @@ export default function EquipmentBookingForm() {
             </label>
             <div className="grid grid-cols-2 gap-3">
               {availableSlots.length > 0 ? (
-                availableSlots.map((slot) => (
-                  <button
-                    key={slot.id}
-                    type="button"
-                    className={`p-2 text-center rounded border ${
-                      slot.isBooked
-                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                        : selectedSlot === slot.id
-                        ? "bg-blue-500 text-white"
-                        : "bg-white hover:bg-blue-100"
-                    }`}
-                    disabled={slot.isBooked}
-                    onClick={() => !slot.isBooked && setSelectedSlot(slot.id)}
-                  >
-                    {new Date(slot.startTime).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {slot.isBooked && (
-                      <span className="block text-xs text-red-600">
-                        Booked ({slot.workshopName})
-                      </span>
-                    )}
-                  </button>
-                ))
+                availableSlots.map((slot) => {
+                  const isWorkshopBooked = slot.workshopName !== null; // Check if reserved for a workshop
+                  const isBooked = slot.isBooked || isWorkshopBooked;
+
+                  return (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      className={`p-2 text-center rounded border ${
+                        isBooked
+                          ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                          : selectedSlot === slot.id
+                          ? "bg-blue-500 text-white"
+                          : "bg-white hover:bg-blue-100"
+                      }`}
+                      disabled={isBooked}
+                      onClick={() => !isBooked && setSelectedSlot(slot.id)}
+                    >
+                      {new Date(slot.startTime).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+
+                      {/* Show remark for workshop-booked slots */}
+                      {isWorkshopBooked && (
+                        <span className="block text-xs text-red-600">
+                          Reserved for {slot.workshopName}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
               ) : (
                 <span className="text-gray-500">No available slots</span>
               )}
@@ -138,10 +145,11 @@ export default function EquipmentBookingForm() {
         <input type="hidden" name="slotId" value={selectedSlot ?? ""} />
 
         {/* Submit Button */}
+        {/* Submit Button */}
         <Button
           type="submit"
           className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md"
-          disabled={navigation.state === "submitting" || !selectedSlot}
+          disabled={navigation.state === "submitting" || selectedSlot === null}
         >
           {navigation.state === "submitting" ? "Booking..." : "Book Equipment"}
         </Button>
