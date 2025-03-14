@@ -236,15 +236,44 @@ export async function getEquipmentByName(name: string) {
 }
 
 export async function getAvailableEquipmentForAdmin() {
-  return await db.equipment.findMany({
+  return db.equipment.findMany({
     include: {
-      bookings: { include: { user: true, slot: true } },
       slots: {
-        include: {
-          workshop: { select: { id: true, name: true } }, 
+        where: { isBooked: false }, //this will show only available slots.
+        orderBy: { startTime: "asc" },
+      },
+    },
+  });
+}
+
+export async function getEquipmentSlotsWithStatus() {
+  const equipment = await db.equipment.findMany({
+    include: {
+      slots: {
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+          workshop: {
+            select: {
+              name: true, // Show which workshop booked it
+            },
+          },
         },
       },
     },
   });
+
+  return equipment.map((eq) => ({
+    id: eq.id,
+    name: eq.name,
+    slots: eq.slots.map((slot) => ({
+      id: slot.id,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isBooked: slot.workshop !== null,
+      workshopName: slot.workshop ? slot.workshop.name : null,
+    })),
+  }));
 }
 

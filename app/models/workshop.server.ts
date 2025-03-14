@@ -77,7 +77,7 @@ export async function getWorkshops() {
  */
 export async function addWorkshop(data: WorkshopData) {
   try {
-    // First create the workshop without prerequisites
+    // Create the workshop first
     const newWorkshop = await db.workshop.create({
       data: {
         name: data.name,
@@ -88,27 +88,6 @@ export async function addWorkshop(data: WorkshopData) {
         type: data.type,
       },
     });
-
-    // Check if the selected equipment is available
-    if (data.equipments && data.equipments.length > 0) {
-      for (const equipmentId of data.equipments) {
-        const conflictingBooking = await db.equipmentSlot.findFirst({
-          where: {
-            equipmentId,
-            isBooked: true,
-            startTime: {
-              lte: new Date(data.occurrences[0].endDate), // Overlaps with existing booking
-            },
-          },
-        });
-
-        if (conflictingBooking) {
-          throw new Error(
-            `Equipment ${equipmentId} is already booked for the selected time.`
-          );
-        }
-      }
-    }
 
     // Insert occurrences
     const occurrences = await Promise.all(
@@ -126,20 +105,34 @@ export async function addWorkshop(data: WorkshopData) {
       )
     );
 
-    // Assign equipment slots only if available
+    // Check if equipment is available before assigning it
     if (data.equipments && data.equipments.length > 0) {
-      await Promise.all(
-        data.equipments.map((equipmentId) =>
-          db.equipmentSlot.create({
-            data: {
-              equipmentId,
-              workshopId: newWorkshop.id,
-              startTime: occurrences[0].startDate, // Match workshop occurrence time
-              isBooked: true, // Mark as booked
-            },
-          })
-        )
-      );
+      for (const equipmentId of data.equipments) {
+        // Fetch all slots for this equipment
+        const availableSlots = await db.equipmentSlot.findMany({
+          where: {
+            equipmentId,
+            isBooked: false, // Fetch only available slots
+          },
+        });
+
+        if (availableSlots.length === 0) {
+          throw new Error(
+            `Equipment ID ${equipmentId} has no available slots.`
+          );
+        }
+
+        // Assign the first available slot
+        const selectedSlot = availableSlots[0];
+
+        await db.equipmentSlot.update({
+          where: { id: selectedSlot.id },
+          data: {
+            workshopId: newWorkshop.id,
+            isBooked: true, // Mark as booked
+          },
+        });
+      }
     }
 
     return { ...newWorkshop, occurrences };
@@ -171,7 +164,7 @@ export async function getWorkshopById(workshopId: number) {
             prerequisiteId: true,
           },
         },
-        equipmentSlots: { 
+        equipmentSlots: {
           select: {
             equipmentId: true,
           },
@@ -185,12 +178,12 @@ export async function getWorkshopById(workshopId: number) {
 
     // Flatten prerequisites and equipmentIds
     const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
-    const equipments = workshop.equipmentSlots.map((e) => e.equipmentId); 
+    const equipments = workshop.equipmentSlots.map((e) => e.equipmentId);
 
     return {
       ...workshop,
-      prerequisites, 
-      equipments,    
+      prerequisites,
+      equipments,
     };
   } catch (error) {
     console.error("Error fetching workshop by ID:", error);
@@ -242,7 +235,6 @@ export async function updateWorkshopWithOccurrences(
   workshopId: number,
   data: UpdateWorkshopData
 ) {
-
   await db.workshop.update({
     where: { id: workshopId },
     data: {
@@ -255,7 +247,6 @@ export async function updateWorkshopWithOccurrences(
     },
   });
 
- 
   if (data.prerequisites) {
     await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
 
@@ -269,7 +260,6 @@ export async function updateWorkshopWithOccurrences(
       });
     }
   }
-
 
   if (data.equipments) {
     await db.workshopEquipment.deleteMany({ where: { workshopId } });
@@ -684,7 +674,10 @@ export async function updateRegistrationResult(
   });
 }
 
-export async function updateMultipleRegistrations(registrationIds: number[], newResult: string) {
+export async function updateMultipleRegistrations(
+  registrationIds: number[],
+  newResult: string
+) {
   return db.userWorkshop.updateMany({
     where: {
       id: { in: registrationIds },
@@ -748,11 +741,13 @@ export async function getUserWorkshopsWithOccurrences(userId: number) {
   return Array.from(workshopMap.values());
 }
 
-export async function getUserWorkshopRegistrationsByWorkshopId(workshopId: number) {
+export async function getUserWorkshopRegistrationsByWorkshopId(
+  workshopId: number
+) {
   return db.userWorkshop.findMany({
     where: {
       occurrence: {
-        workshopId,  // Only registrations for occurrences belonging to this workshop
+        workshopId, // Only registrations for occurrences belonging to this workshop
       },
     },
     include: {

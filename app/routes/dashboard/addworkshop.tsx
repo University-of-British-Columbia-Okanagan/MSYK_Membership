@@ -25,6 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { CheckIcon } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
@@ -33,7 +36,10 @@ import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 import PrerequisitesField from "@/components/ui/PrerequisitesField";
-import { getAvailableEquipmentForAdmin } from "~/models/equipment.server";
+import {
+  getAvailableEquipmentForAdmin,
+  getEquipmentSlotsWithStatus,
+} from "~/models/equipment.server";
 import MultiSelectField from "~/components/ui/MultiSelectField";
 
 /**
@@ -41,7 +47,7 @@ import MultiSelectField from "~/components/ui/MultiSelectField";
  */
 export async function loader() {
   const workshops = await getWorkshops();
-  const equipments = await getAvailableEquipmentForAdmin();
+  const equipments = await getEquipmentSlotsWithStatus();
 
   return { workshops, equipments };
 }
@@ -201,7 +207,7 @@ export async function action({ request }: { request: Request }) {
           (slot) =>
             new Date(slot.startTime).getTime() >= occ.startDate.getTime() &&
             new Date(slot.startTime).getTime() < occ.endDate.getTime() &&
-            slot.workshop !== null // 🛑 Fix: Check if already assigned to a workshop
+            slot.workshop !== null
         );
 
         if (conflict) {
@@ -293,7 +299,12 @@ export default function AddWorkshop() {
     (a, b) => a - b
   );
 
+  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
+    null
+  );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
+
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -372,13 +383,14 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
-  const handleEquipmentSelect = (id: number) => {
-    if (selectedEquipments.includes(id)) {
-      setSelectedEquipments(selectedEquipments.filter((e) => e !== id));
-    } else {
-      const updated = [...selectedEquipments, id];
-      setSelectedEquipments(updated);
-      form.setValue("equipments", updated);
+  const handleEquipmentSelect = (equipmentId: number) => {
+    setSelectedEquipment(equipmentId);
+    setSelectedSlot(null);
+  };
+  const handleSlotSelect = (slotId: number, isBooked: boolean) => {
+    if (!isBooked) {
+      setSelectedSlot(slotId);
+      form.setValue("selectedSlot", slotId); // Ensure it's saved in form state
     }
   };
 
@@ -622,18 +634,74 @@ export default function AddWorkshop() {
           )}
 
           {/* Equipments */}
-          <MultiSelectField
-            control={form.control}
-            name="equipments"
-            label="Equipments"
-            options={availableEquipments} // from loader
-            selectedItems={selectedEquipments}
-            onSelect={handleEquipmentSelect}
-            onRemove={removeEquipment}
-            error={actionData?.errors?.equipments}
-            placeholder="Select equipments..."
-            helperText="Choose equipment required for this workshop/orientation."
-          />
+          <FormItem className="mt-6">
+            <FormLabel>Select Equipment</FormLabel>
+            <Select
+              onValueChange={(value) => setSelectedEquipment(Number(value))}
+            >
+              <SelectTrigger className="w-full border rounded-md p-2">
+                <SelectValue placeholder="Choose an equipment" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableEquipments.map((equipment) => (
+                  <SelectItem
+                    key={equipment.id}
+                    value={equipment.id.toString()}
+                  >
+                    {equipment.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormItem>
+
+          {/* Slot Picker */}
+          {selectedEquipment !== null && (
+            <div className="mt-4">
+              <h3 className="font-semibold text-lg">Select a Time Slot</h3>
+              <ScrollArea className="max-h-60 border rounded-md p-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {availableEquipments
+                    .find((eq) => eq.id === selectedEquipment)
+                    ?.slots.map((slot) => (
+                      <Card
+                        key={slot.id}
+                        className={cn(
+                          "cursor-pointer text-center p-2 rounded-md transition",
+                          slot.isBooked
+                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                            : selectedSlot === slot.id
+                            ? "bg-blue-500 text-white"
+                            : "bg-white border hover:bg-blue-100"
+                        )}
+                        onClick={() =>
+                          !slot.isBooked && setSelectedSlot(slot.id)
+                        }
+                      >
+                        <CardContent>
+                          {new Date(slot.startTime).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+              </ScrollArea>
+
+              {/* Confirmation Button */}
+              <Button
+                type="button" // This ensures the button does NOT submit the form
+                disabled={!selectedSlot}
+                className="mt-4 w-full bg-blue-600 text-white py-2 rounded-md"
+                onClick={() => {
+                  console.log(`Slot ${selectedSlot} selected`); // Debugging
+                }}
+              >
+                Confirm Slot
+              </Button>
+            </div>
+          )}
 
           {/* Type */}
           <GenericFormField
@@ -667,11 +735,26 @@ export default function AddWorkshop() {
             name="prerequisites"
             value={JSON.stringify(selectedPrerequisites || [])}
           />
-          {/* Hidden input for equipments */}
           <input
             type="hidden"
             name="equipments"
-            value={JSON.stringify(selectedEquipments || [])}
+            value={
+              selectedEquipments.length > 0
+                ? JSON.stringify(selectedEquipments)
+                : "[]"
+            }
+          />
+          <input
+            type="hidden"
+            name="selectedSlot"
+            value={
+              selectedSlot
+                ? JSON.stringify({
+                    equipmentId: selectedEquipment,
+                    slotId: selectedSlot,
+                  })
+                : ""
+            }
           />
 
           {/* Submit Button */}
