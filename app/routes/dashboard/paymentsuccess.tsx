@@ -1,6 +1,7 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Stripe } from "stripe";
 import { registerForWorkshop } from "../../models/workshop.server";
+// import { registerMembershipSubscription } from "../../models/membership.server"; // if available
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -17,42 +18,57 @@ export async function loader({ request }: { request: Request }) {
   // Retrieve the Checkout Session from Stripe
   const session = await stripe.checkout.sessions.retrieve(sessionId);
   const metadata = session.metadata || {};
-  const { workshopId, occurrenceId, userId } = metadata;
+  const { workshopId, occurrenceId, membershipPlanId, userId } = metadata;
 
-  if (!workshopId || !occurrenceId || !userId) {
+  if (membershipPlanId) {
+    // Optionally, register the membership subscription in your database:
+    // await registerMembershipSubscription(parseInt(membershipPlanId), parseInt(userId));
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isMembership: true,
+        message:
+          "🎉 Membership subscription successful! A confirmation email has been sent.",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  } else if (workshopId && occurrenceId && userId) {
+    try {
+      // Call registerForWorkshop with the parameters from metadata
+      await registerForWorkshop(
+        parseInt(workshopId),
+        parseInt(occurrenceId),
+        parseInt(userId)
+      );
+      return new Response(
+        JSON.stringify({
+          success: true,
+          isMembership: false,
+          message:
+            "🎉 Registration successful! A confirmation email has been sent.",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          isMembership: false,
+          message: "Registration failed: " + error.message,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+  } else {
     throw new Response(
       "Missing registration parameters in session metadata",
       { status: 400 }
     );
   }
-
-  try {
-    // Call registerForWorkshop with the parameters from metadata
-    await registerForWorkshop(
-      parseInt(workshopId),
-      parseInt(occurrenceId),
-      parseInt(userId)
-    );
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "🎉 Registration successful! A confirmation email has been sent.",
-      }),
-      { headers: { "Content-Type": "application/json" } }
-    );
-  } catch (error: any) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: "Registration failed: " + error.message,
-      }),
-      { headers: { "Content-Type": "application/json" } }
-    );
-  }
 }
 
 export default function PaymentSuccess() {
-  const data = useLoaderData() as { success: boolean; message: string };
+  const data = useLoaderData() as { success: boolean; isMembership?: boolean; message: string };
   const navigate = useNavigate();
 
   return (
@@ -63,9 +79,11 @@ export default function PaymentSuccess() {
       <p>{data.message}</p>
       <button
         className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
-        onClick={() => navigate("/dashboard/workshops")}
+        onClick={() =>
+          navigate(data.isMembership ? "/memberships" : "/dashboard/workshops")
+        }
       >
-        Back to Workshops
+        {data.isMembership ? "Back to Memberships" : "Back to Workshops"}
       </button>
     </div>
   );

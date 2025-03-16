@@ -92,22 +92,6 @@ async function main() {
   await prisma.membershipPlan.createMany({
     data: [
       {
-        title: "Community Member",
-        description: "Support Makerspace YK as a community member",
-        price: 35.0,
-        feature: {
-          Feature1: "Hotdesk access in Artspace during drop-in times",
-          Feature2: "Access to sewing machines and serger in Artspace",
-          Feature3: "Social media promotion for your startup or initiative",
-          Feature4: "5% discount on all MSYK workshops",
-        },
-        accessHours: {
-          start: "09:00", // Example: 9 AM start
-          end: "18:00", // Example: 6 PM end
-        },
-        type: "monthly"
-      },
-      {
         title: "Makerspace Member",
         description:
           "MSYK membership now covers Artspace, Hackspace, & Shopspace for just $50/month!",
