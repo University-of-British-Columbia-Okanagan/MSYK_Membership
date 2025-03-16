@@ -1,25 +1,29 @@
-//Link the membership plan to payment system in Stripe.
+// memberships.tsx
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
-import { getMembershipPlans, deleteMembershipPlan } from "~/models/membership.server";
+import { getMembershipPlans, deleteMembershipPlan, getUserMemberships, cancelMembership } from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
-import { NavLink, Link, redirect, useLoaderData } from "react-router";
+import { Link, redirect, useLoaderData } from "react-router";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
-
   const membershipPlans = await getMembershipPlans();
   const parsedPlans = membershipPlans.map((plan) => ({
     ...plan,
     feature: plan.feature
       ? Object.values(plan.feature).map((value) =>
           typeof value === "string" ? value : ""
-        ) // Convert object values to an array of strings
-      : [], // Handle null or undefined
+        )
+      : [],
   }));
 
-  return { roleUser, membershipPlans: parsedPlans };
+  // Fetch the user's existing memberships if logged in
+  let userMemberships: { membershipPlanId: number }[] = [];
+  if (roleUser?.userId) {
+    userMemberships = await getUserMemberships(roleUser.userId);
+  }
+  return { roleUser, membershipPlans: parsedPlans, userMemberships };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -28,6 +32,22 @@ export async function action({ request }: { request: Request }) {
   const planId = formData.get("planId");
   const confirmationDelete = formData.get("confirmationDelete");
 
+  // Cancel Membership
+  if (action === "cancelMembership") {
+    const roleUser = await getRoleUser(request);
+    if (!roleUser?.userId) {
+      // Not logged in or no user found
+      return null;
+    }
+
+    if (planId) {
+      await cancelMembership(roleUser.userId, Number(planId));
+    }
+    // Redirect back to memberships page
+    return redirect("/memberships");
+  }
+
+  // Delete membership plan (admin only)
   if (action === "delete") {
     try {
       const result = await deleteMembershipPlan(Number(planId));
@@ -35,27 +55,29 @@ export async function action({ request }: { request: Request }) {
         console.warn("Deletion was not confirmed.");
         return null; // Prevent deletion if not confirmed
       }
-  
 
-      if(result) {
+      if (result) {
         return redirect("/membership");
       }
-      
     } catch (error) {
       console.error("Error deleting membership plan:", error);
     }
   }
 
+  // Edit membership plan
   if (action === "edit") {
-    return redirect(`/editmembershipplan/${planId}`)
+    return redirect(`/editmembershipplan/${planId}`);
   }
 
   return null;
-
 }
 
 export default function MembershipPage() {
-  const { roleUser, membershipPlans } = useLoaderData();
+  const { roleUser, membershipPlans, userMemberships } = useLoaderData<{
+    roleUser: any;
+    membershipPlans: any[];
+    userMemberships: { membershipPlanId: number }[];
+  }>();
 
   const isAdmin =
     roleUser &&
@@ -87,17 +109,25 @@ export default function MembershipPage() {
 
           {/* Render Membership Cards */}
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {membershipPlans.map((plan) => (
-              <MembershipCard
-                key={plan.id}
-                title={plan.title}
-                description={plan.description}
-                price={plan.price}
-                feature={plan.feature} // Pass JSON feature as props
-                isAdmin={!!isAdmin}
-                planId={plan.id}
-              />
-            ))}
+            {membershipPlans.map((plan) => {
+              // Check if user is subscribed to this plan
+              const isSubscribed = userMemberships.some(
+                (m) => m.membershipPlanId === plan.id
+              );
+
+              return (
+                <MembershipCard
+                  key={plan.id}
+                  title={plan.title}
+                  description={plan.description}
+                  price={plan.price}
+                  feature={plan.feature}
+                  isAdmin={!!isAdmin}
+                  planId={plan.id}
+                  isSubscribed={isSubscribed} // pass this new prop
+                />
+              );
+            })}
           </div>
         </div>
       </section>
