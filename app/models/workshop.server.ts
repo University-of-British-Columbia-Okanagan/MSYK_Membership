@@ -663,29 +663,48 @@ export async function getAllRegistrations() {
   });
 }
 
+/*
+* This function handles roleLevel 2 and 3
+*/
 export async function updateRegistrationResult(registrationId: number, newResult: string) {
-  // Update the registration row and include related workshop and user data.
+  // Update the registration record and include related workshop and user data.
   const updatedReg = await db.userWorkshop.update({
     where: { id: registrationId },
     data: { result: newResult },
-    include: { 
-      workshop: true,  // so we can check the workshop type
-      user: true       // so we can check the user's current roleLevel
+    include: {
+      workshop: true, // so we can check the workshop type
+      user: true,     // so we can check and update user's roleLevel
     },
   });
 
-  // Only proceed if the registration is for an orientation.
-  if (updatedReg.workshop?.type.toLowerCase() === "orientation") {
+  // Only process if this registration is for an orientation.
+  if (updatedReg.workshop?.type?.toLowerCase() === "orientation") {
+    // Case: Orientation is now passed.
     if (newResult.toLowerCase() === "passed") {
-      // If this registration is passed and the user is below level 2, upgrade them.
-      if (updatedReg.user.roleLevel < 2) {
-        await db.user.update({
-          where: { id: updatedReg.user.id },
-          data: { roleLevel: 2 },
-        });
+      // Check if the user has a membership.
+      const membership = await db.userMembership.findUnique({
+        where: { userId: updatedReg.user.id },
+      });
+      if (membership) {
+        // If they have a membership, upgrade to level 3 if not already there.
+        if (updatedReg.user.roleLevel < 3) {
+          await db.user.update({
+            where: { id: updatedReg.user.id },
+            data: { roleLevel: 3 },
+          });
+        }
+      } else {
+        // If no membership exists, upgrade to level 2 if below level 2.
+        if (updatedReg.user.roleLevel < 2) {
+          await db.user.update({
+            where: { id: updatedReg.user.id },
+            data: { roleLevel: 2 },
+          });
+        }
       }
     } else {
-      // The new result is not "passed". Check if the user has any orientation registrations that are passed.
+      // Case: Orientation result is not passed (e.g., "failed" or "pending")
+      // Check how many of the user's orientation registrations are passed.
       const passedCount = await db.userWorkshop.count({
         where: {
           userId: updatedReg.user.id,
@@ -695,13 +714,33 @@ export async function updateRegistrationResult(registrationId: number, newResult
           },
         },
       });
-
-      // If no orientation is passed and the user is at least level 2, revert them to level 1.
-      if (passedCount === 0 && updatedReg.user.roleLevel >= 2) {
+      // If none are passed, revert user to level 1.
+      if (passedCount === 0) {
         await db.user.update({
           where: { id: updatedReg.user.id },
           data: { roleLevel: 1 },
         });
+      } else {
+        // Otherwise, if the user has a membership and at least one passed orientation,
+        // ensure they remain level 3; if no membership, level should be 2.
+        const membership = await db.userMembership.findUnique({
+          where: { userId: updatedReg.user.id },
+        });
+        if (membership) {
+          if (updatedReg.user.roleLevel !== 3) {
+            await db.user.update({
+              where: { id: updatedReg.user.id },
+              data: { roleLevel: 3 },
+            });
+          }
+        } else {
+          if (updatedReg.user.roleLevel !== 2) {
+            await db.user.update({
+              where: { id: updatedReg.user.id },
+              data: { roleLevel: 2 },
+            });
+          }
+        }
       }
     }
   }
@@ -709,30 +748,33 @@ export async function updateRegistrationResult(registrationId: number, newResult
   return updatedReg;
 }
 
+/*
+* This function handles roleLevel 2 and 3
+*/
 export async function updateMultipleRegistrations(registrationIds: number[], newResult: string) {
-  // Bulk update the registrations
+  // Bulk update the registrations with the new result.
   const updateResult = await db.userWorkshop.updateMany({
     where: { id: { in: registrationIds } },
     data: { result: newResult },
   });
 
-  // Fetch the updated registrations along with user and workshop data.
+  // Fetch the updated registrations including related user and workshop data.
   const updatedRegistrations = await db.userWorkshop.findMany({
     where: { id: { in: registrationIds } },
     include: { user: true, workshop: true },
   });
 
-  // Get unique userIds from the updated registrations that are for orientation workshops.
-  const userIds = Array.from(
+  // Get unique user IDs for registrations related to orientations.
+  const orientationUserIds = Array.from(
     new Set(
       updatedRegistrations
-        .filter(reg => reg.workshop?.type?.toLowerCase() === "orientation")
+        .filter(reg => reg.workshop?.type.toLowerCase() === "orientation")
         .map(reg => reg.user.id)
     )
   );
 
-  // For each user, check if they have any passed orientation registrations.
-  for (const uid of userIds) {
+  for (const uid of orientationUserIds) {
+    // Count the number of passed orientation registrations for this user.
     const passedCount = await db.userWorkshop.count({
       where: {
         userId: uid,
@@ -743,22 +785,28 @@ export async function updateMultipleRegistrations(registrationIds: number[], new
       },
     });
 
-    // Fetch the current user (or use one of the registrations' user)
+    // Check if the user has an active membership.
+    const membership = await db.userMembership.findUnique({
+      where: { userId: uid },
+    });
+
+    // Determine desired role level:
+    // - Default is level 1.
+    // - If at least one orientation is passed, then:
+    //     * Level becomes 3 if the user has a membership.
+    //     * Otherwise, level becomes 2.
+    let desiredRoleLevel = 1;
+    if (passedCount > 0) {
+      desiredRoleLevel = membership ? 3 : 2;
+    }
+
+    // Update the user’s role level if it differs.
     const user = updatedRegistrations.find(reg => reg.user.id === uid)?.user;
-    if (user) {
-      if (passedCount > 0 && user.roleLevel < 2) {
-        // User now has at least one passed orientation so update roleLevel to 2.
-        await db.user.update({
-          where: { id: uid },
-          data: { roleLevel: 2 },
-        });
-      } else if (passedCount === 0 && user.roleLevel >= 2) {
-        // User no longer has any passed orientations so revert roleLevel back to 1.
-        await db.user.update({
-          where: { id: uid },
-          data: { roleLevel: 1 },
-        });
-      }
+    if (user && user.roleLevel !== desiredRoleLevel) {
+      await db.user.update({
+        where: { id: uid },
+        data: { roleLevel: desiredRoleLevel },
+      });
     }
   }
 

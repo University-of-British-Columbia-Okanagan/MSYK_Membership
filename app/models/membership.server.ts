@@ -90,42 +90,84 @@ export async function getMembershipPlanById(planId: number) {
   });
 }
 
+/*
+* This function handles roleLevel 2 and 3
+*/
 export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number
 ) {
-  // Check if this user already has a membership
+  // Check if the user already has a membership.
   const existing = await db.userMembership.findUnique({
     where: { userId },
   });
 
   if (existing) {
-    // The user must cancel their existing membership before subscribing to a new one
-    throw new Error(
-      "You already have a membership. Please cancel it before subscribing to a new plan."
-    );
+    throw new Error("You are already subscribed to a membership. Please cancel your current membership before subscribing to a new plan.");
   }
 
-  // Otherwise, create the new membership row
-  return db.userMembership.create({
+  // Create the membership subscription.
+  const newSubscription = await db.userMembership.create({
     data: {
       userId,
       membershipPlanId,
     },
   });
+
+  // Fetch the current user to check their role level.
+  const user = await db.user.findUnique({
+    where: { id: userId },
+  });
+
+  // If the user has completed an orientation (roleLevel >= 2) but is not yet upgraded to level 3, update them.
+  if (user && user.roleLevel >= 2 && user.roleLevel < 3) {
+    await db.user.update({
+      where: { id: userId },
+      data: { roleLevel: 3 },
+    });
+  }
+
+  return newSubscription;
+}
+
+/*
+* This function handles roleLevel 2 and 3
+*/
+export async function cancelMembership(userId: number, membershipPlanId: number) {
+  // Delete the membership subscription.
+  const result = await db.userMembership.deleteMany({
+    where: {
+      userId,
+      membershipPlanId,
+    },
+  });
+
+  // Count passed orientation registrations for the user.
+  const passedOrientationCount = await db.userWorkshop.count({
+    where: {
+      userId,
+      result: { equals: "passed", mode: "insensitive" },
+      workshop: {
+        type: { equals: "orientation", mode: "insensitive" },
+      },
+    },
+  });
+
+  // Determine new role level:
+  // - If at least one passed orientation exists, user becomes level 2.
+  // - Otherwise, revert to level 1.
+  const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
+
+  await db.user.update({
+    where: { id: userId },
+    data: { roleLevel: newRoleLevel },
+  });
+
+  return result;
 }
 
 export async function getUserMemberships(userId: number) {
   return db.userMembership.findMany({
     where: { userId },
-  });
-}
-
-export async function cancelMembership(userId: number, membershipPlanId: number) {
-  return db.userMembership.deleteMany({
-    where: {
-      userId,
-      membershipPlanId,
-    },
   });
 }
