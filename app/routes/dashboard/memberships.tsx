@@ -1,10 +1,17 @@
-// memberships.tsx
 import HeroSection from "@/components/ui/HeroSection";
 import Footer from "@/components/ui/Home/Footer";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
-import { getMembershipPlans, deleteMembershipPlan, getUserMemberships, cancelMembership } from "~/models/membership.server";
+import {
+  getMembershipPlans,
+  deleteMembershipPlan,
+  getUserMemberships,
+  cancelMembership,
+} from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
+
+// Import a helper to fetch the full user record
+import { getUserById } from "~/models/user.server";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -20,10 +27,15 @@ export async function loader({ request }: { request: Request }) {
 
   // Fetch the user's existing memberships if logged in
   let userMemberships: { membershipPlanId: number }[] = [];
+  let userRecord: any = null;
+
   if (roleUser?.userId) {
     userMemberships = await getUserMemberships(roleUser.userId);
+    // Fetch the full user record (includes roleLevel, allowLevel4, etc.)
+    userRecord = await getUserById(roleUser.userId);
   }
-  return { roleUser, membershipPlans: parsedPlans, userMemberships };
+
+  return { roleUser, membershipPlans: parsedPlans, userMemberships, userRecord };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -43,7 +55,6 @@ export async function action({ request }: { request: Request }) {
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
     }
-    // Redirect back to memberships page
     return redirect("/memberships");
   }
 
@@ -53,7 +64,7 @@ export async function action({ request }: { request: Request }) {
       const result = await deleteMembershipPlan(Number(planId));
       if (confirmationDelete !== "confirmed") {
         console.warn("Deletion was not confirmed.");
-        return null; // Prevent deletion if not confirmed
+        return null;
       }
 
       if (result) {
@@ -73,10 +84,15 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function MembershipPage() {
-  const { roleUser, membershipPlans, userMemberships } = useLoaderData<{
+  const { roleUser, membershipPlans, userMemberships, userRecord } = useLoaderData<{
     roleUser: any;
     membershipPlans: any[];
     userMemberships: { membershipPlanId: number }[];
+    userRecord: {
+      id: number;
+      roleLevel: number;
+      allowLevel4: boolean;
+    } | null;
   }>();
 
   const isAdmin =
@@ -92,7 +108,6 @@ export default function MembershipPage() {
       {/* Membership Plans */}
       <section className="bg-gray-900 py-16">
         <div className="container mx-auto px-4">
-          {/* Conditionally Render Buttons */}
           {isAdmin && (
             <div className="flex justify-center items-center space-x-4 mb-6">
               <Link to="/addmembershipplan">
@@ -124,7 +139,9 @@ export default function MembershipPage() {
                   feature={plan.feature}
                   isAdmin={!!isAdmin}
                   planId={plan.id}
-                  isSubscribed={isSubscribed} // pass this new prop
+                  isSubscribed={isSubscribed}
+                  // Pass the user's record so the card can decide if plan #2 is allowed
+                  userRecord={userRecord}
                 />
               );
             })}

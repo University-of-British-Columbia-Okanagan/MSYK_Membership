@@ -1,36 +1,65 @@
-import { useFetcher } from "react-router";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ConfirmButton } from "../ConfirmButton";
+import { useFetcher } from "react-router";
+import { Button } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import {
+  TooltipProvider,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
 interface MembershipCardProps {
+  planId: number;
   title: string;
   description: string;
   price: number;
   feature: string[];
   isAdmin: boolean;
-  planId: number;
-  isSubscribed?: boolean; // new prop
+  isSubscribed?: boolean;
+  userRecord?: {
+    id: number;
+    roleLevel: number;
+    allowLevel4: boolean;
+  } | null;
 }
 
 export default function MembershipCard({
+  planId,
   title,
   description,
   price,
   feature,
   isAdmin,
-  planId,
   isSubscribed = false,
+  userRecord,
 }: MembershipCardProps) {
+  const navigate = useNavigate();
   const fetcher = useFetcher();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const navigate = useNavigate();
 
   // Handler for membership "Select"
   const handleSelect = () => {
-    // If not subscribed, go to the payment route for this membership plan
     navigate(`/dashboard/payment/${planId}`);
   };
+
+  // By default, the user can select unless restricted by plan #2 logic
+  let canSelect = true;
+  let reason = "";
+
+  // If planId = 2, the user must be roleLevel=3 and allowLevel4=true
+  if (planId === 2) {
+    if (
+      !userRecord ||
+      userRecord.roleLevel !== 3 ||
+      userRecord.allowLevel4 !== true
+    ) {
+      canSelect = false;
+      reason =
+        "You must have a previous subscription, a completed orientation, and admin permission to select this membership.";
+    }
+  }
 
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden text-center p-8">
@@ -41,29 +70,58 @@ export default function MembershipCard({
         <span className="text-gray-600 text-sm"> /month</span>
       </div>
 
-      {/* If user is already subscribed, show a message + Cancel Membership button */}
+      {/* If user is subscribed, show a message + Cancel button */}
       {isSubscribed ? (
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">
-            You are already a member
+            You are already subscribed
           </p>
-          <ConfirmButton
-            confirmTitle="Cancel Membership?"
-            confirmDescription="Are you sure you want to cancel your membership subscription? This action cannot be undone."
-            onConfirm={() =>
-              fetcher.submit({ planId, action: "cancelMembership" }, { method: "post" })
-            }
-            buttonLabel="Cancel Membership"
-            buttonClassName="bg-red-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-red-600 transition"
-          />
+          {/* Cancel button with confirmation */}
+          <fetcher.Form method="post">
+            <input type="hidden" name="planId" value={planId} />
+            <ConfirmButton
+              confirmTitle="Cancel Membership?"
+              confirmDescription="Are you sure you want to cancel your membership subscription?"
+              onConfirm={() =>
+                fetcher.submit(
+                  { planId, action: "cancelMembership" },
+                  { method: "post" }
+                )
+              }
+              buttonLabel="Cancel Membership"
+              buttonClassName="bg-red-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-red-600 transition"
+            />
+          </fetcher.Form>
         </div>
       ) : (
-        <button
-          onClick={handleSelect}
-          className="mt-4 bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-        >
-          Select
-        </button>
+        <div className="mt-4">
+          {canSelect ? (
+            <Button
+              onClick={handleSelect}
+              className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+            >
+              Select
+            </Button>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-block">
+                    <Button
+                      disabled
+                      className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
+                    >
+                      Select
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{reason}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       )}
 
       <ul className="text-left text-gray-700 mt-6 space-y-2">
@@ -74,7 +132,7 @@ export default function MembershipCard({
         ))}
       </ul>
 
-      {/* Render Edit and Delete Buttons Conditionally (admin) */}
+      {/* Admin Edit/Delete Buttons */}
       {isAdmin && (
         <fetcher.Form method="post" className="mt-6">
           <input type="hidden" name="planId" value={planId} />
