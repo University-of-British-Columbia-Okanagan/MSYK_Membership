@@ -23,7 +23,7 @@ import SpacesEquipment from "./routes/spaceandservices/SpacesEquipment";
 import ResourceToolbox from "./routes/spaceandservices/resourcetoolbox";
 import FabricationServices from "./routes/spaceandservices/fabricationservices";
 import VolunteerPage from "./routes/getinvolved/volunteer";
-import MembershipPage from "./routes/getinvolved/membership";
+import MembershipPage from "./routes/dashboard/memberships";
 import JobOpportunities from "./routes/getinvolved/jobopportunities";
 import Workshops from "./routes/dashboard/workshops";
 import Events from "./routes/dashboard/events";

@@ -27,7 +27,7 @@ export default [
     "routes/spaceandservices/fabricationservices.tsx"
   ),
   route("/volunteer", "routes/getinvolved/volunteer.tsx"),
-  route("/membership", "routes/getinvolved/membership.tsx"),
+  route("/memberships", "routes/dashboard/memberships.tsx"),
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
   route("/dashboard/admin", "routes/dashboard/admindashboardlayout.tsx"),
   route("/userdashboardlayout", "routes/dashboard/userdashboardlayout.tsx"),
@@ -48,6 +48,11 @@ export default [
   route(
     "dashboard/payment/:workshopId/:occurrenceId",
     "routes/dashboard/payment.tsx"
+  ),
+  route(
+    "dashboard/payment/:membershipPlanId",
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/membership" }
   ),
   route("dashboard/paymentprocess", "routes/dashboard/paymentprocess.tsx"),
   route("dashboard/payment/success", "routes/dashboard/paymentsuccess.tsx"),

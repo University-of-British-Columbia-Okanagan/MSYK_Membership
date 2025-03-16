@@ -83,3 +83,9 @@ export async function updateMembershipPlan(
     },
   });
 }
+
+export async function getMembershipPlanById(planId: number) {
+  return db.membershipPlan.findUnique({
+    where: { id: planId },
+  });
+}

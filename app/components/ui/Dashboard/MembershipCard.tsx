@@ -1,5 +1,6 @@
 import { useFetcher } from "react-router";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function MembershipCard({
   title,
@@ -18,6 +19,7 @@ export default function MembershipCard({
 }) {
   const fetcher = useFetcher();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <div className="bg-white rounded-lg shadow-lg overflow-hidden text-center p-8">
@@ -27,7 +29,10 @@ export default function MembershipCard({
         <span className="text-4xl font-bold text-gray-900">${price}</span>
         <span className="text-gray-600 text-sm"> /month</span>
       </div>
-      <button className="mt-4 bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition">
+      <button
+        onClick={() => navigate(`/dashboard/payment/${planId}`)}
+        className="mt-4 bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+      >
         Select
       </button>
       <ul className="text-left text-gray-700 mt-6 space-y-2">
@@ -61,9 +66,16 @@ export default function MembershipCard({
               value="delete"
               className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
               onClick={() => {
-                if (window.confirm("Are you sure you want to delete this membership plan?")) {
+                if (
+                  window.confirm(
+                    "Are you sure you want to delete this membership plan?"
+                  )
+                ) {
                   setConfirmDelete(true);
-                  fetcher.submit({ planId, action: "delete", confirmation: "confirmed" }, { method: "post" });
+                  fetcher.submit(
+                    { planId, action: "delete", confirmation: "confirmed" },
+                    { method: "post" }
+                  );
                 }
               }}
             >
