@@ -196,7 +196,7 @@ model MembershipPlan {
 
 model UserMembership {
   id               Int             @id @default(autoincrement())
-  userId           Int
+  userId           Int             @unique
   membershipPlanId Int
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)

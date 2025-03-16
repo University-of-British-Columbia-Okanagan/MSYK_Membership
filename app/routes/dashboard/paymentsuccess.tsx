@@ -10,20 +10,25 @@ export async function loader({ request }: { request: Request }) {
     throw new Response("Missing session_id", { status: 400 });
   }
 
-  // Initialize Stripe with your secret key
+  // Initialize Stripe
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
     apiVersion: "2023-10-16",
   });
 
-  // Retrieve the Checkout Session from Stripe
+  // Retrieve Checkout Session
   const session = await stripe.checkout.sessions.retrieve(sessionId);
   const metadata = session.metadata || {};
   const { workshopId, occurrenceId, membershipPlanId, userId } = metadata;
 
+  // Membership branch
   if (membershipPlanId) {
     try {
-      // Attempt to create the new membership record
-      await registerMembershipSubscription(parseInt(userId), parseInt(membershipPlanId));
+      // Attempt to create the new membership row
+      await registerMembershipSubscription(
+        parseInt(userId),
+        parseInt(membershipPlanId)
+      );
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -34,18 +39,21 @@ export async function loader({ request }: { request: Request }) {
         { headers: { "Content-Type": "application/json" } }
       );
     } catch (error: any) {
+      // If user already has a membership or any other error
       return new Response(
         JSON.stringify({
           success: false,
           isMembership: true,
-          message: "Membership registration failed: " + error.message,
+          message: "Membership subscription failed: " + error.message,
         }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
-  } else if (workshopId && occurrenceId && userId) {
+  }
+
+  // Workshop branch
+  else if (workshopId && occurrenceId && userId) {
     try {
-      // Call registerForWorkshop with the parameters from metadata
       await registerForWorkshop(
         parseInt(workshopId),
         parseInt(occurrenceId),
@@ -78,7 +86,11 @@ export async function loader({ request }: { request: Request }) {
 }
 
 export default function PaymentSuccess() {
-  const data = useLoaderData() as { success: boolean; isMembership?: boolean; message: string };
+  const data = useLoaderData() as {
+    success: boolean;
+    isMembership?: boolean;
+    message: string;
+  };
   const navigate = useNavigate();
 
   return (
