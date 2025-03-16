@@ -49,6 +49,7 @@ model User {
   // Relationships
   userWorkshops     UserWorkshop[]
   equipmentbookings EquipmentBooking[]
+  userMemberships UserMembership[] 
 }
 
 model RoleUser {
@@ -195,4 +196,14 @@ model MembershipPlan {
 
   //One membership can have multiple users
   users User[]
+  userMemberships UserMembership[] 
+}
+
+model UserMembership {
+  id               Int             @id @default(autoincrement())
+  userId           Int
+  membershipPlanId Int
+
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
 }

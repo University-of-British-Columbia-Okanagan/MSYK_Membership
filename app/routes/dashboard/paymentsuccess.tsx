@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Stripe } from "stripe";
 import { registerForWorkshop } from "../../models/workshop.server";
-// import { registerMembershipSubscription } from "../../models/membership.server"; // if available
+import { registerMembershipSubscription } from "../../models/membership.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -21,17 +21,28 @@ export async function loader({ request }: { request: Request }) {
   const { workshopId, occurrenceId, membershipPlanId, userId } = metadata;
 
   if (membershipPlanId) {
-    // Optionally, register the membership subscription in your database:
-    // await registerMembershipSubscription(parseInt(membershipPlanId), parseInt(userId));
-    return new Response(
-      JSON.stringify({
-        success: true,
-        isMembership: true,
-        message:
-          "🎉 Membership subscription successful! A confirmation email has been sent.",
-      }),
-      { headers: { "Content-Type": "application/json" } }
-    );
+    try {
+      // Register the membership subscription in your database:
+      await registerMembershipSubscription(parseInt(userId), parseInt(membershipPlanId));
+      return new Response(
+        JSON.stringify({
+          success: true,
+          isMembership: true,
+          message:
+            "🎉 Membership subscription successful! A confirmation email has been sent.",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          isMembership: true,
+          message: "Membership registration failed: " + error.message,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
   } else if (workshopId && occurrenceId && userId) {
     try {
       // Call registerForWorkshop with the parameters from metadata
@@ -60,10 +71,9 @@ export async function loader({ request }: { request: Request }) {
       );
     }
   } else {
-    throw new Response(
-      "Missing registration parameters in session metadata",
-      { status: 400 }
-    );
+    throw new Response("Missing registration parameters in session metadata", {
+      status: 400,
+    });
   }
 }
 
