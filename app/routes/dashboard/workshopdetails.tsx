@@ -19,6 +19,7 @@ import {
   getWorkshopById,
   checkUserRegistration,
   getUserCompletedPrerequisites,
+  cancelUserWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
@@ -32,6 +33,12 @@ import {
 import { Link as RouterLink } from "react-router-dom";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { Users } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Occurrence {
   id: number;
@@ -143,6 +150,34 @@ export async function loader({
   };
 }
 
+export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const actionType = formData.get("actionType");
+
+  if (actionType === "cancelRegistration") {
+    const workshopId = formData.get("workshopId");
+    const occurrenceId = formData.get("occurrenceId");
+
+    // Retrieve user from session
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+
+    try {
+      await cancelUserWorkshopRegistration({
+        workshopId: Number(workshopId),
+        occurrenceId: Number(occurrenceId),
+        userId: user.id,
+      });
+      return { success: true, cancelled: true };
+    } catch (error) {
+      console.error("Error cancelling registration:", error);
+      return { error: "Failed to cancel registration" };
+    }
+  }
+}
+
 export default function WorkshopDetails() {
   const {
     workshop,
@@ -171,6 +206,11 @@ export default function WorkshopDetails() {
   const [popupMessage, setPopupMessage] = useState("");
   const [popupType, setPopupType] = useState("success");
 
+  // State to track which occurrence's cancel confirmation should be shown
+  const [confirmOccurrenceId, setConfirmOccurrenceId] = useState<number | null>(
+    null
+  );
+
   const isAdmin =
     roleUser &&
     roleUser.roleId === 2 &&
@@ -178,10 +218,14 @@ export default function WorkshopDetails() {
 
   useEffect(() => {
     if (fetcher.data?.success) {
-      setPopupMessage("🎉 Registration successful!");
+      if (fetcher.data.cancelled) {
+        setPopupMessage("You have successfully cancelled your registration.");
+      } else {
+        setPopupMessage("🎉 Registration successful!");
+        localStorage.setItem("registrationSuccess", "true");
+      }
       setPopupType("success");
       setShowPopup(true);
-      localStorage.setItem("registrationSuccess", "true");
     } else if (fetcher.data?.error) {
       setPopupMessage(fetcher.data.error);
       setPopupType("error");
@@ -197,12 +241,13 @@ export default function WorkshopDetails() {
       return;
     }
 
-    if (isAdmin) {
-      setPopupMessage("Admins cannot register for workshops.");
-      setPopupType("error");
-      setShowPopup(true);
-      return;
-    }
+    /* Did this for now for fast registering and testing */
+    // if (isAdmin) {
+    //   setPopupMessage("Admins cannot register for workshops.");
+    //   setPopupType("error");
+    //   setShowPopup(true);
+    //   return;
+    // }
 
     if (!hasCompletedAllPrerequisites) {
       setPopupMessage(
@@ -224,6 +269,7 @@ export default function WorkshopDetails() {
     if (!user) return;
     fetcher.submit(
       {
+        workshopId: String(workshop.id),
         occurrenceId: occurrenceId.toString(),
         actionType: "cancelRegistration",
       },
@@ -309,31 +355,122 @@ export default function WorkshopDetails() {
                   </p>
 
                   <div className="mt-2 flex items-center justify-between">
-                    {/* Show Cancelled / Register Button */}
+                    {/* Show Cancelled / Past / Registration Button */}
                     {occurrence.status === "cancelled" ? (
                       <Badge className="bg-red-500 text-white px-3 py-1">
                         Cancelled
                       </Badge>
+                    ) : occurrence.status === "past" ? (
+                      <Badge className="bg-gray-500 text-white px-3 py-1">
+                        Past
+                      </Badge>
                     ) : (
                       <>
+                      {/* 
+                          {isOccurrenceRegistered ? (
+                            <Badge className="bg-green-500 text-white px-3 py-1">
+                              Registered
+                            </Badge>
+                          ) : (
+                            !isAdmin && (
+                              <Button
+                                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                                onClick={() => handleRegister(occurrence.id)}
+                                disabled={!hasCompletedAllPrerequisites}
+                              >
+                                Register
+                              </Button>
+                            )
+                          )}
+                          (Original commented code above - do not delete)
+                          
+                        */}
+                        {/* Did this for now for fast registering and testing */}
                         {isOccurrenceRegistered ? (
-                          <Badge className="bg-green-500 text-white px-3 py-1">
-                            Registered
-                          </Badge>
+                          // Registered state: show dropdown with "Registered" badge as trigger
+                          <>
+                            {(() => {
+                              // Calculate hours since registration
+                              const regTime = regData.registeredAt
+                                ? new Date(regData.registeredAt)
+                                : null;
+                              const hoursSinceReg = regTime
+                                ? (new Date().getTime() - regTime.getTime()) /
+                                  (1000 * 60 * 60)
+                                : Infinity;
+                              const canCancel = hoursSinceReg < 48;
+                              return (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
+                                      Registered
+                                    </Badge>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {confirmOccurrenceId === occurrence.id ? (
+                                      <>
+                                        <DropdownMenuItem
+                                          onSelect={(e) => {
+                                            e.preventDefault();
+                                            handleCancel(occurrence.id);
+                                            setConfirmOccurrenceId(null);
+                                          }}
+                                        >
+                                          Yes, Cancel
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onSelect={(e) => {
+                                            e.preventDefault();
+                                            setConfirmOccurrenceId(null);
+                                          }}
+                                        >
+                                          No, Keep Registration
+                                        </DropdownMenuItem>
+                                      </>
+                                    ) : canCancel ? (
+                                      <DropdownMenuItem
+                                        onSelect={(e) => {
+                                          e.preventDefault();
+                                          setConfirmOccurrenceId(occurrence.id);
+                                        }}
+                                      >
+                                        Cancel
+                                      </DropdownMenuItem>
+                                    ) : (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <DropdownMenuItem disabled>
+                                              Cancel
+                                            </DropdownMenuItem>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>
+                                              You cannot cancel since you
+                                              registered for more than 48 hours
+                                            </p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              );
+                            })()}
+                          </>
                         ) : (
-                          !isAdmin && (
-                            <Button
-                              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                              onClick={() => handleRegister(occurrence.id)}
-                              disabled={!hasCompletedAllPrerequisites}
-                            >
-                              Register
-                            </Button>
-                          )
+                          <Button
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                            onClick={() => handleRegister(occurrence.id)}
+                            disabled={!hasCompletedAllPrerequisites}
+                          >
+                            Register
+                          </Button>
                         )}
                       </>
                     )}
-                    {/* Show "Offer Again" Button for Admins only */}
+
+                    {/* Show "Offer Again" Button for Admins only if status is "past" */}
                     {occurrence.status === "past" && isAdmin && (
                       <Button
                         variant="outline"
