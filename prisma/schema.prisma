@@ -206,4 +206,6 @@ model UserMembership {
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
 }
