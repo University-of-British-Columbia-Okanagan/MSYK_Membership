@@ -663,27 +663,106 @@ export async function getAllRegistrations() {
   });
 }
 
-export async function updateRegistrationResult(
-  registrationId: number,
-  newResult: string
-) {
-  // newResult should be one of "passed", "failed", or "pending"
-  return db.userWorkshop.update({
+export async function updateRegistrationResult(registrationId: number, newResult: string) {
+  // Update the registration row and include related workshop and user data.
+  const updatedReg = await db.userWorkshop.update({
     where: { id: registrationId },
     data: { result: newResult },
+    include: { 
+      workshop: true,  // so we can check the workshop type
+      user: true       // so we can check the user's current roleLevel
+    },
   });
+
+  // Only proceed if the registration is for an orientation.
+  if (updatedReg.workshop?.type.toLowerCase() === "orientation") {
+    if (newResult.toLowerCase() === "passed") {
+      // If this registration is passed and the user is below level 2, upgrade them.
+      if (updatedReg.user.roleLevel < 2) {
+        await db.user.update({
+          where: { id: updatedReg.user.id },
+          data: { roleLevel: 2 },
+        });
+      }
+    } else {
+      // The new result is not "passed". Check if the user has any orientation registrations that are passed.
+      const passedCount = await db.userWorkshop.count({
+        where: {
+          userId: updatedReg.user.id,
+          result: { equals: "passed", mode: "insensitive" },
+          workshop: {
+            type: { equals: "orientation", mode: "insensitive" },
+          },
+        },
+      });
+
+      // If no orientation is passed and the user is at least level 2, revert them to level 1.
+      if (passedCount === 0 && updatedReg.user.roleLevel >= 2) {
+        await db.user.update({
+          where: { id: updatedReg.user.id },
+          data: { roleLevel: 1 },
+        });
+      }
+    }
+  }
+
+  return updatedReg;
 }
 
-export async function updateMultipleRegistrations(
-  registrationIds: number[],
-  newResult: string
-) {
-  return db.userWorkshop.updateMany({
-    where: {
-      id: { in: registrationIds },
-    },
+export async function updateMultipleRegistrations(registrationIds: number[], newResult: string) {
+  // Bulk update the registrations
+  const updateResult = await db.userWorkshop.updateMany({
+    where: { id: { in: registrationIds } },
     data: { result: newResult },
   });
+
+  // Fetch the updated registrations along with user and workshop data.
+  const updatedRegistrations = await db.userWorkshop.findMany({
+    where: { id: { in: registrationIds } },
+    include: { user: true, workshop: true },
+  });
+
+  // Get unique userIds from the updated registrations that are for orientation workshops.
+  const userIds = Array.from(
+    new Set(
+      updatedRegistrations
+        .filter(reg => reg.workshop?.type?.toLowerCase() === "orientation")
+        .map(reg => reg.user.id)
+    )
+  );
+
+  // For each user, check if they have any passed orientation registrations.
+  for (const uid of userIds) {
+    const passedCount = await db.userWorkshop.count({
+      where: {
+        userId: uid,
+        result: { equals: "passed", mode: "insensitive" },
+        workshop: {
+          type: { equals: "orientation", mode: "insensitive" },
+        },
+      },
+    });
+
+    // Fetch the current user (or use one of the registrations' user)
+    const user = updatedRegistrations.find(reg => reg.user.id === uid)?.user;
+    if (user) {
+      if (passedCount > 0 && user.roleLevel < 2) {
+        // User now has at least one passed orientation so update roleLevel to 2.
+        await db.user.update({
+          where: { id: uid },
+          data: { roleLevel: 2 },
+        });
+      } else if (passedCount === 0 && user.roleLevel >= 2) {
+        // User no longer has any passed orientations so revert roleLevel back to 1.
+        await db.user.update({
+          where: { id: uid },
+          data: { roleLevel: 1 },
+        });
+      }
+    }
+  }
+
+  return updateResult;
 }
 
 export async function getUserWorkshopRegistrations(userId: number) {
