@@ -46,6 +46,11 @@ export default [
     "routes/dashboard/editoccurrence.tsx"
   ),
   route(
+    "dashboard/payment/:workshopId/connect/:connectId",
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/workshopContinuation" }
+  ),
+  route(
     "dashboard/payment/:workshopId/:occurrenceId",
     "routes/dashboard/payment.tsx"
   ),

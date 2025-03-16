@@ -1,6 +1,6 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { getWorkshopById, getWorkshopOccurrence } from "../../models/workshop.server";
+import { getWorkshopById, getWorkshopOccurrence, getWorkshopOccurrencesByConnectId } from "../../models/workshop.server";
 import { getMembershipPlanById } from "../../models/membership.server"; // make sure to implement this
 import { getUser } from "~/utils/session.server";
 import { useState } from "react";
@@ -16,7 +16,7 @@ export async function loader({ params, request }) {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
 
-  // If the route includes membershipPlanId, assume membership payment
+  // Membership payment branch
   if (params.membershipPlanId) {
     const membershipPlanId = Number(params.membershipPlanId);
     if (isNaN(membershipPlanId))
@@ -27,8 +27,9 @@ export async function loader({ params, request }) {
       throw new Response("Membership Plan not found", { status: 404 });
 
     return { membershipPlan, user };
-  } else if (params.workshopId && params.occurrenceId) {
-    // Otherwise, load workshop & occurrence for workshop registration
+  }
+  // Workshop branch: either single occurrence or continuation
+  else if (params.workshopId && params.occurrenceId) {
     const workshopId = Number(params.workshopId);
     const occurrenceId = Number(params.occurrenceId);
     if (isNaN(workshopId) || isNaN(occurrenceId))
@@ -39,7 +40,22 @@ export async function loader({ params, request }) {
     if (!workshop || !occurrence)
       throw new Response("Workshop or Occurrence not found", { status: 404 });
 
-    return { workshop, occurrence, user };
+    return { workshop, occurrence, user, isContinuation: false };
+  } else if (params.workshopId && params.connectId) {
+    // New branch for continuation workshops using connectId
+    const workshopId = Number(params.workshopId);
+    const connectId = Number(params.connectId);
+    if (isNaN(workshopId) || isNaN(connectId))
+      throw new Response("Invalid workshop or connect ID", { status: 400 });
+
+    const workshop = await getWorkshopById(workshopId);
+    // getWorkshopOccurrencesByConnectId should return an array of occurrences for this workshop with the given connectId
+    const occurrences = await getWorkshopOccurrencesByConnectId(workshopId, connectId);
+    if (!workshop || !occurrences || occurrences.length === 0)
+      throw new Response("Workshop or Occurrences not found", { status: 404 });
+
+    // For payment, we use the first occurrence as a representative
+    return { workshop, occurrence: occurrences[0], user, isContinuation: true };
   } else {
     throw new Response("Missing required parameters", { status: 400 });
   }
@@ -56,7 +72,7 @@ export async function action({ request }) {
         headers: { "Content-Type": "application/json" },
       });
 
-    // If processing a membership payment
+    // Membership branch
     if (body.membershipPlanId) {
       const { membershipPlanId, price, userId } = body;
       if (!membershipPlanId || !price || !userId) {
@@ -109,22 +125,29 @@ export async function action({ request }) {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
-    } else {
-      // Process workshop payment (existing logic)
+    }
+    // Workshop branch: standard single occurrence registration
+    else if (body.workshopId && body.occurrenceId) {
       const { workshopId, occurrenceId, price, userId } = body;
       if (!workshopId || !occurrenceId || !price || !userId) {
-        return new Response(JSON.stringify({ error: "Missing required payment data" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Missing required payment data" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
       const workshop = await getWorkshopById(workshopId);
       const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
       if (!workshop || !occurrence) {
-        return new Response(JSON.stringify({ error: "Workshop or Occurrence not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Workshop or Occurrence not found" }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
 
       const session = await stripe.checkout.sessions.create({
@@ -157,6 +180,62 @@ export async function action({ request }) {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    // NEW: Workshop continuation branch: using connectId
+    else if (body.workshopId && body.connectId) {
+      const { workshopId, connectId, price, userId } = body;
+      if (!workshopId || !connectId || !price || !userId) {
+        return new Response(
+          JSON.stringify({ error: "Missing required payment data" }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      const workshop = await getWorkshopById(workshopId);
+      // Use the helper to get all occurrences with the given connectId; pick the first one
+      const occurrences = await getWorkshopOccurrencesByConnectId(workshopId, Number(connectId));
+      if (!workshop || !occurrences || occurrences.length === 0) {
+        return new Response(JSON.stringify({ error: "Workshop or Occurrences not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const firstOccurrence = occurrences[0];
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: workshop.name,
+                description: `Occurrences starting on ${new Date(firstOccurrence.startDate).toLocaleString()}`,
+              },
+              unit_amount: Math.round(price * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        customer_email: user.email,
+        success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `http://localhost:5173/dashboard/workshops`,
+        metadata: {
+          workshopId: workshopId.toString(),
+          connectId: connectId.toString(),
+          userId: userId.toString(),
+        },
+      });
+
+      return new Response(JSON.stringify({ url: session.url }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } else {
+      throw new Response("Missing required payment parameters", { status: 400 });
     }
   } catch (error) {
     console.error("Stripe Checkout Error:", error);
@@ -195,23 +274,44 @@ export default function Payment() {
           setLoading(false);
         }
       } else {
-        // Process workshop payment
-        const response = await fetch("/dashboard/paymentprocess", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workshopId: data.workshop.id,
-            occurrenceId: data.occurrence.id,
-            price: data.workshop.price,
-            userId: data.user.id,
-          }),
-        });
-        const resData = await response.json();
-        if (resData.url) {
-          window.location.href = resData.url;
+        // Process workshop payment – check if it's a continuation
+        if (data.isContinuation) {
+          const response = await fetch("/dashboard/paymentprocess", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workshopId: data.workshop.id,
+              connectId: data.occurrence.connectId, // use connectId
+              price: data.workshop.price,
+              userId: data.user.id,
+            }),
+          });
+          const resData = await response.json();
+          if (resData.url) {
+            window.location.href = resData.url;
+          } else {
+            console.error("Payment error:", resData.error);
+            setLoading(false);
+          }
         } else {
-          console.error("Payment error:", resData.error);
-          setLoading(false);
+          // Standard workshop payment using occurrenceId
+          const response = await fetch("/dashboard/paymentprocess", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workshopId: data.workshop.id,
+              occurrenceId: data.occurrence.id,
+              price: data.workshop.price,
+              userId: data.user.id,
+            }),
+          });
+          const resData = await response.json();
+          if (resData.url) {
+            window.location.href = resData.url;
+          } else {
+            console.error("Payment error:", resData.error);
+            setLoading(false);
+          }
         }
       }
     } catch (error) {
@@ -233,7 +333,13 @@ export default function Payment() {
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop.name}</p>
-          <p className="text-gray-700">Occurrence ID: {data.occurrence.id}</p>
+          {data.isContinuation ? (
+            <p className="text-gray-700">
+              Occurrence Group: {data.occurrence.connectId}
+            </p>
+          ) : (
+            <p className="text-gray-700">Occurrence ID: {data.occurrence.id}</p>
+          )}
           <p className="text-lg font-semibold mt-2">Total: ${data.workshop.price}</p>
         </>
       )}

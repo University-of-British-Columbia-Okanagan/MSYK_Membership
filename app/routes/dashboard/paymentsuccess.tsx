@@ -1,7 +1,10 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Stripe } from "stripe";
-import { registerForWorkshop } from "../../models/workshop.server";
-import { registerMembershipSubscription } from "../../models/membership.server";
+import {
+  registerForWorkshop,
+  registerUserForAllOccurrences, // <--- Import the new helper
+} from "../../models/workshop.server";
+import {registerMembershipSubscription,} from "../../models/membership.server"
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -18,12 +21,17 @@ export async function loader({ request }: { request: Request }) {
   // Retrieve Checkout Session
   const session = await stripe.checkout.sessions.retrieve(sessionId);
   const metadata = session.metadata || {};
-  const { workshopId, occurrenceId, membershipPlanId, userId } = metadata;
+  const {
+    workshopId,
+    occurrenceId,
+    membershipPlanId,
+    userId,
+    connectId, // <--- Check for connectId
+  } = metadata;
 
   // Membership branch
   if (membershipPlanId) {
     try {
-      // Attempt to create the new membership row
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId)
@@ -39,7 +47,6 @@ export async function loader({ request }: { request: Request }) {
         { headers: { "Content-Type": "application/json" } }
       );
     } catch (error: any) {
-      // If user already has a membership or any other error
       return new Response(
         JSON.stringify({
           success: false,
@@ -51,7 +58,36 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  // Workshop branch
+  // NEW: Workshop continuation branch
+  else if (workshopId && connectId && userId) {
+    try {
+      await registerUserForAllOccurrences(
+        parseInt(workshopId),
+        parseInt(connectId),
+        parseInt(userId)
+      );
+      return new Response(
+        JSON.stringify({
+          success: true,
+          isMembership: false,
+          message:
+            "🎉 Registration successful for all occurrences! A confirmation email has been sent.",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          isMembership: false,
+          message: "Registration (continuation) failed: " + error.message,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  // Single-occurrence workshop branch
   else if (workshopId && occurrenceId && userId) {
     try {
       await registerForWorkshop(
