@@ -940,3 +940,55 @@ export async function cancelUserWorkshopRegistration({
     },
   });
 }
+
+export async function getWorkshopOccurrencesByConnectId(
+  workshopId: number,
+  connectId: number
+) {
+  return await db.workshopOccurrence.findMany({
+    where: {
+      workshopId,
+      connectId,
+    },
+    orderBy: {
+      startDate: "asc",
+    },
+  });
+}
+
+export async function registerUserForAllOccurrences(
+  workshopId: number,
+  connectId: number,
+  userId: number
+) {
+  // 1. Find all occurrences that match workshopId + connectId
+  const occurrences = await db.workshopOccurrence.findMany({
+    where: { workshopId, connectId },
+  });
+  if (!occurrences || occurrences.length === 0) {
+    throw new Error("No occurrences found for this workshop connectId group.");
+  }
+
+  // 2. For each occurrence, insert a record in your pivot table (e.g. userWorkshop)
+  for (const occ of occurrences) {
+    // Check if user is already registered for this occurrence
+    const existing = await db.userWorkshop.findFirst({
+      where: {
+        userId,
+        workshopId,
+        occurrenceId: occ.id,
+      },
+    });
+    if (!existing) {
+      // If not registered, create a new record
+      await db.userWorkshop.create({
+        data: {
+          userId,
+          workshopId,
+          occurrenceId: occ.id,
+          result: "passed",
+        },
+      });
+    }
+  }
+}
