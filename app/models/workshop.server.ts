@@ -992,3 +992,44 @@ export async function registerUserForAllOccurrences(
     }
   }
 }
+
+export async function getWorkshopContinuationUserCount(workshopId: number) {
+  // Find all occurrences for this workshop
+  const workshop = await db.workshop.findUnique({
+    where: {
+      id: workshopId,
+    },
+    include: {
+      occurrences: {
+        include: {
+          userWorkshops: true,
+        },
+      },
+    },
+  });
+
+  if (!workshop || !workshop.occurrences) {
+    return { totalUsers: 0, uniqueUsers: 0 };
+  }
+
+  // Count total registrations
+  const totalUsers = workshop.occurrences.reduce(
+    (total, occ) => total + (occ.userWorkshops?.length || 0),
+    0
+  );
+
+  // Count unique users (using a Set to track unique IDs)
+  const uniqueUserIds = new Set();
+  workshop.occurrences.forEach((occ) => {
+    if (occ.userWorkshops && Array.isArray(occ.userWorkshops)) {
+      occ.userWorkshops.forEach((userWorkshop) => {
+        uniqueUserIds.add(userWorkshop.userId);
+      });
+    }
+  });
+
+  return {
+    totalUsers,
+    uniqueUsers: uniqueUserIds.size,
+  };
+}
