@@ -40,6 +40,7 @@ export const workshopFormSchema = z.object({
     ),
     prerequisites: z.array(z.number()).optional(),
     equipments: z.array(z.number()).optional(),
+    isWorkshopContinuation: z.boolean().optional().default(false)
 });
 
 export type WorkshopFormValues = z.infer<typeof workshopFormSchema>;

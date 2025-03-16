@@ -19,10 +19,11 @@ import {
   getWorkshopById,
   checkUserRegistration,
   getUserCompletedPrerequisites,
+  cancelUserWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Users } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -31,7 +32,12 @@ import {
 } from "@/components/ui/tooltip";
 import { Link as RouterLink } from "react-router-dom";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { Users } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Occurrence {
   id: number;
@@ -143,6 +149,34 @@ export async function loader({
   };
 }
 
+export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const actionType = formData.get("actionType");
+
+  if (actionType === "cancelRegistration") {
+    const workshopId = formData.get("workshopId");
+    const occurrenceId = formData.get("occurrenceId");
+
+    // Retrieve user from session
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+
+    try {
+      await cancelUserWorkshopRegistration({
+        workshopId: Number(workshopId),
+        occurrenceId: Number(occurrenceId),
+        userId: user.id,
+      });
+      return { success: true, cancelled: true };
+    } catch (error) {
+      console.error("Error cancelling registration:", error);
+      return { error: "Failed to cancel registration" };
+    }
+  }
+}
+
 export default function WorkshopDetails() {
   const {
     workshop,
@@ -171,6 +205,11 @@ export default function WorkshopDetails() {
   const [popupMessage, setPopupMessage] = useState("");
   const [popupType, setPopupType] = useState("success");
 
+  // State to track which occurrence's cancel confirmation should be shown
+  const [confirmOccurrenceId, setConfirmOccurrenceId] = useState<number | null>(
+    null
+  );
+
   const isAdmin =
     roleUser &&
     roleUser.roleId === 2 &&
@@ -178,10 +217,14 @@ export default function WorkshopDetails() {
 
   useEffect(() => {
     if (fetcher.data?.success) {
-      setPopupMessage("🎉 Registration successful!");
+      if (fetcher.data.cancelled) {
+        setPopupMessage("You have successfully cancelled your registration.");
+      } else {
+        setPopupMessage("🎉 Registration successful!");
+        localStorage.setItem("registrationSuccess", "true");
+      }
       setPopupType("success");
       setShowPopup(true);
-      localStorage.setItem("registrationSuccess", "true");
     } else if (fetcher.data?.error) {
       setPopupMessage(fetcher.data.error);
       setPopupType("error");
@@ -192,13 +235,6 @@ export default function WorkshopDetails() {
   const handleRegister = (occurrenceId: number) => {
     if (!user) {
       setPopupMessage("Please log in to register for a workshop.");
-      setPopupType("error");
-      setShowPopup(true);
-      return;
-    }
-
-    if (isAdmin) {
-      setPopupMessage("Admins cannot register for workshops.");
       setPopupType("error");
       setShowPopup(true);
       return;
@@ -216,6 +252,7 @@ export default function WorkshopDetails() {
     navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
   };
 
+  // Offer Again button for Admins
   const handleOfferAgain = (occurrenceId: number) => {
     navigate(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
   };
@@ -224,6 +261,7 @@ export default function WorkshopDetails() {
     if (!user) return;
     fetcher.submit(
       {
+        workshopId: String(workshop.id),
         occurrenceId: occurrenceId.toString(),
         actionType: "cancelRegistration",
       },
@@ -235,6 +273,93 @@ export default function WorkshopDetails() {
   const incompletePrerequisites = prerequisiteWorkshops.filter(
     (prereq: PrerequisiteWorkshop) => !prereq.completed
   );
+
+  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
+  const isContinuation = workshop.occurrences.some(
+    (occ: any) => occ.connectId !== null
+  );
+
+  // If user is registered for ANY occurrence in a continuation workshop,
+  // consider them registered for the entire workshop.
+  const isUserRegisteredForAny = workshop.occurrences.some(
+    (occ: any) => registrations[occ.id]?.registered
+  );
+
+  // Gather the earliest registration date for cancellation window
+  const userRegistrationDates = workshop.occurrences
+    .filter((occ: any) => registrations[occ.id]?.registered)
+    .map((occ: any) => {
+      const dateVal = registrations[occ.id]?.registeredAt;
+      return dateVal ? new Date(dateVal) : null;
+    })
+    .filter((d: Date | null) => d !== null) as Date[];
+
+  const earliestRegDate =
+    userRegistrationDates.length > 0
+      ? new Date(Math.min(...userRegistrationDates.map((d) => d.getTime())))
+      : null;
+
+  // Check if ALL occurrences are "past" or "cancelled"
+  const allPast = workshop.occurrences.every(
+    (occ: any) => occ.status === "past"
+  );
+  const allCancelled = workshop.occurrences.every(
+    (occ: any) => occ.status === "cancelled"
+  );
+
+  // For continuation workshops: single registration/cancellation handling
+  function handleRegisterAll() {
+    if (!user) {
+      setPopupMessage("Please log in to register for this workshop.");
+      setPopupType("error");
+      setShowPopup(true);
+      return;
+    }
+
+    if (!hasCompletedAllPrerequisites) {
+      setPopupMessage("You must complete all prerequisites first.");
+      setPopupType("error");
+      setShowPopup(true);
+      return;
+    }
+
+    // Find the first active occurrence that has a non-null connectId
+    const firstActiveOccurrence = workshop.occurrences.find(
+      (occ: any) =>
+        occ.status !== "past" &&
+        occ.status !== "cancelled" &&
+        occ.connectId !== null
+    );
+
+    if (!firstActiveOccurrence) {
+      setPopupMessage("No active occurrences available to register.");
+      setPopupType("error");
+      setShowPopup(true);
+      return;
+    }
+
+    // Navigate to the payment route using connectId (note the route now includes "connect")
+    navigate(
+      `/dashboard/payment/${workshop.id}/connect/${firstActiveOccurrence.connectId}`
+    );
+  }
+
+  function handleCancelAll() {
+    if (!user) return;
+    // Cancel each active occurrence
+    workshop.occurrences.forEach((occ: any) => {
+      if (occ.status !== "past" && occ.status !== "cancelled") {
+        fetcher.submit(
+          {
+            workshopId: String(workshop.id),
+            occurrenceId: occ.id.toString(),
+            actionType: "cancelRegistration",
+          },
+          { method: "post" }
+        );
+      }
+    });
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -270,7 +395,7 @@ export default function WorkshopDetails() {
                 navigate(`/dashboard/admin/workshop/${workshop.id}/users`)
               }
             >
-              <Users size={18} /> {/* Small Users Icon */}
+              <Users size={18} />
               View Users ({workshop.userCount})
             </Button>
           )}
@@ -288,66 +413,241 @@ export default function WorkshopDetails() {
 
           <Separator className="my-6" />
 
-          {/* Available Dates Section */}
-          <h2 className="text-lg font-semibold mb-4">Available Dates</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {workshop.occurrences.map((occurrence: Occurrence) => {
-              const regData = registrations[occurrence.id] || {
-                registered: false,
-                registeredAt: null,
-              };
-              const isOccurrenceRegistered = regData.registered;
-
-              return (
-                <div
-                  key={occurrence.id}
-                  className="border p-4 rounded-lg shadow-md bg-gray-50"
-                >
-                  <p className="text-lg font-medium text-gray-800">
-                    📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
-                    {new Date(occurrence.endDate).toLocaleString()}
-                  </p>
-
-                  <div className="mt-2 flex items-center justify-between">
-                    {/* Show Cancelled / Register Button */}
-                    {occurrence.status === "cancelled" ? (
-                      <Badge className="bg-red-500 text-white px-3 py-1">
-                        Cancelled
-                      </Badge>
-                    ) : (
-                      <>
-                        {isOccurrenceRegistered ? (
-                          <Badge className="bg-green-500 text-white px-3 py-1">
-                            Registered
-                          </Badge>
-                        ) : (
-                          !isAdmin && (
-                            <Button
-                              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                              onClick={() => handleRegister(occurrence.id)}
-                              disabled={!hasCompletedAllPrerequisites}
-                            >
-                              Register
-                            </Button>
-                          )
-                        )}
-                      </>
-                    )}
-                    {/* Show "Offer Again" Button for Admins only */}
-                    {occurrence.status === "past" && isAdmin && (
-                      <Button
-                        variant="outline"
-                        className="text-green-600 border-green-500 hover:bg-green-50"
-                        onClick={() => handleOfferAgain(occurrence.id)}
-                      >
-                        Offer Again
-                      </Button>
-                    )}
+          {/* Continuation Workshop Block */}
+          {isContinuation ? (
+            <>
+              <h2 className="text-lg font-semibold mb-4">Workshop Dates</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {workshop.occurrences.map((occ: any) => (
+                  <div
+                    key={occ.id}
+                    className="border p-4 rounded-lg shadow-md bg-gray-50"
+                  >
+                    <p className="text-lg font-medium text-gray-800">
+                      📅 {new Date(occ.startDate).toLocaleString()} -{" "}
+                      {new Date(occ.endDate).toLocaleString()}
+                    </p>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                ))}
+              </div>
+
+              <Separator className="my-6" />
+
+              {/* Single registration/cancellation for the entire workshop */}
+              {allPast ? (
+                <Badge className="bg-gray-500 text-white px-3 py-1">Past</Badge>
+              ) : allCancelled ? (
+                <Badge className="bg-red-500 text-white px-3 py-1">
+                  Cancelled
+                </Badge>
+              ) : (
+                (() => {
+                  // Check if ANY workshop date has passed the current date
+                  const anyDatePassed = workshop.occurrences.some(
+                    (occ: any) => new Date(occ.endDate) < new Date()
+                  );
+
+                  if (anyDatePassed) {
+                    return (
+                      <Badge className="bg-gray-500 text-white px-3 py-1">
+                        Workshop has passed
+                      </Badge>
+                    );
+                  } else if (isUserRegisteredForAny) {
+                    const canCancel =
+                      earliestRegDate &&
+                      (new Date().getTime() - earliestRegDate.getTime()) /
+                        (1000 * 60 * 60) < 48;
+                    return (
+                      <div className="flex items-center gap-4">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
+                              Registered (Entire Workshop)
+                            </Badge>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {canCancel ? (
+                              <>
+                                <DropdownMenuItem
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleCancelAll();
+                                  }}
+                                >
+                                  Yes, Cancel Entire Workshop
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                  }}
+                                >
+                                  No, Keep Registration
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <DropdownMenuItem disabled>
+                                      Cancel Entire Workshop
+                                    </DropdownMenuItem>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>48 hours have passed; cannot cancel.</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <Button
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                        onClick={() => handleRegisterAll()}
+                        disabled={!hasCompletedAllPrerequisites}
+                      >
+                        Register for Entire Workshop
+                      </Button>
+                    );
+                  }
+                })()
+              )}
+            </>
+          ) : (
+            // Non-continuation workshop: existing per-occurrence UI
+            <>
+              <h2 className="text-lg font-semibold mb-4">Available Dates</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {workshop.occurrences.map((occurrence: Occurrence) => {
+                  const regData = registrations[occurrence.id] || {
+                    registered: false,
+                    registeredAt: null,
+                  };
+                  const isOccurrenceRegistered = regData.registered;
+
+                  return (
+                    <div
+                      key={occurrence.id}
+                      className="border p-4 rounded-lg shadow-md bg-gray-50"
+                    >
+                      <p className="text-lg font-medium text-gray-800">
+                        📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
+                        {new Date(occurrence.endDate).toLocaleString()}
+                      </p>
+
+                      <div className="mt-2 flex items-center justify-between">
+                        {occurrence.status === "cancelled" ? (
+                          <Badge className="bg-red-500 text-white px-3 py-1">
+                            Cancelled
+                          </Badge>
+                        ) : occurrence.status === "past" ? (
+                          <>
+                            <Badge className="bg-gray-500 text-white px-3 py-1">
+                              Past
+                            </Badge>
+                            {isAdmin && (
+                              <Button
+                                variant="outline"
+                                className="text-green-600 border-green-500 hover:bg-green-50 ml-2"
+                                onClick={() => handleOfferAgain(occurrence.id)}
+                              >
+                                Offer Again
+                              </Button>
+                            )}
+                          </>
+                        ) : isOccurrenceRegistered ? (
+                          <>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
+                                  Registered
+                                </Badge>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                {confirmOccurrenceId === occurrence.id ? (
+                                  <>
+                                    <DropdownMenuItem
+                                      onSelect={(e) => {
+                                        e.preventDefault();
+                                        handleCancel(occurrence.id);
+                                        setConfirmOccurrenceId(null);
+                                      }}
+                                    >
+                                      Yes, Cancel
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      onSelect={(e) => {
+                                        e.preventDefault();
+                                        setConfirmOccurrenceId(null);
+                                      }}
+                                    >
+                                      No, Keep Registration
+                                    </DropdownMenuItem>
+                                  </>
+                                ) : (
+                                  <>
+                                    {(() => {
+                                      // Determine if cancel should be allowed (<48 hours)
+                                      const canCancel =
+                                        earliestRegDate &&
+                                        (new Date().getTime() -
+                                          earliestRegDate.getTime()) /
+                                          (1000 * 60 * 60) <
+                                          48;
+                                      return canCancel ? (
+                                        <DropdownMenuItem
+                                          onSelect={(e) => {
+                                            e.preventDefault();
+                                            setConfirmOccurrenceId(
+                                              occurrence.id
+                                            );
+                                          }}
+                                        >
+                                          Cancel
+                                        </DropdownMenuItem>
+                                      ) : (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <DropdownMenuItem disabled>
+                                                Cancel
+                                              </DropdownMenuItem>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p>
+                                                48 hours have passed; cannot
+                                                cancel.
+                                              </p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      );
+                                    })()}
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </>
+                        ) : (
+                          <Button
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                            onClick={() => handleRegister(occurrence.id)}
+                            disabled={!hasCompletedAllPrerequisites}
+                          >
+                            Register
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           <Separator className="my-6" />
 
@@ -416,7 +716,6 @@ export default function WorkshopDetails() {
             }}
           />
 
-          {/* Back to Workshops Button */}
           <div className="mt-6">
             <Button
               className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"

@@ -223,6 +223,8 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+
   //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
@@ -231,6 +233,7 @@ export async function action({ request }: { request: Request }) {
     occurrences,
     prerequisites,
     equipments,
+    isWorkshopContinuation,
   });
 
   if (!parsed.success) {
@@ -250,6 +253,7 @@ export async function action({ request }: { request: Request }) {
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
       equipments: parsed.data.equipments,
+      isWorkshopContinuation: parsed.data.isWorkshopContinuation,
     });
   } catch (error) {
     console.error("Error adding workshop:", error);
@@ -317,6 +321,8 @@ export default function AddWorkshop() {
   const [monthlyCount, setMonthlyCount] = useState(1);
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
+
+  const [isWorkshopContinuation, setIsWorkshopContinuation] = useState(false);
 
   // For custom dates, add an empty occurrence.
   const addOccurrence = () => {
@@ -458,6 +464,25 @@ export default function AddWorkshop() {
             required
             error={actionData?.errors?.capacity}
             type="number"
+          />
+
+          {/* New "Is Workshop Continuation" Checkbox */}
+          <div className="mt-4">
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={isWorkshopContinuation}
+                onChange={(e) => setIsWorkshopContinuation(e.target.checked)}
+                className="form-checkbox"
+              />
+              <span className="ml-2 text-sm">Is Workshop Continuation</span>
+            </label>
+          </div>
+          {/* Hidden input to send the checkbox value */}
+          <input
+            type="hidden"
+            name="isWorkshopContinuation"
+            value={isWorkshopContinuation ? "true" : "false"}
           />
 
           {/* Occurrences (Dates) Section */}
@@ -787,7 +812,6 @@ export default function AddWorkshop() {
             name="equipments"
             value={JSON.stringify(selectedEquipments)}
           />
-
           <input
             type="hidden"
             name="selectedSlot"
@@ -799,6 +823,11 @@ export default function AddWorkshop() {
                   })
                 : ""
             }
+          />
+          <input
+            type="hidden"
+            name="isWorkshopContinuation"
+            value={isWorkshopContinuation ? "true" : "false"}
           />
 
           {/* Submit Button */}

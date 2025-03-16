@@ -4,17 +4,10 @@ import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getRoleUser } from "~/utils/session.server";
-import { getAllUsers, updateUserRole } from "~/models/user.server";
+import { getAllUsers, updateUserRole, updateUserAllowLevel } from "~/models/user.server";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { FiSearch } from "react-icons/fi";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "@/components/ui/select";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 export async function loader({ request }: { request: Request }) {
@@ -30,6 +23,7 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const actionType = formData.get("action");
+
   if (actionType === "updateUserRole") {
     const userId = formData.get("userId");
     const newRoleId = formData.get("newRoleId");
@@ -41,7 +35,67 @@ export async function action({ request }: { request: Request }) {
       return { error: "Failed to update user role" };
     }
   }
+
+  if (actionType === "updateAllowLevel4") {
+    const userId = formData.get("userId");
+    const allowLevel4 = formData.get("allowLevel4");
+    try {
+      await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
+      return redirect("/dashboard/admin/users");
+    } catch (error) {
+      console.error("Error updating allowLevel4:", error);
+      return { error: "Failed to update allowLevel4" };
+    }
+  }
+
   return null;
+}
+
+/**
+ * RoleControl component:
+ * - Displays the user's current role level (read-only).
+ * - If the user's roleLevel is 3, it shows a button:
+ *    - "Allow Level 4" if allowLevel4 is false.
+ *    - "Revoke Level 4" if allowLevel4 is true.
+ * The ConfirmButton calls the updateAllowLevel4 action which now updates both allowLevel4 and roleLevel.
+ */
+function RoleControl({ user }: { user: { id: number; roleLevel: number; allowLevel4: boolean } }) {
+  const [allowLevel4, setAllowLevel4] = useState<boolean>(user.allowLevel4);
+
+  const updateAllow = async (newAllow: boolean) => {
+    const formData = new FormData();
+    formData.append("action", "updateAllowLevel4");
+    formData.append("userId", user.id.toString());
+    formData.append("allowLevel4", newAllow.toString());
+    await fetch("/dashboard/admin/users", { method: "POST", body: formData });
+    setAllowLevel4(newAllow);
+    window.location.reload(); // Refresh the page to reflect changes
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-semibold">{user.roleLevel}</span>
+      {allowLevel4 ? (
+        <ConfirmButton
+          confirmTitle="Confirm Revoke Level 4"
+          confirmDescription="Are you sure you want to revoke Level 4 for this user? This will remove the extra privileges."
+          onConfirm={() => updateAllow(false)}
+          buttonLabel="Revoke Level 4"
+          buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+        />
+      ) : (
+        user.roleLevel === 3 && (
+          <ConfirmButton
+            confirmTitle="Confirm Enable Level 4"
+            confirmDescription="Are you sure you want to enable Level 4 for this user? This will grant extra privileges."
+            onConfirm={() => updateAllow(true)}
+            buttonLabel="Allow Level 4"
+            buttonClassName="bg-green-500 hover:bg-green-600 text-white"
+          />
+        )
+      )}
+    </div>
+  );
 }
 
 interface LoaderData {
@@ -58,77 +112,8 @@ interface LoaderData {
     phone: string;
     trainingCardUserNumber: string;
     roleLevel: number;
+    allowLevel4: boolean;
   }>;
-}
-
-/**
- * RoleControl component:
- * - If the user's roleLevel is 1 or 2, show a dropdown (values: 1,2,3).
- * - If roleLevel is 3, show the dropdown and a button "Enable Level 4".
- * - If roleLevel is 4, display the number 4 (read-only) with a "Revoke Level 4" button.
- */
-function RoleControl({ user }: { user: { id: number; roleLevel: number } }) {
-  const [currentRole, setCurrentRole] = useState<number>(user.roleLevel);
-
-  const updateRole = async (newRole: number) => {
-    const formData = new FormData();
-    formData.append("action", "updateUserRole");
-    formData.append("userId", user.id.toString());
-    formData.append("newRoleId", newRole.toString());
-    await fetch("/dashboard/admin/users", {
-      method: "POST",
-      body: formData,
-    });
-    setCurrentRole(newRole);
-    // Optionally, you can reload the page:
-    // window.location.reload();
-  };
-
-  if (currentRole === 4) {
-    return (
-      <div className="flex items-center gap-2">
-        <span className="font-semibold">4</span>
-        <ConfirmButton
-          confirmTitle="Confirm Revoke Level 4"
-          confirmDescription="Are you sure you want to revoke Level 4? The user will revert to Level 3."
-          onConfirm={() => updateRole(3)}
-          buttonLabel="Revoke Level 4"
-          buttonClassName="bg-red-500 hover:bg-red-600 text-white"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      <Select
-        defaultValue={String(currentRole)}
-        onValueChange={(value) => {
-          const newVal = Number(value);
-          setCurrentRole(newVal);
-          updateRole(newVal);
-        }}
-      >
-        <SelectTrigger className="w-20">
-          <SelectValue placeholder="Role" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="1">1</SelectItem>
-          <SelectItem value="2">2</SelectItem>
-          <SelectItem value="3">3</SelectItem>
-        </SelectContent>
-      </Select>
-      {currentRole === 3 && (
-        <ConfirmButton
-          confirmTitle="Confirm Enable Level 4"
-          confirmDescription="Are you sure you want to upgrade this user to Level 4?"
-          onConfirm={() => updateRole(4)}
-          buttonLabel="Enable Level 4"
-          buttonClassName="bg-green-500 hover:bg-green-600 text-white"
-        />
-      )}
-    </div>
-  );
 }
 
 export default function AllUsersRegistered() {
@@ -162,11 +147,8 @@ export default function AllUsersRegistered() {
     { header: "Last Name", render: (user) => user.lastName },
     { header: "Email", render: (user) => user.email },
     { header: "Phone Number", render: (user) => user.phone },
-    {
-      header: "Training Card User Number",
-      render: (user) => user.trainingCardUserNumber,
-    },
-    { header: "Role Level Id", render: (user) => <RoleControl user={user} /> },
+    { header: "Training Card User Number", render: (user) => user.trainingCardUserNumber },
+    { header: "Role Level", render: (user) => <RoleControl user={user} /> },
   ];
 
   return (

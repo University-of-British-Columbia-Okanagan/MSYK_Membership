@@ -26,6 +26,7 @@ import {
   updateWorkshopWithOccurrences,
   cancelWorkshopOccurrence,
   getWorkshops,
+  getWorkshopContinuationUserCount,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import {
@@ -54,6 +55,7 @@ interface Occurrence {
   endDatePST?: Date;
   status?: string;
   userCount?: number;
+  connectId?: number | null;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -63,6 +65,9 @@ export async function loader({ params }: { params: { workshopId: string } }) {
   const workshop = await getWorkshopById(Number(params.workshopId));
   const availableWorkshops = await getWorkshops();
   const availableEquipments = await getAvailableEquipment();
+  const userCounts = await getWorkshopContinuationUserCount(
+    Number(params.workshopId)
+  );
 
   if (!workshop) {
     throw new Response("Workshop Not Found", { status: 404 });
@@ -72,6 +77,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
     workshop,
     availableWorkshops,
     availableEquipments,
+    userCounts,
   };
 }
 
@@ -92,13 +98,29 @@ export async function action({
   // Check if this submission is a cancellation request.
   if (rawValues.cancelOccurrenceId) {
     const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
+    const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+
     try {
-      await cancelWorkshopOccurrence(occurrenceId);
+      if (isWorkshopContinuation) {
+        // Get all active occurrences for this workshop and cancel them
+        const workshop = await getWorkshopById(Number(params.workshopId));
+        const activeOccurrences = workshop.occurrences.filter(
+          (occ: any) => occ.status === "active"
+        );
+
+        // Cancel all active occurrences
+        for (const occ of activeOccurrences) {
+          await cancelWorkshopOccurrence(occ.id);
+        }
+      } else {
+        // Cancel just the specified occurrence
+        await cancelWorkshopOccurrence(occurrenceId);
+      }
     } catch (error) {
-      console.error("Error cancelling occurrence:", error);
-      return { errors: { cancel: ["Failed to cancel occurrence"] } };
+      console.error("Error cancelling occurrence(s):", error);
+      return { errors: { cancel: ["Failed to cancel occurrence(s)"] } };
     }
-    return redirect("/admindashboardlayout");
+    return redirect("/dashboard/admin");
   }
 
   // Convert price & capacity
@@ -108,6 +130,8 @@ export async function action({
     Number
   );
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
+
+  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
 
   let occurrences: {
     id?: number;
@@ -172,6 +196,7 @@ export async function action({
     occurrences,
     prerequisites,
     equipments,
+    isWorkshopContinuation,
   });
 
   if (!parsed.success) {
@@ -190,6 +215,7 @@ export async function action({
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
       equipments: parsed.data.equipments,
+      isWorkshopContinuation: parsed.data.isWorkshopContinuation,
     });
   } catch (error) {
     console.error("Error updating workshop:", error);
@@ -226,6 +252,7 @@ function formatLocalDatetime(date: Date): string {
 
 function handleCancelOccurrence(occurrenceId?: number) {
   if (!occurrenceId) return;
+
   // Set the hidden input's value.
   const cancelInput = document.getElementById(
     "cancelOccurrenceId"
@@ -233,6 +260,7 @@ function handleCancelOccurrence(occurrenceId?: number) {
   if (cancelInput) {
     cancelInput.value = occurrenceId.toString();
   }
+
   // Use the native submit() method to trigger the form submission.
   const formEl = document.querySelector("form") as HTMLFormElement;
   formEl?.submit();
@@ -244,7 +272,7 @@ function handleCancelOccurrence(occurrenceId?: number) {
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
   // const workshop = useLoaderData<typeof loader>();
-  const { workshop, availableWorkshops, availableEquipments } =
+  const { workshop, availableWorkshops, availableEquipments, userCounts } =
     useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
@@ -252,15 +280,18 @@ export default function EditWorkshop() {
     workshop.occurrences?.map((occ: any) => {
       const localStart = new Date(occ.startDate);
       const localEnd = new Date(occ.endDate);
-      // We interpret them in UTC (NOT DOING THIS ANYMORE), so to show local we just use them directly as Date
       return {
         id: occ.id,
         startDate: localStart,
         endDate: localEnd,
         status: occ.status,
         userCount: occ.userWorkshops?.length ?? 0,
-      }; // EDITED TO SHOW LOCAL START, LOCAL END
+        connectId: occ.connectId, // ADDED: include connectId from DB
+      };
     }) || [];
+
+  const defaultContinuation =
+    initialOccurrences.some((occ) => occ.connectId != null) || false;
 
   // React Hook Form setup
   const form = useForm<WorkshopFormValues>({
@@ -284,6 +315,7 @@ export default function EditWorkshop() {
         typeof workshop.equipments[0] === "object"
           ? workshop.equipments.map((e: any) => e.equipmentId)
           : workshop.equipments || [],
+      isWorkshopContinuation: defaultContinuation,
     },
   });
 
@@ -316,6 +348,9 @@ export default function EditWorkshop() {
       : workshop.equipments || []
   );
 
+  const [isWorkshopContinuation, setIsWorkshopContinuation] =
+    useState<boolean>(defaultContinuation);
+
   // Let's track the date selection approach (custom, weekly, monthly).
   // Default to "custom" if we already have occurrences, but you can tweak if desired.
   const [dateSelectionType, setDateSelectionType] = useState<
@@ -335,7 +370,29 @@ export default function EditWorkshop() {
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
   // For custom approach, add an empty row
+  // For custom approach, add an empty row
   const addOccurrence = () => {
+    // Check if any users are registered
+    let hasUsers = false;
+
+    if (isWorkshopContinuation) {
+      // For workshop continuation, check total users across all occurrences
+      hasUsers = userCounts.totalUsers > 0;
+    } else {
+      // For regular workshops, check each occurrence
+      hasUsers = occurrences.some((occ) => occ.userCount && occ.userCount > 0);
+    }
+
+    // If users are registered, show confirmation dialog
+    if (hasUsers) {
+      const confirmed = window.confirm(
+        "Are you sure you want to add new dates? There are users registered."
+      );
+      if (!confirmed) {
+        return; // Exit if the user cancels
+      }
+    }
+
     const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
     const updatedOccurrences = [...occurrences, newOccurrence];
 
@@ -450,6 +507,14 @@ export default function EditWorkshop() {
     form.setValue("equipments", updated);
   };
 
+  const getTotalUsersForContinuation = () => {
+    return userCounts.totalUsers;
+  };
+
+  const getUniqueUsersCount = () => {
+    return userCounts.uniqueUsers;
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Edit Workshop</h1>
@@ -513,6 +578,23 @@ export default function EditWorkshop() {
             type="number"
             error={actionData?.errors?.capacity}
           />
+
+          {/* "Is Workshop Continuation" Checkbox */}
+          <div className="mt-4">
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={isWorkshopContinuation}
+                onChange={(e) => {
+                  setIsWorkshopContinuation(e.target.checked);
+                  form.setValue("isWorkshopContinuation", e.target.checked);
+                }}
+                className="form-checkbox"
+                disabled={true}
+              />
+              <span className="ml-2 text-sm">Is Workshop Continuation</span>
+            </label>
+          </div>
 
           {/* Occurrences (Dates) with Tabs */}
           <FormField
@@ -635,6 +717,17 @@ export default function EditWorkshop() {
                                         );
                                       const hasUsers =
                                         occ.userCount && occ.userCount > 0;
+
+                                      // For workshop continuations, we'll display user count and cancel button only on the first occurrence
+                                      const isFirstActiveOccurrence =
+                                        index === 0;
+                                      const shouldShowUserCount =
+                                        !isWorkshopContinuation ||
+                                        isFirstActiveOccurrence;
+                                      const shouldShowCancelButton =
+                                        !isWorkshopContinuation ||
+                                        isFirstActiveOccurrence;
+
                                       return (
                                         <div
                                           key={index}
@@ -654,33 +747,105 @@ export default function EditWorkshop() {
                                             </div>
                                           </div>
                                           <div className="flex items-center">
-                                            <span className="mr-2 text-sm font-bold text-gray-800">
-                                              {occ.userCount ?? 0} users
-                                              registered
-                                            </span>
-                                            {hasUsers ? (
-                                              <ConfirmButton
-                                                confirmTitle="Cancel Occurrence"
-                                                confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
-                                                onConfirm={() =>
-                                                  handleCancelOccurrence(occ.id)
-                                                }
-                                                buttonLabel="Cancel"
-                                                buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
-                                              />
-                                            ) : (
-                                              <ConfirmButton
-                                                confirmTitle="Delete Occurrence"
-                                                confirmDescription="Are you sure you want to delete this occurrence?"
-                                                onConfirm={() =>
-                                                  removeOccurrence(
-                                                    originalIndex
-                                                  )
-                                                }
-                                                buttonLabel="X"
-                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                              />
+                                            {shouldShowUserCount && (
+                                              <span className="mr-2 ml-2 text-sm font-bold text-gray-800">
+                                                {isWorkshopContinuation
+                                                  ? `${userCounts.totalUsers} users (${userCounts.uniqueUsers} unique users)`
+                                                  : `${
+                                                      occ.userCount ?? 0
+                                                    } users registered`}
+                                              </span>
                                             )}
+                                            {shouldShowCancelButton ? (
+                                              hasUsers ||
+                                              (isWorkshopContinuation &&
+                                                userCounts.totalUsers > 0) ? (
+                                                <ConfirmButton
+                                                  confirmTitle={
+                                                    isWorkshopContinuation
+                                                      ? "Cancel All Occurrences"
+                                                      : "Cancel Occurrence"
+                                                  }
+                                                  confirmDescription={
+                                                    isWorkshopContinuation
+                                                      ? "Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
+                                                      : "Are you sure you want to cancel this occurrence? This action cannot be undone."
+                                                  }
+                                                  onConfirm={() => {
+                                                    if (
+                                                      isWorkshopContinuation
+                                                    ) {
+                                                      // Cancel all active occurrences for workshop continuations
+                                                      activeOccurrences.forEach(
+                                                        (occurrence) => {
+                                                          if (occurrence.id) {
+                                                            handleCancelOccurrence(
+                                                              occurrence.id
+                                                            );
+                                                          }
+                                                        }
+                                                      );
+                                                    } else {
+                                                      // Cancel just this occurrence for regular workshops
+                                                      handleCancelOccurrence(
+                                                        occ.id
+                                                      );
+                                                    }
+                                                  }}
+                                                  buttonLabel={
+                                                    isWorkshopContinuation
+                                                      ? "Cancel All"
+                                                      : "Cancel"
+                                                  }
+                                                  buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+                                                />
+                                              ) : (
+                                                <ConfirmButton
+                                                  confirmTitle={
+                                                    isWorkshopContinuation
+                                                      ? "Delete All Occurrences"
+                                                      : "Delete Occurrence"
+                                                  }
+                                                  confirmDescription={
+                                                    isWorkshopContinuation
+                                                      ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
+                                                      : "Are you sure you want to delete this occurrence?"
+                                                  }
+                                                  onConfirm={() => {
+                                                    if (
+                                                      isWorkshopContinuation
+                                                    ) {
+                                                      // Create a new array without any of the active occurrences
+                                                      const remainingOccurrences =
+                                                        occurrences.filter(
+                                                          (occ) =>
+                                                            occ.status !==
+                                                            "active"
+                                                        );
+                                                      // Set the new filtered array of occurrences
+                                                      setOccurrences(
+                                                        remainingOccurrences
+                                                      );
+                                                      form.setValue(
+                                                        "occurrences",
+                                                        remainingOccurrences
+                                                      );
+                                                    } else {
+                                                      // Remove just this occurrence
+                                                      removeOccurrence(
+                                                        originalIndex
+                                                      );
+                                                    }
+                                                  }}
+                                                  buttonLabel={
+                                                    isWorkshopContinuation
+                                                      ? "Delete All"
+                                                      : "X"
+                                                  }
+                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                />
+                                              )
+                                            ) : null}
                                           </div>
                                         </div>
                                       );
@@ -895,6 +1060,11 @@ export default function EditWorkshop() {
             type="hidden"
             name="equipments"
             value={JSON.stringify(selectedEquipments || [])}
+          />
+          <input
+            type="hidden"
+            name="isWorkshopContinuation"
+            value={isWorkshopContinuation ? "true" : "false"}
           />
 
           <Button

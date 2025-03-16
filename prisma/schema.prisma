@@ -41,14 +41,12 @@ model User {
   roleUser   RoleUser @relation(fields: [roleUserId], references: [id])
 
   roleLevel Int @default(1)
-
-  //Membership Connection
-  membershipId Int? // Nullable: some users may not have a membership
-  membership   MembershipPlan? @relation(fields: [membershipId], references: [id])
+  allowLevel4 Boolean @default(false)
 
   // Relationships
   userWorkshops     UserWorkshop[]
   equipmentbookings EquipmentBooking[]
+  userMemberships UserMembership[] 
 }
 
 model RoleUser {
@@ -108,6 +106,7 @@ model WorkshopOccurrence {
 
   workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   userWorkshops UserWorkshop[]
+  connectId    Int?
 
   @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
 }
@@ -188,6 +187,16 @@ model MembershipPlan {
 
   type String // "monthly", "one-time", "limited", "24/7"
 
-  //One membership can have multiple users
-  users User[]
+  userMemberships UserMembership[] 
+}
+
+model UserMembership {
+  id               Int             @id @default(autoincrement())
+  userId           Int             @unique
+  membershipPlanId Int
+
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
 }

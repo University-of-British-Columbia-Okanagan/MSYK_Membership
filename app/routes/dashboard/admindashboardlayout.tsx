@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
@@ -15,9 +15,7 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
-import { FiPlus, FiSearch } from "react-icons/fi";
-import { Input } from "@/components/ui/input";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { FiPlus } from "react-icons/fi";
 
 // Import your new ShadTable
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
@@ -142,6 +140,31 @@ export default function AdminDashboard() {
     roleUser.roleId === 2 &&
     roleUser.roleName.toLowerCase() === "admin";
 
+  // New filtering logic based on current date
+  const now = new Date();
+
+  const activeWorkshops = workshops.filter(
+    (event) =>
+      event.type === "workshop" &&
+      event.occurrences.some(
+        (occurrence) => new Date(occurrence.endDate) >= now
+      )
+  );
+
+  const activeOrientations = workshops.filter(
+    (event) =>
+      event.type === "orientation" &&
+      event.occurrences.some(
+        (occurrence) => new Date(occurrence.endDate) >= now
+      )
+  );
+
+  const pastEvents = workshops.filter((event) =>
+    event.occurrences.every(
+      (occurrence) => new Date(occurrence.endDate) < now
+    )
+  );
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
@@ -155,7 +178,38 @@ export default function AdminDashboard() {
             </Link>
           </div>
 
-          <WorkshopList title="Workshops" workshops={workshops} isAdmin={true} />
+          {/* Active Workshops Section */}
+          {activeWorkshops.length > 0 ? (
+            <WorkshopList
+              title="Active Workshops"
+              workshops={activeWorkshops}
+              isAdmin={true}
+            />
+          ) : (
+            <p className="text-gray-600 mt-4">No active workshops available.</p>
+          )}
+
+          {/* Active Orientations Section */}
+          {activeOrientations.length > 0 ? (
+            <WorkshopList
+              title="Active Orientations"
+              workshops={activeOrientations}
+              isAdmin={true}
+            />
+          ) : (
+            <p className="text-gray-600 mt-4">No active orientations available.</p>
+          )}
+
+          {/* Past Events Section */}
+          {pastEvents.length > 0 ? (
+            <WorkshopList
+              title="Past Events"
+              workshops={pastEvents}
+              isAdmin={true}
+            />
+          ) : (
+            <p className="text-gray-600 mt-4">No past events available.</p>
+          )}
 
           <Outlet />
         </main>
