@@ -299,26 +299,38 @@ export async function updateWorkshopWithOccurrences(
   const updateIds = updateOccurrences.map((o) => o.id!);
   const deleteIds = existingIds.filter((id) => !updateIds.includes(id));
 
+  // Store new occurrence IDs for later use with user registration
+  let newOccurrenceIds: number[] = [];
+
   if (createOccurrences.length > 0) {
     const now = new Date();
-    await db.workshopOccurrence.createMany({
-      data: createOccurrences.map((occ) => {
+    const createdOccurrences = await Promise.all(
+      createOccurrences.map(async (occ) => {
         const status =
           occ.status === "cancelled"
             ? "cancelled"
             : occ.startDate >= now
             ? "active"
             : "past";
-        return {
-          workshopId,
-          startDate: occ.startDate,
-          endDate: occ.endDate,
-          startDatePST: occ.startDatePST,
-          endDatePST: occ.endDatePST,
-          status,
-        };
-      }),
-    });
+        
+        // Create each occurrence individually to get its ID
+        const createdOcc = await db.workshopOccurrence.create({
+          data: {
+            workshopId,
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+            startDatePST: occ.startDatePST,
+            endDatePST: occ.endDatePST,
+            status,
+          },
+        });
+        
+        return createdOcc;
+      })
+    );
+    
+    // Store the IDs of newly created occurrences
+    newOccurrenceIds = createdOccurrences.map(occ => occ.id);
   }
 
   for (const occ of updateOccurrences) {
@@ -348,25 +360,105 @@ export async function updateWorkshopWithOccurrences(
     });
   }
 
+  let isWorkshopContinuation = data.isWorkshopContinuation;
+  let currentConnectId = null;
+
   if (typeof data.isWorkshopContinuation === "boolean") {
     if (data.isWorkshopContinuation) {
       // If user CHECKED the box, assign a new connectId for all occurrences
-      const maxResult = await db.workshopOccurrence.aggregate({
-        _max: { connectId: true },
+      // First check if there's already a connectId assigned to existing occurrences
+      const existingConnectId = await db.workshopOccurrence.findFirst({
+        where: { workshopId, connectId: { not: null } },
+        select: { connectId: true },
       });
-      const currentMax = maxResult._max.connectId ?? 0;
-      const newConnectId = currentMax + 1;
-
-      await db.workshopOccurrence.updateMany({
-        where: { workshopId },
-        data: { connectId: newConnectId },
-      });
+      
+      if (existingConnectId && existingConnectId.connectId) {
+        // Use existing connectId to maintain continuity
+        currentConnectId = existingConnectId.connectId;
+        await db.workshopOccurrence.updateMany({
+          where: { workshopId },
+          data: { connectId: currentConnectId },
+        });
+      } else {
+        // Create a new connectId if none exists
+        const maxResult = await db.workshopOccurrence.aggregate({
+          _max: { connectId: true },
+        });
+        const currentMax = maxResult._max.connectId ?? 0;
+        currentConnectId = currentMax + 1;
+        await db.workshopOccurrence.updateMany({
+          where: { workshopId },
+          data: { connectId: currentConnectId },
+        });
+      }
     } else {
       // If user UNCHECKED the box, set connectId to null for all occurrences
       await db.workshopOccurrence.updateMany({
         where: { workshopId },
         data: { connectId: null },
       });
+    }
+  } else {
+    // Check if this is a workshop continuation by looking at existing occurrences
+    const existingConnectId = await db.workshopOccurrence.findFirst({
+      where: { workshopId, connectId: { not: null } },
+      select: { connectId: true },
+    });
+    
+    if (existingConnectId && existingConnectId.connectId) {
+      isWorkshopContinuation = true;
+      currentConnectId = existingConnectId.connectId;
+    }
+  }
+
+  // Handle auto-registration of existing users to new occurrences for workshop continuations
+  if (isWorkshopContinuation && newOccurrenceIds.length > 0) {
+    // Only proceed if there are new occurrences and this is a workshop continuation
+    
+    // 1. Find all unique users who are registered to any occurrence of this workshop
+    const existingRegistrations = await db.userWorkshop.findMany({
+      where: {
+        workshopId,
+        occurrence: {
+          status: "active",
+        },
+      },
+      select: {
+        userId: true,
+      },
+      distinct: ['userId'],
+    });
+    
+    const uniqueUserIds = existingRegistrations.map(reg => reg.userId);
+    
+    // 2. If there are existing users, register them to all new occurrences
+    if (uniqueUserIds.length > 0) {
+      for (const occurrenceId of newOccurrenceIds) {
+        // Check if the occurrence is active before registering users
+        const occurrenceStatus = await db.workshopOccurrence.findUnique({
+          where: { id: occurrenceId },
+          select: { status: true },
+        });
+        
+        if (occurrenceStatus && occurrenceStatus.status === "active") {
+          // Register each user to this new occurrence
+          for (const userId of uniqueUserIds) {
+            try {
+              await db.userWorkshop.create({
+                data: {
+                  userId,
+                  workshopId,
+                  occurrenceId,
+                  result: "passed", // Default value
+                },
+              });
+            } catch (error) {
+              // Handle potential unique constraint violations
+              console.log(`Could not register user ${userId} to occurrence ${occurrenceId}: ${error}`);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -994,42 +1086,57 @@ export async function registerUserForAllOccurrences(
 }
 
 export async function getWorkshopContinuationUserCount(workshopId: number) {
-  // Find all occurrences for this workshop
+  // Get the workshop with all occurrences and userWorkshops
   const workshop = await db.workshop.findUnique({
-    where: {
-      id: workshopId,
-    },
+    where: { id: workshopId },
     include: {
       occurrences: {
         include: {
-          userWorkshops: true,
+          userWorkshops: {
+            select: {
+              userId: true,
+            },
+          },
         },
       },
     },
   });
 
-  if (!workshop || !workshop.occurrences) {
+  if (!workshop) {
     return { totalUsers: 0, uniqueUsers: 0 };
   }
 
-  // Count total registrations
-  const totalUsers = workshop.occurrences.reduce(
-    (total, occ) => total + (occ.userWorkshops?.length || 0),
-    0
-  );
+  // Check if this is a workshop continuation by looking at connectId in occurrences
+  const isWorkshopContinuation = workshop.occurrences.some(occ => occ.connectId === workshopId);
 
-  // Count unique users (using a Set to track unique IDs)
-  const uniqueUserIds = new Set();
-  workshop.occurrences.forEach((occ) => {
-    if (occ.userWorkshops && Array.isArray(occ.userWorkshops)) {
-      occ.userWorkshops.forEach((userWorkshop) => {
-        uniqueUserIds.add(userWorkshop.userId);
-      });
-    }
-  });
-
-  return {
-    totalUsers,
-    uniqueUsers: uniqueUserIds.size,
-  };
+  if (!isWorkshopContinuation) {
+    // For regular workshops, just count total registrations and unique users
+    const totalUsers = workshop.occurrences.reduce(
+      (sum, occ) => sum + occ.userWorkshops.length,
+      0
+    );
+    
+    // Get unique user IDs across all occurrences
+    const allUserIds = workshop.occurrences.flatMap(occ => 
+      occ.userWorkshops.map(uw => uw.userId)
+    );
+    const uniqueUsers = new Set(allUserIds).size;
+    
+    return { totalUsers, uniqueUsers };
+  } else {
+    // For workshop continuations, calculate differently
+    // Get unique users
+    const allUserIds = workshop.occurrences.flatMap(occ => 
+      occ.userWorkshops.map(uw => uw.userId)
+    );
+    const uniqueUserIds = [...new Set(allUserIds)];
+    const uniqueUsers = uniqueUserIds.length;
+    
+    // For continuations, total users is unique users × number of occurrences
+    // This represents what would be shown after auto-registration
+    const activeOccurrences = workshop.occurrences.filter(occ => occ.status === "active").length;
+    const totalUsers = uniqueUsers * activeOccurrences;
+    
+    return { totalUsers, uniqueUsers };
+  }
 }
