@@ -26,6 +26,7 @@ import {
   updateWorkshopWithOccurrences,
   cancelWorkshopOccurrence,
   getWorkshops,
+  getWorkshopContinuationUserCount,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import {
@@ -64,6 +65,9 @@ export async function loader({ params }: { params: { workshopId: string } }) {
   const workshop = await getWorkshopById(Number(params.workshopId));
   const availableWorkshops = await getWorkshops();
   const availableEquipments = await getAvailableEquipment();
+  const userCounts = await getWorkshopContinuationUserCount(
+    Number(params.workshopId)
+  );
 
   if (!workshop) {
     throw new Response("Workshop Not Found", { status: 404 });
@@ -73,6 +77,7 @@ export async function loader({ params }: { params: { workshopId: string } }) {
     workshop,
     availableWorkshops,
     availableEquipments,
+    userCounts,
   };
 }
 
@@ -267,7 +272,7 @@ function handleCancelOccurrence(occurrenceId?: number) {
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
   // const workshop = useLoaderData<typeof loader>();
-  const { workshop, availableWorkshops, availableEquipments } =
+  const { workshop, availableWorkshops, availableEquipments, userCounts } =
     useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
@@ -481,35 +486,11 @@ export default function EditWorkshop() {
   };
 
   const getTotalUsersForContinuation = () => {
-    // For workshop continuations, sum up all user counts
-    if (isWorkshopContinuation) {
-      return occurrences.reduce(
-        (total, occ) => total + (occ.userCount || 0),
-        0
-      );
-    }
-    return 0;
+    return userCounts.totalUsers;
   };
 
   const getUniqueUsersCount = () => {
-    if (!isWorkshopContinuation || !workshop.occurrences) {
-      return 0;
-    }
-
-    // Create a Set of unique user IDs
-    const uniqueUserIds = new Set();
-
-    // For each occurrence, add all user IDs to the Set
-    workshop.occurrences.forEach((occ) => {
-      if (occ.userWorkshops && Array.isArray(occ.userWorkshops)) {
-        occ.userWorkshops.forEach((userWorkshop) => {
-          uniqueUserIds.add(userWorkshop.userId);
-        });
-      }
-    });
-
-    // Return the size of the Set, which is the number of unique users
-    return uniqueUserIds.size;
+    return userCounts.uniqueUsers;
   };
 
   return (
@@ -587,6 +568,7 @@ export default function EditWorkshop() {
                   form.setValue("isWorkshopContinuation", e.target.checked);
                 }}
                 className="form-checkbox"
+                disabled={true}
               />
               <span className="ml-2 text-sm">Is Workshop Continuation</span>
             </label>
@@ -746,7 +728,7 @@ export default function EditWorkshop() {
                                             {shouldShowUserCount && (
                                               <span className="mr-2 ml-2 text-sm font-bold text-gray-800">
                                                 {isWorkshopContinuation
-                                                  ? `${getTotalUsersForContinuation()} users (${getUniqueUsersCount()} unique users)`
+                                                  ? `${userCounts.totalUsers} users (${userCounts.uniqueUsers} unique users)`
                                                   : `${
                                                       occ.userCount ?? 0
                                                     } users registered`}
@@ -754,7 +736,8 @@ export default function EditWorkshop() {
                                             )}
                                             {shouldShowCancelButton ? (
                                               hasUsers ||
-                                              isWorkshopContinuation ? (
+                                              (isWorkshopContinuation &&
+                                                userCounts.totalUsers > 0) ? (
                                                 <ConfirmButton
                                                   confirmTitle={
                                                     isWorkshopContinuation
@@ -796,16 +779,28 @@ export default function EditWorkshop() {
                                                 />
                                               ) : (
                                                 <ConfirmButton
-                                                  confirmTitle="Delete Occurrence"
-                                                  confirmDescription="Are you sure you want to delete this occurrence?"
-                                                  onConfirm={() =>
-                                                    removeOccurrence(
-                                                      originalIndex
-                                                    )
+                                                confirmTitle={isWorkshopContinuation ? "Delete All Occurrences" : "Delete Occurrence"}
+                                                confirmDescription={isWorkshopContinuation 
+                                                  ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone." 
+                                                  : "Are you sure you want to delete this occurrence?"
+                                                }
+                                                onConfirm={() => {
+                                                  if (isWorkshopContinuation) {
+                                                    // Create a new array without any of the active occurrences
+                                                    const remainingOccurrences = occurrences.filter(
+                                                      occ => occ.status !== "active"
+                                                    );
+                                                    // Set the new filtered array of occurrences
+                                                    setOccurrences(remainingOccurrences);
+                                                    form.setValue("occurrences", remainingOccurrences);
+                                                  } else {
+                                                    // Remove just this occurrence
+                                                    removeOccurrence(originalIndex);
                                                   }
-                                                  buttonLabel="X"
-                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                                />
+                                                }}
+                                                buttonLabel={isWorkshopContinuation ? "Delete All" : "X"}
+                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                              />
                                               )
                                             ) : null}
                                           </div>
