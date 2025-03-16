@@ -370,7 +370,29 @@ export default function EditWorkshop() {
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
   // For custom approach, add an empty row
+  // For custom approach, add an empty row
   const addOccurrence = () => {
+    // Check if any users are registered
+    let hasUsers = false;
+
+    if (isWorkshopContinuation) {
+      // For workshop continuation, check total users across all occurrences
+      hasUsers = userCounts.totalUsers > 0;
+    } else {
+      // For regular workshops, check each occurrence
+      hasUsers = occurrences.some((occ) => occ.userCount && occ.userCount > 0);
+    }
+
+    // If users are registered, show confirmation dialog
+    if (hasUsers) {
+      const confirmed = window.confirm(
+        "Are you sure you want to add new dates? There are users registered."
+      );
+      if (!confirmed) {
+        return; // Exit if the user cancels
+      }
+    }
+
     const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
     const updatedOccurrences = [...occurrences, newOccurrence];
 
@@ -779,28 +801,49 @@ export default function EditWorkshop() {
                                                 />
                                               ) : (
                                                 <ConfirmButton
-                                                confirmTitle={isWorkshopContinuation ? "Delete All Occurrences" : "Delete Occurrence"}
-                                                confirmDescription={isWorkshopContinuation 
-                                                  ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone." 
-                                                  : "Are you sure you want to delete this occurrence?"
-                                                }
-                                                onConfirm={() => {
-                                                  if (isWorkshopContinuation) {
-                                                    // Create a new array without any of the active occurrences
-                                                    const remainingOccurrences = occurrences.filter(
-                                                      occ => occ.status !== "active"
-                                                    );
-                                                    // Set the new filtered array of occurrences
-                                                    setOccurrences(remainingOccurrences);
-                                                    form.setValue("occurrences", remainingOccurrences);
-                                                  } else {
-                                                    // Remove just this occurrence
-                                                    removeOccurrence(originalIndex);
+                                                  confirmTitle={
+                                                    isWorkshopContinuation
+                                                      ? "Delete All Occurrences"
+                                                      : "Delete Occurrence"
                                                   }
-                                                }}
-                                                buttonLabel={isWorkshopContinuation ? "Delete All" : "X"}
-                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                              />
+                                                  confirmDescription={
+                                                    isWorkshopContinuation
+                                                      ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
+                                                      : "Are you sure you want to delete this occurrence?"
+                                                  }
+                                                  onConfirm={() => {
+                                                    if (
+                                                      isWorkshopContinuation
+                                                    ) {
+                                                      // Create a new array without any of the active occurrences
+                                                      const remainingOccurrences =
+                                                        occurrences.filter(
+                                                          (occ) =>
+                                                            occ.status !==
+                                                            "active"
+                                                        );
+                                                      // Set the new filtered array of occurrences
+                                                      setOccurrences(
+                                                        remainingOccurrences
+                                                      );
+                                                      form.setValue(
+                                                        "occurrences",
+                                                        remainingOccurrences
+                                                      );
+                                                    } else {
+                                                      // Remove just this occurrence
+                                                      removeOccurrence(
+                                                        originalIndex
+                                                      );
+                                                    }
+                                                  }}
+                                                  buttonLabel={
+                                                    isWorkshopContinuation
+                                                      ? "Delete All"
+                                                      : "X"
+                                                  }
+                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                />
                                               )
                                             ) : null}
                                           </div>
