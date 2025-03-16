@@ -759,3 +759,21 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
     },
   });
 }
+
+export async function cancelUserWorkshopRegistration({
+  workshopId,
+  occurrenceId,
+  userId,
+}: {
+  workshopId: number;
+  occurrenceId: number;
+  userId: number;
+}) {
+  return await db.userWorkshop.deleteMany({
+    where: {
+      workshopId,
+      occurrenceId,
+      userId,
+    },
+  });
+}
