@@ -415,3 +415,66 @@ export async function getUserBookedEquipments(userId: number) {
     bookingId: booking.id,
   }));
 }
+export async function getEquipmentAvailabilityGrid(startDate: Date, endDate: Date) {
+  const slots = await db.equipmentSlot.findMany({
+    where: {
+      startTime: { gte: startDate },
+      endTime: { lte: endDate }
+    },
+    include: {
+      equipment: true,
+      workshop: true,
+    },
+    orderBy: { startTime: "asc" }
+  });
+
+  // Convert the slots into a 2D Grid per equipment
+  const grid: Record<string, any[]> = {};
+  slots.forEach((slot) => {
+    const dateKey = slot.startTime.toISOString().split("T")[0]; // Group by date
+    if (!grid[dateKey]) {
+      grid[dateKey] = [];
+    }
+    grid[dateKey].push({
+      id: slot.id,
+      equipment: slot.equipment.name,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      isBooked: slot.isBooked,
+      workshopName: slot.workshop ? slot.workshop.name : null,
+    });
+  });
+
+  return grid;
+}
+
+export async function bulkBookEquipment(workshopId: number, slots: number[]) {
+  
+  const availableSlots = await db.equipmentSlot.findMany({
+    where: {
+      id: { in: slots },
+      isBooked: false,  
+    },
+  });
+
+  if (availableSlots.length !== slots.length) {
+    throw new Error("One or more slots are already booked.");
+  }
+
+  return await db.equipmentSlot.updateMany({
+    where: { id: { in: slots } },
+    data: {
+      isBooked: true,
+      workshopId,
+    },
+  });
+}
+
+export async function setSlotAvailability(slotId: number, isAvailable: boolean) {
+  return await db.equipmentSlot.update({
+    where: { id: slotId },
+    data: {
+      isAvailable,
+    },
+  });
+}
