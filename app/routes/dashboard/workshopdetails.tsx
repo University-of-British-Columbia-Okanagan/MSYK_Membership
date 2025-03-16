@@ -427,12 +427,6 @@ export default function WorkshopDetails() {
                       📅 {new Date(occ.startDate).toLocaleString()} -{" "}
                       {new Date(occ.endDate).toLocaleString()}
                     </p>
-                    {/* Show cancelled badge but not past badge for continuation workshops */}
-                    {occ.status === "cancelled" && (
-                      <Badge className="bg-red-500 text-white mt-2">
-                        Cancelled
-                      </Badge>
-                    )}
                   </div>
                 ))}
               </div>
