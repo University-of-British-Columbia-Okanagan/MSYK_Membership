@@ -16,6 +16,7 @@ interface WorkshopData {
     startDatePST?: Date;
     endDatePST?: Date;
   }[];
+  isWorkshopContinuation?: boolean;
 }
 
 interface OccurrenceData {
@@ -38,6 +39,7 @@ interface UpdateWorkshopData {
   prerequisites?: number[];
   equipments?: number[];
   occurrences: OccurrenceData[];
+  isWorkshopContinuation: boolean;
 }
 
 /**
@@ -89,7 +91,18 @@ export async function addWorkshop(data: WorkshopData) {
       },
     });
 
-    // Insert occurrences
+    // Determine a common connectId if the workshop is a continuation
+    let newConnectId: number | null = null;
+    if (data.isWorkshopContinuation) {
+      // Aggregate the current maximum connectId in the workshopOccurrence table
+      const maxResult = await db.workshopOccurrence.aggregate({
+        _max: { connectId: true },
+      });
+      // If there is no connectId yet, start from 1; otherwise, increment the max value by 1
+      newConnectId = ((maxResult._max.connectId as number) || 0) + 1;
+    }
+
+    // Insert occurrences with the common connectId if applicable
     const occurrences = await Promise.all(
       data.occurrences.map((occ) =>
         db.workshopOccurrence.create({
@@ -100,6 +113,7 @@ export async function addWorkshop(data: WorkshopData) {
             startDatePST: occ.startDatePST,
             endDatePST: occ.endDatePST,
             status: occ.startDate >= new Date() ? "active" : "past",
+            connectId: newConnectId, // will be null if not a continuation
           },
         })
       )
@@ -332,6 +346,28 @@ export async function updateWorkshopWithOccurrences(
     await db.workshopOccurrence.deleteMany({
       where: { id: { in: deleteIds } },
     });
+  }
+
+  if (typeof data.isWorkshopContinuation === "boolean") {
+    if (data.isWorkshopContinuation) {
+      // If user CHECKED the box, assign a new connectId for all occurrences
+      const maxResult = await db.workshopOccurrence.aggregate({
+        _max: { connectId: true },
+      });
+      const currentMax = maxResult._max.connectId ?? 0;
+      const newConnectId = currentMax + 1;
+
+      await db.workshopOccurrence.updateMany({
+        where: { workshopId },
+        data: { connectId: newConnectId },
+      });
+    } else {
+      // If user UNCHECKED the box, set connectId to null for all occurrences
+      await db.workshopOccurrence.updateMany({
+        where: { workshopId },
+        data: { connectId: null },
+      });
+    }
   }
 
   // 4) Return updated workshop

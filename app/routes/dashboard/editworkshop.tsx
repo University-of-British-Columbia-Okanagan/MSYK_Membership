@@ -54,6 +54,7 @@ interface Occurrence {
   endDatePST?: Date;
   status?: string;
   userCount?: number;
+  connectId?: number | null;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -108,6 +109,8 @@ export async function action({
     Number
   );
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
+
+  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
 
   let occurrences: {
     id?: number;
@@ -172,6 +175,7 @@ export async function action({
     occurrences,
     prerequisites,
     equipments,
+    isWorkshopContinuation,
   });
 
   if (!parsed.success) {
@@ -190,6 +194,7 @@ export async function action({
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
       equipments: parsed.data.equipments,
+      isWorkshopContinuation: parsed.data.isWorkshopContinuation,
     });
   } catch (error) {
     console.error("Error updating workshop:", error);
@@ -252,15 +257,17 @@ export default function EditWorkshop() {
     workshop.occurrences?.map((occ: any) => {
       const localStart = new Date(occ.startDate);
       const localEnd = new Date(occ.endDate);
-      // We interpret them in UTC (NOT DOING THIS ANYMORE), so to show local we just use them directly as Date
       return {
         id: occ.id,
         startDate: localStart,
         endDate: localEnd,
         status: occ.status,
         userCount: occ.userWorkshops?.length ?? 0,
-      }; // EDITED TO SHOW LOCAL START, LOCAL END
+        connectId: occ.connectId, // ADDED: include connectId from DB
+      };
     }) || [];
+
+  const defaultContinuation = initialOccurrences.some((occ) => occ.connectId != null) || false;
 
   // React Hook Form setup
   const form = useForm<WorkshopFormValues>({
@@ -284,6 +291,7 @@ export default function EditWorkshop() {
         typeof workshop.equipments[0] === "object"
           ? workshop.equipments.map((e: any) => e.equipmentId)
           : workshop.equipments || [],
+      isWorkshopContinuation: defaultContinuation,
     },
   });
 
@@ -314,6 +322,10 @@ export default function EditWorkshop() {
       typeof workshop.equipments[0] === "object"
       ? workshop.equipments.map((e: any) => e.equipmentId)
       : workshop.equipments || []
+  );
+
+  const [isWorkshopContinuation, setIsWorkshopContinuation] = useState<boolean>(
+    defaultContinuation
   );
 
   // Let's track the date selection approach (custom, weekly, monthly).
@@ -513,6 +525,22 @@ export default function EditWorkshop() {
             type="number"
             error={actionData?.errors?.capacity}
           />
+
+          {/* "Is Workshop Continuation" Checkbox */}
+          <div className="mt-4">
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                checked={isWorkshopContinuation}
+                onChange={(e) => {
+                  setIsWorkshopContinuation(e.target.checked);
+                  form.setValue("isWorkshopContinuation", e.target.checked);
+                }}
+                className="form-checkbox"
+              />
+              <span className="ml-2 text-sm">Is Workshop Continuation</span>
+            </label>
+          </div>
 
           {/* Occurrences (Dates) with Tabs */}
           <FormField
@@ -895,6 +923,11 @@ export default function EditWorkshop() {
             type="hidden"
             name="equipments"
             value={JSON.stringify(selectedEquipments || [])}
+          />
+          <input
+            type="hidden"
+            name="isWorkshopContinuation"
+            value={isWorkshopContinuation ? "true" : "false"}
           />
 
           <Button
