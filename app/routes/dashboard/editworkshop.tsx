@@ -93,13 +93,29 @@ export async function action({
   // Check if this submission is a cancellation request.
   if (rawValues.cancelOccurrenceId) {
     const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
+    const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+    
     try {
-      await cancelWorkshopOccurrence(occurrenceId);
+      if (isWorkshopContinuation) {
+        // Get all active occurrences for this workshop and cancel them
+        const workshop = await getWorkshopById(Number(params.workshopId));
+        const activeOccurrences = workshop.occurrences.filter(
+          (occ: any) => occ.status === "active"
+        );
+        
+        // Cancel all active occurrences
+        for (const occ of activeOccurrences) {
+          await cancelWorkshopOccurrence(occ.id);
+        }
+      } else {
+        // Cancel just the specified occurrence
+        await cancelWorkshopOccurrence(occurrenceId);
+      }
     } catch (error) {
-      console.error("Error cancelling occurrence:", error);
-      return { errors: { cancel: ["Failed to cancel occurrence"] } };
+      console.error("Error cancelling occurrence(s):", error);
+      return { errors: { cancel: ["Failed to cancel occurrence(s)"] } };
     }
-    return redirect("/admindashboardlayout");
+    return redirect("/dashboard/admin");
   }
 
   // Convert price & capacity
@@ -229,19 +245,19 @@ function formatLocalDatetime(date: Date): string {
    4) Other functions
    ---------------------------------------------------------------------------*/
 
-function handleCancelOccurrence(occurrenceId?: number) {
-  if (!occurrenceId) return;
-  // Set the hidden input's value.
-  const cancelInput = document.getElementById(
-    "cancelOccurrenceId"
-  ) as HTMLInputElement;
-  if (cancelInput) {
-    cancelInput.value = occurrenceId.toString();
+   function handleCancelOccurrence(occurrenceId?: number) {
+    if (!occurrenceId) return;
+    
+    // Set the hidden input's value.
+    const cancelInput = document.getElementById("cancelOccurrenceId") as HTMLInputElement;
+    if (cancelInput) {
+      cancelInput.value = occurrenceId.toString();
+    }
+    
+    // Use the native submit() method to trigger the form submission.
+    const formEl = document.querySelector("form") as HTMLFormElement;
+    formEl?.submit();
   }
-  // Use the native submit() method to trigger the form submission.
-  const formEl = document.querySelector("form") as HTMLFormElement;
-  formEl?.submit();
-}
 
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
@@ -462,6 +478,14 @@ export default function EditWorkshop() {
     form.setValue("equipments", updated);
   };
 
+  const getTotalUsersForContinuation = () => {
+    // For workshop continuations, sum up all user counts
+    if (isWorkshopContinuation) {
+      return occurrences.reduce((total, occ) => total + (occ.userCount || 0), 0);
+    }
+    return 0;
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Edit Workshop</h1>
@@ -653,66 +677,76 @@ export default function EditWorkshop() {
                                 activeOccurrences.length > 0 ? (
                                   <div className="space-y-3">
                                     {activeOccurrences.map((occ, index) => {
-                                      const originalIndex =
-                                        occurrences.findIndex(
-                                          (o) =>
-                                            o.startDate.getTime() ===
-                                              occ.startDate.getTime() &&
-                                            o.endDate.getTime() ===
-                                              occ.endDate.getTime()
-                                        );
-                                      const hasUsers =
-                                        occ.userCount && occ.userCount > 0;
-                                      return (
-                                        <div
-                                          key={index}
-                                          className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
-                                        >
-                                          <div className="text-sm">
-                                            <div className="font-medium text-green-700">
-                                              {formatDateForDisplay(
-                                                occ.startDate
-                                              )}
-                                            </div>
-                                            <div className="text-xs text-gray-600">
-                                              to{" "}
-                                              {formatDateForDisplay(
-                                                occ.endDate
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div className="flex items-center">
-                                            <span className="mr-2 text-sm font-bold text-gray-800">
-                                              {occ.userCount ?? 0} users
-                                              registered
-                                            </span>
-                                            {hasUsers ? (
-                                              <ConfirmButton
-                                                confirmTitle="Cancel Occurrence"
-                                                confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
-                                                onConfirm={() =>
-                                                  handleCancelOccurrence(occ.id)
-                                                }
-                                                buttonLabel="Cancel"
-                                                buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
-                                              />
-                                            ) : (
-                                              <ConfirmButton
-                                                confirmTitle="Delete Occurrence"
-                                                confirmDescription="Are you sure you want to delete this occurrence?"
-                                                onConfirm={() =>
-                                                  removeOccurrence(
-                                                    originalIndex
-                                                  )
-                                                }
-                                                buttonLabel="X"
-                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                              />
-                                            )}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
+  const originalIndex = occurrences.findIndex(
+    (o) =>
+      o.startDate.getTime() === occ.startDate.getTime() &&
+      o.endDate.getTime() === occ.endDate.getTime()
+  );
+  const hasUsers = occ.userCount && occ.userCount > 0;
+  
+  // For workshop continuations, we'll display user count and cancel button only on the first occurrence
+  const isFirstActiveOccurrence = index === 0;
+  const shouldShowUserCount = !isWorkshopContinuation || isFirstActiveOccurrence;
+  const shouldShowCancelButton = !isWorkshopContinuation || isFirstActiveOccurrence;
+  
+  return (
+    <div
+      key={index}
+      className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
+    >
+      <div className="text-sm">
+        <div className="font-medium text-green-700">
+          {formatDateForDisplay(occ.startDate)}
+        </div>
+        <div className="text-xs text-gray-600">
+          to {formatDateForDisplay(occ.endDate)}
+        </div>
+      </div>
+      <div className="flex items-center">
+        {shouldShowUserCount && (
+          <span className="mr-2 text-sm font-bold text-gray-800">
+            {isWorkshopContinuation
+              ? `${getTotalUsersForContinuation()} total users registered`
+              : `${occ.userCount ?? 0} users registered`}
+          </span>
+        )}
+        {shouldShowCancelButton ? (
+          hasUsers || isWorkshopContinuation ? (
+            <ConfirmButton
+              confirmTitle={isWorkshopContinuation ? "Cancel All Occurrences" : "Cancel Occurrence"}
+              confirmDescription={isWorkshopContinuation
+                ? "Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
+                : "Are you sure you want to cancel this occurrence? This action cannot be undone."}
+              onConfirm={() => {
+                if (isWorkshopContinuation) {
+                  // Cancel all active occurrences for workshop continuations
+                  activeOccurrences.forEach((occurrence) => {
+                    if (occurrence.id) {
+                      handleCancelOccurrence(occurrence.id);
+                    }
+                  });
+                } else {
+                  // Cancel just this occurrence for regular workshops
+                  handleCancelOccurrence(occ.id);
+                }
+              }}
+              buttonLabel={isWorkshopContinuation ? "Cancel All" : "Cancel"}
+              buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+            />
+          ) : (
+            <ConfirmButton
+              confirmTitle="Delete Occurrence"
+              confirmDescription="Are you sure you want to delete this occurrence?"
+              onConfirm={() => removeOccurrence(originalIndex)}
+              buttonLabel="X"
+              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+            />
+          )
+        ) : null}
+      </div>
+    </div>
+  );
+})}
                                   </div>
                                 ) : (
                                   <div className="text-center py-6 text-gray-500">

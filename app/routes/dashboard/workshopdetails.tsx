@@ -315,14 +315,14 @@ export default function WorkshopDetails() {
       setShowPopup(true);
       return;
     }
-  
+
     if (!hasCompletedAllPrerequisites) {
       setPopupMessage("You must complete all prerequisites first.");
       setPopupType("error");
       setShowPopup(true);
       return;
     }
-  
+
     // Find the first active occurrence that has a non-null connectId
     const firstActiveOccurrence = workshop.occurrences.find(
       (occ: any) =>
@@ -330,18 +330,20 @@ export default function WorkshopDetails() {
         occ.status !== "cancelled" &&
         occ.connectId !== null
     );
-  
+
     if (!firstActiveOccurrence) {
       setPopupMessage("No active occurrences available to register.");
       setPopupType("error");
       setShowPopup(true);
       return;
     }
-  
+
     // Navigate to the payment route using connectId (note the route now includes "connect")
-    navigate(`/dashboard/payment/${workshop.id}/connect/${firstActiveOccurrence.connectId}`);
+    navigate(
+      `/dashboard/payment/${workshop.id}/connect/${firstActiveOccurrence.connectId}`
+    );
   }
-  
+
   function handleCancelAll() {
     if (!user) return;
     // Cancel each active occurrence
@@ -425,14 +427,10 @@ export default function WorkshopDetails() {
                       📅 {new Date(occ.startDate).toLocaleString()} -{" "}
                       {new Date(occ.endDate).toLocaleString()}
                     </p>
+                    {/* Show cancelled badge but not past badge for continuation workshops */}
                     {occ.status === "cancelled" && (
                       <Badge className="bg-red-500 text-white mt-2">
                         Cancelled
-                      </Badge>
-                    )}
-                    {occ.status === "past" && (
-                      <Badge className="bg-gray-500 text-white mt-2">
-                        Past
                       </Badge>
                     )}
                   </div>
@@ -448,14 +446,24 @@ export default function WorkshopDetails() {
                 <Badge className="bg-red-500 text-white px-3 py-1">
                   Cancelled
                 </Badge>
-              ) : isUserRegisteredForAny ? (
-                <>
-                  {(() => {
+              ) : (
+                (() => {
+                  // Check if ANY workshop date has passed the current date
+                  const anyDatePassed = workshop.occurrences.some(
+                    (occ: any) => new Date(occ.endDate) < new Date()
+                  );
+
+                  if (anyDatePassed) {
+                    return (
+                      <Badge className="bg-gray-500 text-white px-3 py-1">
+                        Workshop has passed
+                      </Badge>
+                    );
+                  } else if (isUserRegisteredForAny) {
                     const canCancel =
                       earliestRegDate &&
                       (new Date().getTime() - earliestRegDate.getTime()) /
-                        (1000 * 60 * 60) <
-                        48;
+                        (1000 * 60 * 60) < 48;
                     return (
                       <div className="flex items-center gap-4">
                         <DropdownMenu>
@@ -501,16 +509,18 @@ export default function WorkshopDetails() {
                         </DropdownMenu>
                       </div>
                     );
-                  })()}
-                </>
-              ) : (
-                <Button
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                  onClick={() => handleRegisterAll()}
-                  disabled={!hasCompletedAllPrerequisites}
-                >
-                  Register for Entire Workshop
-                </Button>
+                  } else {
+                    return (
+                      <Button
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                        onClick={() => handleRegisterAll()}
+                        disabled={!hasCompletedAllPrerequisites}
+                      >
+                        Register for Entire Workshop
+                      </Button>
+                    );
+                  }
+                })()
               )}
             </>
           ) : (
@@ -590,14 +600,17 @@ export default function WorkshopDetails() {
                                       // Determine if cancel should be allowed (<48 hours)
                                       const canCancel =
                                         earliestRegDate &&
-                                        (new Date().getTime() - earliestRegDate.getTime()) /
+                                        (new Date().getTime() -
+                                          earliestRegDate.getTime()) /
                                           (1000 * 60 * 60) <
                                           48;
                                       return canCancel ? (
                                         <DropdownMenuItem
                                           onSelect={(e) => {
                                             e.preventDefault();
-                                            setConfirmOccurrenceId(occurrence.id);
+                                            setConfirmOccurrenceId(
+                                              occurrence.id
+                                            );
                                           }}
                                         >
                                           Cancel
@@ -611,7 +624,10 @@ export default function WorkshopDetails() {
                                               </DropdownMenuItem>
                                             </TooltipTrigger>
                                             <TooltipContent>
-                                              <p>48 hours have passed; cannot cancel.</p>
+                                              <p>
+                                                48 hours have passed; cannot
+                                                cancel.
+                                              </p>
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
