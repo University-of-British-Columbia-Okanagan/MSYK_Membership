@@ -137,42 +137,47 @@ model UserWorkshop {
 }
 
 model Equipment {
-  id           Int      @id @default(autoincrement())
-  name         String   @unique
-  description  String
-  price        Float    @default(0.0)
-  availability Boolean  @default(true) 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  imageUrl     String?  // New field to store equipment images (nullable)
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  price       Float
+  availability Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  imageUrl    String?
 
-  bookings EquipmentBooking[] 
-  slots    EquipmentSlot[] 
+  slots       EquipmentSlot[]
+  bookings    EquipmentBooking[]
 }
 
 model EquipmentSlot {
-  id          Int      @id @default(autoincrement())
-  equipmentId Int
-  startTime   DateTime 
-  endTime     DateTime
-  isBooked    Boolean  @default(false)
+  id           Int      @id @default(autoincrement())
+  equipmentId  Int
+  equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  startTime    DateTime
+  endTime      DateTime
+  isAvailable  Boolean  @default(true)
+  isBooked     Boolean  @default(false)
+  workshopId   Int?
+  workshop     Workshop? @relation(fields: [workshopId], references: [id], onDelete: SetNull)
 
-  equipment        Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  EquipmentBooking EquipmentBooking?
-  workshopId       Int? 
-  workshop         Workshop? @relation(fields: [workshopId], references: [id]) 
+  bookings     EquipmentBooking[] @relation("EquipmentSlotToBooking") 
 }
+
 model EquipmentBooking {
   id          Int    @id @default(autoincrement())
   userId      Int
   equipmentId Int
-  slotId      Int    @unique
+  slotId      Int
   status      String @default("pending")
 
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  slot        EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking") // ✅ Fix: Added named relation
+
+  @@unique([userId, slotId]) // Ensures a user cannot book the same slot twice
 }
+
 
 model MembershipPlan {
   id        Int      @id @default(autoincrement())
