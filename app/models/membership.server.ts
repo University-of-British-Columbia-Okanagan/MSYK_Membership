@@ -94,6 +94,21 @@ export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number
 ) {
+  // Check if user already has this membership plan
+  const existingSubscription = await db.userMembership.findUnique({
+    where: {
+      uniqueUserMembershipPlan: {
+        userId,
+        membershipPlanId,
+      },
+    },
+  });
+
+  if (existingSubscription) {
+    throw new Error("User is already subscribed to this membership plan.");
+  }
+
+  // Otherwise, create a new row
   return db.userMembership.create({
     data: {
       userId,

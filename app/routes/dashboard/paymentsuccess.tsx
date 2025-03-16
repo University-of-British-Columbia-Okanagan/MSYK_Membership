@@ -22,7 +22,7 @@ export async function loader({ request }: { request: Request }) {
 
   if (membershipPlanId) {
     try {
-      // Register the membership subscription in your database:
+      // Attempt to create the new membership record
       await registerMembershipSubscription(parseInt(userId), parseInt(membershipPlanId));
       return new Response(
         JSON.stringify({
