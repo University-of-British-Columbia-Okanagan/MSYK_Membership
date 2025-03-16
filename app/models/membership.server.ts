@@ -116,3 +116,18 @@ export async function registerMembershipSubscription(
     },
   });
 }
+
+export async function getUserMemberships(userId: number) {
+  return db.userMembership.findMany({
+    where: { userId },
+  });
+}
+
+export async function cancelMembership(userId: number, membershipPlanId: number) {
+  return db.userMembership.deleteMany({
+    where: {
+      userId,
+      membershipPlanId,
+    },
+  });
+}
