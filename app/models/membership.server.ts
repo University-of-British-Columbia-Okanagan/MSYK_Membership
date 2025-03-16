@@ -97,37 +97,68 @@ export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number
 ) {
-  // Check if the user already has a membership.
+  let subscription;
+  // Check if the user already has a membership subscription.
   const existing = await db.userMembership.findUnique({
     where: { userId },
   });
 
   if (existing) {
-    throw new Error("You are already subscribed to a membership. Please cancel your current membership before subscribing to a new plan.");
+    // Overwrite the existing subscription with the new membershipPlanId.
+    subscription = await db.userMembership.update({
+      where: { userId },
+      data: { membershipPlanId },
+    });
+  } else {
+    // Create a new membership subscription.
+    subscription = await db.userMembership.create({
+      data: {
+        userId,
+        membershipPlanId,
+      },
+    });
   }
 
-  // Create the membership subscription.
-  const newSubscription = await db.userMembership.create({
-    data: {
-      userId,
-      membershipPlanId,
-    },
-  });
-
-  // Fetch the current user to check their role level.
+  // Fetch the current user to determine their role.
   const user = await db.user.findUnique({
     where: { id: userId },
   });
 
-  // If the user has completed an orientation (roleLevel >= 2) but is not yet upgraded to level 3, update them.
-  if (user && user.roleLevel >= 2 && user.roleLevel < 3) {
-    await db.user.update({
-      where: { id: userId },
-      data: { roleLevel: 3 },
-    });
+  if (user) {
+    if (membershipPlanId === 2) {
+      // For membershipPlan 2 (special membership that can grant level 4):
+      // A user must have completed an orientation (roleLevel >= 2) and have allowLevel4 set to true.
+      if (user.roleLevel >= 2 && user.allowLevel4) {
+        // Upgrade to level 4 if not already.
+        if (user.roleLevel < 4) {
+          await db.user.update({
+            where: { id: userId },
+            data: { roleLevel: 4 },
+          });
+        }
+      } else {
+        // If the extra condition is not met but the user has completed an orientation,
+        // set them to level 3.
+        if (user.roleLevel >= 2 && user.roleLevel < 3) {
+          await db.user.update({
+            where: { id: userId },
+            data: { roleLevel: 3 },
+          });
+        }
+      }
+    } else {
+      // For any other membership plan:
+      // If the user has completed an orientation (roleLevel >= 2) and is below level 3, upgrade them to level 3.
+      if (user.roleLevel >= 2 && user.roleLevel < 3) {
+        await db.user.update({
+          where: { id: userId },
+          data: { roleLevel: 3 },
+        });
+      }
+    }
   }
 
-  return newSubscription;
+  return subscription;
 }
 
 /*

@@ -26,3 +26,14 @@ export async function updateUserAllowLevel(userId: number, allow: boolean) {
   });
 }
 
+/**
+ * Retrieves a user by their ID.
+ *
+ * @param userId - The ID of the user.
+ * @returns The user record or null if not found.
+ */
+export async function getUserById(userId: number) {
+  return db.user.findUnique({
+    where: { id: userId },
+  });
+}
