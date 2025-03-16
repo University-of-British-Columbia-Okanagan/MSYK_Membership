@@ -89,3 +89,15 @@ export async function getMembershipPlanById(planId: number) {
     where: { id: planId },
   });
 }
+
+export async function registerMembershipSubscription(
+  userId: number,
+  membershipPlanId: number
+) {
+  return db.userMembership.create({
+    data: {
+      userId,
+      membershipPlanId,
+    },
+  });
+}
