@@ -54,8 +54,8 @@ export default function Equipments() {
                   key={equipment.id}
                   id={equipment.id}
                   name={equipment.name}
-                  description={equipment.description}
-                  imageUrl={equipment.imageUrl}
+                  description={equipment.description ?? ""}
+                  imageUrl={equipment.imageUrl ?? ""}
                   status={equipment.status} 
                 />
               ))}

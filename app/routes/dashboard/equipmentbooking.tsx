@@ -11,11 +11,12 @@ import {
 } from "../../models/equipment.server";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { getUserId } from "../../utils/session.server";
 
 // **Fetch all equipment and their slot status**
 export async function loader() {
-  const equipmentWithSlots = await getEquipmentSlotsWithStatus();
+  const equipmentWithSlots = await getEquipmentSlotsWithStatus(); // ✅ Fetches slot data
   return json({ equipment: equipmentWithSlots });
 }
 
@@ -23,45 +24,68 @@ export async function loader() {
 export async function action({ request }) {
   const formData = await request.formData();
   const userId = await getUserId(request);
-  const slotId = Number(formData.get("slotId"));
 
-  // Ensure user is logged in
   if (!userId) {
-    return json(
-      { errors: { message: "User not authenticated. Please log in." } },
-      { status: 401 }
-    );
+    return json({ errors: { message: "User not authenticated. Please log in." } }, { status: 401 });
   }
 
-  // Ensure slotId is valid
-  if (!slotId) {
-    return json(
-      { errors: { message: "Please select a valid slot." } },
-      { status: 400 }
-    );
+  const selectedEquipment = formData.get("equipmentId");
+  if (!selectedEquipment || isNaN(Number(selectedEquipment))) {
+    return json({ errors: { message: "Invalid equipment selection." } }, { status: 400 });
+  }
+  const equipmentId = Number(selectedEquipment); // Convert to number
+
+  const slotsRaw = formData.get("slots");
+  console.log("Raw Slots from FormData:", slotsRaw);
+
+  if (!slotsRaw) {
+    return json({ errors: { message: "No slots data received." } }, { status: 400 });
+  }
+
+  let slots;
+  try {
+    slots = JSON.parse(slotsRaw);
+  } catch (err) {
+    return json({ errors: { message: "Error parsing slots data." } }, { status: 400 });
+  }
+
+  if (!Array.isArray(slots) || slots.length === 0) {
+    return json({ errors: { message: "No slots selected." } }, { status: 400 });
   }
 
   try {
-    await bookEquipment(request, slotId);
+    for (const slotEntry of slots) {
+      console.log("Processing slot entry:", slotEntry);
+      
+      if (typeof slotEntry !== "string" || !slotEntry.includes("|")) {
+        return json({ errors: { message: `Invalid slot format: ${slotEntry}` } }, { status: 400 });
+      }
+
+      const [startTime, endTime] = slotEntry.split("|");
+
+      console.log(`Booking Equipment: ${equipmentId}, Slot: ${startTime} - ${endTime}`);
+
+      await bookEquipment(request, equipmentId, startTime, endTime);
+    }
     return json({ success: "Equipment booked successfully!" });
   } catch (error) {
     return json({ errors: { message: error.message } }, { status: 400 });
   }
 }
 
-// **Equipment Booking Form**
+
+
+// **Equipment Booking Form
 export default function EquipmentBookingForm() {
-  const { equipment } = useLoaderData();
+  const { equipment } = useLoaderData(); 
   const actionData = useActionData();
   const navigation = useNavigation();
-  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
-    null
-  );
-  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
-  const availableSlots = selectedEquipment
-    ? equipment.find((equip) => equip.id === selectedEquipment)?.slots || []
-    : [];
+  const selectedEquip = selectedEquipment
+    ? equipment.find((equip: { id: number }) => equip.id === selectedEquipment)
+    : null;
 
   return (
     <div className="max-w-lg mx-auto p-6">
@@ -81,86 +105,41 @@ export default function EquipmentBookingForm() {
 
       <Form method="post">
         {/* Equipment Selection */}
-        <label className="block text-gray-700 font-bold mb-2">
-          Select Equipment
-        </label>
+        <label className="block text-gray-700 font-bold mb-2">Select Equipment</label>
         <select
           className="w-full p-2 border rounded"
           value={selectedEquipment ?? ""}
           onChange={(e) => {
             setSelectedEquipment(Number(e.target.value));
-            setSelectedSlot(null);
+            setSelectedSlots([]);
           }}
           required
         >
           <option value="">-- Select Equipment --</option>
-          {equipment.map((equip) => (
+          {equipment.map((equip: { id: number; name: string }) => (
             <option key={equip.id} value={equip.id}>
               {equip.name}
             </option>
           ))}
         </select>
 
-        {/* Slot Selection */}
+        {/* Grid Selection */}
         {selectedEquipment && (
           <>
-            <label className="block text-gray-700 font-bold mt-4 mb-2">
-              Select a Slot
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {availableSlots.length > 0 ? (
-                availableSlots.map((slot) => {
-                  const isWorkshopBooked = slot.workshopName !== null; // Check if reserved for a workshop
-                  const isBooked = slot.isBooked || isWorkshopBooked;
-
-                  return (
-                    <button
-                      key={slot.id}
-                      type="button"
-                      className={`p-2 text-center rounded border ${
-                        isBooked
-                          ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                          : selectedSlot === slot.id
-                          ? "bg-blue-500 text-white"
-                          : "bg-white hover:bg-blue-100"
-                      }`}
-                      disabled={isBooked}
-                      onClick={() => !isBooked && setSelectedSlot(slot.id)}
-                    >
-                      {new Date(slot.startTime).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}{" "}
-                      at{" "}
-                      {new Date(slot.startTime).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {/* Show remark for workshop-booked slots */}
-                      {isWorkshopBooked && (
-                        <span className="block text-xs text-red-600">
-                          Reserved for {slot.workshopName}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })
-              ) : (
-                <span className="text-gray-500">No available slots</span>
-              )}
-            </div>
+            <label className="block text-gray-700 font-bold mt-4 mb-2">Select Time Slots</label>
+            <EquipmentBookingGrid slotsByDay={selectedEquip?.slotsByDay || {}} onSelectSlots={setSelectedSlots} />
           </>
         )}
 
-        {/* Hidden input to store slot ID */}
-        <input type="hidden" name="slotId" value={selectedSlot ?? ""} />
+        {/* Hidden input to store slot selections */}
+        <input type="hidden" name="equipmentId" value={selectedEquipment ?? ""} />
+        <input type="hidden" name="slots" value={JSON.stringify(selectedSlots)} />
 
         {/* Submit Button */}
         <Button
           type="submit"
           className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md"
-          disabled={navigation.state === "submitting" || selectedSlot === null}
+          disabled={navigation.state === "submitting" || selectedSlots.length === 0}
         >
           {navigation.state === "submitting" ? "Booking..." : "Book Equipment"}
         </Button>

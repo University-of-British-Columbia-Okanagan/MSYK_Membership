@@ -30,6 +30,8 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         description: data.description,
         price: data.price,
         feature: featuresJson,
+        accessHours: "24/7", // or any appropriate value
+        type: "standard", // or any appropriate value
       },
     });
     return newPlan;
