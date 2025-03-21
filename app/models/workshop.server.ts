@@ -79,7 +79,7 @@ export async function getWorkshops() {
  */
 export async function addWorkshop(data: WorkshopData) {
   try {
-    // Create the workshop first
+    // Step 1: Create the workshop
     const newWorkshop = await db.workshop.create({
       data: {
         name: data.name,
@@ -91,18 +91,16 @@ export async function addWorkshop(data: WorkshopData) {
       },
     });
 
-    // Determine a common connectId if the workshop is a continuation
+    // Step 2: Generate a continuation ID if applicable
     let newConnectId: number | null = null;
     if (data.isWorkshopContinuation) {
-      // Aggregate the current maximum connectId in the workshopOccurrence table
       const maxResult = await db.workshopOccurrence.aggregate({
         _max: { connectId: true },
       });
-      // If there is no connectId yet, start from 1; otherwise, increment the max value by 1
       newConnectId = ((maxResult._max.connectId as number) || 0) + 1;
     }
 
-    // Insert occurrences with the common connectId if applicable
+    // Step 3: Create occurrences
     const occurrences = await Promise.all(
       data.occurrences.map((occ) =>
         db.workshopOccurrence.create({
@@ -113,52 +111,49 @@ export async function addWorkshop(data: WorkshopData) {
             startDatePST: occ.startDatePST,
             endDatePST: occ.endDatePST,
             status: occ.startDate >= new Date() ? "active" : "past",
-            connectId: newConnectId, // will be null if not a continuation
+            connectId: newConnectId, // Will be null if not a continuation
           },
         })
       )
     );
 
+    // Step 4: Assign equipment slots for each occurrence
     if (data.equipments && data.equipments.length > 0) {
       for (const equipmentId of data.equipments) {
         for (const occ of occurrences) {
-          // Find all available slots that match workshop time
+          // Fetch all slots that fully fit within the workshop occurrence
           const availableSlots = await db.equipmentSlot.findMany({
             where: {
               equipmentId,
               isBooked: false,
-              workshopId: null,
+              workshopOccurrenceId: occ.id,
               startTime: { gte: occ.startDate },
+              endTime: { lte: occ.endDate },
             },
             orderBy: { startTime: "asc" },
           });
 
-          // Pick the first slot that fits the occurrence window
-          const selectedSlot = availableSlots.find(
-            (slot) => new Date(slot.endTime) <= new Date(occ.endDate)
-          );
-
-          if (!selectedSlot) {
-            console.error(
-              `ERROR: No available slot found for Equipment ID ${equipmentId} during ${occ.startDate} - ${occ.endDate}`
+          if (availableSlots.length === 0) {
+            console.warn(
+              `⚠️ No available slot for Equipment ID ${equipmentId} in range ${occ.startDate} - ${occ.endDate}`
             );
             throw new Error(
               `No available slot found for Equipment ID ${equipmentId} in the given time range.`
             );
           }
 
-          console.log(
-            `Assigning slot ${selectedSlot.id} to Equipment ${equipmentId} for workshop ${newWorkshop.id}`
-          );
-
-          // Assign this slot to the workshop
-          await db.equipmentSlot.update({
-            where: { id: selectedSlot.id },
+          // Assign all available slots within the range to the workshop
+          await db.equipmentSlot.updateMany({
+            where: { id: { in: availableSlots.map((s) => s.id) } },
             data: {
-              workshopId: newWorkshop.id,
-              isBooked: true, // Mark as booked
+              workshopOccurrenceId: newWorkshop.id,
+              isBooked: true,
             },
           });
+
+          console.log(
+            `Assigned ${availableSlots.length} slots to Equipment ID ${equipmentId} for workshop ${newWorkshop.id}`
+          );
         }
       }
     }
@@ -184,16 +179,16 @@ export async function getWorkshopById(workshopId: number) {
           },
           include: {
             userWorkshops: true,
+            equipmentSlots: {  // ✅ Move this inside occurrences
+              select: {
+                equipmentId: true,
+              },
+            },
           },
         },
         prerequisites: {
           select: {
             prerequisiteId: true,
-          },
-        },
-        equipmentSlots: {
-          select: {
-            equipmentId: true,
           },
         },
       },
@@ -203,10 +198,17 @@ export async function getWorkshopById(workshopId: number) {
       throw new Error("Workshop not found");
     }
 
+
+
+
     // Flatten prerequisites and equipmentIds
     const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
-    const equipments = workshop.equipmentSlots.map((e) => e.equipmentId);
 
+    // Extract equipmentIds from occurrences
+    const equipments = workshop.occurrences.flatMap((occ) =>
+      occ.equipmentSlots.map((e) => e.equipmentId)
+    );
+    
     return {
       ...workshop,
       prerequisites,

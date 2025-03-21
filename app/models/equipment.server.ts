@@ -27,7 +27,7 @@ export async function getEquipmentById(equipmentId: number) {
 /**
  * Fetch all available equipment
  */
-export async function getAvailableEquipment() {
+export async function getAvailableEquipment(startTime: Date, endTime: Date) {
   return await db.equipment.findMany({
     include: {
       slots: {
@@ -57,55 +57,63 @@ export async function getAvailableEquipment() {
 /**
  * Book equipment using a predefined slot
  */
-export async function bookEquipment(request: Request, slotId: number) {
-  const userId = await getUserId(request); // Ensure we fetch the correct userId from session
-  console.log("Booking Equipment for userId:", userId, "slotId:", slotId); // Debugging log
+export async function bookEquipment(request: Request, equipmentId: number, startTime: string, endTime: string) {
+  console.log("Raw startTime and endTime from frontend:", { startTime, endTime });
+  const userId = await getUserId(request);
+  if (!userId) throw new Error("User is not authenticated.");
 
-  if (!userId) {
-    throw new Error("User is not authenticated.");
+  //Ensure startTime & endTime are properly converted
+  const parsedStartTime = new Date(startTime);
+  const parsedEndTime = new Date(endTime);
+
+  console.log("After parsing:", { parsedStartTime, parsedEndTime });
+  if (isNaN(parsedStartTime.getTime()) || isNaN(parsedEndTime.getTime())) {
+    throw new Error("Invalid date format for startTime or endTime.");
   }
 
-  const slot = await db.equipmentSlot.findUnique({
-    where: { id: slotId },
-    include: { equipment: true },
-  });
+  console.log("Validated Booking Time:", { parsedStartTime, parsedEndTime });
 
-  if (!slot) throw new Error("Slot not found.");
-  if (slot.isBooked) throw new Error("Slot is already booked.");
-  if (slot.workshopId !== null)
-    throw new Error("This equipment is reserved for a workshop.");
-
-  // Fetch user from database
-  const user = await db.user.findUnique({
-    where: { id: parseInt(userId) },
-    include: { membership: true },
-  });
-
-  console.log("User Found in DB:", user);
-
-  if (!user || !user.membership || user.membership.type !== "monthly") {
-    throw new Error("You need an active monthly membership to book.");
-  }
-
-  await db.equipmentSlot.update({
-    where: { id: slotId },
-    data: { isBooked: true },
-  });
-
-  console.log("Final Booking for userId:", userId, "slotId:", slotId);
-
-  const booking = await db.equipmentBooking.create({
-    data: {
-      userId: parseInt(userId),
-      equipmentId: slot.equipment.id,
-      slotId,
-      status: "pending",
+  // Step 1: Check if a slot already exists
+  let slot = await db.equipmentSlot.findFirst({
+    where: {
+      equipmentId,
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
     },
   });
 
-  console.log("Created Booking:", booking);
-  return booking;
+  // Step 2: If slot doesn't exist, create it
+  if (!slot) {
+    slot = await db.equipmentSlot.create({
+      data: {
+        equipmentId,
+        startTime: parsedStartTime,
+        endTime: parsedEndTime,
+        isBooked: false, // Default to available
+      },
+    });
+  }
+
+  // Step 3: Check if the slot is available for booking
+  if (slot.isBooked) throw new Error("Slot is already booked.");
+
+  // Step 4: Mark slot as booked
+  await db.equipmentSlot.update({
+    where: { id: slot.id },
+    data: { isBooked: true },
+  });
+
+  // Step 5: Create the booking record
+  return await db.equipmentBooking.create({
+    data: {
+      userId: parseInt(userId),
+      equipmentId,
+      slotId: slot.id,
+      status: "pending",
+    },
+  });
 }
+
 
 /**
  * Cancel a booking
@@ -151,36 +159,19 @@ export async function addEquipment(data: {
   description: string;
   price: number;
   availability: boolean;
-  slots: { startTime: Date }[];
 }) {
   try {
-    // Create Equipment
+    // Create Equipment Without Slots
     const newEquipment = await db.equipment.create({
       data: {
         name: data.name,
         description: data.description,
         price: data.price,
-        availability: data.availability,
+        availability: data.availability, // 24/7 available unless changed by admin
       },
     });
 
-    console.log("New Equipment Created:", newEquipment);
-
-    // Ensure slots exist before adding
-    if (data.slots && data.slots.length > 0) {
-      console.log("Adding Equipment Slots:", data.slots);
-
-      await db.equipmentSlot.createMany({
-        data: data.slots.map((slot) => ({
-          equipmentId: newEquipment.id,
-          startTime: new Date(slot.startTime), // Start time as provided
-          endTime: new Date(new Date(slot.startTime).getTime() + 30 * 60000), // Auto-add 30 minutes
-          isBooked: false,
-        })),
-      });
-    } else {
-      console.warn("No slots were provided for this equipment.");
-    }
+    console.log(" New Equipment Created:", newEquipment);
 
     return newEquipment;
   } catch (error) {
@@ -188,6 +179,7 @@ export async function addEquipment(data: {
     throw new Error("Failed to add equipment.");
   }
 }
+
 
 /**
  * Create an equipment slot (Admin only)
@@ -226,7 +218,7 @@ export async function createEquipmentSlotForWorkshop(
       startTime,
       OR: [
         { isBooked: true }, // Booked by a user
-        { workshopId: { not: null } }, // Assigned to another workshop
+        { workshopOccurrenceId: { not: null } }, // Assigned to another workshop
       ],
     },
   });
@@ -239,7 +231,7 @@ export async function createEquipmentSlotForWorkshop(
   return await db.equipmentSlot.updateMany({
     where: { equipmentId, startTime },
     data: {
-      workshopId: workshopId, // Assign to workshop
+      workshopOccurrenceId: workshopId, // Assign to workshop
       isBooked: true, // Mark as booked
     },
   });
@@ -252,27 +244,37 @@ export async function getAvailableSlots(equipmentId: number) {
   return await db.equipmentSlot.findMany({
     where: {
       equipmentId,
-      isBooked: false, // Ensure the slot is not booked by a user
-      workshop: null, // Ensure the slot is not reserved for a workshop
+      isBooked: false, 
+      workshopOccurrenceId: null, 
     },
     orderBy: { startTime: "asc" },
   });
 }
 export async function getEquipmentByName(name: string) {
-  return await db.equipment.findUnique({
+  return await db.equipment.findFirst({
     where: { name },
   });
 }
 
 export async function getAvailableEquipmentForAdmin() {
-  return db.equipment.findMany({
+  const equipment = await db.equipment.findMany({
     include: {
       slots: {
-        where: { isBooked: false }, //this will show only available slots.
+        where: {
+          isBooked: false,
+        },
         orderBy: { startTime: "asc" },
       },
     },
   });
+
+  console.log("Available Equipment for Admin:", equipment); 
+
+  if (!equipment || equipment.length === 0) {
+    console.warn("⚠ No available equipment found in the database!");
+  }
+
+  return equipment;
 }
 
 export async function getEquipmentSlotsWithStatus() {
@@ -282,12 +284,10 @@ export async function getEquipmentSlotsWithStatus() {
         select: {
           id: true,
           startTime: true,
-          endTime: true,
           isBooked: true,
-          workshop: {
-            select: {
-              name: true,
-            },
+          workshopOccurrenceId: true,
+          workshopOccurrence: {
+            select: { workshop: { select: { name: true } } },
           },
         },
         orderBy: { startTime: "asc" },
@@ -295,18 +295,57 @@ export async function getEquipmentSlotsWithStatus() {
     },
   });
 
-  return equipment.map((eq) => ({
-    id: eq.id,
-    name: eq.name,
-    slots: eq.slots.map((slot) => ({
-      id: slot.id,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      isBooked: slot.isBooked,
-      workshopName: slot.workshop ? slot.workshop.name : null,
-    })),
-  }));
+  console.log("Raw Slots Data from DB:", JSON.stringify(equipment, null, 2));
+
+  // ✅ Generate Full 24/7 Grid
+  const generate24_7Slots = () => {
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const times = Array.from({ length: 48 }, (_, i) => {
+      const hours = Math.floor(i / 2);
+      const minutes = i % 2 === 0 ? "00" : "30";
+      return `${hours.toString().padStart(2, "0")}:${minutes}`;
+    });
+
+    const fullSlots: { [key: string]: { [key: string]: any } } = {};
+    for (const day of days) {
+      fullSlots[day] = {};
+      for (const time of times) {
+        fullSlots[day][time] = {
+          id: null, // Default: No slot in DB
+          isBooked: false, // Default: Not booked
+          isAvailable: true, // Default: Available
+          workshopName: null,
+        };
+      }
+    }
+    return fullSlots;
+  };
+
+  return equipment.map((eq) => {
+    const fullSlots = generate24_7Slots();
+
+    eq.slots.forEach((slot) => {
+      const day = new Date(slot.startTime).toLocaleDateString("en-US", { weekday: "short" });
+      const time = new Date(slot.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      if (fullSlots[day] && fullSlots[day][time]) {
+        fullSlots[day][time] = {
+          id: slot.id,
+          isBooked: slot.isBooked,
+          isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
+          workshopName: slot.workshopOccurrence?.workshop?.name || null,
+        };
+      }
+    });
+
+    return {
+      id: eq.id,
+      name: eq.name,
+      slotsByDay: fullSlots,
+    };
+  });
 }
+
 
 /**
  * Update existing equipment (Admin only)
@@ -415,38 +454,6 @@ export async function getUserBookedEquipments(userId: number) {
     bookingId: booking.id,
   }));
 }
-export async function getEquipmentAvailabilityGrid(startDate: Date, endDate: Date) {
-  const slots = await db.equipmentSlot.findMany({
-    where: {
-      startTime: { gte: startDate },
-      endTime: { lte: endDate }
-    },
-    include: {
-      equipment: true,
-      workshop: true,
-    },
-    orderBy: { startTime: "asc" }
-  });
-
-  // Convert the slots into a 2D Grid per equipment
-  const grid: Record<string, any[]> = {};
-  slots.forEach((slot) => {
-    const dateKey = slot.startTime.toISOString().split("T")[0]; // Group by date
-    if (!grid[dateKey]) {
-      grid[dateKey] = [];
-    }
-    grid[dateKey].push({
-      id: slot.id,
-      equipment: slot.equipment.name,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      isBooked: slot.isBooked,
-      workshopName: slot.workshop ? slot.workshop.name : null,
-    });
-  });
-
-  return grid;
-}
 
 export async function bulkBookEquipment(workshopId: number, slots: number[]) {
   
@@ -465,7 +472,7 @@ export async function bulkBookEquipment(workshopId: number, slots: number[]) {
     where: { id: { in: slots } },
     data: {
       isBooked: true,
-      workshopId,
+      workshopOccurrenceId: workshopId,
     },
   });
 }
@@ -477,4 +484,40 @@ export async function setSlotAvailability(slotId: number, isAvailable: boolean) 
       isAvailable,
     },
   });
+}
+
+
+export async function getAvailableEquipmentSlotsForWorkshopRange(
+  startDate: Date,
+  endDate: Date
+) {
+  console.log(" Fetching available equipment slots for workshop...");
+  console.log("Workshop Date Range:", { startDate, endDate });
+
+  try {
+    const slots = await db.equipmentSlot.findMany({
+      where: {
+        startTime: { gte: startDate },
+        endTime: { lte: endDate },
+        isBooked: false,
+        isAvailable: true,
+        workshopOccurrenceId: null, // Ensure not assigned to a workshop
+      },
+      include: {
+        equipment: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { startTime: "asc" },
+    });
+
+    console.log("Slots Retrieved:", slots.length);
+    return slots;
+  } catch (error) {
+    console.error(" Error fetching available slots:", error);
+    throw new Error("Failed to fetch available slots");
+  }
 }
