@@ -52,29 +52,31 @@ export async function loader({ params, request }) {
         new Date(cancelledMembership.nextPaymentDate).getTime() - now.getTime();
       const total = A + B;
 
-      // const oldPrice = cancelledMembership.membershipPlan.price;
-      // const newPrice = membershipPlan.price;
+      // need to ask if this situation can occur if i didnt cancel my previous membership; i just upgrade
+      // by simplying pressing selecting and paying
 
+      // const oldPrice = cancelledMembership.membershipPlan.price; // e.g., 50
+      // const newPrice = membershipPlan.price; // e.g., 90
+
+      // Always compute a positive partial difference (the magnitude of the price difference)
       // const priceDiff = Math.abs(newPrice - oldPrice);
-      // const ratio = B / total;
-      // const partialDiff = ratio * priceDiff; // always positive
+      // const partialDiff = (B / total) * priceDiff; // partial difference based on time ratio
 
       // let adjustedPrice: number;
-      // let compensationPrice: number; // or rename to partialCharge if you prefer
+      // let compensationPrice: number; // this will be the partial difference (always positive)
 
-      // // Step 2: figure out if user is upgrading or downgrading
       // if (newPrice > oldPrice) {
-      //   // Upgrading (new plan is more expensive)
-      //   // The user pays: newPrice + partialDiff for the remainder of this cycle
-      //   adjustedPrice = newPrice + partialDiff;
-      //   compensationPrice = partialDiff; // “upgrade surcharge”
-      // } else if (newPrice < oldPrice) {
-      //   // Downgrading (new plan is cheaper)
-      //   // The user pays: newPrice - partialDiff for the remainder of this cycle
+      //   // Upgrade: new plan is more expensive.
+      //   // The user pays the new price minus the partial difference.
       //   adjustedPrice = newPrice - partialDiff;
-      //   compensationPrice = partialDiff; // “discount”
+      //   compensationPrice = partialDiff;
+      // } else if (newPrice < oldPrice) {
+      //   // Downgrade: new plan is cheaper.
+      //   // The user pays the new price plus the partial difference.
+      //   adjustedPrice = newPrice + partialDiff;
+      //   compensationPrice = partialDiff;
       // } else {
-      //   // Same price, no partial difference
+      //   // Same price, no compensation needed.
       //   adjustedPrice = newPrice;
       //   compensationPrice = 0;
       // }
