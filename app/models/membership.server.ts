@@ -1,4 +1,5 @@
 import { db } from "../utils/db.server";
+import cron from "node-cron";
 
 interface MembershipPlanData {
   title: string;
@@ -211,3 +212,52 @@ export async function getUserMemberships(userId: number) {
     where: { userId },
   });
 }
+
+export function startMonthlyMembershipCheck() {
+  // Schedule the job to run every day at midnight.
+  cron.schedule("0 0 * * *", async () => {
+    console.log("Running monthly membership check...");
+
+    try {
+      const now = new Date();
+
+      // Find memberships where nextPaymentDate is due (on or before now)
+      const dueMemberships = await db.userMembership.findMany({
+        where: {
+          nextPaymentDate: {
+            lte: now,
+          },
+        },
+        include: {
+          membershipPlan: true,
+        },
+      });
+
+      // Process each due membership.
+      for (const membership of dueMemberships) {
+        const userId = membership.userId;
+        const date = membership.date;
+        const price = membership.membershipPlan?.price || 0;
+
+        // For testing: print out the details to the console.
+        console.log(
+          `User ID: ${userId}, Date: ${date.toISOString()}, Price: $${price}`
+        );
+
+        // Increment the nextPaymentDate by one month.
+        const newNextPaymentDate = new Date(membership.nextPaymentDate);
+        newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+
+        // Update the membership with the new nextPaymentDate.
+        await db.userMembership.update({
+          where: { id: membership.id },
+          data: { nextPaymentDate: newNextPaymentDate },
+        });
+      }
+    } catch (error) {
+      console.error("Error in monthly membership check:", error);
+    }
+  });
+}
+
+startMonthlyMembershipCheck();

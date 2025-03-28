@@ -7,7 +7,7 @@ import {
     ScrollRestoration,
   } from "react-router-dom";
   import "./app.css";
-  
+
   export function Layout() {
     return (
       <html lang="en">
