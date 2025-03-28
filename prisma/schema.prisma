@@ -153,8 +153,6 @@ model EquipmentBooking {
   @@unique([slotId]) // Prevents double booking of slots
 }
 
-
-
 model UserWorkshop {
   id           Int      @id @default(autoincrement())
   userId       Int
@@ -191,6 +189,7 @@ model UserMembership {
   id               Int             @id @default(autoincrement())
   userId           Int             @unique
   membershipPlanId Int
+  date         DateTime @default(now())
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
