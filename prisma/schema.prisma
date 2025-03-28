@@ -189,7 +189,8 @@ model UserMembership {
   id               Int             @id @default(autoincrement())
   userId           Int             @unique
   membershipPlanId Int
-  date         DateTime @default(now())
+  date             DateTime @default(now())
+  nextPaymentDate  DateTime?
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)

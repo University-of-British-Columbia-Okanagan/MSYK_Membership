@@ -100,6 +100,12 @@ export async function registerMembershipSubscription(
   membershipPlanId: number
 ) {
   let subscription;
+
+  // Calculate the current date and nextPaymentDate (one month later)
+  const now = new Date();
+  const nextPaymentDate = new Date(now);
+  nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
   // Check if the user already has a membership subscription.
   const existing = await db.userMembership.findUnique({
     where: { userId },
@@ -109,14 +115,15 @@ export async function registerMembershipSubscription(
     // Overwrite the existing subscription with the new membershipPlanId.
     subscription = await db.userMembership.update({
       where: { userId },
-      data: { membershipPlanId },
+      data: { membershipPlanId, nextPaymentDate, },
     });
   } else {
     // Create a new membership subscription.
     subscription = await db.userMembership.create({
       data: {
         userId,
-        membershipPlanId,
+        membershipPlanId, 
+        nextPaymentDate,
       },
     });
   }
