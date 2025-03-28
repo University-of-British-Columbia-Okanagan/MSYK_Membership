@@ -7,4 +7,4 @@ export const action = async ({
   request,
 }: Route.ActionArgs) => logout(request);
 
-export const loader = async () => redirect("/");
+export const loader = async () => redirect("/login");

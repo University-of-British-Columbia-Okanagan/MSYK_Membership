@@ -120,6 +120,7 @@ export async function login(rawValues: Record<string, any>) {
       id: true,
       email: true,
       password: true,
+      roleUserId: true,
     },
   });
 
@@ -137,6 +138,7 @@ export async function login(rawValues: Record<string, any>) {
   return {
     id: user.id,
     email: user.email,
+    roleUserId: user.roleUserId,
   };
 }
 

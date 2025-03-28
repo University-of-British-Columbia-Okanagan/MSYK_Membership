@@ -17,17 +17,20 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Form as RouterForm } from "react-router";
 
 export function AppSidebar() {
   return (
     <Sidebar className="h-screen w-64 bg-white shadow-lg flex flex-col">
       {/* Sidebar Header with Logo */}
       <SidebarHeader className="flex justify-center p-4">
-        <img
-          src="/images/Makerspace Horizontal Text Logo Colour-01.avif"
-          alt="Makerspace YK"
-          className="h-30"
-        />
+        <Link to="/dashboard/user">
+          <img
+            src="/images/Makerspace Horizontal Text Logo Colour-01.avif"
+            alt="Makerspace YK"
+            className="h-30"
+          />
+        </Link>
       </SidebarHeader>
 
       {/* Sidebar Content - Navigation Links */}
@@ -88,10 +91,16 @@ export function AppSidebar() {
       {/* Sidebar Footer - Sign Out Button */}
       <SidebarFooter className="p-4">
         <Separator className="mb-4" />
-        <Button variant="secondary" className="flex items-center gap-2 w-full">
-          <LogOut className="w-5 h-5" />
-          Sign Out
-        </Button>
+        <RouterForm action="/logout" method="post">
+          <Button
+            variant="secondary"
+            className="flex items-center gap-2 w-full"
+            type="submit"
+          >
+            <LogOut className="w-5 h-5" />
+            Sign Out
+          </Button>
+        </RouterForm>
       </SidebarFooter>
     </Sidebar>
   );
