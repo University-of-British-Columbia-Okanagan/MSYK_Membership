@@ -4,9 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "cross-env NODE_ENV=production react-router build",
-    "dev:client": "react-router dev",
-    "dev:server": "tsx entry.server.ts",
-    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev": "react-router dev",
     "start": "cross-env NODE_ENV=production react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc"
   },

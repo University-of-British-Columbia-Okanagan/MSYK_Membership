@@ -556,7 +556,7 @@ export default function AddWorkshop() {
                         }}
                         parseDateTimeAsLocal={parseDateTimeAsLocal}
                         isDuplicateDate={isDuplicateDate}
-                        onRevert={() => setDateSelectionType("custom")}
+                        onRevert={() => setDateSelectionType("weekly")}
                       />
                     )}
 
@@ -583,7 +583,7 @@ export default function AddWorkshop() {
                         }}
                         parseDateTimeAsLocal={parseDateTimeAsLocal}
                         isDuplicateDate={isDuplicateDate}
-                        onRevert={() => setDateSelectionType("custom")}
+                        onRevert={() => setDateSelectionType("monthly")}
                       />
                     )}
 
