@@ -8,6 +8,12 @@ interface MembershipPlanData {
   features: string[];
 }
 
+function incrementMonth(date: Date): Date {
+  const newDate = new Date(date);
+  newDate.setMonth(newDate.getMonth() + 1);
+  return newDate;
+}
+
 export async function getMembershipPlans() {
   const membershipPlans = await db.membershipPlan.findMany({
     orderBy: {
@@ -268,48 +274,146 @@ export async function getCancelledMembership(userId: number) {
 }
 
 export function startMonthlyMembershipCheck() {
-  // Schedule the job to run every day at midnight.
-  cron.schedule("0 0 * * *", async () => {
+  // Run every day at midnight
+  cron.schedule("05 03 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
       const now = new Date();
-
-      // Find memberships where nextPaymentDate is due (on or before now)
+      // Find memberships due for charge (using nextPaymentDate)
       const dueMemberships = await db.userMembership.findMany({
         where: {
-          nextPaymentDate: {
-            lte: now,
-          },
+          nextPaymentDate: { lte: now },
+          status: "active",
         },
         include: {
-          membershipPlan: true,
+          membershipPlan: true, // so we can access the regular plan price
         },
       });
 
-      // Process each due membership.
       for (const membership of dueMemberships) {
-        const userId = membership.userId;
-        const date = membership.date;
-        const price = membership.membershipPlan?.price || 0;
+        let chargeAmount: number;
+        // Check if this membership has a compensation amount pending and hasn't been paid yet.
+        if (
+          membership.compensationPrice !== null &&
+          membership.hasPaidCompensationPrice === false
+        ) {
+          // Use the compensation price for this billing cycle.
+          chargeAmount = Number(membership.compensationPrice);
+          console.log(
+            `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
+          );
 
-        // For testing: print out the details to the console.
-        console.log(
-          `User ID: ${userId}, Date: ${date.toISOString()}, Price: $${price}`
-        );
+          // After processing the charge, update the membership:
+          // - Increment the nextPaymentDate
+          // - Set hasPaidCompensationPrice to true so future cycles will use the full price.
+          await db.userMembership.update({
+            where: { id: membership.id },
+            data: {
+              nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+              hasPaidCompensationPrice: true,
+            },
+          });
+        } else {
+          // Otherwise, charge the regular price.
+          chargeAmount = Number(membership.membershipPlan.price);
+          console.log(
+            `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
+          );
 
-        // Increment the nextPaymentDate by one month.
-        const newNextPaymentDate = new Date(membership.nextPaymentDate);
-        newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+          await db.userMembership.update({
+            where: { id: membership.id },
+            data: {
+              nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+            },
+          });
+        }
 
-        // Update the membership with the new nextPaymentDate.
-        await db.userMembership.update({
-          where: { id: membership.id },
-          data: { nextPaymentDate: newNextPaymentDate },
-        });
+        // Here you would integrate your actual payment logic,
+        // e.g. calling your payment gateway to charge 'chargeAmount' for membership.userId
       }
     } catch (error) {
       console.error("Error in monthly membership check:", error);
     }
   });
+}
+
+export function startExpiredMembershipCheck() {
+  cron.schedule("07 03 * * *", async () => {
+    console.log("Running expired membership check...");
+    try {
+      await checkExpiredMemberships();
+      console.log("Expired membership check completed successfully.");
+    } catch (error) {
+      console.error("Error during expired membership check:", error);
+    }
+  });
+}
+
+export async function checkExpiredMemberships() {
+  const now = new Date();
+
+  // 1. Find all expired memberships that are cancelled (nextPaymentDate < now)
+  const expiredMemberships = await db.userMembership.findMany({
+    where: {
+      status: "cancelled",
+      nextPaymentDate: { lt: now },
+    },
+    select: { userId: true },
+  });
+
+  // Get unique user IDs of affected users
+  const affectedUserIds = [...new Set(expiredMemberships.map(m => m.userId))];
+
+  // 2. Delete all these expired, cancelled memberships
+  await db.userMembership.deleteMany({
+    where: {
+      status: "cancelled",
+      nextPaymentDate: { lt: now },
+    },
+  });
+
+  // 3. For each affected user, recalculate their role level
+  for (const userId of affectedUserIds) {
+    // Count remaining subscriptions (active ones, etc.)
+    const subscriptionCount = await db.userMembership.count({
+      where: { userId },
+    });
+
+    // Count passed orientation workshops for the user
+    const passedOrientationCount = await db.userWorkshop.count({
+      where: {
+        userId,
+        result: { equals: "passed", mode: "insensitive" },
+        workshop: {
+          type: { equals: "orientation", mode: "insensitive" },
+        },
+      },
+    });
+
+    // Determine base role level:
+    // - At least one passed orientation makes them level 2 if they have no subscription.
+    // - If they have a subscription, they become level 3.
+    let newRoleLevel = 1;
+    if (passedOrientationCount > 0) {
+      newRoleLevel = subscriptionCount > 0 ? 3 : 2;
+    }
+
+    // Check for level 4: if the user has a subscription with planId = 2 and allowLevel4 true.
+    const membershipPlan2 = await db.userMembership.findFirst({
+      where: { userId, membershipPlanId: 2 },
+    });
+    const user = await db.user.findUnique({
+      where: { id: userId },
+    });
+    if (membershipPlan2 && user?.allowLevel4) {
+      newRoleLevel = 4;
+    }
+
+    // Update the user's role level.
+    await db.user.update({
+      where: { id: userId },
+      data: { roleLevel: newRoleLevel },
+    });
+  }
 }
