@@ -37,7 +37,9 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: result.errors };
   }
 
-  return createUserSession(result.id, "/dashboardlayout");
+  const redirectTo =
+    result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user";
+  return createUserSession(result.id, redirectTo);
 }
 
 interface ActionData {
