@@ -1,7 +1,14 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { getWorkshopById, getWorkshopOccurrence, getWorkshopOccurrencesByConnectId } from "../../models/workshop.server";
-import { getMembershipPlanById, getCancelledMembership } from "../../models/membership.server"; // make sure to implement this
+import {
+  getWorkshopById,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
+} from "../../models/workshop.server";
+import {
+  getMembershipPlanById,
+  getCancelledMembership,
+} from "../../models/membership.server"; // make sure to implement this
 import { getUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
@@ -45,6 +52,33 @@ export async function loader({ params, request }) {
         new Date(cancelledMembership.nextPaymentDate).getTime() - now.getTime();
       const total = A + B;
 
+      // const oldPrice = cancelledMembership.membershipPlan.price;
+      // const newPrice = membershipPlan.price;
+
+      // const priceDiff = Math.abs(newPrice - oldPrice);
+      // const ratio = B / total;
+      // const partialDiff = ratio * priceDiff; // always positive
+
+      // let adjustedPrice: number;
+      // let compensationPrice: number; // or rename to partialCharge if you prefer
+
+      // // Step 2: figure out if user is upgrading or downgrading
+      // if (newPrice > oldPrice) {
+      //   // Upgrading (new plan is more expensive)
+      //   // The user pays: newPrice + partialDiff for the remainder of this cycle
+      //   adjustedPrice = newPrice + partialDiff;
+      //   compensationPrice = partialDiff; // “upgrade surcharge”
+      // } else if (newPrice < oldPrice) {
+      //   // Downgrading (new plan is cheaper)
+      //   // The user pays: newPrice - partialDiff for the remainder of this cycle
+      //   adjustedPrice = newPrice - partialDiff;
+      //   compensationPrice = partialDiff; // “discount”
+      // } else {
+      //   // Same price, no partial difference
+      //   adjustedPrice = newPrice;
+      //   compensationPrice = 0;
+      // }
+
       const oldPrice = cancelledMembership.membershipPlan.price;
       compensationPrice = (B / total) * (membershipPlan.price - oldPrice);
       adjustedPrice = membershipPlan.price - compensationPrice;
@@ -84,7 +118,10 @@ export async function loader({ params, request }) {
 
     const workshop = await getWorkshopById(workshopId);
     // getWorkshopOccurrencesByConnectId should return an array of occurrences for this workshop with the given connectId
-    const occurrences = await getWorkshopOccurrencesByConnectId(workshopId, connectId);
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      connectId
+    );
     if (!workshop || !occurrences || occurrences.length === 0)
       throw new Response("Workshop or Occurrences not found", { status: 404 });
 
@@ -117,7 +154,9 @@ export async function action({ request }) {
           }
         );
       }
-      const membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
+      const membershipPlan = await getMembershipPlanById(
+        Number(membershipPlanId)
+      );
       if (!membershipPlan) {
         return new Response(
           JSON.stringify({ error: "Membership Plan not found" }),
@@ -140,7 +179,9 @@ export async function action({ request }) {
                 description:
                   membershipPlan.description +
                   (compensationPrice > 0
-                    ? ` (Compensation applied: $${Number(compensationPrice).toFixed(2)})`
+                    ? ` (Compensation applied: $${Number(
+                        compensationPrice
+                      ).toFixed(2)})`
                     : ""),
               },
               unit_amount: Math.round(price * 100),
@@ -199,7 +240,9 @@ export async function action({ request }) {
               currency: "usd",
               product_data: {
                 name: workshop.name,
-                description: `Occurrence on ${new Date(occurrence.startDate).toLocaleString()}`,
+                description: `Occurrence on ${new Date(
+                  occurrence.startDate
+                ).toLocaleString()}`,
               },
               unit_amount: Math.round(price * 100),
             },
@@ -235,12 +278,18 @@ export async function action({ request }) {
       }
       const workshop = await getWorkshopById(workshopId);
       // Use the helper to get all occurrences with the given connectId; pick the first one
-      const occurrences = await getWorkshopOccurrencesByConnectId(workshopId, Number(connectId));
+      const occurrences = await getWorkshopOccurrencesByConnectId(
+        workshopId,
+        Number(connectId)
+      );
       if (!workshop || !occurrences || occurrences.length === 0) {
-        return new Response(JSON.stringify({ error: "Workshop or Occurrences not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Workshop or Occurrences not found" }),
+          {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
       const firstOccurrence = occurrences[0];
 
@@ -253,7 +302,9 @@ export async function action({ request }) {
               currency: "usd",
               product_data: {
                 name: workshop.name,
-                description: `Occurrences starting on ${new Date(firstOccurrence.startDate).toLocaleString()}`,
+                description: `Occurrences starting on ${new Date(
+                  firstOccurrence.startDate
+                ).toLocaleString()}`,
               },
               unit_amount: Math.round(price * 100),
             },
@@ -275,14 +326,19 @@ export async function action({ request }) {
         headers: { "Content-Type": "application/json" },
       });
     } else {
-      throw new Response("Missing required payment parameters", { status: 400 });
+      throw new Response("Missing required payment parameters", {
+        status: 400,
+      });
     }
   } catch (error) {
     console.error("Stripe Checkout Error:", error);
-    return new Response(JSON.stringify({ error: "Failed to create checkout session" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: "Failed to create checkout session" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 }
 
@@ -375,9 +431,13 @@ export default function Payment() {
     <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
       {data.membershipPlan ? (
         <>
-          <h2 className="text-xl font-bold mb-4">Complete Your Membership Payment</h2>
+          <h2 className="text-xl font-bold mb-4">
+            Complete Your Membership Payment
+          </h2>
           <p className="text-gray-700">Plan: {data.membershipPlan.title}</p>
-          <p className="text-gray-700">Description: {data.membershipPlan.description}</p>
+          <p className="text-gray-700">
+            Description: {data.membershipPlan.description}
+          </p>
 
           {/* Only show old membership details if they exist */}
           {data.oldMembershipTitle && data.oldMembershipPrice ? (
