@@ -192,6 +192,8 @@ model UserMembership {
   date             DateTime @default(now())
   nextPaymentDate  DateTime
   status           String @default("active") // "active", "cancelled"
+  compensationPrice Decimal?
+  hasPaidCompensationPrice Boolean?
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
