@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { getWorkshopById, getWorkshopOccurrence, getWorkshopOccurrencesByConnectId } from "../../models/workshop.server";
-import { getMembershipPlanById } from "../../models/membership.server"; // make sure to implement this
+import { getMembershipPlanById, getCancelledMembership } from "../../models/membership.server"; // make sure to implement this
 import { getUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
@@ -16,7 +16,6 @@ export async function loader({ params, request }) {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
 
-  // Membership payment branch
   if (params.membershipPlanId) {
     const membershipPlanId = Number(params.membershipPlanId);
     if (isNaN(membershipPlanId))
@@ -26,7 +25,42 @@ export async function loader({ params, request }) {
     if (!membershipPlan)
       throw new Response("Membership Plan not found", { status: 404 });
 
-    return { membershipPlan, user };
+    const cancelledMembership = await getCancelledMembership(user.id);
+
+    let compensationPrice = 0;
+    let adjustedPrice = membershipPlan.price; // Default full price
+
+    let oldMembershipTitle = null;
+    let oldMembershipPrice = null;
+
+    // Only compute compensation if the user has a cancelled membership
+    // that hasn't expired yet
+    if (
+      cancelledMembership &&
+      new Date() < new Date(cancelledMembership.nextPaymentDate)
+    ) {
+      const now = new Date();
+      const A = now.getTime() - new Date(cancelledMembership.date).getTime();
+      const B =
+        new Date(cancelledMembership.nextPaymentDate).getTime() - now.getTime();
+      const total = A + B;
+
+      const oldPrice = cancelledMembership.membershipPlan.price;
+      compensationPrice = (B / total) * (membershipPlan.price - oldPrice);
+      adjustedPrice = membershipPlan.price - compensationPrice;
+
+      oldMembershipTitle = cancelledMembership.membershipPlan.title;
+      oldMembershipPrice = oldPrice;
+    }
+
+    return {
+      membershipPlan,
+      user,
+      compensationPrice,
+      adjustedPrice,
+      oldMembershipTitle,
+      oldMembershipPrice,
+    };
   }
   // Workshop branch: either single occurrence or continuation
   else if (params.workshopId && params.occurrenceId) {
@@ -72,10 +106,9 @@ export async function action({ request }) {
         headers: { "Content-Type": "application/json" },
       });
 
-    // Membership branch
     if (body.membershipPlanId) {
-      const { membershipPlanId, price, userId } = body;
-      if (!membershipPlanId || !price || !userId) {
+      const { membershipPlanId, price, userId, compensationPrice } = body;
+      if (!membershipPlanId || price === undefined || !userId) {
         return new Response(
           JSON.stringify({ error: "Missing required membership payment data" }),
           {
@@ -95,7 +128,6 @@ export async function action({ request }) {
         );
       }
 
-      // Create Stripe Checkout Session for membership
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
@@ -105,7 +137,11 @@ export async function action({ request }) {
               currency: "usd",
               product_data: {
                 name: membershipPlan.title,
-                description: membershipPlan.description,
+                description:
+                  membershipPlan.description +
+                  (compensationPrice > 0
+                    ? ` (Compensation applied: $${Number(compensationPrice).toFixed(2)})`
+                    : ""),
               },
               unit_amount: Math.round(price * 100),
             },
@@ -118,6 +154,10 @@ export async function action({ request }) {
         metadata: {
           membershipPlanId: membershipPlanId.toString(),
           userId: userId.toString(),
+          compensationPrice: compensationPrice
+            ? compensationPrice.toString()
+            : "0",
+          originalPrice: membershipPlan.price.toString(),
         },
       });
 
@@ -247,8 +287,20 @@ export async function action({ request }) {
 }
 
 // Payment Component – renders UI based on whether it's a membership or workshop payment
+// Payment Component
 export default function Payment() {
-  const data = useLoaderData();
+  const data = useLoaderData() as {
+    membershipPlan?: any;
+    user: any;
+    compensationPrice?: number;
+    adjustedPrice?: number;
+    oldMembershipTitle?: string | null;
+    oldMembershipPrice?: number | null;
+    workshop?: any;
+    occurrence?: any;
+    isContinuation?: boolean;
+  };
+
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
@@ -256,14 +308,14 @@ export default function Payment() {
     setLoading(true);
     try {
       if (data.membershipPlan) {
-        // Process membership payment
         const response = await fetch("/dashboard/paymentprocess", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             membershipPlanId: data.membershipPlan.id,
-            price: data.membershipPlan.price,
+            price: data.adjustedPrice ?? data.membershipPlan.price,
             userId: data.user.id,
+            compensationPrice: data.compensationPrice ?? 0,
           }),
         });
         const resData = await response.json();
@@ -274,14 +326,14 @@ export default function Payment() {
           setLoading(false);
         }
       } else {
-        // Process workshop payment – check if it's a continuation
+        // Process workshop payment (unchanged)
         if (data.isContinuation) {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               workshopId: data.workshop.id,
-              connectId: data.occurrence.connectId, // use connectId
+              connectId: data.occurrence.connectId,
               price: data.workshop.price,
               userId: data.user.id,
             }),
@@ -294,7 +346,6 @@ export default function Payment() {
             setLoading(false);
           }
         } else {
-          // Standard workshop payment using occurrenceId
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -327,20 +378,52 @@ export default function Payment() {
           <h2 className="text-xl font-bold mb-4">Complete Your Membership Payment</h2>
           <p className="text-gray-700">Plan: {data.membershipPlan.title}</p>
           <p className="text-gray-700">Description: {data.membershipPlan.description}</p>
-          <p className="text-lg font-semibold mt-2">Total: ${data.membershipPlan.price}</p>
+
+          {/* Only show old membership details if they exist */}
+          {data.oldMembershipTitle && data.oldMembershipPrice ? (
+            <>
+              <p className="mt-2 text-gray-700">
+                You canceled your previous membership called{" "}
+                <strong>{data.oldMembershipTitle}</strong> early worth $
+                {data.oldMembershipPrice.toFixed(2)}
+              </p>
+            </>
+          ) : null}
+
+          {/* Only show compensation details if there's a positive compensationPrice */}
+          {data.compensationPrice && data.compensationPrice > 0 ? (
+            <p className="mt-2 text-gray-700">
+              For this billing cycle, you'll pay $
+              {data.adjustedPrice?.toFixed(2)} (due to $
+              {data.compensationPrice.toFixed(2)} compensation), and you'll pay
+              the full ${data.membershipPlan.price.toFixed(2)} next cycle.
+            </p>
+          ) : null}
+
+          {/* Always show the final total */}
+          <p className="text-lg font-semibold mt-2">
+            Total: $
+            {data.adjustedPrice
+              ? data.adjustedPrice.toFixed(2)
+              : data.membershipPlan.price.toFixed(2)}
+          </p>
         </>
       ) : (
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
-          <p className="text-gray-700">Workshop: {data.workshop.name}</p>
+          <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
           {data.isContinuation ? (
             <p className="text-gray-700">
-              Occurrence Group: {data.occurrence.connectId}
+              Occurrence Group: {data.occurrence?.connectId}
             </p>
           ) : (
-            <p className="text-gray-700">Occurrence ID: {data.occurrence.id}</p>
+            <p className="text-gray-700">
+              Occurrence ID: {data.occurrence?.id}
+            </p>
           )}
-          <p className="text-lg font-semibold mt-2">Total: ${data.workshop.price}</p>
+          <p className="text-lg font-semibold mt-2">
+            Total: ${data.workshop?.price.toFixed(2)}
+          </p>
         </>
       )}
 

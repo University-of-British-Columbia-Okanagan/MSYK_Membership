@@ -27,14 +27,17 @@ export async function loader({ request }: { request: Request }) {
     membershipPlanId,
     userId,
     connectId, // <--- Check for connectId
+    compensationPrice,
   } = metadata;
 
   // Membership branch
   if (membershipPlanId) {
     try {
+      const compPrice = compensationPrice ? parseFloat(compensationPrice) : 0;
       await registerMembershipSubscription(
         parseInt(userId),
-        parseInt(membershipPlanId)
+        parseInt(membershipPlanId),
+        compPrice
       );
 
       return new Response(

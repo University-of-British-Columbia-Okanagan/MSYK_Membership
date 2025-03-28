@@ -98,34 +98,42 @@ export async function getMembershipPlanById(planId: number) {
 */
 export async function registerMembershipSubscription(
   userId: number,
-  membershipPlanId: number
+  membershipPlanId: number,
+  compensationPrice: number = 0
 ) {
   let subscription;
-
-  // Calculate the current date and nextPaymentDate (one month later)
   const now = new Date();
   const nextPaymentDate = new Date(now);
   nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
-  // Check if the user already has a membership subscription.
+  // If compensationPrice is greater than 0, use it; otherwise, store null.
+  const compPrice = compensationPrice > 0 ? compensationPrice : null;
+  const hasPaid = compensationPrice > 0 ? false : null;
+
   const existing = await db.userMembership.findUnique({
     where: { userId },
   });
 
   if (existing) {
-    // Overwrite the existing subscription with the new membershipPlanId.
     subscription = await db.userMembership.update({
       where: { userId },
-      data: { membershipPlanId, nextPaymentDate, status: "active" },
+      data: {
+        membershipPlanId,
+        nextPaymentDate,
+        status: "active",
+        compensationPrice: compPrice,
+        hasPaidCompensationPrice: hasPaid,
+      },
     });
   } else {
-    // Create a new membership subscription.
     subscription = await db.userMembership.create({
       data: {
         userId,
-        membershipPlanId, 
+        membershipPlanId,
         nextPaymentDate,
-        status: "active"
+        status: "active",
+        compensationPrice: compPrice,
+        hasPaidCompensationPrice: hasPaid,
       },
     });
   }
@@ -244,6 +252,21 @@ export async function getUserMemberships(userId: number) {
   });
 }
 
+export async function getCancelledMembership(userId: number) {
+  return await db.userMembership.findFirst({
+    where: {
+      userId,
+      status: "cancelled",
+      nextPaymentDate: {
+        gt: new Date(), // only return if the membership hasn't expired yet
+      },
+    },
+    include: {
+      membershipPlan: true, // <--- include the related plan
+    },
+  });
+}
+
 export function startMonthlyMembershipCheck() {
   // Schedule the job to run every day at midnight.
   cron.schedule("0 0 * * *", async () => {
@@ -290,5 +313,3 @@ export function startMonthlyMembershipCheck() {
     }
   });
 }
-
-startMonthlyMembershipCheck();

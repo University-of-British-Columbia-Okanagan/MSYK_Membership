@@ -10,9 +10,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
-  // Membership Payment Branch (unchanged)
+  // Membership Payment Branch (unchanged except for added compensation logic)
   if (body.membershipPlanId) {
-    const { membershipPlanId, price, userId } = body;
+    const { membershipPlanId, price, userId, compensationPrice } = body; // <--- Note we read compensationPrice here
     if (!membershipPlanId || !price || !userId) {
       throw new Error("Missing required membership payment data");
     }
@@ -20,6 +20,15 @@ export async function createCheckoutSession(request: Request) {
     if (!membershipPlan) {
       throw new Error("Membership Plan not found");
     }
+
+    // Build a multiline description to show compensation (if any) + next cycle price
+    let finalDescription = membershipPlan.description || "";
+    if (compensationPrice && compensationPrice > 0) {
+      finalDescription += `\nCompensation: $${compensationPrice.toFixed(
+        2
+      )} off this cycle. Next cycle: $${membershipPlan.price.toFixed(2)}`;
+    }
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -29,19 +38,26 @@ export async function createCheckoutSession(request: Request) {
             currency: "usd",
             product_data: {
               name: membershipPlan.title,
-              description: membershipPlan.description,
+              description: finalDescription, // <--- Updated description
             },
+            // price is the adjusted price if compensation applies
             unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
       ],
-      customer_email: body.userEmail, // pass the user email in your request
+      // Use the userEmail from the request body if available, otherwise fallback
+      customer_email: body.userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/memberships`,
       metadata: {
         membershipPlanId: membershipPlanId.toString(),
         userId: userId.toString(),
+        // Also store compensationPrice for reference in your success handler
+        compensationPrice: compensationPrice
+          ? compensationPrice.toString()
+          : "0",
+        originalPrice: membershipPlan.price.toString(),
       },
     });
     return new Response(JSON.stringify({ url: session.url }), {
