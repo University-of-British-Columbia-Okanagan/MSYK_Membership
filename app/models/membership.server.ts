@@ -116,7 +116,7 @@ export async function registerMembershipSubscription(
     // Overwrite the existing subscription with the new membershipPlanId.
     subscription = await db.userMembership.update({
       where: { userId },
-      data: { membershipPlanId, nextPaymentDate, },
+      data: { membershipPlanId, nextPaymentDate, status: "active" },
     });
   } else {
     // Create a new membership subscription.
@@ -125,6 +125,7 @@ export async function registerMembershipSubscription(
         userId,
         membershipPlanId, 
         nextPaymentDate,
+        status: "active"
       },
     });
   }
@@ -176,12 +177,42 @@ export async function registerMembershipSubscription(
 */
 export async function cancelMembership(userId: number, membershipPlanId: number) {
   // Delete the membership subscription.
-  const result = await db.userMembership.deleteMany({
+  const membershipRecord = await db.userMembership.findFirst({
     where: {
       userId,
       membershipPlanId,
     },
   });
+
+  let result;
+  if (membershipRecord) {
+    const now = new Date();
+    // If cancellation occurs before the nextPaymentDate, update the status to "cancelled"
+    if (now < membershipRecord.nextPaymentDate) {
+      result = await db.userMembership.updateMany({
+        where: {
+          userId,
+          membershipPlanId,
+        },
+        data: { status: "cancelled" },
+      });
+
+      // If we only set status to "cancelled," we do NOT update the user role.
+      // We immediately return so the orientation logic below is skipped.
+      return result;
+    } else {
+      // Otherwise, delete the membership subscription and run roleLevel logic.
+      result = await db.userMembership.deleteMany({
+        where: {
+          userId,
+          membershipPlanId,
+        },
+      });
+    }
+  } else {
+    // If no membership is found, set result accordingly.
+    result = null;
+  }
 
   // Count passed orientation registrations for the user.
   const passedOrientationCount = await db.userWorkshop.count({

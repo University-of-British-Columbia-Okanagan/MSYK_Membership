@@ -18,6 +18,12 @@ interface MembershipCardProps {
   feature: string[];
   isAdmin: boolean;
   isSubscribed?: boolean;
+  /**
+   * New optional prop to differentiate active vs. cancelled status.
+   * If 'active', it shows the "You are already subscribed" block.
+   * If 'cancelled', it shows the "You have cancelled this membership" block.
+   */
+  membershipStatus?: "active" | "cancelled";
   userRecord?: {
     id: number;
     roleLevel: number;
@@ -33,13 +39,14 @@ export default function MembershipCard({
   feature,
   isAdmin,
   isSubscribed = false,
+  membershipStatus, // <--- new prop
   userRecord,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Handler for membership "Select"
+  // Handler for membership "Select" or "Resubscribe"
   const handleSelect = () => {
     navigate(`/dashboard/payment/${planId}`);
   };
@@ -49,7 +56,7 @@ export default function MembershipCard({
   let reason = "";
 
   // If planId = 2, the user must be roleLevel=3 and allowLevel4=true
-  if (planId === 2) {
+  if (planId === 2 && membershipStatus !== "cancelled") {
     if (
       !userRecord ||
       userRecord.roleLevel !== 3 ||
@@ -70,8 +77,45 @@ export default function MembershipCard({
         <span className="text-gray-600 text-sm"> /month</span>
       </div>
 
-      {/* If user is subscribed, show a message + Cancel button */}
-      {isSubscribed ? (
+      {/* 
+        If membershipStatus is "cancelled", show a "You have cancelled..." message 
+        and allow the user to resubscribe. 
+        Else if isSubscribed, show the existing "You are already subscribed" + cancel button. 
+        Otherwise, show the normal "Select" button.
+      */}
+      {membershipStatus === "cancelled" ? (
+        <div className="mt-4">
+          <p className="text-orange-600 font-semibold mb-2">
+            You have cancelled this membership
+          </p>
+          {canSelect ? (
+            <Button
+              onClick={handleSelect}
+              className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+            >
+              Resubscribe
+            </Button>
+          ) : (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-block">
+                    <Button
+                      disabled
+                      className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
+                    >
+                      Resubscribe
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{reason}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+      ) : isSubscribed ? (
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">
             You are already subscribed

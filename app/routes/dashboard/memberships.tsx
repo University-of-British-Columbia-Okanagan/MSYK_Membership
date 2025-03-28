@@ -13,6 +13,14 @@ import { Link, redirect, useLoaderData } from "react-router";
 // Import a helper to fetch the full user record
 import { getUserById } from "~/models/user.server";
 
+// Define a TypeScript type that matches the union
+type MembershipStatus = "active" | "cancelled";
+
+type UserMembershipData = {
+  membershipPlanId: number;
+  status: MembershipStatus;
+};
+
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const membershipPlans = await getMembershipPlans();
@@ -25,12 +33,27 @@ export async function loader({ request }: { request: Request }) {
       : [],
   }));
 
-  // Fetch the user's existing memberships if logged in
-  let userMemberships: { membershipPlanId: number }[] = [];
+  let userMemberships: UserMembershipData[] = [];
   let userRecord: any = null;
 
   if (roleUser?.userId) {
-    userMemberships = await getUserMemberships(roleUser.userId);
+    // 1) Get raw membership records (status is just string).
+    const rawMemberships = await getUserMemberships(roleUser.userId);
+    // rawMemberships might return objects like { membershipPlanId: number, status: string, ... }
+
+    // 2) Convert raw status (string) to the union type ("active" | "cancelled").
+    userMemberships = rawMemberships.map((m) => {
+      // If you're sure it can only be "active" or "cancelled", you can just cast:
+      // return { membershipPlanId: m.membershipPlanId, status: m.status as MembershipStatus };
+
+      // Or do a safer check:
+      const status = m.status === "cancelled" ? "cancelled" : "active";
+      return {
+        membershipPlanId: m.membershipPlanId,
+        status,
+      };
+    });
+
     // Fetch the full user record (includes roleLevel, allowLevel4, etc.)
     userRecord = await getUserById(roleUser.userId);
   }
@@ -87,7 +110,7 @@ export default function MembershipPage() {
   const { roleUser, membershipPlans, userMemberships, userRecord } = useLoaderData<{
     roleUser: any;
     membershipPlans: any[];
-    userMemberships: { membershipPlanId: number }[];
+    userMemberships: UserMembershipData[];
     userRecord: {
       id: number;
       roleLevel: number;
@@ -102,10 +125,8 @@ export default function MembershipPage() {
 
   return (
     <main>
-      {/* Hero Section */}
       <HeroSection title="Choose Your Membership Plan" />
 
-      {/* Membership Plans */}
       <section className="bg-gray-900 py-16">
         <div className="container mx-auto px-4">
           {isAdmin && (
@@ -122,13 +143,18 @@ export default function MembershipPage() {
             Choose your Membership Plan
           </h2>
 
-          {/* Render Membership Cards */}
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             {membershipPlans.map((plan) => {
-              // Check if user is subscribed to this plan
-              const isSubscribed = userMemberships.some(
+              // For each plan, find the user membership record if it exists.
+              const membership = userMemberships.find(
                 (m) => m.membershipPlanId === plan.id
               );
+
+              // isSubscribed is true if there's a membership record for this plan.
+              const isSubscribed = Boolean(membership);
+
+              // membershipStatus can be "active" or "cancelled" if membership is found.
+              const membershipStatus = membership?.status;
 
               return (
                 <MembershipCard
@@ -140,7 +166,7 @@ export default function MembershipPage() {
                   isAdmin={!!isAdmin}
                   planId={plan.id}
                   isSubscribed={isSubscribed}
-                  // Pass the user's record so the card can decide if plan #2 is allowed
+                  membershipStatus={membershipStatus}
                   userRecord={userRecord}
                 />
               );
