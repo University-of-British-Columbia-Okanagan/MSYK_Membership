@@ -1,5 +1,5 @@
 import { db } from "../utils/db.server";
-import { getUserId } from "../utils/session.server"; 
+import { getUserId } from "../utils/session.server";
 
 interface EquipmentData {
   name: string;
@@ -28,37 +28,45 @@ export async function getEquipmentById(equipmentId: number) {
  * Fetch all available equipment
  */
 export async function getAvailableEquipment(startTime: Date, endTime: Date) {
-  return await db.equipment.findMany({
-    include: {
-      slots: {
-        select: { id: true, isBooked: true },
+  return await db.equipment
+    .findMany({
+      include: {
+        slots: {
+          select: { id: true, isBooked: true },
+        },
       },
-    },
-  }).then((equipments) =>
-    equipments.map((eq) => ({
-      id: eq.id,
-      name: eq.name,
-      description: eq.description,
-      imageUrl: eq.imageUrl,
-      totalSlots: eq.slots.length,
-      bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
-      status:
-        eq.slots.length === 0
-          ? "unavailable" // No slots exist
-          : eq.slots.every((slot) => slot.isBooked)
-          ? "unavailable" // All slots taken
-          : "available", // Some slots are free
-    }))
-  );
+    })
+    .then((equipments) =>
+      equipments.map((eq) => ({
+        id: eq.id,
+        name: eq.name,
+        description: eq.description,
+        imageUrl: eq.imageUrl,
+        totalSlots: eq.slots.length,
+        bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
+        status:
+          eq.slots.length === 0
+            ? "unavailable" // No slots exist
+            : eq.slots.every((slot) => slot.isBooked)
+            ? "unavailable" // All slots taken
+            : "available", // Some slots are free
+      }))
+    );
 }
-
-
 
 /**
  * Book equipment using a predefined slot
  */
-export async function bookEquipment(request: Request, equipmentId: number, startTime: string, endTime: string) {
-  console.log("Raw startTime and endTime from frontend:", { startTime, endTime });
+export async function bookEquipment(
+  request: Request,
+  equipmentId: number,
+  startTime: string,
+  endTime: string
+) {
+  console.log("Raw startTime and endTime from frontend:", {
+    startTime,
+    endTime,
+  });
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
 
@@ -114,7 +122,6 @@ export async function bookEquipment(request: Request, equipmentId: number, start
   });
 }
 
-
 /**
  * Cancel a booking
  */
@@ -139,7 +146,6 @@ export async function cancelEquipmentBooking(bookingId: number) {
   // Delete booking record
   return await db.equipmentBooking.delete({ where: { id: bookingId } });
 }
-
 
 /**
  * Approve a booking (Admin only)
@@ -179,7 +185,6 @@ export async function addEquipment(data: {
     throw new Error("Failed to add equipment.");
   }
 }
-
 
 /**
  * Create an equipment slot (Admin only)
@@ -244,8 +249,8 @@ export async function getAvailableSlots(equipmentId: number) {
   return await db.equipmentSlot.findMany({
     where: {
       equipmentId,
-      isBooked: false, 
-      workshopOccurrenceId: null, 
+      isBooked: false,
+      workshopOccurrenceId: null,
     },
     orderBy: { startTime: "asc" },
   });
@@ -268,7 +273,7 @@ export async function getAvailableEquipmentForAdmin() {
     },
   });
 
-  console.log("Available Equipment for Admin:", equipment); 
+  console.log("Available Equipment for Admin:", equipment);
 
   if (!equipment || equipment.length === 0) {
     console.warn("⚠ No available equipment found in the database!");
@@ -325,8 +330,14 @@ export async function getEquipmentSlotsWithStatus() {
     const fullSlots = generate24_7Slots();
 
     eq.slots.forEach((slot) => {
-      const day = new Date(slot.startTime).toLocaleDateString("en-US", { weekday: "short" });
-      const time = new Date(slot.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const date = new Date(slot.startTime);
+      const hours = String(date.getHours()).padStart(2, "0");
+      const minutes = String(date.getMinutes()).padStart(2, "0");
+      const time = `${hours}:${minutes}`;
+
+      const dayIndex = date.getDay(); // 0 - Sunday, 6 - Saturday
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const day = days[dayIndex];
 
       if (fullSlots[day] && fullSlots[day][time]) {
         fullSlots[day][time] = {
@@ -345,7 +356,6 @@ export async function getEquipmentSlotsWithStatus() {
     };
   });
 }
-
 
 /**
  * Update existing equipment (Admin only)
@@ -456,11 +466,10 @@ export async function getUserBookedEquipments(userId: number) {
 }
 
 export async function bulkBookEquipment(workshopId: number, slots: number[]) {
-  
   const availableSlots = await db.equipmentSlot.findMany({
     where: {
       id: { in: slots },
-      isBooked: false,  
+      isBooked: false,
     },
   });
 
@@ -477,7 +486,10 @@ export async function bulkBookEquipment(workshopId: number, slots: number[]) {
   });
 }
 
-export async function setSlotAvailability(slotId: number, isAvailable: boolean) {
+export async function setSlotAvailability(
+  slotId: number,
+  isAvailable: boolean
+) {
   return await db.equipmentSlot.update({
     where: { id: slotId },
     data: {
@@ -485,7 +497,6 @@ export async function setSlotAvailability(slotId: number, isAvailable: boolean) 
     },
   });
 }
-
 
 export async function getAvailableEquipmentSlotsForWorkshopRange(
   startDate: Date,
