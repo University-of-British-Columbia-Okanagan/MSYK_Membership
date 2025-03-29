@@ -36,27 +36,55 @@ export default function EquipmentBookingGrid({ slotsByDay, onSelectSlots }: Equi
   const handleSlotToggle = (day: string, time: string) => {
     const slot = slotsByDay?.[day]?.[time]
     if (!slot?.isAvailable || slot?.isBooked) return
-
+  
     const now = new Date()
     const dayIndex = days.indexOf(day)
     const todayIndex = now.getDay()
     const daysToAdd = (dayIndex + 7 - todayIndex) % 7
-
+  
     const [hour, minute] = time.split(":").map(Number)
     const startTime = new Date(now)
     startTime.setDate(now.getDate() + daysToAdd)
     startTime.setHours(hour, minute, 0, 0)
-
+  
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000)
     const slotString = `${startTime.toISOString()}|${endTime.toISOString()}`
-
-    const updatedSlots = selectedSlots.includes(slotString)
+  
+    const isAlreadySelected = selectedSlots.includes(slotString)
+  
+    // Count current day and total week slot selections
+    const slotsPerDay: { [day: string]: number } = {}
+    let totalSlots = 0
+  
+    for (const s of selectedSlots) {
+      const [start] = s.split("|")
+      const d = new Date(start).toLocaleDateString("en-US", { weekday: "short" })
+      slotsPerDay[d] = (slotsPerDay[d] || 0) + 1
+      totalSlots += 1
+    }
+  
+    const currentDayCount = slotsPerDay[day] || 0
+    const newDayCount = isAlreadySelected ? currentDayCount - 1 : currentDayCount + 1
+    const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1
+  
+    if (!isAlreadySelected && newDayCount > 4) {
+      alert("Limit reached: You can only select up to 2 hours (4 slots) per day.")
+      return
+    }
+  
+    if (!isAlreadySelected && newWeekCount > 28) {
+      alert("Limit reached: You can only select up to 14 hours (28 slots) per week.")
+      return
+    }
+  
+    const updatedSlots = isAlreadySelected
       ? selectedSlots.filter((s) => s !== slotString)
       : [...selectedSlots, slotString]
-
+  
     setSelectedSlots(updatedSlots)
     onSelectSlots(updatedSlots)
   }
+  
 
   const currentDayIndex = new Date().getDay()
 
