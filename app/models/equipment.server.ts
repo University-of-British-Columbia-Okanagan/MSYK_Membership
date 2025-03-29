@@ -352,6 +352,7 @@ export async function getEquipmentSlotsWithStatus() {
     return {
       id: eq.id,
       name: eq.name,
+      price: eq.price,
       slotsByDay: fullSlots,
     };
   });

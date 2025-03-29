@@ -1,5 +1,9 @@
 import { Stripe } from "stripe";
-import { getWorkshopById, getWorkshopOccurrence, getWorkshopOccurrencesByConnectId } from "./workshop.server";
+import {
+  getWorkshopById,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
+} from "./workshop.server";
 import { getMembershipPlanById } from "./membership.server";
 
 // Initialize Stripe
@@ -10,9 +14,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
-  // Membership Payment Branch (unchanged except for added compensation logic)
+  // Membership Payment Branch
   if (body.membershipPlanId) {
-    const { membershipPlanId, price, userId, compensationPrice } = body; // <--- Note we read compensationPrice here
+    const { membershipPlanId, price, userId, compensationPrice, userEmail } = body;
     if (!membershipPlanId || !price || !userId) {
       throw new Error("Missing required membership payment data");
     }
@@ -21,7 +25,6 @@ export async function createCheckoutSession(request: Request) {
       throw new Error("Membership Plan not found");
     }
 
-    // Build a multiline description to show compensation (if any) + next cycle price
     let finalDescription = membershipPlan.description || "";
     if (compensationPrice && compensationPrice > 0) {
       finalDescription += `\nCompensation: $${compensationPrice.toFixed(
@@ -38,25 +41,20 @@ export async function createCheckoutSession(request: Request) {
             currency: "usd",
             product_data: {
               name: membershipPlan.title,
-              description: finalDescription, // <--- Updated description
+              description: finalDescription,
             },
-            // price is the adjusted price if compensation applies
             unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
       ],
-      // Use the userEmail from the request body if available, otherwise fallback
-      customer_email: body.userEmail,
+      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/memberships`,
       metadata: {
         membershipPlanId: membershipPlanId.toString(),
         userId: userId.toString(),
-        // Also store compensationPrice for reference in your success handler
-        compensationPrice: compensationPrice
-          ? compensationPrice.toString()
-          : "0",
+        compensationPrice: compensationPrice ? compensationPrice.toString() : "0",
         originalPrice: membershipPlan.price.toString(),
       },
     });
@@ -65,14 +63,17 @@ export async function createCheckoutSession(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  // Workshop Payment with Single Occurrence
+  // Workshop Single Occurrence Payment
   else if (body.workshopId && body.occurrenceId) {
-    const { workshopId, occurrenceId, price, userId } = body;
+    const { workshopId, occurrenceId, price, userId, userEmail } = body;
     if (!workshopId || !occurrenceId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
     const workshop = await getWorkshopById(Number(workshopId));
-    const occurrence = await getWorkshopOccurrence(Number(workshopId), Number(occurrenceId));
+    const occurrence = await getWorkshopOccurrence(
+      Number(workshopId),
+      Number(occurrenceId)
+    );
     if (!workshop || !occurrence) {
       throw new Error("Workshop or Occurrence not found");
     }
@@ -85,14 +86,16 @@ export async function createCheckoutSession(request: Request) {
             currency: "usd",
             product_data: {
               name: workshop.name,
-              description: `Occurrence on ${new Date(occurrence.startDate).toLocaleString()}`,
+              description: `Occurrence on ${new Date(
+                occurrence.startDate
+              ).toLocaleString()}`,
             },
             unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
       ],
-      customer_email: body.userEmail,
+      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/workshops`,
       metadata: {
@@ -106,9 +109,9 @@ export async function createCheckoutSession(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  // Workshop Payment for Continuation (using connectId)
+  // Workshop Continuation Payment
   else if (body.workshopId && body.connectId) {
-    const { workshopId, connectId, price, userId } = body;
+    const { workshopId, connectId, price, userId, userEmail } = body;
     if (!workshopId || !connectId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -120,12 +123,7 @@ export async function createCheckoutSession(request: Request) {
     if (!workshop || !occurrences || occurrences.length === 0) {
       throw new Error("Workshop or Occurrences not found");
     }
-  
-    // Build a multiline description listing all occurrences
-    // Example format:
-    // Occurrences:
-    //   3/18/2025, 2:00:00 AM - 3/18/2025, 3:00:00 AM
-    //   3/19/2025, 2:15:00 AM - 3/19/2025, 3:15:00 AM
+
     const occurrencesDescription = occurrences
       .map((occ) => {
         const startStr = new Date(occ.startDate).toLocaleString();
@@ -133,10 +131,9 @@ export async function createCheckoutSession(request: Request) {
         return `  ${startStr} - ${endStr}`;
       })
       .join("\n");
-  
+
     const description = `Occurrences:\n${occurrencesDescription}`;
-  
-    // Create the checkout session
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -146,14 +143,14 @@ export async function createCheckoutSession(request: Request) {
             currency: "usd",
             product_data: {
               name: workshop.name,
-              description, // Use the multiline string as the description
+              description,
             },
             unit_amount: Math.round(price * 100),
           },
           quantity: 1,
         },
       ],
-      customer_email: body.userEmail, // Or however you're passing user email
+      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/workshops`,
       metadata: {
@@ -162,7 +159,41 @@ export async function createCheckoutSession(request: Request) {
         userId: userId.toString(),
       },
     });
-  
+
+    return new Response(JSON.stringify({ url: session.url }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  // Equipment Booking Payment (NEW BRANCH)
+  else if (body.equipmentId && body.slotCount && body.price && body.userId && body.slots) {
+    const { equipmentId, slotCount, price, userId, slots, userEmail } = body;
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: `Equipment Booking (ID: ${equipmentId})`,
+              description: `Booking for ${slotCount} slots`,
+            },
+            unit_amount: Math.round(price * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      customer_email: userEmail,
+      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `http://localhost:5173/dashboard/equipment`,
+      metadata: {
+        equipmentId: equipmentId.toString(),
+        userId: userId.toString(),
+        slots: JSON.stringify(slots),
+      },
+    });
+
     return new Response(JSON.stringify({ url: session.url }), {
       status: 200,
       headers: { "Content-Type": "application/json" },

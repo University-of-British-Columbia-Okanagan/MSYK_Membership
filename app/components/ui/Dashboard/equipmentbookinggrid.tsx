@@ -31,65 +31,77 @@ interface EquipmentBookingGridProps {
 
 export default function EquipmentBookingGrid({ slotsByDay, onSelectSlots }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isDragging = useRef(false)
 
   const handleSlotToggle = (day: string, time: string) => {
     const slot = slotsByDay?.[day]?.[time]
-    if (!slot?.isAvailable || slot?.isBooked) return
-  
+    if (!slot?.isAvailable || slot?.isBooked) {
+      setErrorMessage("This slot is already booked or unavailable.")
+      return
+    }
+
     const now = new Date()
     const dayIndex = days.indexOf(day)
     const todayIndex = now.getDay()
     const daysToAdd = (dayIndex + 7 - todayIndex) % 7
-  
+
     const [hour, minute] = time.split(":").map(Number)
     const startTime = new Date(now)
     startTime.setDate(now.getDate() + daysToAdd)
     startTime.setHours(hour, minute, 0, 0)
-  
+
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000)
     const slotString = `${startTime.toISOString()}|${endTime.toISOString()}`
-  
+
     const isAlreadySelected = selectedSlots.includes(slotString)
-  
+
     // Count current day and total week slot selections
     const slotsPerDay: { [day: string]: number } = {}
     let totalSlots = 0
-  
+
     for (const s of selectedSlots) {
       const [start] = s.split("|")
       const d = new Date(start).toLocaleDateString("en-US", { weekday: "short" })
       slotsPerDay[d] = (slotsPerDay[d] || 0) + 1
       totalSlots += 1
     }
-  
+
     const currentDayCount = slotsPerDay[day] || 0
     const newDayCount = isAlreadySelected ? currentDayCount - 1 : currentDayCount + 1
     const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1
-  
+
     if (!isAlreadySelected && newDayCount > 4) {
-      alert("Limit reached: You can only select up to 2 hours (4 slots) per day.")
+      setErrorMessage("You can only select up to 2 hours (4 slots) per day.")
       return
     }
-  
+
     if (!isAlreadySelected && newWeekCount > 28) {
-      alert("Limit reached: You can only select up to 14 hours (28 slots) per week.")
+      setErrorMessage("You can only select up to 14 hours (28 slots) per week.")
       return
     }
-  
+
+    setErrorMessage(null) // clear error if valid
+
     const updatedSlots = isAlreadySelected
       ? selectedSlots.filter((s) => s !== slotString)
       : [...selectedSlots, slotString]
-  
+
     setSelectedSlots(updatedSlots)
     onSelectSlots(updatedSlots)
   }
-  
 
   const currentDayIndex = new Date().getDay()
 
   return (
     <div className="w-full max-w-screen-xl mx-auto">
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="mb-4 text-red-500 bg-red-100 p-3 rounded border border-red-400 text-sm text-center">
+          {errorMessage}
+        </div>
+      )}
+
       {/* Legend */}
       <div className="flex flex-col items-center mb-6">
         <div className="flex items-center gap-4 justify-center mb-2 text-sm">
