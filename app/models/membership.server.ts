@@ -116,13 +116,13 @@ export async function registerMembershipSubscription(
   const compPrice = compensationPrice > 0 ? compensationPrice : null;
   const hasPaid = compensationPrice > 0 ? false : null;
 
-  const existing = await db.userMembership.findUnique({
+  const existing = await db.userMembership.findFirst({
     where: { userId },
   });
 
   if (existing) {
     subscription = await db.userMembership.update({
-      where: { userId },
+      where: { id: existing.id },
       data: {
         membershipPlanId,
         nextPaymentDate,
@@ -270,6 +270,18 @@ export async function getCancelledMembership(userId: number) {
     include: {
       membershipPlan: true, // <--- include the related plan
     },
+  });
+}
+
+export async function getUserActiveMembership(userId: number) {
+  return await db.userMembership.findFirst({
+    where: {
+      userId: userId,
+      status: "active"
+    },
+    include: {
+      membershipPlan: true
+    }
   });
 }
 
