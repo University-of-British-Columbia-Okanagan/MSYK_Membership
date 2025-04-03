@@ -29,6 +29,7 @@ interface MembershipCardProps {
   hasCancelledSubscription?: boolean;
   highestActivePrice?: number;
   highestCanceledPrice?: number;
+  nextPaymentDate?: Date;
 }
 
 export default function MembershipCard({
@@ -45,6 +46,7 @@ export default function MembershipCard({
   hasActiveSubscription = false,
   highestActivePrice = 0,
   highestCanceledPrice = 0,
+  nextPaymentDate,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -116,28 +118,36 @@ export default function MembershipCard({
         </div>
       ) : (
         // NEW: Otherwise, show the non-subscribed branch (for "inactive" or no record)
+        // Otherwise, show the non-subscribed branch (for "inactive" or no record)
         <div className="mt-4">
           {(() => {
             let buttonLabel = "Subscribe";
             let disabled = false;
             let tooltipText = "";
 
-            // 1) If planId = 2 and user doesn't meet role/permission, disable
-            if (planId === 2 && !canSelect) {
-              disabled = true;
-              buttonLabel = "Subscribe";
-              tooltipText = reason;
-            }
-            // 2) If the user has any active membership
-            else if (hasActiveSubscription) {
-              if (highestActivePrice > price) {
+            // NEW: If membershipStatus is "inactive" and nextPaymentDate is provided,
+            // disable "Change" until the nextPaymentDate is past.
+            if (membershipStatus === "inactive" && nextPaymentDate) {
+              if (new Date(nextPaymentDate) > new Date()) {
+                // Next payment date is in the future: disable the Change button.
+                disabled = true;
                 buttonLabel = "Change";
+                tooltipText =
+                  "You can change only after your old membership payment date passes after upgrading/downgrading.";
               } else {
-                buttonLabel = "Upgrade";
+                // Next payment date has passed: allow Change.
+                buttonLabel = "Change";
+                disabled = false;
               }
             }
-            // 3) If the user has NO active membership, but they had some membership before (cancelled/inactive)
-            else if (hasCancelledSubscription) {
+            // Otherwise, use your existing logic.
+            else if (hasActiveSubscription) {
+              if (highestActivePrice > price) {
+                buttonLabel = "Change"; // cheaper plan => "Change"
+              } else {
+                buttonLabel = "Upgrade"; // more expensive plan => "Upgrade"
+              }
+            } else if (hasCancelledSubscription) {
               if (highestCanceledPrice > price) {
                 buttonLabel = "Change";
               } else {
@@ -146,9 +156,7 @@ export default function MembershipCard({
               disabled = true;
               tooltipText =
                 "You cancelled your previous membership. Resubscribe first before changing plans.";
-            }
-            // 4) Otherwise, user never had a membership => normal "Subscribe" (enabled)
-            else {
+            } else {
               buttonLabel = "Subscribe";
               disabled = false;
             }

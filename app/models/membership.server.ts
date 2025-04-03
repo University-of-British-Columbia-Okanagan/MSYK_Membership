@@ -130,7 +130,7 @@ export async function registerMembershipSubscription(
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { 
-        status: "changed"
+        status: "inactive"
       }
     });
     

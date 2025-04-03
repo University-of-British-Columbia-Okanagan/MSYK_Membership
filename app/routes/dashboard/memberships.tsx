@@ -19,6 +19,7 @@ type MembershipStatus = "active" | "cancelled" | "inactive";
 type UserMembershipData = {
   membershipPlanId: number;
   status: MembershipStatus;
+  nextPaymentDate?: Date;
 };
 
 export async function loader({ request }: { request: Request }) {
@@ -50,6 +51,7 @@ export async function loader({ request }: { request: Request }) {
       return {
         membershipPlanId: m.membershipPlanId,
         status,
+        nextPaymentDate: m.nextPaymentDate,
       };
     });
   
@@ -226,6 +228,7 @@ export default function MembershipPage() {
                   hasCancelledSubscription={hasCancelledSubscription}
                   highestActivePrice={highestActivePrice}
                   highestCanceledPrice={highestCanceledPrice}
+                  nextPaymentDate={membership?.nextPaymentDate}
                 />
               );
             })}
