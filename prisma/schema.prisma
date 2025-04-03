@@ -187,7 +187,7 @@ model MembershipPlan {
 
 model UserMembership {
   id               Int             @id @default(autoincrement())
-  userId           Int             @unique
+  userId           Int             
   membershipPlanId Int
   date             DateTime @default(now())
   nextPaymentDate  DateTime
