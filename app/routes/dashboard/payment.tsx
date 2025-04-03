@@ -363,8 +363,8 @@ export default function Payment() {
     try {
       if (data.membershipPlan) {
         if (data.isDowngrade) {
-          // Handle downgrade - no payment needed, just update the database
-          const response = await fetch("/dashboard/membership/change", {
+          // Directly call the registerMembershipSubscription through a new endpoint
+          const response = await fetch("/dashboard/payment/downgrade", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -374,9 +374,11 @@ export default function Payment() {
               isDowngrade: true,
             }),
           });
+
           const resData = await response.json();
           if (resData.success) {
-            navigate("/dashboard/memberships?status=downgrade-success");
+            // Redirect to success page with a special query param for downgrades
+            navigate("/dashboard/payment/success?downgrade=true");
           } else {
             console.error("Downgrade error:", resData.error);
             setLoading(false);
@@ -481,8 +483,13 @@ export default function Payment() {
               <p className="text-gray-700">
                 You will continue at your current rate of $
                 {data.oldMembershipPrice?.toFixed(2)}/month until your next
-                payment date, then switch to $
-                {data.membershipPlan.price.toFixed(2)}/month.
+                payment date at{" "}
+                {data.oldMembershipNextPaymentDate
+                  ? new Date(
+                      data.oldMembershipNextPaymentDate
+                    ).toLocaleDateString()
+                  : "N/A"}
+                , then switch to ${data.membershipPlan.price.toFixed(2)}/month.
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
             </div>

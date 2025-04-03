@@ -113,7 +113,7 @@ export async function registerMembershipSubscription(
   
   // If compensationPrice is greater than 0, use it; otherwise, store null.
   const compPrice = compensationPrice > 0 ? compensationPrice : null;
-  const hasPaid = false;
+  const hasPaid = compensationPrice > 0;
 
   // If there's a current membership ID provided, this is an upgrade/downgrade
   if (currentMembershipId) {
@@ -130,7 +130,7 @@ export async function registerMembershipSubscription(
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { 
-        status: "inactive"
+        status: "changed"
       }
     });
     
