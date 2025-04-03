@@ -275,7 +275,7 @@ export async function getCancelledMembership(userId: number) {
 
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight
-  cron.schedule("05 03 * * *", async () => {
+  cron.schedule("19 11 * * *", async () => { // minutes, hours, day of month, ...
     console.log("Running monthly membership check...");
 
     try {

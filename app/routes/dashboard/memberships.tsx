@@ -58,7 +58,49 @@ export async function loader({ request }: { request: Request }) {
     userRecord = await getUserById(roleUser.userId);
   }
 
-  return { roleUser, membershipPlans: parsedPlans, userMemberships, userRecord };
+  const hasCancelledSubscription = userMemberships.some(
+    (m) => m.status === "cancelled"
+  );
+
+  // NEW: Add a flag to check if the user has any active membership.
+  const hasActiveSubscription = userMemberships.some(
+    (m) => m.status === "active"
+  );
+
+  let highestActivePrice = 0;
+  if (userMemberships.length > 0) {
+    const activeMemberships = userMemberships.filter(
+      (m) => m.status === "active"
+    );
+    for (const am of activeMemberships) {
+      const plan = parsedPlans.find((p) => p.id === am.membershipPlanId);
+      if (plan && plan.price > highestActivePrice) {
+        highestActivePrice = plan.price;
+      }
+    }
+  }
+
+  let highestCanceledPrice = 0;
+  const canceledMemberships = userMemberships.filter(
+    (m) => m.status === "cancelled"
+  );
+  for (const cm of canceledMemberships) {
+    const plan = parsedPlans.find((p) => p.id === cm.membershipPlanId);
+    if (plan && plan.price > highestCanceledPrice) {
+      highestCanceledPrice = plan.price;
+    }
+  }
+
+  return {
+    roleUser,
+    membershipPlans: parsedPlans,
+    userMemberships,
+    userRecord,
+    hasCancelledSubscription,
+    hasActiveSubscription,
+    highestActivePrice,
+    highestCanceledPrice,
+  };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -107,7 +149,16 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function MembershipPage() {
-  const { roleUser, membershipPlans, userMemberships, userRecord } = useLoaderData<{
+  const {
+    roleUser,
+    membershipPlans,
+    userMemberships,
+    userRecord,
+    hasCancelledSubscription,
+    hasActiveSubscription,
+    highestActivePrice,
+    highestCanceledPrice,
+  } = useLoaderData<{
     roleUser: any;
     membershipPlans: any[];
     userMemberships: UserMembershipData[];
@@ -116,6 +167,10 @@ export default function MembershipPage() {
       roleLevel: number;
       allowLevel4: boolean;
     } | null;
+    hasCancelledSubscription: boolean;
+    hasActiveSubscription: boolean;
+    highestActivePrice: number;
+    highestCanceledPrice: number;
   }>();
 
   const isAdmin =
@@ -168,6 +223,10 @@ export default function MembershipPage() {
                   isSubscribed={isSubscribed}
                   membershipStatus={membershipStatus}
                   userRecord={userRecord}
+                  hasActiveSubscription={hasActiveSubscription}
+                  hasCancelledSubscription={hasCancelledSubscription}
+                  highestActivePrice={highestActivePrice}
+                  highestCanceledPrice={highestCanceledPrice}
                 />
               );
             })}
