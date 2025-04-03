@@ -34,12 +34,16 @@ export async function loader({ request }: { request: Request }) {
   if (membershipPlanId) {
     try {
       const compPrice = compensationPrice ? parseFloat(compensationPrice) : 0;
+      const currentMembershipId = metadata.currentMembershipId ? 
+        parseInt(metadata.currentMembershipId) : null;
+      
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        compPrice
+        compPrice,
+        currentMembershipId
       );
-
+  
       return new Response(
         JSON.stringify({
           success: true,

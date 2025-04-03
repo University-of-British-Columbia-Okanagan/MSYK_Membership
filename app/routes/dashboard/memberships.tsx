@@ -14,7 +14,7 @@ import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 
 // Define a TypeScript type that matches the union
-type MembershipStatus = "active" | "cancelled";
+type MembershipStatus = "active" | "cancelled" | "inactive";
 
 type UserMembershipData = {
   membershipPlanId: number;
@@ -39,22 +39,21 @@ export async function loader({ request }: { request: Request }) {
   if (roleUser?.userId) {
     // 1) Get raw membership records (status is just string).
     const rawMemberships = await getUserMemberships(roleUser.userId);
-    // rawMemberships might return objects like { membershipPlanId: number, status: string, ... }
-
-    // 2) Convert raw status (string) to the union type ("active" | "cancelled").
+    // Convert raw status to our union type. If the status is not "active" or "cancelled", mark it as "inactive".
     userMemberships = rawMemberships.map((m) => {
-      // If you're sure it can only be "active" or "cancelled", you can just cast:
-      // return { membershipPlanId: m.membershipPlanId, status: m.status as MembershipStatus };
-
-      // Or do a safer check:
-      const status = m.status === "cancelled" ? "cancelled" : "active";
+      const status =
+        m.status === "cancelled"
+          ? "cancelled"
+          : m.status === "active"
+          ? "active"
+          : "inactive"; // NEW: Set status to "inactive" for other values
       return {
         membershipPlanId: m.membershipPlanId,
         status,
       };
     });
-
-    // Fetch the full user record (includes roleLevel, allowLevel4, etc.)
+  
+    // Fetch the full user record...
     userRecord = await getUserById(roleUser.userId);
   }
 

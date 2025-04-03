@@ -193,7 +193,7 @@ model UserMembership {
   nextPaymentDate  DateTime
   status           String @default("active") // "active", "cancelled"
   compensationPrice Decimal?
-  hasPaidCompensationPrice Boolean?
+  hasPaidCompensationPrice Boolean? @default(false)
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)

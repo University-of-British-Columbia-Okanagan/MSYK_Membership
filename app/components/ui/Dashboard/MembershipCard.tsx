@@ -18,7 +18,8 @@ interface MembershipCardProps {
   feature: string[];
   isAdmin: boolean;
   isSubscribed?: boolean;
-  membershipStatus?: "active" | "cancelled";
+  // membershipStatus can now be "active" or "cancelled" (or possibly "inactive" if the DB returns that)
+  membershipStatus?: "active" | "cancelled" | "inactive";
   userRecord?: {
     id: number;
     roleLevel: number;
@@ -38,10 +39,10 @@ export default function MembershipCard({
   feature,
   isAdmin,
   isSubscribed = false,
-  membershipStatus, // <--- new prop
+  membershipStatus, // new prop; can be "active", "cancelled" or "inactive"
   userRecord,
   hasCancelledSubscription = false,
-  hasActiveSubscription = false, 
+  hasActiveSubscription = false,
   highestActivePrice = 0,
   highestCanceledPrice = 0,
 }: MembershipCardProps) {
@@ -68,7 +69,7 @@ export default function MembershipCard({
       canSelect = false;
       reason =
         "You must have a previous subscription, a completed orientation, and admin permission to select this membership.";
-    } 
+    }
   }
 
   return (
@@ -92,7 +93,7 @@ export default function MembershipCard({
             Resubscribe
           </Button>
         </div>
-      ) : isSubscribed ? (
+      ) : membershipStatus === "active" ? ( // NEW: Only show "already subscribed" if status is exactly "active"
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">
             You are already subscribed
@@ -114,7 +115,7 @@ export default function MembershipCard({
           </fetcher.Form>
         </div>
       ) : (
-        // NEW: For non-subscribed plans, handle the "Change"/"Upgrade"/"Select" logic
+        // NEW: Otherwise, show the non-subscribed branch (for "inactive" or no record)
         <div className="mt-4">
           {(() => {
             let buttonLabel = "Subscribe";
@@ -129,33 +130,29 @@ export default function MembershipCard({
             }
             // 2) If the user has any active membership
             else if (hasActiveSubscription) {
-              // If the user’s highest active membership is more expensive
               if (highestActivePrice > price) {
-                buttonLabel = "Change"; // cheaper plan => "Change"
+                buttonLabel = "Change";
               } else {
-                buttonLabel = "Upgrade"; // more expensive plan => "Upgrade"
+                buttonLabel = "Upgrade";
               }
             }
-            // 3) If the user has NO active membership, but they had some membership before
+            // 3) If the user has NO active membership, but they had some membership before (cancelled/inactive)
             else if (hasCancelledSubscription) {
-              // If the user's highest canceled membership is more expensive than this plan
               if (highestCanceledPrice > price) {
-                buttonLabel = "Change"; // show "Change"
+                buttonLabel = "Change";
               } else {
-                buttonLabel = "Upgrade"; // otherwise "Upgrade"
+                buttonLabel = "Upgrade";
               }
-              // Disabled because they canceled
               disabled = true;
               tooltipText =
                 "You cancelled your previous membership. Resubscribe first before changing plans.";
             }
-            // 4) Otherwise, user never had a membership => normal "Select" (enabled)
+            // 4) Otherwise, user never had a membership => normal "Subscribe" (enabled)
             else {
               buttonLabel = "Subscribe";
               disabled = false;
             }
 
-            // Finally, render the button with optional tooltip if disabled
             if (disabled) {
               return (
                 <TooltipProvider>
