@@ -2,23 +2,22 @@ import { useLoaderData, useNavigate } from "react-router-dom";
 import { Stripe } from "stripe";
 import {
   registerForWorkshop,
-  registerUserForAllOccurrences, // <--- Import the new helper
+  registerUserForAllOccurrences,
 } from "../../models/workshop.server";
-import {registerMembershipSubscription,} from "../../models/membership.server"
+import { registerMembershipSubscription } from "../../models/membership.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id");
+
   if (!sessionId) {
     throw new Response("Missing session_id", { status: 400 });
   }
 
-  // Initialize Stripe
   const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
     apiVersion: "2023-10-16",
   });
 
-  // Retrieve Checkout Session
   const session = await stripe.checkout.sessions.retrieve(sessionId);
   const metadata = session.metadata || {};
   const {
@@ -26,9 +25,21 @@ export async function loader({ request }: { request: Request }) {
     occurrenceId,
     membershipPlanId,
     userId,
-    connectId, // <--- Check for connectId
+    connectId,
     compensationPrice,
+    equipmentId,
+    slots,
   } = metadata;
+
+  // Equipment booking branch (redirect immediately to dashboard)
+  if (equipmentId && userId && slots) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/dashboard/user",
+      },
+    });
+  }
 
   // Membership branch
   if (membershipPlanId) {
@@ -61,7 +72,7 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  // NEW: Workshop continuation branch
+  // Workshop continuation
   else if (workshopId && connectId && userId) {
     try {
       await registerUserForAllOccurrences(
@@ -90,7 +101,7 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  // Single-occurrence workshop branch
+  // Workshop single occurrence
   else if (workshopId && occurrenceId && userId) {
     try {
       await registerForWorkshop(
@@ -117,11 +128,11 @@ export async function loader({ request }: { request: Request }) {
         { headers: { "Content-Type": "application/json" } }
       );
     }
-  } else {
-    throw new Response("Missing registration parameters in session metadata", {
-      status: 400,
-    });
   }
+
+  throw new Response("Missing registration parameters in session metadata", {
+    status: 400,
+  });
 }
 
 export default function PaymentSuccess() {
