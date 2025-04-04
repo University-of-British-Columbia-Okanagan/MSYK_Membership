@@ -106,7 +106,8 @@ export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number, 
   compensationPrice: number = 0,
-  currentMembershipId: number | null = null
+  currentMembershipId: number | null = null,
+  isDowngrade: boolean = false // Flag to indicate if this is a downgrade
 ) {
   let subscription;
   const now = new Date();
@@ -115,8 +116,58 @@ export async function registerMembershipSubscription(
   const compPrice = compensationPrice > 0 ? compensationPrice : null;
   const hasPaid = compensationPrice > 0;
 
-  // If there's a current membership ID provided, this is an upgrade/downgrade
-  if (currentMembershipId) {
+  // Special handling for downgrades
+  if (isDowngrade && currentMembershipId) {
+    const currentMembership = await db.userMembership.findUnique({
+      where: { id: currentMembershipId },
+      include: { membershipPlan: true }
+    });
+    
+    if (!currentMembership) {
+      throw new Error("Current membership not found");
+    }
+    
+    // For downgrades, keep the current membership active until the next payment date
+    // Just schedule the new membership to start at the next payment date
+    const startDate = new Date(currentMembership.nextPaymentDate);
+    const newNextPaymentDate = new Date(startDate);
+    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    
+    // Modified: Use upsert() to update if a record already exists, preventing unique constraint errors.
+    subscription = await db.userMembership.upsert({
+      where: {
+        uniqueUserMembershipPlan: { userId, membershipPlanId },
+      },
+      update: {
+        date: startDate,
+        nextPaymentDate: newNextPaymentDate,
+        status: "active", // Set as active
+        compensationPrice: null,
+        hasPaidCompensationPrice: false,
+      },
+      create: {
+        userId,
+        membershipPlanId,
+        date: startDate, // Will start at current membership's next payment date
+        nextPaymentDate: newNextPaymentDate,
+        status: "active", // Set as active
+        compensationPrice: null,
+        hasPaidCompensationPrice: false,
+      }
+    });
+    
+    // Update the current membership to indicate it will be replaced
+    await db.userMembership.update({
+      where: { id: currentMembershipId },
+      data: { 
+        status: "ending",
+      }
+    });
+    
+    return subscription;
+  }
+  // Continue with existing upgrade/change logic
+  else if (currentMembershipId) {
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
       include: { membershipPlan: true }
@@ -130,7 +181,7 @@ export async function registerMembershipSubscription(
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { 
-        status: "inactive"
+        status: "ending"
       }
     });
     

@@ -8,6 +8,20 @@ import {registerMembershipSubscription,} from "../../models/membership.server"
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
+  // Change: Check for downgrade before requiring session_id
+  const isDowngrade = url.searchParams.get("downgrade") === "true";
+  if (isDowngrade) {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isMembership: true,
+        message:
+          "🎉 Membership downgrade scheduled! Your downgraded plan will begin at the end of your current billing cycle. You'll continue to enjoy your current benefits until then. A confirmation email has been sent.",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+  
   const sessionId = url.searchParams.get("session_id");
   if (!sessionId) {
     throw new Response("Missing session_id", { status: 400 });

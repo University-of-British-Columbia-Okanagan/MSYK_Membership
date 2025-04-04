@@ -363,7 +363,7 @@ export default function Payment() {
     try {
       if (data.membershipPlan) {
         if (data.isDowngrade) {
-          // Directly call the registerMembershipSubscription through a new endpoint
+          // For downgrades, call our new endpoint
           const response = await fetch("/dashboard/payment/downgrade", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -371,13 +371,12 @@ export default function Payment() {
               currentMembershipId: data.userActiveMembership.id,
               newMembershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
-              isDowngrade: true,
             }),
           });
 
           const resData = await response.json();
           if (resData.success) {
-            // Redirect to success page with a special query param for downgrades
+            // Redirect directly to the success page with downgrade query param
             navigate("/dashboard/payment/success?downgrade=true");
           } else {
             console.error("Downgrade error:", resData.error);
