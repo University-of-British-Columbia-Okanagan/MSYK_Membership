@@ -69,7 +69,8 @@ export default function MembershipCard({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden text-center p-8">
+    <div className="bg-white rounded-lg shadow-md border border-yellow-400 p-6 w-full max-w-sm mx-auto text-center">
+
       <h3 className="text-xl font-semibold text-gray-800">{title}</h3>
       <p className="text-gray-600 mt-2">{description}</p>
       <div className="mt-4">
