@@ -18,17 +18,18 @@ interface MembershipCardProps {
   feature: string[];
   isAdmin: boolean;
   isSubscribed?: boolean;
-  /**
-   * New optional prop to differentiate active vs. cancelled status.
-   * If 'active', it shows the "You are already subscribed" block.
-   * If 'cancelled', it shows the "You have cancelled this membership" block.
-   */
-  membershipStatus?: "active" | "cancelled";
+  membershipStatus?: "active" | "cancelled" | "inactive";
   userRecord?: {
     id: number;
     roleLevel: number;
     allowLevel4: boolean;
   } | null;
+  hasActiveSubscription?: boolean;
+  hasCancelledSubscription?: boolean;
+  highestActivePrice?: number;
+  highestCanceledPrice?: number;
+  nextPaymentDate?: Date;
+  membershipRecordId?: number;
 }
 
 export default function MembershipCard({
@@ -39,8 +40,14 @@ export default function MembershipCard({
   feature,
   isAdmin,
   isSubscribed = false,
-  membershipStatus, // <--- new prop
+  membershipStatus,
   userRecord,
+  hasCancelledSubscription = false,
+  hasActiveSubscription = false,
+  highestActivePrice = 0,
+  highestCanceledPrice = 0,
+  nextPaymentDate,
+  membershipRecordId,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -51,20 +58,26 @@ export default function MembershipCard({
     navigate(`/dashboard/payment/${planId}`);
   };
 
-  // By default, the user can select unless restricted by plan #2 logic
-  let canSelect = true;
-  let reason = "";
+  // By default, the user can select a membership plan
+  let canSelect = true; // CHANGE: we will override this if the user doesn't meet plan-specific requirements
+  let reason = ""; // CHANGE: store the reason the button is disabled
 
-  // If planId = 2, the user must be roleLevel=3 and allowLevel4=true
-  if (planId === 2 && membershipStatus !== "cancelled") {
+  // CHANGE: Additional check for planId = 2 (level 4 membership).
+  // Must have:
+  //   1) A valid user record
+  //   2) roleLevel >= 3 (they've completed orientation and are effectively "level 3")
+  //   3) allowLevel4 = true (admin permission)
+  //   4) hasActiveSubscription = true (they already have an active membership)
+  if (planId === 2) {
     if (
       !userRecord ||
-      userRecord.roleLevel !== 3 ||
-      userRecord.allowLevel4 !== true
+      userRecord.roleLevel < 3 ||
+      userRecord.allowLevel4 !== true ||
+      !hasActiveSubscription
     ) {
       canSelect = false;
       reason =
-        "You must have a previous subscription, a completed orientation, and admin permission to select this membership.";
+        "You must have an active, membership, completed an orientation, and admin permission to select this membership.";
     }
   }
 
@@ -79,49 +92,75 @@ export default function MembershipCard({
       </div>
 
       {/* 
-        If membershipStatus is "cancelled", show a "You have cancelled..." message 
-        and allow the user to resubscribe. 
-        Else if isSubscribed, show the existing "You are already subscribed" + cancel button. 
-        Otherwise, show the normal "Select" button.
+        Show different UI depending on membership status:
+          1) cancelled -> "You have cancelled this membership" + Resubscribe button
+          2) active -> "You are already subscribed" + Cancel button
+          3) otherwise -> the "subscribe" or "upgrade/change" button
       */}
       {membershipStatus === "cancelled" ? (
+        // <div className="mt-4">
+        //   <p className="text-orange-600 font-semibold mb-2">
+        //     You have cancelled this membership
+        //   </p>
+        //   {/*
+        //     NEW: Instead of navigating to a payment route,
+        //     use a button that triggers a fetch call to the resubscribe endpoint.
+        //   */}
+        //   <Button
+        //     onClick={async () => {
+        //       try {
+        //         const response = await fetch("/dashboard/payment/resubscribe", {
+        //           method: "POST",
+        //           headers: { "Content-Type": "application/json" },
+        //           // Pass required data as JSON:
+        //           body: JSON.stringify({
+        //             currentMembershipId: membershipRecordId, // use the passed membership record id
+        //             membershipPlanId: planId,
+        //             userId: userRecord?.id,
+        //           }),
+        //         });
+        //         const resData = await response.json();
+        //         if (resData.success) {
+        //           // On success, redirect to the payment success page with resubscribe query
+        //           navigate("/dashboard/payment/success?resubscribe=true");
+        //         } else {
+        //           console.error("Resubscription error:", resData.error);
+        //         }
+        //       } catch (error) {
+        //         console.error("Resubscription fetch error:", error);
+        //       }
+        //     }}
+        //     className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+        //   >
+        //     Resubscribe
+        //   </Button>
+        // </div>
         <div className="mt-4">
           <p className="text-orange-600 font-semibold mb-2">
             You have cancelled this membership
           </p>
-          {canSelect ? (
-            <Button
-              onClick={handleSelect}
-              className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-            >
-              Resubscribe
-            </Button>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-block">
-                    <Button
-                      disabled
-                      className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
-                    >
-                      Resubscribe
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{reason}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          <Button
+            // CHANGE: Navigate to the payment page with query params for resubscription.
+            onClick={() => {
+              // Pass along the membershipRecordId if available (make sure you pass this prop from your loader)
+              navigate(
+                `/dashboard/payment/${planId}?resubscribe=true${
+                  membershipRecordId
+                    ? `&membershipRecordId=${membershipRecordId}`
+                    : ""
+                }`
+              );
+            }}
+            className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+          >
+            Resubscribe
+          </Button>
         </div>
-      ) : isSubscribed ? (
+      ) : membershipStatus === "active" ? (
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">
             You are already subscribed
           </p>
-          {/* Cancel button with confirmation */}
           <fetcher.Form method="post">
             <input type="hidden" name="planId" value={planId} />
             <ConfirmButton
@@ -129,7 +168,7 @@ export default function MembershipCard({
               confirmDescription="Are you sure you want to cancel your membership subscription?"
               onConfirm={() =>
                 fetcher.submit(
-                  { planId, action: "cancelMembership" },
+                  { planId: String(planId), action: "cancelMembership" },
                   { method: "post" }
                 )
               }
@@ -139,33 +178,94 @@ export default function MembershipCard({
           </fetcher.Form>
         </div>
       ) : (
+        // Non-subscribed branch: membershipStatus is "inactive" or no record
         <div className="mt-4">
-          {canSelect ? (
-            <Button
-              onClick={handleSelect}
-              className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-            >
-              Select
-            </Button>
-          ) : (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-block">
-                    <Button
-                      disabled
-                      className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
-                    >
-                      Select
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{reason}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          {(() => {
+  let buttonLabel = "Subscribe";
+  let disabled = false;
+  let tooltipText = "";
+
+  // If user cannot select due to plan-specific requirements, disable the button.
+  if (!canSelect) {
+    disabled = true;
+    tooltipText = reason;
+  }
+
+  // NEW: Determine the button label based on the membership state.
+  if (!disabled) {
+    if (membershipStatus === "inactive" && nextPaymentDate) {
+      if (new Date(nextPaymentDate) > new Date()) {
+        disabled = true;
+        if (hasActiveSubscription) {
+          buttonLabel = price > highestActivePrice ? "Upgrade" : "Change";
+        } else if (!hasActiveSubscription && hasCancelledSubscription) {
+          // CHANGE: If there's no active subscription and a cancelled one exists, force resubscribe.
+          buttonLabel = "Resubscribe";
+        } else {
+          buttonLabel = "Subscribe";
+        }
+        tooltipText =
+          "You can change only after your old membership billing cycle ends.";
+      } else {
+        if (hasActiveSubscription) {
+          buttonLabel = price > highestActivePrice ? "Upgrade" : "Change";
+        } else if (!hasActiveSubscription && hasCancelledSubscription) {
+          // CHANGE: Use "Resubscribe" if cancelled and no active membership.
+          buttonLabel = "Resubscribe";
+          disabled = true;
+          tooltipText =
+            "You cancelled your previous membership. Please resubscribe first before switching plans.";
+        } else {
+          buttonLabel = "Subscribe";
+        }
+      }
+    } else if (hasActiveSubscription) {
+      buttonLabel = highestActivePrice > price ? "Change" : "Upgrade";
+    } else if (!hasActiveSubscription && hasCancelledSubscription) {
+      // CHANGE: If no active subscription and there is a cancelled membership,
+      // the user must resubscribe first.
+      buttonLabel = "Resubscribe";
+      disabled = true;
+      tooltipText =
+        "You cancelled your previous membership. Please resubscribe first before switching plans.";
+    } else {
+      buttonLabel = "Subscribe";
+    }
+  }
+
+  // Render a disabled button with tooltip if needed.
+  if (disabled) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-block">
+              <Button
+                disabled
+                className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
+              >
+                {buttonLabel}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipText}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  } else {
+    // Otherwise, allow the user to click the button.
+    return (
+      <Button
+        onClick={handleSelect}
+        className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+      >
+        {buttonLabel}
+      </Button>
+    );
+  }
+})()}
         </div>
       )}
 
@@ -177,15 +277,10 @@ export default function MembershipCard({
         ))}
       </ul>
 
-      {/* Admin Edit/Delete Buttons */}
       {isAdmin && (
         <fetcher.Form method="post" className="mt-6">
           <input type="hidden" name="planId" value={planId} />
-          <input
-            type="hidden"
-            name="confirmationDelete"
-            value={confirmDelete ? "confirmed" : "pending"}
-          />
+          <input type="hidden" name="confirmationDelete" value="pending" />
           <div className="flex justify-center space-x-4">
             <button
               type="submit"
@@ -208,7 +303,11 @@ export default function MembershipCard({
                 ) {
                   setConfirmDelete(true);
                   fetcher.submit(
-                    { planId, action: "delete", confirmation: "confirmed" },
+                    {
+                      planId: String(planId),
+                      action: "delete",
+                      confirmation: "confirmed",
+                    },
                     { method: "post" }
                   );
                 }

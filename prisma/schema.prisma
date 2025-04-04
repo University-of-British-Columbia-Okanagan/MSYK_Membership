@@ -187,16 +187,16 @@ model MembershipPlan {
 
 model UserMembership {
   id               Int             @id @default(autoincrement())
-  userId           Int             @unique
+  userId           Int             
   membershipPlanId Int
   date             DateTime @default(now())
   nextPaymentDate  DateTime
   status           String @default("active") // "active", "cancelled"
   compensationPrice Decimal?
-  hasPaidCompensationPrice Boolean?
+  hasPaidCompensationPrice Boolean? @default(false)
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
+  // @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
 }

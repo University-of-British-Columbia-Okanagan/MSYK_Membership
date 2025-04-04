@@ -8,6 +8,32 @@ import { registerMembershipSubscription } from "../../models/membership.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
+  const isDowngrade = url.searchParams.get("downgrade") === "true";
+  const isResubscribe = url.searchParams.get("resubscribe") === "true";
+  if (isDowngrade) {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isMembership: true,
+        message:
+          "🎉 Membership downgrade scheduled! Your downgraded plan will begin at the end of your current billing cycle. You'll continue to enjoy your current benefits until then. A confirmation email has been sent.",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+  if (isResubscribe) {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isMembership: true,
+        message:
+          "🎉 Membership reactivated! Your membership has been successfully reactivated. You'll continue to enjoy your membership benefits. A confirmation email has been sent.",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  
   const sessionId = url.searchParams.get("session_id");
 
   if (!sessionId) {
@@ -45,12 +71,16 @@ export async function loader({ request }: { request: Request }) {
   if (membershipPlanId) {
     try {
       const compPrice = compensationPrice ? parseFloat(compensationPrice) : 0;
+      const currentMembershipId = metadata.currentMembershipId ? 
+        parseInt(metadata.currentMembershipId) : null;
+      
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        compPrice
+        compPrice,
+        currentMembershipId
       );
-
+  
       return new Response(
         JSON.stringify({
           success: true,

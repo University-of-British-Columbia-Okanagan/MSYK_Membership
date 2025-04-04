@@ -7,7 +7,7 @@ import {
 } from "../../models/workshop.server";
 import {
   getMembershipPlanById,
-  getCancelledMembership,
+  getUserActiveMembership,
 } from "../../models/membership.server"; // make sure to implement this
 import { getUser } from "~/utils/session.server";
 import { useState } from "react";
@@ -32,62 +32,68 @@ export async function loader({ params, request }) {
     if (!membershipPlan)
       throw new Response("Membership Plan not found", { status: 404 });
 
-    const cancelledMembership = await getCancelledMembership(user.id);
+    // Get user's active membership if any
+    const userActiveMembership = await getUserActiveMembership(user.id);
 
     let compensationPrice = 0;
     let adjustedPrice = membershipPlan.price; // Default full price
-
     let oldMembershipTitle = null;
     let oldMembershipPrice = null;
+    let oldMembershipNextPaymentDate = null;
+    let isDowngrade = false;
 
-    // Only compute compensation if the user has a cancelled membership
-    // that hasn't expired yet
-    if (
-      cancelledMembership &&
-      new Date() < new Date(cancelledMembership.nextPaymentDate)
-    ) {
+    // Only compute compensation if the user has an active membership
+    if (userActiveMembership) {
       const now = new Date();
-      const A = now.getTime() - new Date(cancelledMembership.date).getTime();
+      const oldPrice = userActiveMembership.membershipPlan.price;
+      const newPrice = membershipPlan.price;
+
+      // Calculate the time portions
+      const A = now.getTime() - new Date(userActiveMembership.date).getTime();
       const B =
-        new Date(cancelledMembership.nextPaymentDate).getTime() - now.getTime();
+        new Date(userActiveMembership.nextPaymentDate).getTime() -
+        now.getTime();
       const total = A + B;
 
-      // need to ask if this situation can occur if i didnt cancel my previous membership; i just upgrade
-      // by simplying pressing selecting and paying
+      // Check if this is an upgrade or downgrade
+      if (newPrice > oldPrice) {
+        // Upgrade: calculate the prorated price difference
+        compensationPrice = (B / total) * (newPrice - oldPrice);
+        adjustedPrice = newPrice - compensationPrice;
+      } else if (newPrice < oldPrice) {
+        // Downgrade: no immediate charge, just pay the old price until next cycle
+        isDowngrade = true;
+        adjustedPrice = 0; // No immediate payment needed
+      } else {
+        // Same price, no change needed
+        adjustedPrice = 0; // No immediate payment needed
+      }
 
-      // const oldPrice = cancelledMembership.membershipPlan.price; // e.g., 50
-      // const newPrice = membershipPlan.price; // e.g., 90
-
-      // Always compute a positive partial difference (the magnitude of the price difference)
-      // const priceDiff = Math.abs(newPrice - oldPrice);
-      // const partialDiff = (B / total) * priceDiff; // partial difference based on time ratio
-
-      // let adjustedPrice: number;
-      // let compensationPrice: number; // this will be the partial difference (always positive)
-
-      // if (newPrice > oldPrice) {
-      //   // Upgrade: new plan is more expensive.
-      //   // The user pays the new price minus the partial difference.
-      //   adjustedPrice = newPrice - partialDiff;
-      //   compensationPrice = partialDiff;
-      // } else if (newPrice < oldPrice) {
-      //   // Downgrade: new plan is cheaper.
-      //   // The user pays the new price plus the partial difference.
-      //   adjustedPrice = newPrice + partialDiff;
-      //   compensationPrice = partialDiff;
-      // } else {
-      //   // Same price, no compensation needed.
-      //   adjustedPrice = newPrice;
-      //   compensationPrice = 0;
-      // }
-
-      const oldPrice = cancelledMembership.membershipPlan.price;
-      compensationPrice = (B / total) * (membershipPlan.price - oldPrice);
-      adjustedPrice = membershipPlan.price - compensationPrice;
-
-      oldMembershipTitle = cancelledMembership.membershipPlan.title;
+      oldMembershipTitle = userActiveMembership.membershipPlan.title;
       oldMembershipPrice = oldPrice;
+      oldMembershipNextPaymentDate = userActiveMembership.nextPaymentDate
+        ? new Date(userActiveMembership.nextPaymentDate).toISOString() // NEW: Convert to ISO string
+        : null;
+    } else {
+      // New membership, pay full price
+      adjustedPrice = membershipPlan.price;
     }
+
+    let isResubscription = false;
+  if (
+    userActiveMembership &&
+    userActiveMembership.status === "cancelled" &&
+    membershipPlan.id === userActiveMembership.membershipPlanId
+  ) {
+    isResubscription = true;
+    adjustedPrice = 0; // No payment needed for resubscription
+  }
+
+  // NEW: Override isResubscription flag if query parameter "resubscribe" is present
+  const searchParams = new URL(request.url).searchParams;
+  if (searchParams.get("resubscribe") === "true") {
+    isResubscription = true;
+  }
 
     return {
       membershipPlan,
@@ -96,6 +102,10 @@ export async function loader({ params, request }) {
       adjustedPrice,
       oldMembershipTitle,
       oldMembershipPrice,
+      userActiveMembership,
+      oldMembershipNextPaymentDate,
+      isDowngrade,
+      isResubscription,
     };
   }
   // Workshop branch: either single occurrence or continuation
@@ -350,41 +360,101 @@ export default function Payment() {
   const data = useLoaderData() as {
     membershipPlan?: any;
     user: any;
-    compensationPrice?: number;
-    adjustedPrice?: number;
+    compensationPrice: number;
+    adjustedPrice: number;
     oldMembershipTitle?: string | null;
     oldMembershipPrice?: number | null;
     workshop?: any;
     occurrence?: any;
     isContinuation?: boolean;
+    userActiveMembership?: any;
+    isDowngrade?: boolean;
+    isResubscription?: boolean; // NEW: if true, we show resubscribe UI
+    oldMembershipNextPaymentDate?: Date | null;
   };
 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
+  // Handler for the "Proceed" button
   const handlePayment = async () => {
     setLoading(true);
     try {
+      // If we have a membership plan scenario
       if (data.membershipPlan) {
-        const response = await fetch("/dashboard/paymentprocess", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            membershipPlanId: data.membershipPlan.id,
-            price: data.adjustedPrice ?? data.membershipPlan.price,
-            userId: data.user.id,
-            compensationPrice: data.compensationPrice ?? 0,
-          }),
-        });
-        const resData = await response.json();
-        if (resData.url) {
-          window.location.href = resData.url;
-        } else {
-          console.error("Payment error:", resData.error);
-          setLoading(false);
+        // Resubscription branch
+        if (data.isResubscription) {
+          // NEW: Reactivate membership without payment
+          const response = await fetch("/dashboard/payment/resubscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              currentMembershipId: data.userActiveMembership?.id,
+              membershipPlanId: data.membershipPlan.id,
+              userId: data.user.id,
+            }),
+          });
+
+          const resData = await response.json();
+          if (resData.success) {
+            // Navigate to success page with ?resubscribe=true
+            navigate("/dashboard/payment/success?resubscribe=true");
+          } else {
+            console.error("Resubscription error:", resData.error);
+            setLoading(false);
+          }
         }
-      } else {
-        // Process workshop payment (unchanged)
+
+        // Downgrade branch
+        else if (data.isDowngrade) {
+          // No payment needed for a downgrade
+          const response = await fetch("/dashboard/payment/downgrade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              currentMembershipId: data.userActiveMembership?.id,
+              newMembershipPlanId: data.membershipPlan.id,
+              userId: data.user.id,
+            }),
+          });
+
+          const resData = await response.json();
+          if (resData.success) {
+            navigate("/dashboard/payment/success?downgrade=true");
+          } else {
+            console.error("Downgrade error:", resData.error);
+            setLoading(false);
+          }
+        }
+
+        // Upgrade or new membership branch
+        else {
+          const response = await fetch("/dashboard/paymentprocess", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              membershipPlanId: data.membershipPlan.id,
+              price: data.userActiveMembership
+                ? data.compensationPrice
+                : data.adjustedPrice,
+              userId: data.user.id,
+              oldMembershipNextPaymentDate: data.oldMembershipNextPaymentDate,
+              compensationPrice: data.compensationPrice ?? 0,
+              currentMembershipId: data.userActiveMembership?.id || null,
+            }),
+          });
+          const resData = await response.json();
+          if (resData.url) {
+            window.location.href = resData.url;
+          } else {
+            console.error("Payment error:", resData.error);
+            setLoading(false);
+          }
+        }
+      }
+
+      // Workshop branch (unchanged)
+      else {
         if (data.isContinuation) {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
@@ -433,44 +503,91 @@ export default function Payment() {
     <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
       {data.membershipPlan ? (
         <>
+          {/* UPDATED: Adjust title based on isResubscription or isDowngrade */}
           <h2 className="text-xl font-bold mb-4">
-            Complete Your Membership Payment
+            {data.isResubscription
+              ? "Confirm Membership Resubscription"
+              : data.isDowngrade
+              ? "Confirm Membership Downgrade"
+              : "Complete Your Membership Payment"}
           </h2>
+
           <p className="text-gray-700">Plan: {data.membershipPlan.title}</p>
           <p className="text-gray-700">
             Description: {data.membershipPlan.description}
           </p>
 
-          {/* Only show old membership details if they exist */}
-          {data.oldMembershipTitle && data.oldMembershipPrice ? (
-            <>
-              <p className="mt-2 text-gray-700">
-                You canceled your previous membership called{" "}
-                <strong>{data.oldMembershipTitle}</strong> early worth $
-                {data.oldMembershipPrice.toFixed(2)}
-              </p>
-            </>
-          ) : null}
-
-          {/* Only show compensation details if there's a positive compensationPrice */}
-          {data.compensationPrice && data.compensationPrice > 0 ? (
+          {/* Show a message if user has an old membership */}
+          {data.oldMembershipTitle && data.oldMembershipPrice && (
             <p className="mt-2 text-gray-700">
-              For this billing cycle, you'll pay $
-              {data.adjustedPrice?.toFixed(2)} (due to $
-              {data.compensationPrice.toFixed(2)} compensation), and you'll pay
-              the full ${data.membershipPlan.price.toFixed(2)} next cycle.
+              Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
+              (${data.oldMembershipPrice.toFixed(2)}/month)
+            </p>
+          )}
+
+          {/* 
+            If it's a resubscription, show a special message that no payment is required.
+            If it's a downgrade, show the existing message that no payment is required.
+            If it's an upgrade, show compensation details, etc.
+          */}
+          {data.isResubscription ? (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+              <p className="text-gray-700">
+                You previously cancelled this membership. Resubscribing now will
+                reactivate it immediately.
+              </p>
+              <p className="font-semibold mt-2">
+                No payment is required for resubscription.
+              </p>
+            </div>
+          ) : data.isDowngrade ? (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+              <p className="text-gray-700">
+                You will continue at your current rate of $
+                {data.oldMembershipPrice?.toFixed(2)}/month until your next
+                payment date at{" "}
+                {data.oldMembershipNextPaymentDate
+                  ? new Date(data.oldMembershipNextPaymentDate).toLocaleDateString()
+                  : "N/A"}
+                , then switch to $
+                {data.membershipPlan.price.toFixed(2)}/month.
+              </p>
+              <p className="font-semibold mt-2">No payment is required now.</p>
+            </div>
+          ) : data.compensationPrice && data.compensationPrice > 0 ? (
+            <p className="mt-2 text-gray-700">
+              You'll pay a prorated amount of $
+              {data.compensationPrice.toFixed(2)} now to enjoy the benefits of{" "}
+              <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
+              <strong>${data.membershipPlan.price.toFixed(2)}/month</strong>{" "}
+              starting from{" "}
+              {data.oldMembershipNextPaymentDate
+                ? new Date(data.oldMembershipNextPaymentDate).toLocaleDateString()
+                : "N/A"}
+              .
+            </p>
+          ) : data.userActiveMembership ? (
+            <p className="mt-2 text-gray-700">
+              Switching to the same price plan. No additional payment is needed
+              now.
             </p>
           ) : null}
 
-          {/* Always show the final total */}
-          <p className="text-lg font-semibold mt-2">
-            Total: $
-            {data.adjustedPrice
-              ? data.adjustedPrice.toFixed(2)
-              : data.membershipPlan.price.toFixed(2)}
-          </p>
+          {/* 
+            If it's not a downgrade or resubscription, show "Total due now" message
+            (in case of upgrade or brand-new membership).
+          */}
+          {!data.isDowngrade && !data.isResubscription && (
+            <p className="text-lg font-semibold mt-2">
+              Total due now: $
+              {data.userActiveMembership
+                ? data.compensationPrice.toFixed(2)
+                : data.adjustedPrice.toFixed(2)}
+            </p>
+          )}
         </>
       ) : (
+        // Workshop Payment UI (unchanged)
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
@@ -494,7 +611,7 @@ export default function Payment() {
         disabled={loading}
         className="mt-4 bg-blue-500 text-white w-full"
       >
-        {loading ? "Processing..." : "Proceed to Payment"}
+        {loading ? "Processing..." : "Proceed"}
       </Button>
     </div>
   );

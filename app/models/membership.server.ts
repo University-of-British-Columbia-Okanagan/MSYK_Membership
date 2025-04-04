@@ -100,51 +100,213 @@ export async function getMembershipPlanById(planId: number) {
 }
 
 /*
-* This function handles roleLevel 2 and 3
-*/
+ * This function handles roleLevel 2 and 3
+ */
 export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number,
-  compensationPrice: number = 0
+  compensationPrice: number = 0,
+  currentMembershipId: number | null = null,
+  isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
+  isResubscription: boolean = false
 ) {
   let subscription;
   const now = new Date();
-  const nextPaymentDate = new Date(now);
-  nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
   // If compensationPrice is greater than 0, use it; otherwise, store null.
   const compPrice = compensationPrice > 0 ? compensationPrice : null;
-  const hasPaid = compensationPrice > 0 ? false : null;
+  const hasPaid = compensationPrice > 0;
 
-  const existing = await db.userMembership.findUnique({
-    where: { userId },
-  });
+  console.log("hello world 593");
 
-  if (existing) {
-    subscription = await db.userMembership.update({
-      where: { userId },
-      data: {
-        membershipPlanId,
-        nextPaymentDate,
-        status: "active",
-        compensationPrice: compPrice,
-        hasPaidCompensationPrice: hasPaid,
-      },
+  // NEW: Handle resubscription - if a membership is cancelled and the user resubscribes,
+  // simply update the cancelled membership's status to "active" without any payment.
+  if (isResubscription) {
+    console.log("Entering resubscription branch");
+    let cancelledMembership;
+    if (currentMembershipId) {
+      cancelledMembership = await db.userMembership.findUnique({
+        where: { id: currentMembershipId },
+      });
+    } else {
+      cancelledMembership = await db.userMembership.findFirst({
+        where: { userId, membershipPlanId, status: "cancelled" },
+      });
+    }
+    if (!cancelledMembership) {
+      throw new Error("No cancelled membership found for resubscription");
+    }
+    // Update the cancelled record to active.
+    const subscription = await db.userMembership.update({
+      where: { id: cancelledMembership.id },
+      data: { status: "active" },
     });
-  } else {
-    subscription = await db.userMembership.create({
-      data: {
-        userId,
-        membershipPlanId,
-        nextPaymentDate,
-        status: "active",
-        compensationPrice: compPrice,
-        hasPaidCompensationPrice: hasPaid,
-      },
-    });
+    return subscription;
   }
 
-  // Fetch the current user to determine their role.
+  if (isDowngrade && currentMembershipId) {
+    console.log("hello world2");
+    const currentMembership = await db.userMembership.findUnique({
+      where: { id: currentMembershipId },
+      include: { membershipPlan: true },
+    });
+
+    if (!currentMembership) {
+      throw new Error("Current membership not found");
+    }
+
+    // For downgrades, keep the current membership active until the next payment date
+    // and schedule the new (cheaper) membership to start at the next payment date.
+    const startDate = new Date(currentMembership.nextPaymentDate);
+    const newNextPaymentDate = new Date(startDate);
+    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+
+    // 1) Mark the old (more expensive) membership as ending
+    await db.userMembership.update({
+      where: { id: currentMembershipId },
+      data: { status: "ending" },
+    });
+
+    // 2) Find if there's already an "active" or "ending" record for this user/plan
+    //    (we only want 1 record in active or ending for the cheaper plan).
+    let newMembership = await db.userMembership.findFirst({
+      where: {
+        userId,
+        membershipPlanId,
+        // We only care if it's still "active" or "ending"
+        OR: [{ status: "active" }, { status: "ending" }],
+      },
+    });
+
+    if (newMembership) {
+      // 3a) If found, update that record to "active" with the new start/nextPaymentDate
+      newMembership = await db.userMembership.update({
+        where: { id: newMembership.id },
+        data: {
+          date: startDate,
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: null,
+          hasPaidCompensationPrice: false,
+        },
+      });
+      subscription = newMembership;
+    } else {
+      // 3b) Otherwise, create a fresh record for the downgraded plan
+      subscription = await db.userMembership.create({
+        data: {
+          userId,
+          membershipPlanId,
+          date: startDate, // starts at old membership's nextPaymentDate
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: null,
+          hasPaidCompensationPrice: false,
+        },
+      });
+    }
+
+    return subscription;
+  }
+
+  // Continue with existing upgrade/change logic
+  else if (currentMembershipId) {
+    console.log("hello world3");
+    const currentMembership = await db.userMembership.findUnique({
+      where: { id: currentMembershipId },
+      include: { membershipPlan: true },
+    });
+  
+    if (!currentMembership) {
+      throw new Error("Current membership not found");
+    }
+  
+    // Mark the old membership as ending
+    await db.userMembership.update({
+      where: { id: currentMembershipId },
+      data: { status: "ending" },
+    });
+  
+    // Create or update a new membership record for the upgraded plan
+    // so that we only have 1 record in "active"/"ending" for the new plan.
+    const startDate = new Date(currentMembership.nextPaymentDate);
+    const newNextPaymentDate = new Date(startDate);
+    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+  
+    // Check if there's an existing record for the new plan in active/ending
+    let newMembership = await db.userMembership.findFirst({
+      where: {
+        userId,
+        membershipPlanId,
+        OR: [{ status: "active" }, { status: "ending" }],
+      },
+    });
+  
+    if (newMembership) {
+      // Update that record
+      newMembership = await db.userMembership.update({
+        where: { id: newMembership.id },
+        data: {
+          date: startDate, // new membership starts when the old membership ends
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: compPrice,
+          hasPaidCompensationPrice: hasPaid,
+        },
+      });
+      subscription = newMembership;
+    } else {
+      // Otherwise, create a fresh record for the new plan
+      subscription = await db.userMembership.create({
+        data: {
+          userId,
+          membershipPlanId,
+          date: startDate,
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: compPrice,
+          hasPaidCompensationPrice: hasPaid,
+        },
+      });
+    }
+  
+    return subscription;
+  } else {
+    // Standard new subscription or simple update logic
+    console.log("hello world4");
+    const nextPaymentDate = new Date(now);
+    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+
+    const existing = await db.userMembership.findFirst({
+      where: { userId },
+    });
+
+    if (existing) {
+      subscription = await db.userMembership.update({
+        where: { id: existing.id },
+        data: {
+          membershipPlanId,
+          nextPaymentDate,
+          status: "active",
+          compensationPrice: compPrice,
+          hasPaidCompensationPrice: hasPaid,
+        },
+      });
+    } else {
+      subscription = await db.userMembership.create({
+        data: {
+          userId,
+          membershipPlanId,
+          nextPaymentDate,
+          status: "active",
+          compensationPrice: compPrice,
+          hasPaidCompensationPrice: hasPaid,
+        },
+      });
+    }
+  }
+
+  // Fetch the current user to determine their role - keeping your existing role logic
   const user = await db.user.findUnique({
     where: { id: userId },
   });
@@ -187,9 +349,12 @@ export async function registerMembershipSubscription(
 }
 
 /*
-* This function handles roleLevel 2 and 3
-*/
-export async function cancelMembership(userId: number, membershipPlanId: number) {
+ * This function handles roleLevel 2 and 3
+ */
+export async function cancelMembership(
+  userId: number,
+  membershipPlanId: number
+) {
   // Delete the membership subscription.
   const membershipRecord = await db.userMembership.findFirst({
     where: {
@@ -273,64 +438,129 @@ export async function getCancelledMembership(userId: number) {
   });
 }
 
+export async function getUserActiveMembership(userId: number) {
+  return await db.userMembership.findFirst({
+    where: {
+      userId: userId,
+      status: "active",
+    },
+    include: {
+      membershipPlan: true,
+    },
+  });
+}
+
+// Ensure that incrementMonth is imported or defined appropriately.
+
 export function startMonthlyMembershipCheck() {
-  // Run every day at midnight
-  cron.schedule("05 03 * * *", async () => {
+  // Run every day at midnight (adjust the cron expression as needed)
+  cron.schedule("06 00 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
       const now = new Date();
-      // Find memberships due for charge (using nextPaymentDate)
+
+      // Find memberships due for charge with status "active", "ending", or "cancelled"
       const dueMemberships = await db.userMembership.findMany({
         where: {
           nextPaymentDate: { lte: now },
-          status: "active",
+          status: { in: ["active", "ending", "cancelled"] },
         },
         include: {
-          membershipPlan: true, // so we can access the regular plan price
+          membershipPlan: true, // so we can access the plan's price
         },
       });
 
       for (const membership of dueMemberships) {
         let chargeAmount: number;
-        // Check if this membership has a compensation amount pending and hasn't been paid yet.
-        if (
-          membership.compensationPrice !== null &&
-          membership.hasPaidCompensationPrice === false
-        ) {
-          // Use the compensation price for this billing cycle.
-          chargeAmount = Number(membership.compensationPrice);
-          console.log(
-            `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
-          );
 
-          // After processing the charge, update the membership:
-          // - Increment the nextPaymentDate
-          // - Set hasPaidCompensationPrice to true so future cycles will use the full price.
-          await db.userMembership.update({
-            where: { id: membership.id },
-            data: {
-              nextPaymentDate: incrementMonth(membership.nextPaymentDate),
-              hasPaidCompensationPrice: true,
-            },
-          });
-        } else {
-          // Otherwise, charge the regular price.
+        if (membership.status === "active") {
+          // Process active memberships.
+          if (
+            membership.compensationPrice !== null &&
+            membership.hasPaidCompensationPrice === false
+          ) {
+            // Use the compensation price for this billing cycle.
+            chargeAmount = Number(membership.compensationPrice);
+            console.log(
+              `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
+            );
+
+            // After processing the charge, update:
+            // - Increment the nextPaymentDate by one month.
+            // - Mark compensation as paid.
+            await db.userMembership.update({
+              where: { id: membership.id },
+              data: {
+                nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+                hasPaidCompensationPrice: true,
+              },
+            });
+          } else {
+            // Otherwise, charge the regular full price.
+            chargeAmount = Number(membership.membershipPlan.price);
+            console.log(
+              `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
+            );
+
+            await db.userMembership.update({
+              where: { id: membership.id },
+              data: {
+                nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+              },
+            });
+          }
+        } else if (membership.status === "ending" || membership.status === "cancelled") {
+          // Process memberships with status "ending" or "cancelled".
           chargeAmount = Number(membership.membershipPlan.price);
           console.log(
-            `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
+            `User ID: ${membership.userId} (${membership.status}) is being charged the full price: $${chargeAmount.toFixed(2)}`
           );
-
+          // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
             where: { id: membership.id },
-            data: {
-              nextPaymentDate: incrementMonth(membership.nextPaymentDate),
-            },
+            data: { status: "inactive" },
           });
         }
 
-        // Here you would integrate your actual payment logic,
-        // e.g. calling your payment gateway to charge 'chargeAmount' for membership.userId
+        // (Integrate your actual payment gateway logic here using chargeAmount for membership.userId)
+
+        // Update the user's roleLevel based on their current membership status.
+        const user = await db.user.findUnique({
+          where: { id: membership.userId },
+        });
+        if (user) {
+          // Check if the user has any subscription that is not inactive.
+          const activeMembership = await db.userMembership.findFirst({
+            where: {
+              userId: membership.userId,
+              status: { not: "inactive" },
+            },
+          });
+
+          if (activeMembership) {
+            // If there is an active membership:
+            // If the active membership is for plan 2 and the user has admin permission (allowLevel4 true),
+            // set roleLevel to 4; otherwise, set roleLevel to 3.
+            if (activeMembership.membershipPlanId === 2 && user.allowLevel4 === true) {
+              await db.user.update({
+                where: { id: user.id },
+                data: { roleLevel: 4 },
+              });
+            } else {
+              await db.user.update({
+                where: { id: user.id },
+                data: { roleLevel: 3 },
+              });
+            }
+          } else {
+            // No active membership found; downgrade to level 2.
+            await db.user.update({
+              where: { id: user.id },
+              data: { roleLevel: 2 },
+            });
+          }
+        }
       }
     } catch (error) {
       console.error("Error in monthly membership check:", error);
@@ -338,82 +568,83 @@ export function startMonthlyMembershipCheck() {
   });
 }
 
-export function startExpiredMembershipCheck() {
-  cron.schedule("07 03 * * *", async () => {
-    console.log("Running expired membership check...");
-    try {
-      await checkExpiredMemberships();
-      console.log("Expired membership check completed successfully.");
-    } catch (error) {
-      console.error("Error during expired membership check:", error);
-    }
-  });
-}
 
-export async function checkExpiredMemberships() {
-  const now = new Date();
+// export function startExpiredMembershipCheck() {
+//   cron.schedule("07 03 * * *", async () => {
+//     console.log("Running expired membership check...");
+//     try {
+//       await checkExpiredMemberships();
+//       console.log("Expired membership check completed successfully.");
+//     } catch (error) {
+//       console.error("Error during expired membership check:", error);
+//     }
+//   });
+// }
 
-  // 1. Find all expired memberships that are cancelled (nextPaymentDate < now)
-  const expiredMemberships = await db.userMembership.findMany({
-    where: {
-      status: "cancelled",
-      nextPaymentDate: { lt: now },
-    },
-    select: { userId: true },
-  });
+// export async function checkExpiredMemberships() {
+//   const now = new Date();
 
-  // Get unique user IDs of affected users
-  const affectedUserIds = [...new Set(expiredMemberships.map(m => m.userId))];
+//   // 1. Find all expired memberships that are cancelled (nextPaymentDate < now)
+//   const expiredMemberships = await db.userMembership.findMany({
+//     where: {
+//       status: "cancelled",
+//       nextPaymentDate: { lt: now },
+//     },
+//     select: { userId: true },
+//   });
 
-  // 2. Delete all these expired, cancelled memberships
-  await db.userMembership.deleteMany({
-    where: {
-      status: "cancelled",
-      nextPaymentDate: { lt: now },
-    },
-  });
+//   // Get unique user IDs of affected users
+//   const affectedUserIds = [...new Set(expiredMemberships.map((m) => m.userId))];
 
-  // 3. For each affected user, recalculate their role level
-  for (const userId of affectedUserIds) {
-    // Count remaining subscriptions (active ones, etc.)
-    const subscriptionCount = await db.userMembership.count({
-      where: { userId },
-    });
+//   // 2. Delete all these expired, cancelled memberships
+//   await db.userMembership.deleteMany({
+//     where: {
+//       status: "cancelled",
+//       nextPaymentDate: { lt: now },
+//     },
+//   });
 
-    // Count passed orientation workshops for the user
-    const passedOrientationCount = await db.userWorkshop.count({
-      where: {
-        userId,
-        result: { equals: "passed", mode: "insensitive" },
-        workshop: {
-          type: { equals: "orientation", mode: "insensitive" },
-        },
-      },
-    });
+//   // 3. For each affected user, recalculate their role level
+//   for (const userId of affectedUserIds) {
+//     // Count remaining subscriptions (active ones, etc.)
+//     const subscriptionCount = await db.userMembership.count({
+//       where: { userId },
+//     });
 
-    // Determine base role level:
-    // - At least one passed orientation makes them level 2 if they have no subscription.
-    // - If they have a subscription, they become level 3.
-    let newRoleLevel = 1;
-    if (passedOrientationCount > 0) {
-      newRoleLevel = subscriptionCount > 0 ? 3 : 2;
-    }
+//     // Count passed orientation workshops for the user
+//     const passedOrientationCount = await db.userWorkshop.count({
+//       where: {
+//         userId,
+//         result: { equals: "passed", mode: "insensitive" },
+//         workshop: {
+//           type: { equals: "orientation", mode: "insensitive" },
+//         },
+//       },
+//     });
 
-    // Check for level 4: if the user has a subscription with planId = 2 and allowLevel4 true.
-    const membershipPlan2 = await db.userMembership.findFirst({
-      where: { userId, membershipPlanId: 2 },
-    });
-    const user = await db.user.findUnique({
-      where: { id: userId },
-    });
-    if (membershipPlan2 && user?.allowLevel4) {
-      newRoleLevel = 4;
-    }
+//     // Determine base role level:
+//     // - At least one passed orientation makes them level 2 if they have no subscription.
+//     // - If they have a subscription, they become level 3.
+//     let newRoleLevel = 1;
+//     if (passedOrientationCount > 0) {
+//       newRoleLevel = subscriptionCount > 0 ? 3 : 2;
+//     }
 
-    // Update the user's role level.
-    await db.user.update({
-      where: { id: userId },
-      data: { roleLevel: newRoleLevel },
-    });
-  }
-}
+//     // Check for level 4: if the user has a subscription with planId = 2 and allowLevel4 true.
+//     const membershipPlan2 = await db.userMembership.findFirst({
+//       where: { userId, membershipPlanId: 2 },
+//     });
+//     const user = await db.user.findUnique({
+//       where: { id: userId },
+//     });
+//     if (membershipPlan2 && user?.allowLevel4) {
+//       newRoleLevel = 4;
+//     }
+
+//     // Update the user's role level.
+//     await db.user.update({
+//       where: { id: userId },
+//       data: { roleLevel: newRoleLevel },
+//     });
+//   }
+// }

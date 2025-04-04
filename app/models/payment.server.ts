@@ -16,7 +16,7 @@ export async function createCheckoutSession(request: Request) {
 
   // Membership Payment Branch
   if (body.membershipPlanId) {
-    const { membershipPlanId, price, userId, compensationPrice, userEmail } = body;
+    const { membershipPlanId, price, userId, compensationPrice, oldMembershipNextPaymentDate, userEmail } = body; // <--- Note we read compensationPrice here
     if (!membershipPlanId || !price || !userId) {
       throw new Error("Missing required membership payment data");
     }
@@ -27,9 +27,13 @@ export async function createCheckoutSession(request: Request) {
 
     let finalDescription = membershipPlan.description || "";
     if (compensationPrice && compensationPrice > 0) {
-      finalDescription += `\nCompensation: $${compensationPrice.toFixed(
+      finalDescription += `\nPay now: $${compensationPrice.toFixed(
         2
-      )} off this cycle. Next cycle: $${membershipPlan.price.toFixed(2)}`;
+      )}. $${membershipPlan.price.toFixed(2)} starting ${oldMembershipNextPaymentDate
+        ? new Date(
+            oldMembershipNextPaymentDate
+          ).toLocaleDateString()
+        : "N/A"}.` ;
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -56,6 +60,7 @@ export async function createCheckoutSession(request: Request) {
         userId: userId.toString(),
         compensationPrice: compensationPrice ? compensationPrice.toString() : "0",
         originalPrice: membershipPlan.price.toString(),
+        currentMembershipId: body.currentMembershipId ? body.currentMembershipId.toString() : null,
       },
     });
     return new Response(JSON.stringify({ url: session.url }), {
