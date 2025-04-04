@@ -192,44 +192,42 @@ export default function MembershipCard({
 
   // NEW: Determine the button label based on the membership state.
   if (!disabled) {
-    // If membershipStatus is "inactive" and a nextPaymentDate exists,
-    // it indicates a pending (cancelled/ending) membership.
     if (membershipStatus === "inactive" && nextPaymentDate) {
       if (new Date(nextPaymentDate) > new Date()) {
-        // The next payment date is in the future so disable the button.
         disabled = true;
-        // If an active subscription exists, compare with highestActivePrice;
-        // otherwise, if there's a cancelled membership, compare with highestCanceledPrice.
         if (hasActiveSubscription) {
           buttonLabel = price > highestActivePrice ? "Upgrade" : "Change";
-        } else if (hasCancelledSubscription) {
-          buttonLabel = price > highestCanceledPrice ? "Upgrade" : "Change";
+        } else if (!hasActiveSubscription && hasCancelledSubscription) {
+          // CHANGE: If there's no active subscription and a cancelled one exists, force resubscribe.
+          buttonLabel = "Resubscribe";
         } else {
           buttonLabel = "Subscribe";
         }
         tooltipText =
           "You can change only after your old membership billing cycle ends.";
       } else {
-        // If the next payment date has passed, allow selection.
         if (hasActiveSubscription) {
           buttonLabel = price > highestActivePrice ? "Upgrade" : "Change";
-        } else if (hasCancelledSubscription) {
-          buttonLabel = price > highestCanceledPrice ? "Upgrade" : "Change";
+        } else if (!hasActiveSubscription && hasCancelledSubscription) {
+          // CHANGE: Use "Resubscribe" if cancelled and no active membership.
+          buttonLabel = "Resubscribe";
+          disabled = true;
+          tooltipText =
+            "You cancelled your previous membership. Please resubscribe first before switching plans.";
         } else {
           buttonLabel = "Subscribe";
         }
       }
     } else if (hasActiveSubscription) {
-      // If user has an active subscription, compare the new plan's price
       buttonLabel = highestActivePrice > price ? "Change" : "Upgrade";
-    } else if (hasCancelledSubscription) {
-      // If user has a cancelled membership, use that price for comparison.
-      buttonLabel = highestCanceledPrice > price ? "Change" : "Upgrade";
+    } else if (!hasActiveSubscription && hasCancelledSubscription) {
+      // CHANGE: If no active subscription and there is a cancelled membership,
+      // the user must resubscribe first.
+      buttonLabel = "Resubscribe";
       disabled = true;
       tooltipText =
-        "You cancelled your previous membership. Please resubscribe first before changing plans.";
+        "You cancelled your previous membership. Please resubscribe first before switching plans.";
     } else {
-      // Default case: no subscription at all.
       buttonLabel = "Subscribe";
     }
   }
