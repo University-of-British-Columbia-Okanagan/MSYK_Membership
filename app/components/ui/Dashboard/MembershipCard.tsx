@@ -29,6 +29,7 @@ interface MembershipCardProps {
   highestActivePrice?: number;
   highestCanceledPrice?: number;
   nextPaymentDate?: Date;
+  membershipRecordId?: number;
 }
 
 export default function MembershipCard({
@@ -46,6 +47,7 @@ export default function MembershipCard({
   highestActivePrice = 0,
   highestCanceledPrice = 0,
   nextPaymentDate,
+  membershipRecordId,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -95,17 +97,62 @@ export default function MembershipCard({
           3) otherwise -> the "subscribe" or "upgrade/change" button
       */}
       {membershipStatus === "cancelled" ? (
+        // <div className="mt-4">
+        //   <p className="text-orange-600 font-semibold mb-2">
+        //     You have cancelled this membership
+        //   </p>
+        //   {/* 
+        //     NEW: Instead of navigating to a payment route,
+        //     use a button that triggers a fetch call to the resubscribe endpoint.
+        //   */}
+        //   <Button
+        //     onClick={async () => {
+        //       try {
+        //         const response = await fetch("/dashboard/payment/resubscribe", {
+        //           method: "POST",
+        //           headers: { "Content-Type": "application/json" },
+        //           // Pass required data as JSON:
+        //           body: JSON.stringify({
+        //             currentMembershipId: membershipRecordId, // use the passed membership record id
+        //             membershipPlanId: planId,
+        //             userId: userRecord?.id,
+        //           }),
+        //         });
+        //         const resData = await response.json();
+        //         if (resData.success) {
+        //           // On success, redirect to the payment success page with resubscribe query
+        //           navigate("/dashboard/payment/success?resubscribe=true");
+        //         } else {
+        //           console.error("Resubscription error:", resData.error);
+        //         }
+        //       } catch (error) {
+        //         console.error("Resubscription fetch error:", error);
+        //       }
+        //     }}
+        //     className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+        //   >
+        //     Resubscribe
+        //   </Button>
+        // </div>
         <div className="mt-4">
-          <p className="text-orange-600 font-semibold mb-2">
-            You have cancelled this membership
-          </p>
-          <Button
-            onClick={handleSelect}
-            className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-          >
-            Resubscribe
-          </Button>
-        </div>
+    <p className="text-orange-600 font-semibold mb-2">
+      You have cancelled this membership
+    </p>
+    <Button
+      // CHANGE: Navigate to the payment page with query params for resubscription.
+      onClick={() => {
+        // Pass along the membershipRecordId if available (make sure you pass this prop from your loader)
+        navigate(
+          `/dashboard/payment/${planId}?resubscribe=true${
+            membershipRecordId ? `&membershipRecordId=${membershipRecordId}` : ""
+          }`
+        );
+      }}
+      className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+    >
+      Resubscribe
+    </Button>
+  </div>
       ) : membershipStatus === "active" ? (
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">

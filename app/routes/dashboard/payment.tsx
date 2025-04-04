@@ -79,6 +79,22 @@ export async function loader({ params, request }) {
       adjustedPrice = membershipPlan.price;
     }
 
+    let isResubscription = false;
+  if (
+    userActiveMembership &&
+    userActiveMembership.status === "cancelled" &&
+    membershipPlan.id === userActiveMembership.membershipPlanId
+  ) {
+    isResubscription = true;
+    adjustedPrice = 0; // No payment needed for resubscription
+  }
+
+  // NEW: Override isResubscription flag if query parameter "resubscribe" is present
+  const searchParams = new URL(request.url).searchParams;
+  if (searchParams.get("resubscribe") === "true") {
+    isResubscription = true;
+  }
+
     return {
       membershipPlan,
       user,
@@ -89,6 +105,7 @@ export async function loader({ params, request }) {
       userActiveMembership,
       oldMembershipNextPaymentDate,
       isDowngrade,
+      isResubscription,
     };
   }
   // Workshop branch: either single occurrence or continuation
@@ -352,23 +369,50 @@ export default function Payment() {
     isContinuation?: boolean;
     userActiveMembership?: any;
     isDowngrade?: boolean;
+    isResubscription?: boolean; // NEW: if true, we show resubscribe UI
     oldMembershipNextPaymentDate?: Date | null;
   };
 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
+  // Handler for the "Proceed" button
   const handlePayment = async () => {
     setLoading(true);
     try {
+      // If we have a membership plan scenario
       if (data.membershipPlan) {
-        if (data.isDowngrade) {
-          // For downgrades, call our new endpoint
+        // Resubscription branch
+        if (data.isResubscription) {
+          // NEW: Reactivate membership without payment
+          const response = await fetch("/dashboard/payment/resubscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              currentMembershipId: data.userActiveMembership?.id,
+              membershipPlanId: data.membershipPlan.id,
+              userId: data.user.id,
+            }),
+          });
+
+          const resData = await response.json();
+          if (resData.success) {
+            // Navigate to success page with ?resubscribe=true
+            navigate("/dashboard/payment/success?resubscribe=true");
+          } else {
+            console.error("Resubscription error:", resData.error);
+            setLoading(false);
+          }
+        }
+
+        // Downgrade branch
+        else if (data.isDowngrade) {
+          // No payment needed for a downgrade
           const response = await fetch("/dashboard/payment/downgrade", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              currentMembershipId: data.userActiveMembership.id,
+              currentMembershipId: data.userActiveMembership?.id,
               newMembershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
             }),
@@ -376,14 +420,15 @@ export default function Payment() {
 
           const resData = await response.json();
           if (resData.success) {
-            // Redirect directly to the success page with downgrade query param
             navigate("/dashboard/payment/success?downgrade=true");
           } else {
             console.error("Downgrade error:", resData.error);
             setLoading(false);
           }
-        } else {
-          // Process payment for new membership or upgrade
+        }
+
+        // Upgrade or new membership branch
+        else {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -406,8 +451,10 @@ export default function Payment() {
             setLoading(false);
           }
         }
-      } else {
-        // Process workshop payment (unchanged)
+      }
+
+      // Workshop branch (unchanged)
+      else {
         if (data.isContinuation) {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
@@ -456,39 +503,54 @@ export default function Payment() {
     <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
       {data.membershipPlan ? (
         <>
+          {/* UPDATED: Adjust title based on isResubscription or isDowngrade */}
           <h2 className="text-xl font-bold mb-4">
-            {data.isDowngrade
+            {data.isResubscription
+              ? "Confirm Membership Resubscription"
+              : data.isDowngrade
               ? "Confirm Membership Downgrade"
               : "Complete Your Membership Payment"}
           </h2>
+
           <p className="text-gray-700">Plan: {data.membershipPlan.title}</p>
           <p className="text-gray-700">
             Description: {data.membershipPlan.description}
           </p>
 
-          {/* Show current membership details if they exist */}
-          {data.oldMembershipTitle && data.oldMembershipPrice ? (
-            <>
-              <p className="mt-2 text-gray-700">
-                Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
-                (${data.oldMembershipPrice.toFixed(2)}/month)
-              </p>
-            </>
-          ) : null}
+          {/* Show a message if user has an old membership */}
+          {data.oldMembershipTitle && data.oldMembershipPrice && (
+            <p className="mt-2 text-gray-700">
+              Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
+              (${data.oldMembershipPrice.toFixed(2)}/month)
+            </p>
+          )}
 
-          {/* Show different content based on upgrade/downgrade */}
-          {data.isDowngrade ? (
+          {/* 
+            If it's a resubscription, show a special message that no payment is required.
+            If it's a downgrade, show the existing message that no payment is required.
+            If it's an upgrade, show compensation details, etc.
+          */}
+          {data.isResubscription ? (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+              <p className="text-gray-700">
+                You previously cancelled this membership. Resubscribing now will
+                reactivate it immediately.
+              </p>
+              <p className="font-semibold mt-2">
+                No payment is required for resubscription.
+              </p>
+            </div>
+          ) : data.isDowngrade ? (
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
               <p className="text-gray-700">
                 You will continue at your current rate of $
                 {data.oldMembershipPrice?.toFixed(2)}/month until your next
                 payment date at{" "}
                 {data.oldMembershipNextPaymentDate
-                  ? new Date(
-                      data.oldMembershipNextPaymentDate
-                    ).toLocaleDateString()
+                  ? new Date(data.oldMembershipNextPaymentDate).toLocaleDateString()
                   : "N/A"}
-                , then switch to ${data.membershipPlan.price.toFixed(2)}/month.
+                , then switch to $
+                {data.membershipPlan.price.toFixed(2)}/month.
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
             </div>
@@ -500,9 +562,7 @@ export default function Payment() {
               <strong>${data.membershipPlan.price.toFixed(2)}/month</strong>{" "}
               starting from{" "}
               {data.oldMembershipNextPaymentDate
-                ? new Date(
-                    data.oldMembershipNextPaymentDate
-                  ).toLocaleDateString()
+                ? new Date(data.oldMembershipNextPaymentDate).toLocaleDateString()
                 : "N/A"}
               .
             </p>
@@ -513,19 +573,21 @@ export default function Payment() {
             </p>
           ) : null}
 
-          {/* Show the final total */}
-          {!data.isDowngrade && (
+          {/* 
+            If it's not a downgrade or resubscription, show "Total due now" message
+            (in case of upgrade or brand-new membership).
+          */}
+          {!data.isDowngrade && !data.isResubscription && (
             <p className="text-lg font-semibold mt-2">
               Total due now: $
               {data.userActiveMembership
-                ? // If user already has a membership, show the compensation price
-                  data.compensationPrice.toFixed(2)
-                : // Otherwise, user is new -> show adjustedPrice (full membership price)
-                  data.adjustedPrice.toFixed(2)}
+                ? data.compensationPrice.toFixed(2)
+                : data.adjustedPrice.toFixed(2)}
             </p>
           )}
         </>
       ) : (
+        // Workshop Payment UI (unchanged)
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
@@ -549,7 +611,7 @@ export default function Payment() {
         disabled={loading}
         className="mt-4 bg-blue-500 text-white w-full"
       >
-        {loading ? "Processing..." : "Proceed to Payment"}
+        {loading ? "Processing..." : "Proceed"}
       </Button>
     </div>
   );

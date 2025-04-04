@@ -100,39 +100,60 @@ export async function getMembershipPlanById(planId: number) {
 }
 
 /*
-* This function handles roleLevel 2 and 3
-*/
+ * This function handles roleLevel 2 and 3
+ */
 export async function registerMembershipSubscription(
   userId: number,
-  membershipPlanId: number, 
+  membershipPlanId: number,
   compensationPrice: number = 0,
   currentMembershipId: number | null = null,
-  isDowngrade: boolean = false // Flag to indicate if this is a downgrade
+  isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
+  isResubscription: boolean = false
 ) {
   let subscription;
   const now = new Date();
-  
+
   // If compensationPrice is greater than 0, use it; otherwise, store null.
   const compPrice = compensationPrice > 0 ? compensationPrice : null;
   const hasPaid = compensationPrice > 0;
 
-  // Special handling for downgrades
-  if (isDowngrade && currentMembershipId) {
+  // NEW: Handle resubscription - if a membership is cancelled and the user resubscribes,
+  // simply update the cancelled membership's status to "active" without any payment.
+  if (isResubscription && currentMembershipId) {
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
-      include: { membershipPlan: true }
     });
-    
     if (!currentMembership) {
       throw new Error("Current membership not found");
     }
-    
+    // Ensure the current membership is cancelled before reactivating
+    if (currentMembership.status !== "cancelled") {
+      throw new Error("Membership is not cancelled; cannot resubscribe");
+    }
+    // Update the cancelled membership to active
+    subscription = await db.userMembership.update({
+      where: { id: currentMembershipId },
+      data: { status: "active" },
+    });
+    return subscription;
+  }
+
+  if (isDowngrade && currentMembershipId) {
+    const currentMembership = await db.userMembership.findUnique({
+      where: { id: currentMembershipId },
+      include: { membershipPlan: true },
+    });
+
+    if (!currentMembership) {
+      throw new Error("Current membership not found");
+    }
+
     // For downgrades, keep the current membership active until the next payment date
     // Just schedule the new membership to start at the next payment date
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
     newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-    
+
     // Modified: Use upsert() to update if a record already exists, preventing unique constraint errors.
     subscription = await db.userMembership.upsert({
       where: {
@@ -153,45 +174,45 @@ export async function registerMembershipSubscription(
         status: "active", // Set as active
         compensationPrice: null,
         hasPaidCompensationPrice: false,
-      }
+      },
     });
-    
+
     // Update the current membership to indicate it will be replaced
     await db.userMembership.update({
       where: { id: currentMembershipId },
-      data: { 
+      data: {
         status: "ending",
-      }
+      },
     });
-    
+
     return subscription;
   }
   // Continue with existing upgrade/change logic
   else if (currentMembershipId) {
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
-      include: { membershipPlan: true }
+      include: { membershipPlan: true },
     });
-    
+
     if (!currentMembership) {
       throw new Error("Current membership not found");
     }
-    
+
     // Update the current membership as changed instead of cancelled
     await db.userMembership.update({
       where: { id: currentMembershipId },
-      data: { 
-        status: "ending"
-      }
+      data: {
+        status: "ending",
+      },
     });
-    
+
     // Create a new membership entry with:
     // - date set to the end of the previous cycle (nextPaymentDate of old membership)
     // - nextPaymentDate set to one month after that date
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
     newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-    
+
     // Create the new membership starting from the end of the previous cycle
     subscription = await db.userMembership.create({
       data: {
@@ -202,13 +223,13 @@ export async function registerMembershipSubscription(
         status: "active",
         compensationPrice: compPrice,
         hasPaidCompensationPrice: hasPaid,
-      }
+      },
     });
   } else {
     // Standard new subscription or simple update logic
     const nextPaymentDate = new Date(now);
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-    
+
     const existing = await db.userMembership.findFirst({
       where: { userId },
     });
@@ -281,9 +302,12 @@ export async function registerMembershipSubscription(
 }
 
 /*
-* This function handles roleLevel 2 and 3
-*/
-export async function cancelMembership(userId: number, membershipPlanId: number) {
+ * This function handles roleLevel 2 and 3
+ */
+export async function cancelMembership(
+  userId: number,
+  membershipPlanId: number
+) {
   // Delete the membership subscription.
   const membershipRecord = await db.userMembership.findFirst({
     where: {
@@ -371,17 +395,18 @@ export async function getUserActiveMembership(userId: number) {
   return await db.userMembership.findFirst({
     where: {
       userId: userId,
-      status: "active"
+      status: "active",
     },
     include: {
-      membershipPlan: true
-    }
+      membershipPlan: true,
+    },
   });
 }
 
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight
-  cron.schedule("19 11 * * *", async () => { // minutes, hours, day of month, ...
+  cron.schedule("19 11 * * *", async () => {
+    // minutes, hours, day of month, ...
     console.log("Running monthly membership check...");
 
     try {
@@ -407,7 +432,11 @@ export function startMonthlyMembershipCheck() {
           // Use the compensation price for this billing cycle.
           chargeAmount = Number(membership.compensationPrice);
           console.log(
-            `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
+            `User ID: ${
+              membership.userId
+            } has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(
+              2
+            )}`
           );
 
           // After processing the charge, update the membership:
@@ -424,7 +453,9 @@ export function startMonthlyMembershipCheck() {
           // Otherwise, charge the regular price.
           chargeAmount = Number(membership.membershipPlan.price);
           console.log(
-            `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
+            `User ID: ${
+              membership.userId
+            } is being charged the full price: $${chargeAmount.toFixed(2)}`
           );
 
           await db.userMembership.update({
@@ -469,7 +500,7 @@ export async function checkExpiredMemberships() {
   });
 
   // Get unique user IDs of affected users
-  const affectedUserIds = [...new Set(expiredMemberships.map(m => m.userId))];
+  const affectedUserIds = [...new Set(expiredMemberships.map((m) => m.userId))];
 
   // 2. Delete all these expired, cancelled memberships
   await db.userMembership.deleteMany({

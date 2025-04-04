@@ -8,8 +8,8 @@ import {registerMembershipSubscription,} from "../../models/membership.server"
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
-  // Change: Check for downgrade before requiring session_id
   const isDowngrade = url.searchParams.get("downgrade") === "true";
+  const isResubscribe = url.searchParams.get("resubscribe") === "true";
   if (isDowngrade) {
     return new Response(
       JSON.stringify({
@@ -21,6 +21,18 @@ export async function loader({ request }: { request: Request }) {
       { headers: { "Content-Type": "application/json" } }
     );
   }
+  if (isResubscribe) {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isMembership: true,
+        message:
+          "🎉 Membership reactivated! Your membership has been successfully reactivated. You'll continue to enjoy your membership benefits. A confirmation email has been sent.",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   
   const sessionId = url.searchParams.get("session_id");
   if (!sessionId) {
