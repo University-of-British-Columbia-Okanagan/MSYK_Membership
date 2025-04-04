@@ -116,29 +116,36 @@ export async function registerMembershipSubscription(
   // If compensationPrice is greater than 0, use it; otherwise, store null.
   const compPrice = compensationPrice > 0 ? compensationPrice : null;
   const hasPaid = compensationPrice > 0;
+  
+  console.log("hello world 593");
 
   // NEW: Handle resubscription - if a membership is cancelled and the user resubscribes,
   // simply update the cancelled membership's status to "active" without any payment.
-  if (isResubscription && currentMembershipId) {
-    const currentMembership = await db.userMembership.findUnique({
-      where: { id: currentMembershipId },
-    });
-    if (!currentMembership) {
-      throw new Error("Current membership not found");
+  if (isResubscription) {
+    console.log("Entering resubscription branch");
+    let cancelledMembership;
+    if (currentMembershipId) {
+      cancelledMembership = await db.userMembership.findUnique({
+        where: { id: currentMembershipId },
+      });
+    } else {
+      cancelledMembership = await db.userMembership.findFirst({
+        where: { userId, membershipPlanId, status: "cancelled" },
+      });
     }
-    // Ensure the current membership is cancelled before reactivating
-    if (currentMembership.status !== "cancelled") {
-      throw new Error("Membership is not cancelled; cannot resubscribe");
+    if (!cancelledMembership) {
+      throw new Error("No cancelled membership found for resubscription");
     }
-    // Update the cancelled membership to active
-    subscription = await db.userMembership.update({
-      where: { id: currentMembershipId },
+    // Update the cancelled record to active.
+    const subscription = await db.userMembership.update({
+      where: { id: cancelledMembership.id },
       data: { status: "active" },
     });
     return subscription;
   }
 
   if (isDowngrade && currentMembershipId) {
+    console.log("hello world2");
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
       include: { membershipPlan: true },
@@ -189,6 +196,7 @@ export async function registerMembershipSubscription(
   }
   // Continue with existing upgrade/change logic
   else if (currentMembershipId) {
+    console.log("hello world3");
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
       include: { membershipPlan: true },
@@ -227,6 +235,7 @@ export async function registerMembershipSubscription(
     });
   } else {
     // Standard new subscription or simple update logic
+    console.log("hello world4");
     const nextPaymentDate = new Date(now);
     nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
 
