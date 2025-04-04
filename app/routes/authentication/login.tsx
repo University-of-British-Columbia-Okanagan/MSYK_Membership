@@ -74,8 +74,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
     if (formRef.current) {
       const listener = () => handleSubmission();
       formRef.current.addEventListener("submit", listener);
-      return () =>
-        formRef.current?.removeEventListener("submit", listener);
+      return () => formRef.current?.removeEventListener("submit", listener);
     }
   }, []);
 
@@ -86,61 +85,74 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
   }, [actionData]);
 
   return (
-    <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-xl font-bold text-center mb-4">Login</h1>
-
-      {user ? (
-        <div className="text-center">
-          <p className="text-lg font-medium mb-4">
-            You are currently logged in as email: {user.email}, id: {user.id}!
-          </p>
-          <RouterForm action="/logout" method="post">
-            <Button type="submit" className="mt-4" disabled={loading}>
-              {loading ? "Logging out..." : "Logout"}
-            </Button>
-          </RouterForm>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md bg-white border border-yellow-400 rounded-xl shadow-md p-8">
+        <div className="flex flex-col items-center mb-6">
+          <img
+            src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
+            alt="Makerspace Logo"
+            className="h-16 mb-2"
+          />
         </div>
-      ) : (
-        <>
-          {hasErrors && (
-            <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-              Invalid email or password. Please try again.
-            </div>
-          )}
 
-          <Form {...form}>
-            <form method="post" ref={formRef}>
-              {/* Email Field using GenericFormField */}
-              <GenericFormField
-                control={form.control}
-                name="email"
-                label="Email"
-                placeholder="your@email.com"
-                required
-                error={actionData?.errors?.email}
-              />
+        {user ? (
+          <div className="text-center">
+            <p className="text-lg font-medium mb-4">
+              You are currently logged in as <strong>{user.email}</strong> (ID:{" "}
+              {user.id})
+            </p>
+            <RouterForm action="/logout" method="post">
+              <Button
+                type="submit"
+                className="mt-4 w-full bg-red-500 hover:bg-red-600 text-white"
+              >
+                {loading ? "Logging out..." : "Logout"}
+              </Button>
+            </RouterForm>
+          </div>
+        ) : (
+          <>
+            {hasErrors && (
+              <div className="mb-4 text-sm text-red-600 bg-red-100 border border-red-400 rounded p-2">
+                Invalid email or password. Please try again.
+              </div>
+            )}
 
-              {/* Password Field using GenericFormField */}
-              <GenericFormField
-                control={form.control}
-                name="password"
-                label="Password"
-                placeholder="Password"
-                type="password"
-                required
-                error={actionData?.errors?.password}
-              />
+            <Form {...form}>
+              <form method="post" ref={formRef} className="space-y-2">
+                <GenericFormField
+                  control={form.control}
+                  name="email"
+                  label="Email"
+                  placeholder="your@email.com"
+                  required
+                  error={actionData?.errors?.email}
+                  className="w-full"
+                />
 
-              {/* Submit Button */}
-              <div className="flex justify-center">
-                <Button type="submit" className="mt-4" disabled={loading}>
+                <GenericFormField
+                  control={form.control}
+                  name="password"
+                  label="Password"
+                  placeholder="Password"
+                  type="password"
+                  required
+                  error={actionData?.errors?.password}
+                  className="w-full"
+                />
+
+                <Button
+                  type="submit"
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
+                  disabled={loading}
+                >
                   {loading ? "Logging in..." : "Login"}
                 </Button>
-              </div>
-            </form>
-          </Form>
-        </>
-      )}
+              </form>
+            </Form>
+          </>
+        )}
+      </div>
     </div>
   );
 }
