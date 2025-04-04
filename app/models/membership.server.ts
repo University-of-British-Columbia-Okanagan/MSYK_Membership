@@ -450,22 +450,24 @@ export async function getUserActiveMembership(userId: number) {
   });
 }
 
+// Ensure that incrementMonth is imported or defined appropriately.
+
 export function startMonthlyMembershipCheck() {
-  // Run every day at midnight
-  cron.schedule("29 23 * * *", async () => {
+  // Run every day at midnight (adjust the cron expression as needed)
+  cron.schedule("06 00 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
       const now = new Date();
 
-      // Find memberships due for charge with status "active" or "ending"
+      // Find memberships due for charge with status "active", "ending", or "cancelled"
       const dueMemberships = await db.userMembership.findMany({
         where: {
           nextPaymentDate: { lte: now },
-          status: { in: ["active", "ending"] },
+          status: { in: ["active", "ending", "cancelled"] },
         },
         include: {
-          membershipPlan: true, // so we can access the regular plan price
+          membershipPlan: true, // so we can access the plan's price
         },
       });
 
@@ -481,11 +483,7 @@ export function startMonthlyMembershipCheck() {
             // Use the compensation price for this billing cycle.
             chargeAmount = Number(membership.compensationPrice);
             console.log(
-              `User ID: ${
-                membership.userId
-              } has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(
-                2
-              )}`
+              `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
             );
 
             // After processing the charge, update:
@@ -499,12 +497,10 @@ export function startMonthlyMembershipCheck() {
               },
             });
           } else {
-            // Charge the regular full price.
+            // Otherwise, charge the regular full price.
             chargeAmount = Number(membership.membershipPlan.price);
             console.log(
-              `User ID: ${
-                membership.userId
-              } is being charged the full price: $${chargeAmount.toFixed(2)}`
+              `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
             );
 
             await db.userMembership.update({
@@ -514,28 +510,21 @@ export function startMonthlyMembershipCheck() {
               },
             });
           }
-        } else if (membership.status === "ending") {
-          // Process memberships in "ending" status.
+        } else if (membership.status === "ending" || membership.status === "cancelled") {
+          // Process memberships with status "ending" or "cancelled".
           chargeAmount = Number(membership.membershipPlan.price);
           console.log(
-            `User ID: ${
-              membership.userId
-            } (ending) is being charged the full price: $${chargeAmount.toFixed(
-              2
-            )}`
+            `User ID: ${membership.userId} (${membership.status}) is being charged the full price: $${chargeAmount.toFixed(2)}`
           );
           // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
             where: { id: membership.id },
-            data: {
-              status: "inactive",
-            },
+            data: { status: "inactive" },
           });
         }
 
-        // (Integrate actual payment processing here using chargeAmount for membership.userId)
+        // (Integrate your actual payment gateway logic here using chargeAmount for membership.userId)
 
-        // Update the user's roleLevel based on their current membership status.
         // Update the user's roleLevel based on their current membership status.
         const user = await db.user.findUnique({
           where: { id: membership.userId },
@@ -550,13 +539,10 @@ export function startMonthlyMembershipCheck() {
           });
 
           if (activeMembership) {
-            // If there is an active membership, set roleLevel to 3.
+            // If there is an active membership:
             // If the active membership is for plan 2 and the user has admin permission (allowLevel4 true),
-            // then set roleLevel to 4.
-            if (
-              activeMembership.membershipPlanId === 2 &&
-              user.allowLevel4 === true
-            ) {
+            // set roleLevel to 4; otherwise, set roleLevel to 3.
+            if (activeMembership.membershipPlanId === 2 && user.allowLevel4 === true) {
               await db.user.update({
                 where: { id: user.id },
                 data: { roleLevel: 4 },
@@ -581,6 +567,7 @@ export function startMonthlyMembershipCheck() {
     }
   });
 }
+
 
 // export function startExpiredMembershipCheck() {
 //   cron.schedule("07 03 * * *", async () => {
