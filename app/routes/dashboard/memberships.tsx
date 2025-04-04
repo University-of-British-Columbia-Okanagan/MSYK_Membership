@@ -42,12 +42,21 @@ export async function loader({ request }: { request: Request }) {
     const rawMemberships = await getUserMemberships(roleUser.userId);
     // Convert raw status to our union type. If the status is not "active" or "cancelled", mark it as "inactive".
     userMemberships = rawMemberships.map((m) => {
-      const status =
-        m.status === "cancelled"
-          ? "cancelled"
-          : m.status === "active"
-          ? "active"
-          : "inactive"; // NEW: Set status to "inactive" for other values
+      // If status is "ending", treat it as "inactive" for UI.
+      // That way, your MembershipCard will see membershipStatus = "inactive"
+      // and (if nextPaymentDate is in the future) will show a disabled button.
+      let status: MembershipStatus;
+      if (m.status === "cancelled") {
+        status = "cancelled";
+      } else if (m.status === "active") {
+        status = "active";
+      } else if (m.status === "ending") {
+        // Treat "ending" as "inactive" so the UI doesn't say "already subscribed."
+        status = "inactive";
+      } else {
+        status = "inactive";
+      }
+    
       return {
         membershipPlanId: m.membershipPlanId,
         status,

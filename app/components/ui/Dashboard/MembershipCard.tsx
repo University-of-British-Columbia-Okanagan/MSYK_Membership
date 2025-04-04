@@ -101,7 +101,7 @@ export default function MembershipCard({
         //   <p className="text-orange-600 font-semibold mb-2">
         //     You have cancelled this membership
         //   </p>
-        //   {/* 
+        //   {/*
         //     NEW: Instead of navigating to a payment route,
         //     use a button that triggers a fetch call to the resubscribe endpoint.
         //   */}
@@ -135,24 +135,26 @@ export default function MembershipCard({
         //   </Button>
         // </div>
         <div className="mt-4">
-    <p className="text-orange-600 font-semibold mb-2">
-      You have cancelled this membership
-    </p>
-    <Button
-      // CHANGE: Navigate to the payment page with query params for resubscription.
-      onClick={() => {
-        // Pass along the membershipRecordId if available (make sure you pass this prop from your loader)
-        navigate(
-          `/dashboard/payment/${planId}?resubscribe=true${
-            membershipRecordId ? `&membershipRecordId=${membershipRecordId}` : ""
-          }`
-        );
-      }}
-      className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-    >
-      Resubscribe
-    </Button>
-  </div>
+          <p className="text-orange-600 font-semibold mb-2">
+            You have cancelled this membership
+          </p>
+          <Button
+            // CHANGE: Navigate to the payment page with query params for resubscription.
+            onClick={() => {
+              // Pass along the membershipRecordId if available (make sure you pass this prop from your loader)
+              navigate(
+                `/dashboard/payment/${planId}?resubscribe=true${
+                  membershipRecordId
+                    ? `&membershipRecordId=${membershipRecordId}`
+                    : ""
+                }`
+              );
+            }}
+            className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+          >
+            Resubscribe
+          </Button>
+        </div>
       ) : membershipStatus === "active" ? (
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">
@@ -178,99 +180,93 @@ export default function MembershipCard({
         // Non-subscribed branch: membershipStatus is "inactive" or no record
         <div className="mt-4">
           {(() => {
-            let buttonLabel = "Subscribe";
-            let disabled = false;
-            let tooltipText = "";
+  let buttonLabel = "Subscribe";
+  let disabled = false;
+  let tooltipText = "";
 
-            // CHANGE: If canSelect is false (e.g., user doesn't meet plan 2 criteria), disable the button
-            if (!canSelect) {
-              disabled = true;
-              tooltipText = reason;
-            }
+  // If user cannot select due to plan-specific requirements, disable the button.
+  if (!canSelect) {
+    disabled = true;
+    tooltipText = reason;
+  }
 
-            // Existing logic to handle upgrades/downgrades if user is allowed to select
-            if (!disabled) {
-              // If membershipStatus is "inactive" and nextPaymentDate is in the future, disallow immediate change
-              // Inside your non-subscribed branch (where membershipStatus is "inactive" or no record),
-              // replace just the block that checks `membershipStatus === "inactive" && nextPaymentDate`
-              // with this snippet:
+  // NEW: Determine the button label based on the membership state.
+  if (!disabled) {
+    // If membershipStatus is "inactive" and a nextPaymentDate exists,
+    // it indicates a pending (cancelled/ending) membership.
+    if (membershipStatus === "inactive" && nextPaymentDate) {
+      if (new Date(nextPaymentDate) > new Date()) {
+        // The next payment date is in the future so disable the button.
+        disabled = true;
+        // If an active subscription exists, compare with highestActivePrice;
+        // otherwise, if there's a cancelled membership, compare with highestCanceledPrice.
+        if (hasActiveSubscription) {
+          buttonLabel = price > highestActivePrice ? "Upgrade" : "Change";
+        } else if (hasCancelledSubscription) {
+          buttonLabel = price > highestCanceledPrice ? "Upgrade" : "Change";
+        } else {
+          buttonLabel = "Subscribe";
+        }
+        tooltipText =
+          "You can change only after your old membership billing cycle ends.";
+      } else {
+        // If the next payment date has passed, allow selection.
+        if (hasActiveSubscription) {
+          buttonLabel = price > highestActivePrice ? "Upgrade" : "Change";
+        } else if (hasCancelledSubscription) {
+          buttonLabel = price > highestCanceledPrice ? "Upgrade" : "Change";
+        } else {
+          buttonLabel = "Subscribe";
+        }
+      }
+    } else if (hasActiveSubscription) {
+      // If user has an active subscription, compare the new plan's price
+      buttonLabel = highestActivePrice > price ? "Change" : "Upgrade";
+    } else if (hasCancelledSubscription) {
+      // If user has a cancelled membership, use that price for comparison.
+      buttonLabel = highestCanceledPrice > price ? "Change" : "Upgrade";
+      disabled = true;
+      tooltipText =
+        "You cancelled your previous membership. Please resubscribe first before changing plans.";
+    } else {
+      // Default case: no subscription at all.
+      buttonLabel = "Subscribe";
+    }
+  }
 
-              if (membershipStatus === "inactive" && nextPaymentDate) {
-                // Comment: Check if the nextPaymentDate is still in the future
-                if (new Date(nextPaymentDate) > new Date()) {
-                  // Disable the button because the user must wait until the old membership payment date passes
-                  disabled = true;
-                  // NEW LOGIC: If the new plan is more expensive, label it "Upgrade", else label it "Change"
-                  if (price > highestActivePrice) {
-                    buttonLabel = "Upgrade";
-                  } else {
-                    buttonLabel = "Change";
-                  }
-                  tooltipText =
-                    "You can change only after your old membership payment date passes after upgrading/downgrading.";
-                } else {
-                  // If the next payment date has already passed, allow user to proceed
-                  if (price > highestActivePrice) {
-                    buttonLabel = "Upgrade";
-                  } else {
-                    buttonLabel = "Change";
-                  }
-                }
-              } else if (hasActiveSubscription) {
-                // (Your existing hasActiveSubscription logic stays the same)
-                if (highestActivePrice > price) {
-                  buttonLabel = "Change";
-                } else {
-                  buttonLabel = "Upgrade";
-                }
-              } else if (hasCancelledSubscription) {
-                if (highestCanceledPrice > price) {
-                  buttonLabel = "Change";
-                } else {
-                  buttonLabel = "Upgrade";
-                }
-                disabled = true;
-                tooltipText =
-                  "You cancelled your previous membership. Resubscribe first before changing plans.";
-              } else {
-                // Normal case: user has no membership
-                buttonLabel = "Subscribe";
-              }
-            }
-
-            // If we ended up disabling the button, show a tooltip
-            if (disabled) {
-              return (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-block">
-                        <Button
-                          disabled
-                          className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
-                        >
-                          {buttonLabel}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{tooltipText}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            } else {
-              // Otherwise, the user can proceed
-              return (
-                <Button
-                  onClick={handleSelect}
-                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-                >
-                  {buttonLabel}
-                </Button>
-              );
-            }
-          })()}
+  // Render a disabled button with tooltip if needed.
+  if (disabled) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-block">
+              <Button
+                disabled
+                className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
+              >
+                {buttonLabel}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipText}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  } else {
+    // Otherwise, allow the user to click the button.
+    return (
+      <Button
+        onClick={handleSelect}
+        className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+      >
+        {buttonLabel}
+      </Button>
+    );
+  }
+})()}
         </div>
       )}
 
