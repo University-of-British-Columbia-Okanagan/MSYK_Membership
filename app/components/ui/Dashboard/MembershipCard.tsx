@@ -18,7 +18,6 @@ interface MembershipCardProps {
   feature: string[];
   isAdmin: boolean;
   isSubscribed?: boolean;
-  // membershipStatus can now be "active" or "cancelled" (or possibly "inactive" if the DB returns that)
   membershipStatus?: "active" | "cancelled" | "inactive";
   userRecord?: {
     id: number;
@@ -40,7 +39,7 @@ export default function MembershipCard({
   feature,
   isAdmin,
   isSubscribed = false,
-  membershipStatus, // new prop; can be "active", "cancelled" or "inactive"
+  membershipStatus,
   userRecord,
   hasCancelledSubscription = false,
   hasActiveSubscription = false,
@@ -57,20 +56,26 @@ export default function MembershipCard({
     navigate(`/dashboard/payment/${planId}`);
   };
 
-  // By default, the user can select unless restricted by plan #2 logic
-  let canSelect = true;
-  let reason = "";
+  // By default, the user can select a membership plan
+  let canSelect = true; // CHANGE: we will override this if the user doesn't meet plan-specific requirements
+  let reason = ""; // CHANGE: store the reason the button is disabled
 
-  // If planId = 2, the user must be roleLevel=3 and allowLevel4=true
-  if (planId === 2 && membershipStatus !== "cancelled") {
+  // CHANGE: Additional check for planId = 2 (level 4 membership).
+  // Must have:
+  //   1) A valid user record
+  //   2) roleLevel >= 3 (they've completed orientation and are effectively "level 3")
+  //   3) allowLevel4 = true (admin permission)
+  //   4) hasActiveSubscription = true (they already have an active membership)
+  if (planId === 2) {
     if (
       !userRecord ||
-      userRecord.roleLevel !== 3 ||
-      userRecord.allowLevel4 !== true
+      userRecord.roleLevel < 3 ||
+      userRecord.allowLevel4 !== true ||
+      !hasActiveSubscription
     ) {
       canSelect = false;
       reason =
-        "You must have a previous subscription, a completed orientation, and admin permission to select this membership.";
+        "You must have an active, membership, completed an orientation, and admin permission to select this membership.";
     }
   }
 
@@ -83,6 +88,12 @@ export default function MembershipCard({
         <span className="text-gray-600 text-sm"> /month</span>
       </div>
 
+      {/* 
+        Show different UI depending on membership status:
+          1) cancelled -> "You have cancelled this membership" + Resubscribe button
+          2) active -> "You are already subscribed" + Cancel button
+          3) otherwise -> the "subscribe" or "upgrade/change" button
+      */}
       {membershipStatus === "cancelled" ? (
         <div className="mt-4">
           <p className="text-orange-600 font-semibold mb-2">
@@ -95,7 +106,7 @@ export default function MembershipCard({
             Resubscribe
           </Button>
         </div>
-      ) : membershipStatus === "active" ? ( // NEW: Only show "already subscribed" if status is exactly "active"
+      ) : membershipStatus === "active" ? (
         <div className="mt-4">
           <p className="text-green-600 font-semibold mb-2">
             You are already subscribed
@@ -107,7 +118,7 @@ export default function MembershipCard({
               confirmDescription="Are you sure you want to cancel your membership subscription?"
               onConfirm={() =>
                 fetcher.submit(
-                  { planId, action: "cancelMembership" },
+                  { planId: String(planId), action: "cancelMembership" },
                   { method: "post" }
                 )
               }
@@ -117,50 +128,70 @@ export default function MembershipCard({
           </fetcher.Form>
         </div>
       ) : (
-        // NEW: Otherwise, show the non-subscribed branch (for "inactive" or no record)
-        // Otherwise, show the non-subscribed branch (for "inactive" or no record)
+        // Non-subscribed branch: membershipStatus is "inactive" or no record
         <div className="mt-4">
           {(() => {
             let buttonLabel = "Subscribe";
             let disabled = false;
             let tooltipText = "";
 
-            // NEW: If membershipStatus is "inactive" and nextPaymentDate is provided,
-            // disable "Change" until the nextPaymentDate is past.
-            if (membershipStatus === "inactive" && nextPaymentDate) {
-              if (new Date(nextPaymentDate) > new Date()) {
-                // Next payment date is in the future: disable the Change button.
-                disabled = true;
-                buttonLabel = "Change";
-                tooltipText =
-                  "You can change only after your old membership payment date passes after upgrading/downgrading.";
-              } else {
-                // Next payment date has passed: allow Change.
-                buttonLabel = "Change";
-                disabled = false;
-              }
-            }
-            // Otherwise, use your existing logic.
-            else if (hasActiveSubscription) {
-              if (highestActivePrice > price) {
-                buttonLabel = "Change"; // cheaper plan => "Change"
-              } else {
-                buttonLabel = "Upgrade"; // more expensive plan => "Upgrade"
-              }
-            } else if (hasCancelledSubscription) {
-              if (highestCanceledPrice > price) {
-                buttonLabel = "Change";
-              } else {
-                buttonLabel = "Upgrade";
-              }
+            // CHANGE: If canSelect is false (e.g., user doesn't meet plan 2 criteria), disable the button
+            if (!canSelect) {
               disabled = true;
-              tooltipText =
-                "You cancelled your previous membership. Resubscribe first before changing plans.";
-            } else {
-              buttonLabel = "Subscribe";
-              disabled = false;
+              tooltipText = reason;
             }
 
+            // Existing logic to handle upgrades/downgrades if user is allowed to select
+            if (!disabled) {
+              // If membershipStatus is "inactive" and nextPaymentDate is in the future, disallow immediate change
+              // Inside your non-subscribed branch (where membershipStatus is "inactive" or no record),
+              // replace just the block that checks `membershipStatus === "inactive" && nextPaymentDate`
+              // with this snippet:
+
+              if (membershipStatus === "inactive" && nextPaymentDate) {
+                // Comment: Check if the nextPaymentDate is still in the future
+                if (new Date(nextPaymentDate) > new Date()) {
+                  // Disable the button because the user must wait until the old membership payment date passes
+                  disabled = true;
+                  // NEW LOGIC: If the new plan is more expensive, label it "Upgrade", else label it "Change"
+                  if (price > highestActivePrice) {
+                    buttonLabel = "Upgrade";
+                  } else {
+                    buttonLabel = "Change";
+                  }
+                  tooltipText =
+                    "You can change only after your old membership payment date passes after upgrading/downgrading.";
+                } else {
+                  // If the next payment date has already passed, allow user to proceed
+                  if (price > highestActivePrice) {
+                    buttonLabel = "Upgrade";
+                  } else {
+                    buttonLabel = "Change";
+                  }
+                }
+              } else if (hasActiveSubscription) {
+                // (Your existing hasActiveSubscription logic stays the same)
+                if (highestActivePrice > price) {
+                  buttonLabel = "Change";
+                } else {
+                  buttonLabel = "Upgrade";
+                }
+              } else if (hasCancelledSubscription) {
+                if (highestCanceledPrice > price) {
+                  buttonLabel = "Change";
+                } else {
+                  buttonLabel = "Upgrade";
+                }
+                disabled = true;
+                tooltipText =
+                  "You cancelled your previous membership. Resubscribe first before changing plans.";
+              } else {
+                // Normal case: user has no membership
+                buttonLabel = "Subscribe";
+              }
+            }
+
+            // If we ended up disabling the button, show a tooltip
             if (disabled) {
               return (
                 <TooltipProvider>
@@ -182,6 +213,7 @@ export default function MembershipCard({
                 </TooltipProvider>
               );
             } else {
+              // Otherwise, the user can proceed
               return (
                 <Button
                   onClick={handleSelect}
@@ -229,7 +261,11 @@ export default function MembershipCard({
                 ) {
                   setConfirmDelete(true);
                   fetcher.submit(
-                    { planId, action: "delete", confirmation: "confirmed" },
+                    {
+                      planId: String(planId),
+                      action: "delete",
+                      confirmation: "confirmed",
+                    },
                     { method: "post" }
                   );
                 }
