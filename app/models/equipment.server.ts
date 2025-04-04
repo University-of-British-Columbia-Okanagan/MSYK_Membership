@@ -63,25 +63,37 @@ export async function bookEquipment(
   startTime: string,
   endTime: string
 ) {
-  console.log("Raw startTime and endTime from frontend:", {
-    startTime,
-    endTime,
-  });
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
 
-  //Ensure startTime & endTime are properly converted
+  // Fetch user role level
+  const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
+  if (!user) throw new Error("User not found.");
+
   const parsedStartTime = new Date(startTime);
   const parsedEndTime = new Date(endTime);
 
-  console.log("After parsing:", { parsedStartTime, parsedEndTime });
-  if (isNaN(parsedStartTime.getTime()) || isNaN(parsedEndTime.getTime())) {
-    throw new Error("Invalid date format for startTime or endTime.");
+  // Role-based access restrictions
+  const day = parsedStartTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const hour = parsedStartTime.getHours();
+
+  if (user.roleLevel === 1 || user.roleLevel === 2) {
+    throw new Error("You do not have permission to book equipment.");
   }
 
-  console.log("Validated Booking Time:", { parsedStartTime, parsedEndTime });
+  if (user.roleLevel === 3) {
+    // Level 3 can't book on Monday (1) or Tuesday (2)
+    if (day === 1 || day === 2) {
+      throw new Error("Level 3 members cannot book equipment on Monday or Tuesday.");
+    }
 
-  // Step 1: Check if a slot already exists
+    // Optional: Add specific hour restrictions if needed for DROP-IN HOURS
+    if (hour < 9 || hour >= 17) {
+      throw new Error("Level 3 members can only book between 9 AM and 5 PM.");
+    }
+  }
+
+  // Find or create slot
   let slot = await db.equipmentSlot.findFirst({
     where: {
       equipmentId,
@@ -90,28 +102,24 @@ export async function bookEquipment(
     },
   });
 
-  // Step 2: If slot doesn't exist, create it
   if (!slot) {
     slot = await db.equipmentSlot.create({
       data: {
         equipmentId,
         startTime: parsedStartTime,
         endTime: parsedEndTime,
-        isBooked: false, // Default to available
+        isBooked: false,
       },
     });
   }
 
-  // Step 3: Check if the slot is available for booking
   if (slot.isBooked) throw new Error("Slot is already booked.");
 
-  // Step 4: Mark slot as booked
   await db.equipmentSlot.update({
     where: { id: slot.id },
     data: { isBooked: true },
   });
 
-  // Step 5: Create the booking record
   return await db.equipmentBooking.create({
     data: {
       userId: parseInt(userId),
@@ -121,6 +129,7 @@ export async function bookEquipment(
     },
   });
 }
+
 
 /**
  * Cancel a booking
