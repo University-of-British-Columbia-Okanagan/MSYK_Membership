@@ -1,4 +1,5 @@
-import HeroSection from "@/components/ui/HeroSection";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import Footer from "@/components/ui/Home/Footer";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
@@ -9,8 +10,6 @@ import {
 } from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
-
-// Import a helper to fetch the full user record
 import { getUserById } from "~/models/user.server";
 
 // Define a TypeScript type that matches the union
@@ -38,7 +37,6 @@ export async function loader({ request }: { request: Request }) {
   let userRecord: any = null;
 
   if (roleUser?.userId) {
-    // 1) Get raw membership records (status is just string).
     const rawMemberships = await getUserMemberships(roleUser.userId);
     // Convert raw status to our union type. If the status is not "active" or "cancelled", mark it as "inactive".
     userMemberships = rawMemberships.map((m) => {
@@ -119,21 +117,15 @@ export async function action({ request }: { request: Request }) {
   const planId = formData.get("planId");
   const confirmationDelete = formData.get("confirmationDelete");
 
-  // Cancel Membership
   if (action === "cancelMembership") {
     const roleUser = await getRoleUser(request);
-    if (!roleUser?.userId) {
-      // Not logged in or no user found
-      return null;
-    }
-
+    if (!roleUser?.userId) return null;
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
     }
     return redirect("/memberships");
   }
 
-  // Delete membership plan (admin only)
   if (action === "delete") {
     try {
       const result = await deleteMembershipPlan(Number(planId));
@@ -150,7 +142,6 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  // Edit membership plan
   if (action === "edit") {
     return redirect(`/editmembershipplan/${planId}`);
   }
@@ -183,42 +174,36 @@ export default function MembershipPage() {
     highestCanceledPrice: number;
   }>();
 
-  const isAdmin =
-    roleUser &&
-    roleUser.roleId === 2 &&
-    roleUser.roleName.toLowerCase() === "admin";
+  const isAdmin = roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
 
   return (
-    <main>
-      <HeroSection title="Choose Your Membership Plan" />
+    <SidebarProvider>
+      <div className="flex min-h-screen">
+        {/* Sidebar */}
+        <AppSidebar />
 
-      <section className="bg-gray-900 py-16">
-        <div className="container mx-auto px-4">
+        {/* Main content area */}
+        <main className="flex-1 px-6 py-10 bg-white">
           {isAdmin && (
-            <div className="flex justify-center items-center space-x-4 mb-6">
+            <div className="flex justify-end mb-6">
               <Link to="/addmembershipplan">
                 <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-                  Add
+                  Add Membership Plan
                 </button>
               </Link>
             </div>
           )}
 
-          <h2 className="text-white text-center text-3xl font-semibold mb-10">
+          <h2 className="text-3xl font-bold text-center mb-10">
             Choose your Membership Plan
           </h2>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {membershipPlans.map((plan) => {
-              // For each plan, find the user membership record if it exists.
               const membership = userMemberships.find(
                 (m) => m.membershipPlanId === plan.id
               );
-
-              // isSubscribed is true if there's a membership record for this plan.
               const isSubscribed = Boolean(membership);
-
-              // membershipStatus can be "active" or "cancelled" if membership is found.
               const membershipStatus = membership?.status;
 
               return (
@@ -242,9 +227,8 @@ export default function MembershipPage() {
               );
             })}
           </div>
-        </div>
-      </section>
-      <Footer />
-    </main>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }
