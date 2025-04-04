@@ -156,44 +156,59 @@ export async function registerMembershipSubscription(
     }
 
     // For downgrades, keep the current membership active until the next payment date
-    // Just schedule the new membership to start at the next payment date
+    // and schedule the new (cheaper) membership to start at the next payment date.
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
     newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
 
-    // Modified: Use upsert() to update if a record already exists, preventing unique constraint errors.
-    subscription = await db.userMembership.upsert({
+    // 1) Mark the old (more expensive) membership as ending
+    await db.userMembership.update({
+      where: { id: currentMembershipId },
+      data: { status: "ending" },
+    });
+
+    // 2) Find if there's already an "active" or "ending" record for this user/plan
+    //    (we only want 1 record in active or ending for the cheaper plan).
+    let newMembership = await db.userMembership.findFirst({
       where: {
-        uniqueUserMembershipPlan: { userId, membershipPlanId },
-      },
-      update: {
-        date: startDate,
-        nextPaymentDate: newNextPaymentDate,
-        status: "active", // Set as active
-        compensationPrice: null,
-        hasPaidCompensationPrice: false,
-      },
-      create: {
         userId,
         membershipPlanId,
-        date: startDate, // Will start at current membership's next payment date
-        nextPaymentDate: newNextPaymentDate,
-        status: "active", // Set as active
-        compensationPrice: null,
-        hasPaidCompensationPrice: false,
+        // We only care if it's still "active" or "ending"
+        OR: [{ status: "active" }, { status: "ending" }],
       },
     });
 
-    // Update the current membership to indicate it will be replaced
-    await db.userMembership.update({
-      where: { id: currentMembershipId },
-      data: {
-        status: "ending",
-      },
-    });
+    if (newMembership) {
+      // 3a) If found, update that record to "active" with the new start/nextPaymentDate
+      newMembership = await db.userMembership.update({
+        where: { id: newMembership.id },
+        data: {
+          date: startDate,
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: null,
+          hasPaidCompensationPrice: false,
+        },
+      });
+      subscription = newMembership;
+    } else {
+      // 3b) Otherwise, create a fresh record for the downgraded plan
+      subscription = await db.userMembership.create({
+        data: {
+          userId,
+          membershipPlanId,
+          date: startDate, // starts at old membership's nextPaymentDate
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: null,
+          hasPaidCompensationPrice: false,
+        },
+      });
+    }
 
     return subscription;
   }
+
   // Continue with existing upgrade/change logic
   else if (currentMembershipId) {
     console.log("hello world3");
@@ -201,38 +216,61 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       include: { membershipPlan: true },
     });
-
+  
     if (!currentMembership) {
       throw new Error("Current membership not found");
     }
-
-    // Update the current membership as changed instead of cancelled
+  
+    // Mark the old membership as ending
     await db.userMembership.update({
       where: { id: currentMembershipId },
-      data: {
-        status: "ending",
-      },
+      data: { status: "ending" },
     });
-
-    // Create a new membership entry with:
-    // - date set to the end of the previous cycle (nextPaymentDate of old membership)
-    // - nextPaymentDate set to one month after that date
+  
+    // Create or update a new membership record for the upgraded plan
+    // so that we only have 1 record in "active"/"ending" for the new plan.
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
     newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-
-    // Create the new membership starting from the end of the previous cycle
-    subscription = await db.userMembership.create({
-      data: {
+  
+    // Check if there's an existing record for the new plan in active/ending
+    let newMembership = await db.userMembership.findFirst({
+      where: {
         userId,
         membershipPlanId,
-        date: startDate, // Start date is the old nextPaymentDate
-        nextPaymentDate: newNextPaymentDate, // Next payment is a month after that
-        status: "active",
-        compensationPrice: compPrice,
-        hasPaidCompensationPrice: hasPaid,
+        OR: [{ status: "active" }, { status: "ending" }],
       },
     });
+  
+    if (newMembership) {
+      // Update that record
+      newMembership = await db.userMembership.update({
+        where: { id: newMembership.id },
+        data: {
+          date: startDate, // new membership starts when the old membership ends
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: compPrice,
+          hasPaidCompensationPrice: hasPaid,
+        },
+      });
+      subscription = newMembership;
+    } else {
+      // Otherwise, create a fresh record for the new plan
+      subscription = await db.userMembership.create({
+        data: {
+          userId,
+          membershipPlanId,
+          date: startDate,
+          nextPaymentDate: newNextPaymentDate,
+          status: "active",
+          compensationPrice: compPrice,
+          hasPaidCompensationPrice: hasPaid,
+        },
+      });
+    }
+  
+    return subscription;
   } else {
     // Standard new subscription or simple update logic
     console.log("hello world4");
