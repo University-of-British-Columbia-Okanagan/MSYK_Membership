@@ -1,5 +1,6 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminSidebar from "~/components/ui/Dashboard/adminsidebar"; 
 import Footer from "@/components/ui/Home/Footer";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
@@ -186,7 +187,7 @@ export default function MembershipPage() {
     <SidebarProvider>
       <div className="flex min-h-screen">
         {/* Sidebar */}
-        <AppSidebar />
+        {isAdmin ? <AdminSidebar /> : <AppSidebar />}
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
