@@ -492,9 +492,13 @@ export function startMonthlyMembershipCheck() {
           }
         } else if (membership.status === "ending" || membership.status === "cancelled") {
           // Process memberships with status "ending" or "cancelled".
-          chargeAmount = Number(membership.membershipPlan.price);
+          // chargeAmount = Number(membership.membershipPlan.price);
+          // console.log(
+          //   `User ID: ${membership.userId} (${membership.status}) is being charged the full price: $${chargeAmount.toFixed(2)}`
+          // );
+
           console.log(
-            `User ID: ${membership.userId} (${membership.status}) is being charged the full price: $${chargeAmount.toFixed(2)}`
+            `User ID: ${membership.userId} (Current status ${membership.status}) switched to inactive status.`
           );
           // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
@@ -547,7 +551,6 @@ export function startMonthlyMembershipCheck() {
     }
   });
 }
-
 
 // export function startExpiredMembershipCheck() {
 //   cron.schedule("07 03 * * *", async () => {
