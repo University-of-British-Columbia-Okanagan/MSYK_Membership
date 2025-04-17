@@ -1,4 +1,5 @@
 import { useLoaderData, useNavigate } from "react-router-dom";
+import type { LoaderFunction } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   getWorkshopById,
@@ -15,11 +16,11 @@ import { Stripe } from "stripe";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2025-02-24.acacia",
 });
 
 // Loader: load either workshop data or membership plan data based on route parameters
-export async function loader({ params, request }) {
+export const loader: LoaderFunction = async ({ params, request }) => {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
 
@@ -145,7 +146,7 @@ export async function loader({ params, request }) {
 }
 
 // Action: create a Stripe Checkout Session for the appropriate payment type
-export async function action({ request }) {
+export async function action({ request }: { request: Request }) {
   try {
     const body = await request.json();
     const user = await getUser(request);
