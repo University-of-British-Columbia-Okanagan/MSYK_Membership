@@ -216,6 +216,8 @@ model UserMembershipPayment {
   cardholderName  String
   region         String
   postalCode     String
+  stripeCustomerId     String?
+  stripePaymentMethodId String? 
 
   user                User     @relation(fields: [userId], references: [id])
 
