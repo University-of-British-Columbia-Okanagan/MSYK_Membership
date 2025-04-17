@@ -39,6 +39,9 @@ export async function loader({ request }: { request: Request }) {
 
   if (roleUser?.userId) {
     const rawMemberships = await getUserMemberships(roleUser.userId);
+    rawMemberships.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
     // Convert raw status to our union type. If the status is not "active" or "cancelled", mark it as "inactive".
     userMemberships = rawMemberships.map((m) => {
       // If status is "ending", treat it as "inactive" for UI.
