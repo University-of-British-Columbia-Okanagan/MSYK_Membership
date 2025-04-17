@@ -127,7 +127,7 @@ export async function action({ request }: { request: Request }) {
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
     }
-    return redirect("/memberships");
+    return redirect("/dashboard/memberships");
   }
 
   if (action === "delete") {
@@ -139,7 +139,7 @@ export async function action({ request }: { request: Request }) {
       }
 
       if (result) {
-        return redirect("/membership");
+        return redirect("/dashboard/memberships");
       }
     } catch (error) {
       console.error("Error deleting membership plan:", error);
