@@ -442,7 +442,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("09 22 * * *", async () => {
+  cron.schedule("07 23 * * *", async () => {
     console.log("Running monthly membership check...");
 
     const rawCardNumber = "4242424242424242";
@@ -490,25 +490,42 @@ export function startMonthlyMembershipCheck() {
               continue;
             }
             try {
-              const charge = await stripe.charges.create({
-                amount:   Math.round(chargeAmount * 100),  // in cents
-                currency: "usd",
-                source:   "tok_visa",                      // test Visa token
-                receipt_email: user.email,       // or pull from user object if you store real email
-                metadata: {
-                  userId:         String(membership.userId),
-                  membershipId:   String(membership.id),
-                  hashedCard:     info.cardNumber,
-                  hashedPostal:   info.postalCode,
-                },
-              });
-            
-              console.log(
-                `✅ Stripe charge succeeded: ${charge.id}, amount: $${(charge.amount / 100).toFixed(2)}`
-              );
-            } catch (stripeError) {
-              console.error("❌ Stripe charge failed:", stripeError);
-              continue; // skip DB update for this record
+              let chargeResult;
+              if (info.stripeCustomerId && info.stripePaymentMethodId) {
+                // real card on file
+                const pi = await stripe.paymentIntents.create({
+                  amount:           Math.round(chargeAmount * 100),
+                  currency:         "usd",
+                  customer:         info.stripeCustomerId,
+                  payment_method:   info.stripePaymentMethodId,
+                  off_session:      true,
+                  confirm:          true,
+                  receipt_email:    user.email,
+                  metadata: {
+                    userId:        String(membership.userId),
+                    membershipId:  String(membership.id),
+                    planId:        String(membership.membershipPlanId),
+                  },
+                  expand: ["charges"]
+                }) as unknown as Stripe.PaymentIntent & {
+                  charges: Stripe.ApiList<Stripe.Charge>;
+                };
+              
+                chargeResult = pi.charges.data[0];
+                console.log(
+                  `✅ Charge succeeded (${membership.userId}): $${(
+                    chargeResult.amount / 100
+                  ).toFixed(2)} (id=${chargeResult.id})`
+                );
+
+              } 
+              else {
+                console.log("Stripe customer id or payment method id not found.");
+              }
+              
+            } catch (err: any) {
+              console.error("❌ Charge failed:", err);
+              continue;
             }
             
             await db.userMembership.update({
@@ -520,34 +537,49 @@ export function startMonthlyMembershipCheck() {
             });
           } else {
             // Otherwise, charge the regular full price.
-            chargeAmount = Number(membership.membershipPlan.price);
+            chargeAmount = Number(membership.compensationPrice);
             const info = await getLatestUserPaymentInfo(membership.userId);
             if (!info) {
               console.error(`❌ No saved payment info for user ${membership.userId}, skipping`);
               continue;
             }
-            
-            // B) charge via Stripe using tok_visa and include your hashes
             try {
-              const charge = await stripe.charges.create({
-                amount:   Math.round(chargeAmount * 100),  // in cents
-                currency: "usd",
-                source:   "tok_visa",                      // test Visa token
-                receipt_email: user.email,       // or pull from user object if you store real email
-                metadata: {
-                  userId:         String(membership.userId),
-                  membershipId:   String(membership.id),
-                  hashedCard:     info.cardNumber,
-                  hashedPostal:   info.postalCode,
-                },
-              });
-            
-              console.log(
-                `✅ Stripe charge succeeded: ${charge.id}, amount: $${(charge.amount / 100).toFixed(2)}`
-              );
-            } catch (stripeError) {
-              console.error("❌ Stripe charge failed:", stripeError);
-              continue; // skip DB update for this record
+              let chargeResult;
+              if (info.stripeCustomerId && info.stripePaymentMethodId) {
+                // real card on file
+                const pi = await stripe.paymentIntents.create({
+                  amount:           Math.round(chargeAmount * 100),
+                  currency:         "usd",
+                  customer:         info.stripeCustomerId,
+                  payment_method:   info.stripePaymentMethodId,
+                  off_session:      true,
+                  confirm:          true,
+                  receipt_email:    user.email,
+                  metadata: {
+                    userId:        String(membership.userId),
+                    membershipId:  String(membership.id),
+                    planId:        String(membership.membershipPlanId),
+                  },
+                  expand: ["charges"]
+                }) as unknown as Stripe.PaymentIntent & {
+                  charges: Stripe.ApiList<Stripe.Charge>;
+                };
+              
+                chargeResult = pi.charges.data[0];
+                console.log(
+                  `✅ Charge succeeded (${membership.userId}): $${(
+                    chargeResult.amount / 100
+                  ).toFixed(2)} (id=${chargeResult.id})`
+                );
+
+              } 
+              else {
+                console.log("Stripe customer id or payment method id not found.");
+              }
+              
+            } catch (err: any) {
+              console.error("❌ Charge failed:", err);
+              continue;
             }
 
             await db.userMembership.update({

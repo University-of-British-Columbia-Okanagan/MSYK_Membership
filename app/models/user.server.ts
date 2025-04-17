@@ -50,6 +50,8 @@ export async function saveUserMembershipPayment(data: {
   cardholderName: string;
   region: string;
   postalCode: string;
+  stripeCustomerId?: string;
+  stripePaymentMethodId?: string;
 }) {
   const saltRounds = 10;
   return db.userMembershipPayment.create({
@@ -65,6 +67,8 @@ export async function saveUserMembershipPayment(data: {
       cardholderName: bcrypt.hashSync(data.cardholderName, saltRounds),
       region:         bcrypt.hashSync(data.region,         saltRounds),
       postalCode:     bcrypt.hashSync(data.postalCode,     saltRounds),
+      stripeCustomerId:      data.stripeCustomerId,
+      stripePaymentMethodId: data.stripePaymentMethodId,
     },
   });
 }
