@@ -1,5 +1,11 @@
 import { db } from "../utils/db.server";
 import cron from "node-cron";
+import Stripe from "stripe";
+import bcrypt from "bcryptjs";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2025-02-24.acacia",
+});
 
 interface MembershipPlanData {
   title: string;
@@ -435,8 +441,14 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("43 20 * * *", async () => {
+  cron.schedule("19 21 * * *", async () => {
     console.log("Running monthly membership check...");
+
+    const rawCardNumber  = "4242424242424242";
+    const rawPostalCode  = "V1V1V8";
+    const saltRounds     = 10;
+    const hashedCard     = bcrypt.hashSync(rawCardNumber, saltRounds);
+    const hashedPostal   = bcrypt.hashSync(rawPostalCode, saltRounds);
 
     try {
       const now = new Date();
@@ -463,9 +475,31 @@ export function startMonthlyMembershipCheck() {
           ) {
             // Use the compensation price for this billing cycle.
             chargeAmount = Number(membership.compensationPrice);
-            console.log(
-              `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
-            );
+
+            try {
+              const charge = await stripe.charges.create({
+                amount: Math.round(chargeAmount * 100),  // convert dollars → cents
+                currency: "usd",
+                source: "tok_visa",                      // Stripe’s built‑in test Visa token
+                receipt_email: "iarrektt@gmail.com",
+                metadata: {
+                  userId: String(membership.userId),
+                  membershipId: String(membership.id),
+                  hashedCard,
+                  hashedPostal,
+                },
+              });
+              console.log(
+                `✅ Stripe charge succeeded: ${charge.id}, amount: $${(charge.amount / 100).toFixed(2)}`
+              );
+            } catch (stripeError) {
+              console.error("❌ Stripe charge failed:", stripeError);
+              // decide whether to continue or retry
+            }
+
+            // console.log(
+            //   `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
+            // );
 
             // After processing the charge, update:
             // - Increment the nextPaymentDate by one month.
@@ -480,9 +514,30 @@ export function startMonthlyMembershipCheck() {
           } else {
             // Otherwise, charge the regular full price.
             chargeAmount = Number(membership.membershipPlan.price);
-            console.log(
-              `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
-            );
+            try {
+              const charge = await stripe.charges.create({
+                amount: Math.round(chargeAmount * 100),  // convert dollars → cents
+                currency: "usd",
+                source: "tok_visa",                      // Stripe’s built‑in test Visa token
+                receipt_email: "iarrektt@gmail.com",
+                metadata: {
+                  userId: String(membership.userId),
+                  membershipId: String(membership.id),
+                  hashedCard,
+                  hashedPostal,
+                },
+              });
+              console.log(
+                `✅ Stripe charge succeeded: ${charge.id}, amount: $${(charge.amount / 100).toFixed(2)}`
+              );
+            } catch (stripeError) {
+              console.error("❌ Stripe charge failed:", stripeError);
+              // decide whether to continue or retry
+            }
+
+            // console.log(
+            //   `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
+            // );
 
             await db.userMembership.update({
               where: { id: membership.id },
@@ -499,7 +554,7 @@ export function startMonthlyMembershipCheck() {
           // );
 
           console.log(
-            `User ID: ${membership.userId} (Current status ${membership.status} switched to inactive status.`
+            `User ID: ${membership.userId} Current status ${membership.status} switched to inactive status.`
           );
           // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
