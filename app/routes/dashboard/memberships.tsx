@@ -27,6 +27,7 @@ export async function loader({ request }: { request: Request }) {
   const membershipPlans = await getMembershipPlans();
   const parsedPlans = membershipPlans.map((plan) => ({
     ...plan,
+    needAdminPermission: plan.needAdminPermission,
     feature: plan.feature
       ? Object.values(plan.feature).map((value) =>
           typeof value === "string" ? value : ""
@@ -221,6 +222,7 @@ export default function MembershipPage() {
                   feature={plan.feature}
                   isAdmin={!!isAdmin}
                   planId={plan.id}
+                  needAdminPermission={plan.needAdminPermission}
                   isSubscribed={isSubscribed}
                   membershipStatus={membershipStatus}
                   userRecord={userRecord}

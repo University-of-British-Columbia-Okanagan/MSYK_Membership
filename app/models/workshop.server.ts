@@ -812,7 +812,7 @@ export async function updateRegistrationResult(registrationId: number, newResult
     // Case: Orientation is now passed.
     if (newResult.toLowerCase() === "passed") {
       // Check if the user has a membership.
-      const membership = await db.userMembership.findUnique({
+      const membership = await db.userMembership.findFirst({
         where: { userId: updatedReg.user.id },
       });
       if (membership) {
@@ -853,7 +853,7 @@ export async function updateRegistrationResult(registrationId: number, newResult
       } else {
         // Otherwise, if the user has a membership and at least one passed orientation,
         // ensure they remain level 3; if no membership, level should be 2.
-        const membership = await db.userMembership.findUnique({
+        const membership = await db.userMembership.findFirst({
           where: { userId: updatedReg.user.id },
         });
         if (membership) {
@@ -916,7 +916,7 @@ export async function updateMultipleRegistrations(registrationIds: number[], new
     });
 
     // Check if the user has an active membership.
-    const membership = await db.userMembership.findUnique({
+    const membership = await db.userMembership.findFirst({
       where: { userId: uid },
     });
 
