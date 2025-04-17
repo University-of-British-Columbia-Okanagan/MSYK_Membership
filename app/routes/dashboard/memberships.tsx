@@ -11,6 +11,7 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
+import { PlusCircle } from "lucide-react";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -54,14 +55,14 @@ export async function loader({ request }: { request: Request }) {
       } else {
         status = "inactive";
       }
-    
+
       return {
         membershipPlanId: m.membershipPlanId,
         status,
         nextPaymentDate: m.nextPaymentDate,
       };
     });
-  
+
     // Fetch the full user record...
     userRecord = await getUserById(roleUser.userId);
   }
@@ -174,7 +175,8 @@ export default function MembershipPage() {
     highestCanceledPrice: number;
   }>();
 
-  const isAdmin = roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+  const isAdmin =
+    roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
 
   return (
     <SidebarProvider>
@@ -187,8 +189,9 @@ export default function MembershipPage() {
           {isAdmin && (
             <div className="flex justify-end mb-6">
               <Link to="/addmembershipplan">
-                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-                  Add Membership Plan
+                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2">
+                  <PlusCircle className="w-5 h-5" />
+                  <span>Add Membership Plan</span>
                 </button>
               </Link>
             </div>

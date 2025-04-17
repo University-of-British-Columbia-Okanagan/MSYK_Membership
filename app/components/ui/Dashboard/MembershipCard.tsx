@@ -9,6 +9,16 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
+import {
+  RefreshCw,
+  XCircle,
+  CheckCircle,
+  PlusCircle,
+  ArrowUp,
+  ArrowDown,
+  Edit,
+  Trash,
+} from "lucide-react";
 
 interface MembershipCardProps {
   planId: number;
@@ -53,6 +63,21 @@ export default function MembershipCard({
   const fetcher = useFetcher();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  function getIconForLabel(label: string) {
+    switch (label) {
+      case "Subscribe":
+        return PlusCircle;
+      case "Resubscribe":
+        return RefreshCw;
+      case "Upgrade":
+        return ArrowUp;
+      case "Downgrade":
+        return ArrowDown;
+      default:
+        return null;
+    }
+  }
+
   // Handler for membership "Select" or "Resubscribe"
   const handleSelect = () => {
     navigate(`/dashboard/payment/${planId}`);
@@ -77,7 +102,7 @@ export default function MembershipCard({
     ) {
       canSelect = false;
       reason =
-        "You must have an active, membership, completed an orientation, and admin permission to select this membership.";
+        "You must have an active membership, completed an orientation, and admin permission to select this membership.";
     }
   }
 
@@ -96,8 +121,13 @@ export default function MembershipCard({
                   { method: "post" }
                 )
               }
-              buttonLabel="Cancel Membership"
               buttonClassName="bg-red-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-red-600 transition"
+              buttonLabel={
+                <>
+                  <XCircle className="w-5 h-5 mr-2" />
+                  Cancel Membership
+                </>
+              }
             />
           </fetcher.Form>
         </div>
@@ -115,23 +145,10 @@ export default function MembershipCard({
                 }`
               );
             }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-full shadow-md transition flex items-center justify-center space-x-2"
+            className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-full shadow-md transition flex items-center justify-center"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              ></path>
-            </svg>
-            <span>Resubscribe</span>
+            <RefreshCw className="w-5 h-5 mr-2" />
+            Resubscribe
           </Button>
         </div>
       )}
@@ -158,26 +175,13 @@ export default function MembershipCard({
           </div>
         </div>
       ) : membershipStatus === "active" ? (
-        <div className="mt-4">
-          <div className="flex items-center justify-center space-x-2 bg-green-100 text-green-800 px-4 py-2 rounded-lg border border-green-300">
-            <svg
-              className="w-5 h-5"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                clipRule="evenodd"
-              ></path>
-            </svg>
-            <span className="font-medium">Currently Subscribed</span>
-          </div>
+        <div className="mt-4 flex items-center justify-center space-x-2 bg-green-100 text-green-800 px-4 py-2 rounded-lg border border-green-300">
+          <CheckCircle className="w-5 h-5" />
+          <span className="font-medium">Currently Subscribed</span>
         </div>
       ) : (
         // Non-subscribed branch: membershipStatus is "inactive" or no record
-        <div className="mt-4">
+        <div className="mt-4 flex justify-center">
           {(() => {
             let buttonLabel = "Subscribe";
             let disabled = false;
@@ -226,7 +230,8 @@ export default function MembershipCard({
                   }
                 }
               } else if (hasActiveSubscription) {
-                buttonLabel = highestActivePrice > price ? "Downgrade" : "Upgrade";
+                buttonLabel =
+                  highestActivePrice > price ? "Downgrade" : "Upgrade";
               } else if (!hasActiveSubscription && hasCancelledSubscription) {
                 // CHANGE: If no active subscription and there is a cancelled membership,
                 // the user must resubscribe first.
@@ -248,8 +253,14 @@ export default function MembershipCard({
                       <span className="inline-block">
                         <Button
                           disabled
-                          className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed"
+                          className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed flex items-center justify-center"
                         >
+                          {(() => {
+                            const Icon = getIconForLabel(buttonLabel);
+                            return Icon ? (
+                              <Icon className="w-5 h-5 mr-2" />
+                            ) : null;
+                          })()}
                           {buttonLabel}
                         </Button>
                       </span>
@@ -261,12 +272,13 @@ export default function MembershipCard({
                 </TooltipProvider>
               );
             } else {
-              // Otherwise, allow the user to click the button.
+              const Icon = getIconForLabel(buttonLabel);
               return (
                 <Button
                   onClick={handleSelect}
-                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
+                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
                 >
+                  {Icon && <Icon className="w-5 h-5 mr-2" />}
                   {buttonLabel}
                 </Button>
               );
@@ -292,15 +304,17 @@ export default function MembershipCard({
               type="submit"
               name="action"
               value="edit"
-              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2"
             >
-              Edit
+              <Edit className="w-5 h-5" />
+              <span>Edit</span>
             </button>
+
             <button
               type="submit"
               name="action"
               value="delete"
-              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2"
               onClick={() => {
                 if (
                   window.confirm(
@@ -319,7 +333,8 @@ export default function MembershipCard({
                 }
               }}
             >
-              Delete
+              <Trash className="w-5 h-5" />
+              <span>Delete</span>
             </button>
           </div>
         </fetcher.Form>

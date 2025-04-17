@@ -17,7 +17,7 @@ interface ConfirmButtonProps {
   confirmTitle: string;
   confirmDescription: string;
   onConfirm: () => void;
-  buttonLabel: string;
+  buttonLabel: React.ReactNode;
   buttonClassName?: string;
 }
 
