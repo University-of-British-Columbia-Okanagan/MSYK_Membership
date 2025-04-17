@@ -18,7 +18,6 @@ export async function action({ request }: { request: Request }) {
       await registerMembershipSubscription(
         userId,
         membershipPlanId,
-        0, // No compensation price for resubscription
         currentMembershipId,
         false, // Not a downgrade
         true // Flag this as a resubscription

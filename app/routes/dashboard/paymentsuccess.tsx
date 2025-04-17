@@ -122,7 +122,6 @@ export async function loader({ request }: { request: Request }) {
     });
 
     try {
-      const compPrice = compensationPrice ? parseFloat(compensationPrice) : 0;
       const currentMembershipId = metadata.currentMembershipId
         ? parseInt(metadata.currentMembershipId)
         : null;
@@ -130,8 +129,7 @@ export async function loader({ request }: { request: Request }) {
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        compPrice,
-        currentMembershipId
+        currentMembershipId,
       );
 
       return new Response(

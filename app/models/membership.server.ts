@@ -112,19 +112,12 @@ export async function getMembershipPlanById(planId: number) {
 export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number,
-  compensationPrice: number = 0,
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false
 ) {
   let subscription;
   const now = new Date();
-
-  // If compensationPrice is greater than 0, use it; otherwise, store null.
-  const compPrice = compensationPrice > 0 ? compensationPrice : null;
-  const hasPaid = compensationPrice > 0;
-
-  console.log("hello world 593");
 
   // NEW: Handle resubscription - if a membership is cancelled and the user resubscribes,
   // simply update the cancelled membership's status to "active" without any payment.
@@ -193,8 +186,6 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: null,
-          hasPaidCompensationPrice: false,
         },
       });
       subscription = newMembership;
@@ -207,8 +198,6 @@ export async function registerMembershipSubscription(
           date: startDate, // starts at old membership's nextPaymentDate
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: null,
-          hasPaidCompensationPrice: false,
         },
       });
     }
@@ -257,8 +246,6 @@ export async function registerMembershipSubscription(
           date: startDate, // new membership starts when the old membership ends
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
         },
       });
       subscription = newMembership;
@@ -271,8 +258,6 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
         },
       });
     }
@@ -280,37 +265,19 @@ export async function registerMembershipSubscription(
     return subscription;
   } else {
     // Standard new subscription or simple update logic
-    console.log("hello world4");
-    const nextPaymentDate = new Date(now);
-    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+    console.log("Creating brand‑new subscription record");
+  const startDate = new Date(now);
+  const nextPaymentDate = incrementMonth(startDate);
 
-    const existing = await db.userMembership.findFirst({
-      where: { userId },
-    });
-
-    if (existing) {
-      subscription = await db.userMembership.update({
-        where: { id: existing.id },
-        data: {
-          membershipPlanId,
-          nextPaymentDate,
-          status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
-        },
-      });
-    } else {
-      subscription = await db.userMembership.create({
-        data: {
-          userId,
-          membershipPlanId,
-          nextPaymentDate,
-          status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
-        },
-      });
+  subscription = await db.userMembership.create({
+    data: {
+      userId,
+      membershipPlanId,
+      date: startDate,
+      nextPaymentDate,
+      status: "active"
     }
+  });
   }
 
   // Fetch the current user to determine their role - keeping your existing role logic
@@ -442,14 +409,14 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("07 23 * * *", async () => {
+  cron.schedule("14 02 * * *", async () => {
     console.log("Running monthly membership check...");
 
-    const rawCardNumber = "4242424242424242";
-    const rawPostalCode = "V1V1V8";
-    const saltRounds = 10;
-    const hashedCard = bcrypt.hashSync(rawCardNumber, saltRounds);
-    const hashedPostal = bcrypt.hashSync(rawPostalCode, saltRounds);
+    // const rawCardNumber = "4242424242424242";
+    // const rawPostalCode = "V1V1V8";
+    // const saltRounds = 10;
+    // const hashedCard = bcrypt.hashSync(rawCardNumber, saltRounds);
+    // const hashedPostal = bcrypt.hashSync(rawPostalCode, saltRounds);
 
     try {
       const now = new Date();
@@ -474,120 +441,111 @@ export function startMonthlyMembershipCheck() {
           console.error(`No user found for ID ${membership.userId}, skipping`);
           continue;
         }
-        
+
         if (membership.status === "active") {
           // Process active memberships.
-          if (
-            membership.compensationPrice !== null &&
-            membership.hasPaidCompensationPrice === false
-          ) {
-            // Use the compensation price for this billing cycle.
-            chargeAmount = Number(membership.compensationPrice);
+          // Use the compensation price for this billing cycle.
+          chargeAmount = Number(membership.membershipPlan.price);
 
-            const info = await getLatestUserPaymentInfo(membership.userId);
-            if (!info) {
-              console.error(`❌ No saved payment info for user ${membership.userId}, skipping`);
-              continue;
-            }
-            try {
-              let chargeResult;
-              if (info.stripeCustomerId && info.stripePaymentMethodId) {
-                // real card on file
-                const pi = await stripe.paymentIntents.create({
-                  amount:           Math.round(chargeAmount * 100),
-                  currency:         "usd",
-                  customer:         info.stripeCustomerId,
-                  payment_method:   info.stripePaymentMethodId,
-                  off_session:      true,
-                  confirm:          true,
-                  receipt_email:    user.email,
-                  metadata: {
-                    userId:        String(membership.userId),
-                    membershipId:  String(membership.id),
-                    planId:        String(membership.membershipPlanId),
-                  },
-                  expand: ["charges"]
-                }) as unknown as Stripe.PaymentIntent & {
-                  charges: Stripe.ApiList<Stripe.Charge>;
-                };
-              
-                chargeResult = pi.charges.data[0];
-                console.log(
-                  `✅ Charge succeeded (${membership.userId}): $${(
-                    chargeResult.amount / 100
-                  ).toFixed(2)} (id=${chargeResult.id})`
+          const info = await getLatestUserPaymentInfo(membership.userId);
+          if (!info) {
+            console.error(
+              `❌ No saved payment info for user ${membership.userId}, skipping`
+            );
+            continue;
+          }
+          
+          try {
+            if (info.stripeCustomerId && info.stripePaymentMethodId) {
+              // First ensure the payment method is attached to the customer
+              try {
+                // Check if payment method is already attached
+                const paymentMethod = await stripe.paymentMethods.retrieve(
+                  info.stripePaymentMethodId
                 );
-
-              } 
-              else {
-                console.log("Stripe customer id or payment method id not found.");
+                
+                // If the payment method exists but isn't attached to this customer,
+                // or is attached to a different customer, we need to attach it
+                if (!paymentMethod.customer || paymentMethod.customer !== info.stripeCustomerId) {
+                  // Detach from any previous customer if needed
+                  if (paymentMethod.customer) {
+                    await stripe.paymentMethods.detach(info.stripePaymentMethodId);
+                  }
+                  
+                  // Attach to the current customer
+                  await stripe.paymentMethods.attach(info.stripePaymentMethodId, {
+                    customer: info.stripeCustomerId,
+                  });
+                  
+                  console.log(`Payment method attached to customer ${info.stripeCustomerId}`);
+                }
+              } catch (attachError) {
+                console.error("Error handling payment method attachment:", attachError);
+                continue;
               }
               
-            } catch (err: any) {
-              console.error("❌ Charge failed:", err);
-              continue;
+              // Now create the payment intent
+              const pi = await stripe.paymentIntents.create({
+                amount: Math.round(chargeAmount * 100),
+                currency: "usd",
+                customer: info.stripeCustomerId,
+                payment_method: info.stripePaymentMethodId,
+                off_session: true,
+                confirm: true,
+                receipt_email: user.email,
+                metadata: {
+                  userId: String(membership.userId),
+                  membershipId: String(membership.id),
+                  planId: String(membership.membershipPlanId),
+                }
+              });
+
+              // Check if payment intent succeeded
+              if (pi.status === 'succeeded') {
+                console.log(`✅ Payment intent succeeded for user ${membership.userId}, the user should be charged the price of the membership`);
+                
+                // If we have latest_charge, we can retrieve and log charge details
+                if (pi.latest_charge) {
+                  try {
+                    const charge = await stripe.charges.retrieve(pi.latest_charge as string);
+                    console.log(
+                      `✅ Charge details (${membership.userId}): $${(
+                        charge.amount / 100
+                      ).toFixed(2)} (id=${charge.id})`
+                    );
+                  } catch (chargeError) {
+                    console.error(`Error retrieving charge details: ${chargeError}`);
+                    // Continue with processing even if we can't get charge details
+                  }
+                }
+                
+                // Update the next payment date after successful payment
+                await db.userMembership.update({
+                  where: { id: membership.id },
+                  data: {
+                    nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+                  },
+                });
+              } else {
+                console.log(`⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`);
+                
+                // Payment intent didn't succeed, no need to update payment date
+                if (pi.last_payment_error) {
+                  console.error(`Payment error: ${JSON.stringify(pi.last_payment_error)}`);
+                }
+              }
+            } else {
+              console.log(`Missing Stripe customer id or payment method id for user ${membership.userId}`);
+            }
+          } catch (err: any) {
+            console.error(`❌ Charge failed for user ${membership.userId}:`, err);
+            
+            // Optional: Log more details about the error
+            if (err.raw) {
+              console.error("Error details:", JSON.stringify(err.raw, null, 2));
             }
             
-            await db.userMembership.update({
-              where: { id: membership.id },
-              data: {
-                nextPaymentDate: incrementMonth(membership.nextPaymentDate),
-                hasPaidCompensationPrice: true,
-              },
-            });
-          } else {
-            // Otherwise, charge the regular full price.
-            chargeAmount = Number(membership.compensationPrice);
-            const info = await getLatestUserPaymentInfo(membership.userId);
-            if (!info) {
-              console.error(`❌ No saved payment info for user ${membership.userId}, skipping`);
-              continue;
-            }
-            try {
-              let chargeResult;
-              if (info.stripeCustomerId && info.stripePaymentMethodId) {
-                // real card on file
-                const pi = await stripe.paymentIntents.create({
-                  amount:           Math.round(chargeAmount * 100),
-                  currency:         "usd",
-                  customer:         info.stripeCustomerId,
-                  payment_method:   info.stripePaymentMethodId,
-                  off_session:      true,
-                  confirm:          true,
-                  receipt_email:    user.email,
-                  metadata: {
-                    userId:        String(membership.userId),
-                    membershipId:  String(membership.id),
-                    planId:        String(membership.membershipPlanId),
-                  },
-                  expand: ["charges"]
-                }) as unknown as Stripe.PaymentIntent & {
-                  charges: Stripe.ApiList<Stripe.Charge>;
-                };
-              
-                chargeResult = pi.charges.data[0];
-                console.log(
-                  `✅ Charge succeeded (${membership.userId}): $${(
-                    chargeResult.amount / 100
-                  ).toFixed(2)} (id=${chargeResult.id})`
-                );
-
-              } 
-              else {
-                console.log("Stripe customer id or payment method id not found.");
-              }
-              
-            } catch (err: any) {
-              console.error("❌ Charge failed:", err);
-              continue;
-            }
-
-            await db.userMembership.update({
-              where: { id: membership.id },
-              data: {
-                nextPaymentDate: incrementMonth(membership.nextPaymentDate),
-              },
-            });
+            continue;
           }
         } else if (
           membership.status === "ending" ||
@@ -610,7 +568,7 @@ export function startMonthlyMembershipCheck() {
         }
 
         // Update the user's roleLevel based on their current membership status.
-        
+
         if (user) {
           // Check if the user has any subscription that is not inactive.
           const activeMembership = await db.userMembership.findFirst({

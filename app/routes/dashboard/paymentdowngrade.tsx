@@ -25,7 +25,6 @@ export async function action({ request } : { request: Request }) {
     await registerMembershipSubscription(
       parseInt(userId),
       parseInt(newMembershipPlanId),
-      0, // No compensation price for downgrades
       parseInt(currentMembershipId),
       true // Flag to indicate this is a downgrade
     );
