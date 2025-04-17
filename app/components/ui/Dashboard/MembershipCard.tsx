@@ -103,6 +103,39 @@ export default function MembershipCard({
         </div>
       )}
 
+      {membershipStatus === "cancelled" && (
+        <div className="mt-2 mb-4 flex justify-center">
+          <Button
+            onClick={() => {
+              navigate(
+                `/dashboard/payment/${planId}?resubscribe=true${
+                  membershipRecordId
+                    ? `&membershipRecordId=${membershipRecordId}`
+                    : ""
+                }`
+              );
+            }}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-full shadow-md transition flex items-center justify-center space-x-2"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              ></path>
+            </svg>
+            <span>Resubscribe</span>
+          </Button>
+        </div>
+      )}
+
       <h3 className="text-xl font-semibold text-gray-800">{title}</h3>
       <p className="text-gray-600 mt-2">{description}</p>
       <div className="mt-4">
@@ -114,29 +147,15 @@ export default function MembershipCard({
         Show different UI depending on membership status:
           1) cancelled -> "You have cancelled this membership" + Resubscribe button
           2) active -> "You are already subscribed" + Cancel button
-          3) otherwise -> the "subscribe" or "upgrade/change" button
+          3) otherwise -> the "subscribe" or "upgrade/downgrade" button
       */}
       {membershipStatus === "cancelled" ? (
         <div className="mt-4">
-          <p className="text-orange-600 font-semibold mb-2">
-            You have cancelled this membership
-          </p>
-          <Button
-            // CHANGE: Navigate to the payment page with query params for resubscription.
-            onClick={() => {
-              // Pass along the membershipRecordId if available (make sure you pass this prop from your loader)
-              navigate(
-                `/dashboard/payment/${planId}?resubscribe=true${
-                  membershipRecordId
-                    ? `&membershipRecordId=${membershipRecordId}`
-                    : ""
-                }`
-              );
-            }}
-            className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition"
-          >
-            Resubscribe
-          </Button>
+          <div className="bg-amber-50 text-amber-800 px-4 py-2 rounded-lg border border-amber-300 mb-3">
+            <p className="font-medium text-center">
+              You have cancelled this membership
+            </p>
+          </div>
         </div>
       ) : membershipStatus === "active" ? (
         <div className="mt-4">
@@ -177,7 +196,7 @@ export default function MembershipCard({
                   disabled = true;
                   if (hasActiveSubscription) {
                     buttonLabel =
-                      price > highestActivePrice ? "Upgrade" : "Change";
+                      price > highestActivePrice ? "Upgrade" : "Downgrade";
                   } else if (
                     !hasActiveSubscription &&
                     hasCancelledSubscription
@@ -192,7 +211,7 @@ export default function MembershipCard({
                 } else {
                   if (hasActiveSubscription) {
                     buttonLabel =
-                      price > highestActivePrice ? "Upgrade" : "Change";
+                      price > highestActivePrice ? "Upgrade" : "Downgrade";
                   } else if (
                     !hasActiveSubscription &&
                     hasCancelledSubscription
@@ -207,7 +226,7 @@ export default function MembershipCard({
                   }
                 }
               } else if (hasActiveSubscription) {
-                buttonLabel = highestActivePrice > price ? "Change" : "Upgrade";
+                buttonLabel = highestActivePrice > price ? "Downgrade" : "Upgrade";
               } else if (!hasActiveSubscription && hasCancelledSubscription) {
                 // CHANGE: If no active subscription and there is a cancelled membership,
                 // the user must resubscribe first.
