@@ -178,6 +178,7 @@ model MembershipPlan {
   title       String
   description String
   price       Float
+  needAdminPermission Boolean @default(false)
   feature     Json
   accessHours Json // Example: {"start": "09:00", "end": "18:00"}
 

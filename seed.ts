@@ -4,6 +4,9 @@ const prisma = new PrismaClient();
 
 // run npx tsx seed.ts
 async function main() {
+
+  await prisma.userMembershipPayment.deleteMany();
+  await prisma.userMembership.deleteMany();
   await prisma.user.deleteMany();
   await prisma.membershipPlan.deleteMany();
   await prisma.roleUser.deleteMany();
@@ -131,7 +134,8 @@ async function main() {
           start: "10:00", // Example: 10 AM start
           end: "16:00", // Example: 4 PM end
         },
-        type: "monthly"
+        type: "monthly",
+        needAdminPermission: true,
       },
     ],
   });
