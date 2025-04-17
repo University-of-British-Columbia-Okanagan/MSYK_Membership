@@ -1,8 +1,10 @@
 import React from "react";
+import type { ComponentType, SVGProps } from "react";
 
 interface RadioOption {
   value: string;
   label: string;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
 }
 
 interface DateTypeRadioGroupProps {
@@ -28,6 +30,10 @@ interface DateTypeRadioGroupProps {
    * The name attribute for the group of radio buttons (optional).
    */
   name?: string;
+
+  className?: string;
+
+  itemClassName?: string;
 }
 
 /**
