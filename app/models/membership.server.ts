@@ -100,7 +100,7 @@ export async function getMembershipPlanById(planId: number) {
 }
 
 /*
- * This function handles roleLevel 2 and 3
+ * This function handles roleLevels
  */
 export async function registerMembershipSubscription(
   userId: number,
@@ -349,7 +349,7 @@ export async function registerMembershipSubscription(
 }
 
 /*
- * This function handles roleLevel 2 and 3
+ * This function handles roleLevels
  */
 export async function cancelMembership(
   userId: number,
@@ -430,6 +430,9 @@ export async function getUserActiveMembership(userId: number) {
   });
 }
 
+/*
+ * This function handles roleLevels
+ */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
   cron.schedule("43 20 * * *", async () => {
