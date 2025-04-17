@@ -49,11 +49,22 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const newPrice = membershipPlan.price;
 
       // Calculate the time portions
-      const A = now.getTime() - new Date(userActiveMembership.date).getTime();
-      const B =
-        new Date(userActiveMembership.nextPaymentDate).getTime() -
-        now.getTime();
-      const total = A + B;
+      // const A = now.getTime() - new Date(userActiveMembership.date).getTime();
+      // const B =
+      //   new Date(userActiveMembership.nextPaymentDate).getTime() -
+      //   now.getTime();
+      // const total = A + B;
+
+      const oneMonthMs = 30 * 24 * 60 * 60 * 1000; // Approx one month in milliseconds
+      // Instead of using the original signup date for A, use a date exactly one month before the next payment
+      const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
+      const effectiveStartDate = new Date(nextPaymentDate);
+      effectiveStartDate.setMonth(effectiveStartDate.getMonth() - 1);
+      // A is now the time already used in the current billing cycle
+      const A = now.getTime() - effectiveStartDate.getTime();
+      // B remains the time left until next payment
+      const B = nextPaymentDate.getTime() - now.getTime();
+      const total = A + B; // This will now be approximately one month
 
       // Check if this is an upgrade or downgrade
       if (newPrice > oldPrice) {
