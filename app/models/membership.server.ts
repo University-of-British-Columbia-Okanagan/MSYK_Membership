@@ -262,6 +262,30 @@ export async function registerMembershipSubscription(
       });
     }
 
+    const freshUser = await db.user.findUnique({ where: { id: userId } });
+    if (freshUser) {
+      // If they just moved into Plan 2 and meet the Level 4 criteria, bump to 4:
+      if (
+        membershipPlanId === 2 &&
+        freshUser.roleLevel >= 2 &&
+        freshUser.allowLevel4
+      ) {
+        if (freshUser.roleLevel < 4) {
+          await db.user.update({
+            where: { id: userId },
+            data: { roleLevel: 4 },
+          });
+        }
+      }
+      // Otherwise, if they’ve completed orientation and are below Level 3, at least Level 3:
+      else if (freshUser.roleLevel >= 2 && freshUser.roleLevel < 3) {
+        await db.user.update({
+          where: { id: userId },
+          data: { roleLevel: 3 },
+        });
+      }
+    }
+
     return subscription;
   } else {
     // Standard new subscription or simple update logic
@@ -409,7 +433,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("14 02 * * *", async () => {
+  cron.schedule("50 10 * * *", async () => {
     console.log("Running monthly membership check...");
 
     // const rawCardNumber = "4242424242424242";
