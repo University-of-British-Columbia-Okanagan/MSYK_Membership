@@ -355,66 +355,46 @@ export async function cancelMembership(
   userId: number,
   membershipPlanId: number
 ) {
-  // Delete the membership subscription.
-  const membershipRecord = await db.userMembership.findFirst({
-    where: {
-      userId,
-      membershipPlanId,
-    },
+  // 1) Pick out the *currently active* subscription row only
+  const activeRecord = await db.userMembership.findFirst({
+    where: { userId, membershipPlanId, status: "active" },
   });
 
-  let result;
-  if (membershipRecord) {
-    const now = new Date();
-    // If cancellation occurs before the nextPaymentDate, update the status to "cancelled"
-    if (now < membershipRecord.nextPaymentDate) {
-      result = await db.userMembership.updateMany({
-        where: {
-          userId,
-          membershipPlanId,
-        },
-        data: { status: "cancelled" },
-      });
+  // nothing active? no change
+  if (!activeRecord) return null;
 
-      // If we only set status to "cancelled," we do NOT update the user role.
-      // We immediately return so the orientation logic below is skipped.
-      return result;
-    } else {
-      // Otherwise, delete the membership subscription and run roleLevel logic.
-      result = await db.userMembership.deleteMany({
-        where: {
-          userId,
-          membershipPlanId,
-        },
-      });
-    }
+  const now = new Date();
+
+  if (now < activeRecord.nextPaymentDate) {
+    // 2a) Cancelling *before* the cycle ends → just mark this row 'cancelled'
+    //     **NO** role‐level update here (you stay at level 3/4 until the cycle lapses)
+    return db.userMembership.update({
+      where: { id: activeRecord.id },
+      data: { status: "cancelled" },
+    });
   } else {
-    // If no membership is found, set result accordingly.
-    result = null;
-  }
+    // 2b) Cancelling *after* the cycle → delete that one record
+    const deleted = await db.userMembership.delete({
+      where: { id: activeRecord.id },
+    });
 
-  // Count passed orientation registrations for the user.
-  const passedOrientationCount = await db.userWorkshop.count({
-    where: {
-      userId,
-      result: { equals: "passed", mode: "insensitive" },
-      workshop: {
-        type: { equals: "orientation", mode: "insensitive" },
+    // 3) Now that the membership is gone, recalc roleLevel:
+    //    level 2 if they passed orientation, else level 1
+    const passedOrientationCount = await db.userWorkshop.count({
+      where: {
+        userId,
+        result: { equals: "passed", mode: "insensitive" },
+        workshop: { type: { equals: "orientation", mode: "insensitive" } },
       },
-    },
-  });
+    });
+    const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
+    await db.user.update({
+      where: { id: userId },
+      data: { roleLevel: newRoleLevel },
+    });
 
-  // Determine new role level:
-  // - If at least one passed orientation exists, user becomes level 2.
-  // - Otherwise, revert to level 1.
-  const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
-
-  await db.user.update({
-    where: { id: userId },
-    data: { roleLevel: newRoleLevel },
-  });
-
-  return result;
+    return deleted;
+  }
 }
 
 export async function getUserMemberships(userId: number) {
@@ -454,7 +434,7 @@ export async function getUserActiveMembership(userId: number) {
 
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("21 20 * * *", async () => {
+  cron.schedule("33 20 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
