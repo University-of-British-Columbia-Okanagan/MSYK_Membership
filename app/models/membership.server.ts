@@ -454,7 +454,7 @@ export async function getUserActiveMembership(userId: number) {
 
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("06 00 * * *", async () => {
+  cron.schedule("04 19 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
