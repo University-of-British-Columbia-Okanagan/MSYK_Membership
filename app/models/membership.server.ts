@@ -2,6 +2,7 @@ import { db } from "../utils/db.server";
 import cron from "node-cron";
 import Stripe from "stripe";
 import bcrypt from "bcryptjs";
+import { getLatestUserPaymentInfo } from "./user.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -222,23 +223,23 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       include: { membershipPlan: true },
     });
-  
+
     if (!currentMembership) {
       throw new Error("Current membership not found");
     }
-  
+
     // Mark the old membership as ending
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
-  
+
     // Create or update a new membership record for the upgraded plan
     // so that we only have 1 record in "active"/"ending" for the new plan.
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
     newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-  
+
     // Check if there's an existing record for the new plan in active/ending
     let newMembership = await db.userMembership.findFirst({
       where: {
@@ -247,7 +248,7 @@ export async function registerMembershipSubscription(
         OR: [{ status: "active" }, { status: "ending" }],
       },
     });
-  
+
     if (newMembership) {
       // Update that record
       newMembership = await db.userMembership.update({
@@ -275,7 +276,7 @@ export async function registerMembershipSubscription(
         },
       });
     }
-  
+
     return subscription;
   } else {
     // Standard new subscription or simple update logic
@@ -441,14 +442,14 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("23 21 * * *", async () => {
+  cron.schedule("09 22 * * *", async () => {
     console.log("Running monthly membership check...");
 
-    const rawCardNumber  = "4242424242424242";
-    const rawPostalCode  = "V1V1V8";
-    const saltRounds     = 10;
-    const hashedCard     = bcrypt.hashSync(rawCardNumber, saltRounds);
-    const hashedPostal   = bcrypt.hashSync(rawPostalCode, saltRounds);
+    const rawCardNumber = "4242424242424242";
+    const rawPostalCode = "V1V1V8";
+    const saltRounds = 10;
+    const hashedCard = bcrypt.hashSync(rawCardNumber, saltRounds);
+    const hashedPostal = bcrypt.hashSync(rawPostalCode, saltRounds);
 
     try {
       const now = new Date();
@@ -466,7 +467,14 @@ export function startMonthlyMembershipCheck() {
 
       for (const membership of dueMemberships) {
         let chargeAmount: number;
-
+        const user = await db.user.findUnique({
+          where: { id: membership.userId },
+        });
+        if (!user) {
+          console.error(`No user found for ID ${membership.userId}, skipping`);
+          continue;
+        }
+        
         if (membership.status === "active") {
           // Process active memberships.
           if (
@@ -476,34 +484,33 @@ export function startMonthlyMembershipCheck() {
             // Use the compensation price for this billing cycle.
             chargeAmount = Number(membership.compensationPrice);
 
+            const info = await getLatestUserPaymentInfo(membership.userId);
+            if (!info) {
+              console.error(`❌ No saved payment info for user ${membership.userId}, skipping`);
+              continue;
+            }
             try {
               const charge = await stripe.charges.create({
-                amount: Math.round(chargeAmount * 100),  // convert dollars → cents
+                amount:   Math.round(chargeAmount * 100),  // in cents
                 currency: "usd",
-                source: "tok_visa",                      // Stripe’s built‑in test Visa token
-                receipt_email: "iarrektt@gmail.com",
+                source:   "tok_visa",                      // test Visa token
+                receipt_email: user.email,       // or pull from user object if you store real email
                 metadata: {
-                  userId: String(membership.userId),
-                  membershipId: String(membership.id),
-                  hashedCard,
-                  hashedPostal,
+                  userId:         String(membership.userId),
+                  membershipId:   String(membership.id),
+                  hashedCard:     info.cardNumber,
+                  hashedPostal:   info.postalCode,
                 },
               });
+            
               console.log(
                 `✅ Stripe charge succeeded: ${charge.id}, amount: $${(charge.amount / 100).toFixed(2)}`
               );
             } catch (stripeError) {
               console.error("❌ Stripe charge failed:", stripeError);
-              // decide whether to continue or retry
+              continue; // skip DB update for this record
             }
-
-            // console.log(
-            //   `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
-            // );
-
-            // After processing the charge, update:
-            // - Increment the nextPaymentDate by one month.
-            // - Mark compensation as paid.
+            
             await db.userMembership.update({
               where: { id: membership.id },
               data: {
@@ -514,30 +521,34 @@ export function startMonthlyMembershipCheck() {
           } else {
             // Otherwise, charge the regular full price.
             chargeAmount = Number(membership.membershipPlan.price);
+            const info = await getLatestUserPaymentInfo(membership.userId);
+            if (!info) {
+              console.error(`❌ No saved payment info for user ${membership.userId}, skipping`);
+              continue;
+            }
+            
+            // B) charge via Stripe using tok_visa and include your hashes
             try {
               const charge = await stripe.charges.create({
-                amount: Math.round(chargeAmount * 100),  // convert dollars → cents
+                amount:   Math.round(chargeAmount * 100),  // in cents
                 currency: "usd",
-                source: "tok_visa",                      // Stripe’s built‑in test Visa token
-                receipt_email: "iarrektt@gmail.com",
+                source:   "tok_visa",                      // test Visa token
+                receipt_email: user.email,       // or pull from user object if you store real email
                 metadata: {
-                  userId: String(membership.userId),
-                  membershipId: String(membership.id),
-                  hashedCard,
-                  hashedPostal,
+                  userId:         String(membership.userId),
+                  membershipId:   String(membership.id),
+                  hashedCard:     info.cardNumber,
+                  hashedPostal:   info.postalCode,
                 },
               });
+            
               console.log(
                 `✅ Stripe charge succeeded: ${charge.id}, amount: $${(charge.amount / 100).toFixed(2)}`
               );
             } catch (stripeError) {
               console.error("❌ Stripe charge failed:", stripeError);
-              // decide whether to continue or retry
+              continue; // skip DB update for this record
             }
-
-            // console.log(
-            //   `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
-            // );
 
             await db.userMembership.update({
               where: { id: membership.id },
@@ -546,7 +557,10 @@ export function startMonthlyMembershipCheck() {
               },
             });
           }
-        } else if (membership.status === "ending" || membership.status === "cancelled") {
+        } else if (
+          membership.status === "ending" ||
+          membership.status === "cancelled"
+        ) {
           // Process memberships with status "ending" or "cancelled".
           // chargeAmount = Number(membership.membershipPlan.price);
           // console.log(
@@ -563,12 +577,8 @@ export function startMonthlyMembershipCheck() {
           });
         }
 
-        // (Integrate your actual payment gateway logic here using chargeAmount for membership.userId)
-
         // Update the user's roleLevel based on their current membership status.
-        const user = await db.user.findUnique({
-          where: { id: membership.userId },
-        });
+        
         if (user) {
           // Check if the user has any subscription that is not inactive.
           const activeMembership = await db.userMembership.findFirst({
@@ -582,7 +592,10 @@ export function startMonthlyMembershipCheck() {
             // If there is an active membership:
             // If the active membership is for plan 2 and the user has admin permission (allowLevel4 true),
             // set roleLevel to 4; otherwise, set roleLevel to 3.
-            if (activeMembership.membershipPlanId === 2 && user.allowLevel4 === true) {
+            if (
+              activeMembership.membershipPlanId === 2 &&
+              user.allowLevel4 === true
+            ) {
               await db.user.update({
                 where: { id: user.id },
                 data: { roleLevel: 4 },

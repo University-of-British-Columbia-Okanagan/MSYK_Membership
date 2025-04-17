@@ -1,4 +1,5 @@
 import { db } from "../utils/db.server";
+import bcrypt from "bcryptjs";
 
 export async function getAllUsers() {
   return db.user.findMany();
@@ -35,5 +36,42 @@ export async function updateUserAllowLevel(userId: number, allow: boolean) {
 export async function getUserById(userId: number) {
   return db.user.findUnique({
     where: { id: userId },
+  });
+}
+
+export async function saveUserMembershipPayment(data: {
+  userId: number;
+  membershipPlanId: number;
+  email: string;
+  cardNumber: string;
+  expMonth: number;
+  expYear: number;
+  cvc: string;
+  cardholderName: string;
+  region: string;
+  postalCode: string;
+}) {
+  const saltRounds = 10;
+  return db.userMembershipPayment.create({
+    data: {
+      userId: data.userId,
+      membershipPlanId: data.membershipPlanId,
+      date: new Date(),
+      email:          bcrypt.hashSync(data.email,          saltRounds),
+      cardNumber:     bcrypt.hashSync(data.cardNumber,     saltRounds),
+      expMonth:       bcrypt.hashSync(String(data.expMonth), saltRounds),
+      expYear:        bcrypt.hashSync(String(data.expYear),  saltRounds),
+      cvc:            bcrypt.hashSync(data.cvc,            saltRounds),
+      cardholderName: bcrypt.hashSync(data.cardholderName, saltRounds),
+      region:         bcrypt.hashSync(data.region,         saltRounds),
+      postalCode:     bcrypt.hashSync(data.postalCode,     saltRounds),
+    },
+  });
+}
+
+export async function getLatestUserPaymentInfo(userId: number) {
+  return db.userMembershipPayment.findFirst({
+    where: { userId },
+    orderBy: { date: "desc" },
   });
 }

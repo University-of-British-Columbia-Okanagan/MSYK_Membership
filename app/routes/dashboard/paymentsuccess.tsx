@@ -5,6 +5,7 @@ import {
   registerUserForAllOccurrences,
 } from "../../models/workshop.server";
 import { registerMembershipSubscription } from "../../models/membership.server";
+import { saveUserMembershipPayment } from "../../models/user.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -33,7 +34,6 @@ export async function loader({ request }: { request: Request }) {
     );
   }
 
-  
   const sessionId = url.searchParams.get("session_id");
 
   if (!sessionId) {
@@ -69,6 +69,46 @@ export async function loader({ request }: { request: Request }) {
 
   // Membership branch
   if (membershipPlanId) {
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent.payment_method"],
+    });
+    
+    const pi = session.payment_intent as Stripe.PaymentIntent;
+    
+    // 1) runtime‐guard to ensure we have an object
+    if (!pi.payment_method || typeof pi.payment_method === "string") {
+      throw new Error("Unable to retrieve expanded payment method");
+    }
+    
+    // 2) now TypeScript knows it's a PaymentMethod
+    const pm = pi.payment_method as Stripe.PaymentMethod;
+    
+    // billing details live on the PM itself:
+    const billing = pm.billing_details;
+    
+    // card data (last4, exp_month, exp_year) lives under pm.card
+    const last4    = pm.card?.last4      || "";
+    const expMonth = pm.card?.exp_month  || 0;
+    const expYear  = pm.card?.exp_year   || 0;
+    
+    // cvc is never returned by Stripe (PCI rules), so store empty or skip
+    const cvc = "";
+    
+    // call your save helper
+    await saveUserMembershipPayment({
+      userId:              parseInt(metadata.userId!),
+      membershipPlanId:    parseInt(metadata.membershipPlanId!),
+      email:               billing.email          || "",
+      cardNumber:          `****${last4}`,         // only have last4
+      expMonth,
+      expYear,
+      cvc,
+      cardholderName:      billing.name           || "",
+      region:              billing.address?.country   || "",
+      postalCode:          billing.address?.postal_code || "",
+    });
+
     try {
       const compPrice = compensationPrice ? parseFloat(compensationPrice) : 0;
       const currentMembershipId = metadata.currentMembershipId ? 
