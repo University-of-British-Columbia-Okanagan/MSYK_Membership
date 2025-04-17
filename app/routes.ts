@@ -27,7 +27,7 @@ export default [
     "routes/spaceandservices/fabricationservices.tsx"
   ),
   route("/volunteer", "routes/getinvolved/volunteer.tsx"),
-  route("/memberships", "routes/dashboard/memberships.tsx"),
+  route("/dashboard/memberships", "routes/dashboard/memberships.tsx"),
   route("/jobopportunities", "routes/getinvolved/jobopportunities.tsx"),
   route("/dashboard/admin", "routes/dashboard/admindashboardlayout.tsx"),
   route("/dashboard/user", "routes/dashboard/userdashboardlayout.tsx"),

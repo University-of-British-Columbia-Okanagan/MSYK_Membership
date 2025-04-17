@@ -1,5 +1,6 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminSidebar from "~/components/ui/Dashboard/adminsidebar"; 
 import Footer from "@/components/ui/Home/Footer";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
@@ -11,6 +12,7 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
+import { PlusCircle } from "lucide-react";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -26,6 +28,7 @@ export async function loader({ request }: { request: Request }) {
   const membershipPlans = await getMembershipPlans();
   const parsedPlans = membershipPlans.map((plan) => ({
     ...plan,
+    needAdminPermission: plan.needAdminPermission,
     feature: plan.feature
       ? Object.values(plan.feature).map((value) =>
           typeof value === "string" ? value : ""
@@ -38,6 +41,9 @@ export async function loader({ request }: { request: Request }) {
 
   if (roleUser?.userId) {
     const rawMemberships = await getUserMemberships(roleUser.userId);
+    rawMemberships.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
     // Convert raw status to our union type. If the status is not "active" or "cancelled", mark it as "inactive".
     userMemberships = rawMemberships.map((m) => {
       // If status is "ending", treat it as "inactive" for UI.
@@ -54,14 +60,14 @@ export async function loader({ request }: { request: Request }) {
       } else {
         status = "inactive";
       }
-    
+
       return {
         membershipPlanId: m.membershipPlanId,
         status,
         nextPaymentDate: m.nextPaymentDate,
       };
     });
-  
+
     // Fetch the full user record...
     userRecord = await getUserById(roleUser.userId);
   }
@@ -123,7 +129,7 @@ export async function action({ request }: { request: Request }) {
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
     }
-    return redirect("/memberships");
+    return redirect("/dashboard/memberships");
   }
 
   if (action === "delete") {
@@ -135,7 +141,7 @@ export async function action({ request }: { request: Request }) {
       }
 
       if (result) {
-        return redirect("/membership");
+        return redirect("/dashboard/memberships");
       }
     } catch (error) {
       console.error("Error deleting membership plan:", error);
@@ -174,21 +180,23 @@ export default function MembershipPage() {
     highestCanceledPrice: number;
   }>();
 
-  const isAdmin = roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+  const isAdmin =
+    roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen">
         {/* Sidebar */}
-        <AppSidebar />
+        {isAdmin ? <AdminSidebar /> : <AppSidebar />}
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
           {isAdmin && (
             <div className="flex justify-end mb-6">
               <Link to="/addmembershipplan">
-                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
-                  Add Membership Plan
+                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2">
+                  <PlusCircle className="w-5 h-5" />
+                  <span>Add Membership Plan</span>
                 </button>
               </Link>
             </div>
@@ -215,6 +223,7 @@ export default function MembershipPage() {
                   feature={plan.feature}
                   isAdmin={!!isAdmin}
                   planId={plan.id}
+                  needAdminPermission={plan.needAdminPermission}
                   isSubscribed={isSubscribed}
                   membershipStatus={membershipStatus}
                   userRecord={userRecord}

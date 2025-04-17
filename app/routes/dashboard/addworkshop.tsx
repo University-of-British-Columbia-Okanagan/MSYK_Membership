@@ -28,7 +28,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CheckIcon } from "lucide-react";
 import { Badge } from "~/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
@@ -41,6 +40,12 @@ import {
   getEquipmentSlotsWithStatus,
 } from "~/models/equipment.server";
 import MultiSelectField from "~/components/ui/MultiSelectField";
+import {
+  Calendar as CalendarIcon,
+  CalendarDays as CalendarDaysIcon,
+  CalendarRange as CalendarRangeIcon,
+  Check as CheckIcon,
+} from "lucide-react";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -467,168 +472,203 @@ export default function AddWorkshop() {
           />
 
           {/* New "Is Workshop Continuation" Checkbox */}
-          <div className="mt-4">
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={isWorkshopContinuation}
-                onChange={(e) => setIsWorkshopContinuation(e.target.checked)}
-                className="form-checkbox"
-              />
-              <span className="ml-2 text-sm">Is Workshop Continuation</span>
+          <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={isWorkshopContinuation}
+                  onChange={(e) => setIsWorkshopContinuation(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+              </div>
+              <span className="font-small">Multi-day Workshop</span>
             </label>
+            <p className="mt-2 pl-9 text-sm text-gray-500">
+              Check this if this workshop is a multi-day workshop
+            </p>
           </div>
-          {/* Hidden input to send the checkbox value */}
-          <input
-            type="hidden"
-            name="isWorkshopContinuation"
-            value={isWorkshopContinuation ? "true" : "false"}
-          />
 
-          {/* Occurrences (Dates) Section */}
           <FormField
             control={form.control}
             name="occurrences"
             render={() => (
               <FormItem className="mt-6">
-                <FormLabel htmlFor="occurrences">
-                  Workshop Dates <span className="text-red-500">*</span>
-                </FormLabel>
+                <div className="flex items-center mb-2">
+                  <FormLabel
+                    htmlFor="occurrences"
+                    className="text-lg font-medium mb-0"
+                  >
+                    Workshop Dates <span className="text-red-500">*</span>
+                  </FormLabel>
+                  {occurrences.length > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="ml-2 bg-yellow-100 border-yellow-200"
+                    >
+                      {occurrences.length} date
+                      {occurrences.length !== 1 ? "s" : ""} added
+                    </Badge>
+                  )}
+                </div>
                 <FormControl>
-                  <div className="flex flex-col items-start space-y-4 w-full">
-                    {/* Radio Buttons for selecting date input type */}
-                    <DateTypeRadioGroup
-                      options={[
-                        { value: "custom", label: "Manage dates" },
-                        { value: "weekly", label: "Append weekly dates" },
-                        { value: "monthly", label: "Append monthly dates" },
-                      ]}
-                      selectedValue={dateSelectionType}
-                      onChange={(val) =>
-                        setDateSelectionType(
-                          val as "custom" | "weekly" | "monthly"
-                        )
-                      }
-                      name="dateType"
-                    />
+                  <div className="flex flex-col items-start space-y-6 w-full">
+                    {/* Radio Buttons for selecting date input type - enhanced version */}
+                    <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                      <DateTypeRadioGroup
+                        options={[
+                          {
+                            value: "custom",
+                            label: "Manage dates",
+                            icon: CalendarIcon,
+                          },
+                          {
+                            value: "weekly",
+                            label: "Append weekly dates",
+                            icon: CalendarDaysIcon,
+                          },
+                          {
+                            value: "monthly",
+                            label: "Append monthly dates",
+                            icon: CalendarRangeIcon,
+                          },
+                        ]}
+                        selectedValue={dateSelectionType}
+                        onChange={(val) =>
+                          setDateSelectionType(
+                            val as "custom" | "weekly" | "monthly"
+                          )
+                        }
+                        name="dateType"
+                        className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                        itemClassName="flex-1"
+                      />
+                    </div>
 
-                    {/* Custom Dates Input */}
+                    {/* Custom Dates Input - keep the implementation but wrapped in a better card */}
                     {dateSelectionType === "custom" && (
-                      <div className="flex flex-col items-center w-full">
-                        {occurrences.map((occ, index) => (
-                          <OccurrenceRow
-                            key={index}
-                            index={index}
-                            occurrence={occ}
-                            updateOccurrence={updateOccurrence}
-                            formatLocalDatetime={formatLocalDatetime}
-                          />
-                        ))}
+                      <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        {occurrences.length === 0 ? (
+                          <div className="text-center py-6 text-gray-500">
+                            <p className="text-sm">
+                              No dates added yet. Click the button below to add
+                              workshop dates.
+                            </p>
+                          </div>
+                        ) : (
+                          occurrences.map((occ, index) => (
+                            <OccurrenceRow
+                              key={index}
+                              index={index}
+                              occurrence={occ}
+                              updateOccurrence={updateOccurrence}
+                              formatLocalDatetime={formatLocalDatetime}
+                            />
+                          ))
+                        )}
                         <Button
                           type="button"
                           onClick={addOccurrence}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+                          className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
                         >
-                          + Add Date
+                          <span className="mr-1">+</span> Add Date
                         </Button>
                       </div>
                     )}
 
+                    {/* Keep the existing code for weekly and monthly options */}
                     {dateSelectionType === "weekly" && (
-                      <RepetitionScheduleInputs
-                        scheduleType="weekly"
-                        startDate={weeklyStartDate}
-                        setStartDate={setWeeklyStartDate}
-                        endDate={weeklyEndDate}
-                        setEndDate={setWeeklyEndDate}
-                        interval={weeklyInterval}
-                        setInterval={setWeeklyInterval}
-                        count={weeklyCount}
-                        setCount={setWeeklyCount}
-                        occurrences={occurrences}
-                        setOccurrences={setOccurrences}
-                        updateFormOccurrences={(updatedOccurrences) => {
-                          console.log(
-                            "Updating Form Occurrences:",
-                            updatedOccurrences
-                          );
-                          form.setValue("occurrences", updatedOccurrences);
-                        }}
-                        parseDateTimeAsLocal={parseDateTimeAsLocal}
-                        isDuplicateDate={isDuplicateDate}
-                        onRevert={() => setDateSelectionType("weekly")}
-                      />
-                    )}
-
-                    {/* Monthly Repetition */}
-                    {dateSelectionType === "monthly" && (
-                      <RepetitionScheduleInputs
-                        scheduleType="monthly"
-                        startDate={monthlyStartDate}
-                        setStartDate={setMonthlyStartDate}
-                        endDate={monthlyEndDate}
-                        setEndDate={setMonthlyEndDate}
-                        interval={monthlyInterval}
-                        setInterval={setMonthlyInterval}
-                        count={monthlyCount}
-                        setCount={setMonthlyCount}
-                        occurrences={occurrences}
-                        setOccurrences={setOccurrences}
-                        updateFormOccurrences={(updatedOccurrences) => {
-                          console.log(
-                            "Updating Form Occurrences:",
-                            updatedOccurrences
-                          );
-                          form.setValue("occurrences", updatedOccurrences);
-                        }}
-                        parseDateTimeAsLocal={parseDateTimeAsLocal}
-                        isDuplicateDate={isDuplicateDate}
-                        onRevert={() => setDateSelectionType("monthly")}
-                      />
-                    )}
-
-                    {/* If we have occurrences, show them in a single tab */}
-                    {occurrences.length > 0 && (
-                      <>
-                        <h3 className="font-medium mb-4">Dates:</h3>
-                        <OccurrencesTabs
-                          defaultValue="all"
-                          tabs={[
-                            {
-                              value: "all",
-                              label: "My Workshop Dates",
-                              content: (
-                                <>
-                                  {occurrences.map((occ, index) => (
-                                    <div
-                                      key={index}
-                                      className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md mb-2"
-                                    >
-                                      <div className="text-sm">
-                                        <div className="font-medium">
-                                          {formatDisplayDate(occ.startDate)}
-                                        </div>
-                                        <div className="text-xs text-gray-600">
-                                          to {formatDisplayDate(occ.endDate)}
-                                        </div>
-                                      </div>
-                                      <ConfirmButton
-                                        confirmTitle="Delete Occurrence"
-                                        confirmDescription="Are you sure you want to delete this occurrence?"
-                                        onConfirm={() =>
-                                          removeOccurrence(index)
-                                        }
-                                        buttonLabel="X"
-                                        buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                      />
-                                    </div>
-                                  ))}
-                                </>
-                              ),
-                            },
-                          ]}
+                      // Existing code for weekly
+                      <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        <RepetitionScheduleInputs
+                          scheduleType="weekly"
+                          startDate={weeklyStartDate}
+                          setStartDate={setWeeklyStartDate}
+                          endDate={weeklyEndDate}
+                          setEndDate={setWeeklyEndDate}
+                          interval={weeklyInterval}
+                          setInterval={setWeeklyInterval}
+                          count={weeklyCount}
+                          setCount={setWeeklyCount}
+                          occurrences={occurrences}
+                          setOccurrences={setOccurrences}
+                          updateFormOccurrences={(updatedOccurrences) => {
+                            console.log(
+                              "Updating Form Occurrences:",
+                              updatedOccurrences
+                            );
+                            form.setValue("occurrences", updatedOccurrences);
+                          }}
+                          parseDateTimeAsLocal={parseDateTimeAsLocal}
+                          isDuplicateDate={isDuplicateDate}
+                          onRevert={() => setDateSelectionType("weekly")}
                         />
-                      </>
+                      </div>
+                    )}
+
+                    {/* Similar wrapping for monthly option */}
+                    {dateSelectionType === "monthly" && (
+                      <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        <RepetitionScheduleInputs
+                          scheduleType="monthly"
+                          startDate={monthlyStartDate}
+                          setStartDate={setMonthlyStartDate}
+                          endDate={monthlyEndDate}
+                          setEndDate={setMonthlyEndDate}
+                          interval={monthlyInterval}
+                          setInterval={setMonthlyInterval}
+                          count={monthlyCount}
+                          setCount={setMonthlyCount}
+                          occurrences={occurrences}
+                          setOccurrences={setOccurrences}
+                          updateFormOccurrences={(updatedOccurrences) => {
+                            console.log(
+                              "Updating Form Occurrences:",
+                              updatedOccurrences
+                            );
+                            form.setValue("occurrences", updatedOccurrences);
+                          }}
+                          parseDateTimeAsLocal={parseDateTimeAsLocal}
+                          isDuplicateDate={isDuplicateDate}
+                          onRevert={() => setDateSelectionType("monthly")}
+                        />
+                      </div>
+                    )}
+
+                    {/* Improved display of occurrences */}
+                    {occurrences.length > 0 && (
+                      <div className="w-full">
+                        <h3 className="font-medium mb-4 flex items-center">
+                          <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                          Your Workshop Dates
+                        </h3>
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          {occurrences.map((occ, index) => (
+                            <div
+                              key={index}
+                              className="flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
+                            >
+                              <div className="flex-1">
+                                <div className="font-medium">
+                                  {formatDisplayDate(occ.startDate)}
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  to {formatDisplayDate(occ.endDate)}
+                                </div>
+                              </div>
+                              <ConfirmButton
+                                confirmTitle="Delete Occurrence"
+                                confirmDescription="Are you sure you want to delete this occurrence?"
+                                onConfirm={() => removeOccurrence(index)}
+                                buttonLabel="Remove"
+                                buttonClassName="text-sm bg-white text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 </FormControl>

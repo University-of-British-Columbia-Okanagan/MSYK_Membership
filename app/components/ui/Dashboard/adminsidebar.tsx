@@ -75,7 +75,7 @@ export function AdminAppSidebar() {
             Equipments
           </Link>
           <Link
-            to="/memberships"
+            to="/dashboard/memberships"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <Home className="w-5 h-5" />

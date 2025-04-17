@@ -36,7 +36,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import GenericFormField from "~/components/ui/GenericFormField";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
@@ -46,6 +45,12 @@ import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
 import PrerequisitesField from "@/components/ui/PrerequisitesField";
 import { getAvailableEquipment } from "~/models/equipment.server";
 import MultiSelectField from "@/components/ui/MultiSelectField";
+import {
+  Calendar as CalendarIcon,
+  CalendarDays as CalendarDaysIcon,
+  CalendarRange as CalendarRangeIcon,
+  Check as CheckIcon,
+} from "lucide-react";
 
 interface Occurrence {
   id?: number;
@@ -580,129 +585,196 @@ export default function EditWorkshop() {
           />
 
           {/* "Is Workshop Continuation" Checkbox */}
-          <div className="mt-4">
-            <label className="inline-flex items-center">
-              <input
-                type="checkbox"
-                checked={isWorkshopContinuation}
-                onChange={(e) => {
-                  setIsWorkshopContinuation(e.target.checked);
-                  form.setValue("isWorkshopContinuation", e.target.checked);
-                }}
-                className="form-checkbox"
-                disabled={true}
-              />
-              <span className="ml-2 text-sm">Is Workshop Continuation</span>
+          <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={isWorkshopContinuation}
+                  onChange={(e) => setIsWorkshopContinuation(e.target.checked)}
+                  className="sr-only peer"
+                  disabled={true}
+                />
+                <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+              </div>
+              <span className="font-small">Multi-day Workshop</span>
             </label>
+            <p className="mt-2 pl-9 text-sm text-gray-500">
+              If checked, it is a multi-day workshop
+            </p>
           </div>
 
-          {/* Occurrences (Dates) with Tabs */}
           <FormField
             control={form.control}
             name="occurrences"
             render={() => (
               <FormItem className="mt-6">
-                <FormLabel>
-                  Edit Workshop Dates <span className="text-red-500">*</span>
-                </FormLabel>
+                <div className="flex items-center mb-2">
+                  <FormLabel
+                    htmlFor="occurrences"
+                    className="text-lg font-medium mb-0"
+                  >
+                    Edit Workshop Dates <span className="text-red-500">*</span>
+                  </FormLabel>
+                  {occurrences.length > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="ml-2 bg-yellow-100 border-yellow-200"
+                    >
+                      {occurrences.length} date
+                      {occurrences.length !== 1 ? "s" : ""} added
+                    </Badge>
+                  )}
+                </div>
                 <FormControl>
-                  <div className="flex flex-col items-start space-y-4 w-full">
-                    {/* Radio Buttons for date selection type */}
-                    <DateTypeRadioGroup
-                      options={[
-                        { value: "custom", label: "Manage dates" },
-                        { value: "weekly", label: "Append weekly dates" },
-                        { value: "monthly", label: "Append monthly dates" },
-                      ]}
-                      selectedValue={dateSelectionType}
-                      onChange={(val) =>
-                        setDateSelectionType(
-                          val as "custom" | "weekly" | "monthly"
-                        )
-                      }
-                      name="dateType"
-                    />
+                  <div className="flex flex-col items-start space-y-6 w-full">
+                    {/* Radio Buttons for selecting date input type - enhanced version */}
+                    <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                      <DateTypeRadioGroup
+                        options={[
+                          {
+                            value: "custom",
+                            label: "Manage dates",
+                            icon: CalendarIcon,
+                          },
+                          {
+                            value: "weekly",
+                            label: "Append weekly dates",
+                            icon: CalendarDaysIcon,
+                          },
+                          {
+                            value: "monthly",
+                            label: "Append monthly dates",
+                            icon: CalendarRangeIcon,
+                          },
+                        ]}
+                        selectedValue={dateSelectionType}
+                        onChange={(val) =>
+                          setDateSelectionType(
+                            val as "custom" | "weekly" | "monthly"
+                          )
+                        }
+                        name="dateType"
+                        className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                        itemClassName="flex-1"
+                      />
+                    </div>
 
-                    {/* Custom Dates */}
+                    {/* Custom Dates Input - keep the implementation but wrapped in a better card */}
                     {dateSelectionType === "custom" && (
-                      <div className="flex flex-col items-center w-full">
-                        {occurrences.map((occ, index) => (
-                          <OccurrenceRow
-                            key={index}
-                            index={index}
-                            occurrence={occ}
-                            updateOccurrence={updateOccurrence}
-                            formatLocalDatetime={formatLocalDatetime}
-                          />
-                        ))}
+                      <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        {occurrences.length === 0 ? (
+                          <div className="text-center py-6 text-gray-500">
+                            <p className="text-sm">
+                              No dates added yet. Click the button below to add
+                              workshop dates.
+                            </p>
+                          </div>
+                        ) : (
+                          occurrences.map((occ, index) => (
+                            <OccurrenceRow
+                              key={index}
+                              index={index}
+                              occurrence={occ}
+                              updateOccurrence={updateOccurrence}
+                              formatLocalDatetime={formatLocalDatetime}
+                            />
+                          ))
+                        )}
                         <Button
                           type="button"
                           onClick={addOccurrence}
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+                          className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
                         >
-                          + Add Date
+                          <span className="mr-1">+</span> Add Date
                         </Button>
                       </div>
                     )}
 
                     {/* Weekly Repetition */}
                     {dateSelectionType === "weekly" && (
-                      <RepetitionScheduleInputs
-                        scheduleType="weekly"
-                        startDate={weeklyStartDate}
-                        setStartDate={setWeeklyStartDate}
-                        endDate={weeklyEndDate}
-                        setEndDate={setWeeklyEndDate}
-                        interval={weeklyInterval}
-                        setInterval={setWeeklyInterval}
-                        count={weeklyCount}
-                        setCount={setWeeklyCount}
-                        occurrences={occurrences}
-                        setOccurrences={setOccurrences}
-                        updateFormOccurrences={(updatedOccurrences) =>
-                          form.setValue("occurrences", updatedOccurrences)
-                        }
-                        parseDateTimeAsLocal={parseDateTimeAsLocal}
-                        isDuplicateDate={isDuplicateDate}
-                        onRevert={() => setDateSelectionType("custom")}
-                      />
+                      <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        <RepetitionScheduleInputs
+                          scheduleType="weekly"
+                          startDate={weeklyStartDate}
+                          setStartDate={setWeeklyStartDate}
+                          endDate={weeklyEndDate}
+                          setEndDate={setWeeklyEndDate}
+                          interval={weeklyInterval}
+                          setInterval={setWeeklyInterval}
+                          count={weeklyCount}
+                          setCount={setWeeklyCount}
+                          occurrences={occurrences}
+                          setOccurrences={setOccurrences}
+                          updateFormOccurrences={(updatedOccurrences) =>
+                            form.setValue("occurrences", updatedOccurrences)
+                          }
+                          parseDateTimeAsLocal={parseDateTimeAsLocal}
+                          isDuplicateDate={isDuplicateDate}
+                          onRevert={() => setDateSelectionType("custom")}
+                        />
+                      </div>
                     )}
 
                     {/* Monthly Repetition */}
                     {dateSelectionType === "monthly" && (
-                      <RepetitionScheduleInputs
-                        scheduleType="monthly"
-                        startDate={monthlyStartDate}
-                        setStartDate={setMonthlyStartDate}
-                        endDate={monthlyEndDate}
-                        setEndDate={setMonthlyEndDate}
-                        interval={monthlyInterval}
-                        setInterval={setMonthlyInterval}
-                        count={monthlyCount}
-                        setCount={setMonthlyCount}
-                        occurrences={occurrences}
-                        setOccurrences={setOccurrences}
-                        updateFormOccurrences={(updatedOccurrences) =>
-                          form.setValue("occurrences", updatedOccurrences)
-                        }
-                        parseDateTimeAsLocal={parseDateTimeAsLocal}
-                        isDuplicateDate={isDuplicateDate}
-                        onRevert={() => setDateSelectionType("custom")}
-                      />
+                      <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        <RepetitionScheduleInputs
+                          scheduleType="monthly"
+                          startDate={monthlyStartDate}
+                          setStartDate={setMonthlyStartDate}
+                          endDate={monthlyEndDate}
+                          setEndDate={setMonthlyEndDate}
+                          interval={monthlyInterval}
+                          setInterval={setMonthlyInterval}
+                          count={monthlyCount}
+                          setCount={setMonthlyCount}
+                          occurrences={occurrences}
+                          setOccurrences={setOccurrences}
+                          updateFormOccurrences={(updatedOccurrences) =>
+                            form.setValue("occurrences", updatedOccurrences)
+                          }
+                          parseDateTimeAsLocal={parseDateTimeAsLocal}
+                          isDuplicateDate={isDuplicateDate}
+                          onRevert={() => setDateSelectionType("custom")}
+                        />
+                      </div>
                     )}
 
                     {/* If we have generated occurrences, display them in Tabs */}
                     {occurrences.length > 0 && (
                       <>
-                        <h3 className="font-medium mb-4">Workshop Dates:</h3>
+                        <h3 className="font-medium mb-4 flex items-center">
+                          <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                          Workshop Dates:
+                        </h3>
                         <OccurrencesTabs
                           defaultValue="active"
                           tabs={[
                             {
                               value: "active",
-                              label: `Active (${activeOccurrences.length})`,
+                              label: (
+                                <span className="flex items-center">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 mr-1"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                  Active ({activeOccurrences.length})
+                                </span>
+                              ),
                               triggerClassName:
-                                "data-[state=active]:bg-yellow-500 data-[state=active]:text-white",
+                                "data-[state=active]:bg-yellow-500 data-[state=active]:text-white font-medium",
                               content:
                                 activeOccurrences.length > 0 ? (
                                   <div className="space-y-3">
@@ -731,7 +803,7 @@ export default function EditWorkshop() {
                                       return (
                                         <div
                                           key={index}
-                                          className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md"
+                                          className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
                                             <div className="font-medium text-green-700">
@@ -748,13 +820,40 @@ export default function EditWorkshop() {
                                           </div>
                                           <div className="flex items-center">
                                             {shouldShowUserCount && (
-                                              <span className="mr-2 ml-2 text-sm font-bold text-gray-800">
-                                                {isWorkshopContinuation
-                                                  ? `${userCounts.totalUsers} users (${userCounts.uniqueUsers} unique users)`
-                                                  : `${
-                                                      occ.userCount ?? 0
-                                                    } users registered`}
-                                              </span>
+                                              <div className="flex items-center mr-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
+                                                <span className="flex items-center text-sm font-medium text-blue-700">
+                                                  <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    className="h-4 w-4 mr-1"
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                    stroke="currentColor"
+                                                  >
+                                                    <path
+                                                      strokeLinecap="round"
+                                                      strokeLinejoin="round"
+                                                      strokeWidth={2}
+                                                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                                    />
+                                                  </svg>
+                                                  {isWorkshopContinuation
+                                                    ? `${
+                                                        userCounts.totalUsers
+                                                      } ${
+                                                        userCounts.totalUsers ===
+                                                        1
+                                                          ? "user"
+                                                          : "users"
+                                                      } registered`
+                                                    : `${occ.userCount ?? 0} ${
+                                                        occ.userCount === 1 ||
+                                                        occ.userCount ===
+                                                          undefined
+                                                          ? "user"
+                                                          : "users"
+                                                      } registered`}
+                                                </span>
+                                              </div>
                                             )}
                                             {shouldShowCancelButton ? (
                                               hasUsers ||
@@ -852,19 +951,51 @@ export default function EditWorkshop() {
                                     })}
                                   </div>
                                 ) : (
-                                  <div className="text-center py-6 text-gray-500">
+                                  <div className="text-center py-10 text-gray-500 flex flex-col items-center">
+                                    <svg
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      className="h-12 w-12 mb-3 text-gray-400"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={1.5}
+                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                      />
+                                    </svg>
                                     No active workshop dates scheduled
                                   </div>
                                 ),
                             },
                             {
                               value: "past",
-                              label: `Past (${pastOccurrences.length})`,
+                              label: (
+                                <span className="flex items-center">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 mr-1"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                  Past ({pastOccurrences.length})
+                                </span>
+                              ),
                               triggerClassName:
-                                "data-[state=active]:bg-gray-500 data-[state=active]:text-white",
+                                "data-[state=active]:bg-gray-500 data-[state=active]:text-white font-medium",
                               content:
                                 pastOccurrences.length > 0 ? (
-                                  <div className="space-y-3">
+                                  <div className="space-y-3 px-4">
                                     {pastOccurrences.map((occ, index) => {
                                       const originalIndex =
                                         occurrences.findIndex(
@@ -877,7 +1008,7 @@ export default function EditWorkshop() {
                                       return (
                                         <div
                                           key={index}
-                                          className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md"
+                                          className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
                                             <div className="font-medium text-gray-700">
@@ -892,21 +1023,39 @@ export default function EditWorkshop() {
                                               )}
                                             </div>
                                           </div>
-                                          <div className="flex items-center">
-                                            <span className="mr-2 text-sm font-bold text-gray-800">
-                                              {occ.userCount ?? 0} users
+                                          <div className="flex items-center mr-2 px-3 py-1 bg-gray-100 border border-gray-300 rounded-full">
+                                            <span className="flex items-center text-sm font-medium text-gray-700">
+                                              <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                className="h-4 w-4 mr-1"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                                />
+                                              </svg>
+                                              {occ.userCount ?? 0}{" "}
+                                              {occ.userCount === 1 ||
+                                              occ.userCount === undefined
+                                                ? "user"
+                                                : "users"}{" "}
                                               registered
                                             </span>
-                                            <ConfirmButton
-                                              confirmTitle="Delete Occurrence"
-                                              confirmDescription="Are you sure you want to delete this occurrence?"
-                                              onConfirm={() =>
-                                                removeOccurrence(originalIndex)
-                                              }
-                                              buttonLabel="X"
-                                              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                            />
                                           </div>
+                                          <ConfirmButton
+                                            confirmTitle="Delete Occurrence"
+                                            confirmDescription="Are you sure you want to delete this occurrence?"
+                                            onConfirm={() =>
+                                              removeOccurrence(originalIndex)
+                                            }
+                                            buttonLabel="X"
+                                            buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                          />
                                         </div>
                                       );
                                     })}
@@ -919,9 +1068,27 @@ export default function EditWorkshop() {
                             },
                             {
                               value: "cancelled",
-                              label: `Cancelled (${cancelledOccurrences.length})`,
+                              label: (
+                                <span className="flex items-center">
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 mr-1"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M6 18L18 6M6 6l12 12"
+                                    />
+                                  </svg>
+                                  Cancelled ({cancelledOccurrences.length})
+                                </span>
+                              ),
                               triggerClassName:
-                                "data-[state=active]:bg-red-500 data-[state=active]:text-white",
+                                "data-[state=active]:bg-red-500 data-[state=active]:text-white font-medium",
                               content:
                                 cancelledOccurrences.length > 0 ? (
                                   <div className="space-y-3">
@@ -937,7 +1104,7 @@ export default function EditWorkshop() {
                                       return (
                                         <div
                                           key={index}
-                                          className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md"
+                                          className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
                                             <div className="font-medium text-red-700">
@@ -952,20 +1119,29 @@ export default function EditWorkshop() {
                                               )}
                                             </div>
                                           </div>
-                                          <div className="flex items-center">
-                                            <span className="mr-2 text-sm font-bold text-gray-800">
-                                              {occ.userCount ?? 0} users
+                                          <div className="flex items-center mr-2 px-3 py-1 bg-red-50 border border-red-200 rounded-full">
+                                            <span className="flex items-center text-sm font-medium text-red-700">
+                                              <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                className="h-4 w-4 mr-1"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                stroke="currentColor"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                                />
+                                              </svg>
+                                              {occ.userCount ?? 0}{" "}
+                                              {occ.userCount === 1 ||
+                                              occ.userCount === undefined
+                                                ? "user"
+                                                : "users"}{" "}
                                               registered
                                             </span>
-                                            <ConfirmButton
-                                              confirmTitle="Delete Occurrence"
-                                              confirmDescription="Are you sure you want to delete this occurrence?"
-                                              onConfirm={() =>
-                                                removeOccurrence(originalIndex)
-                                              }
-                                              buttonLabel="X"
-                                              buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                            />
                                           </div>
                                         </div>
                                       );

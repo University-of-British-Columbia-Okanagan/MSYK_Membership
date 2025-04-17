@@ -1,5 +1,12 @@
 import { db } from "../utils/db.server";
 import cron from "node-cron";
+import Stripe from "stripe";
+import bcrypt from "bcryptjs";
+import { getLatestUserPaymentInfo } from "./user.server";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2025-02-24.acacia",
+});
 
 interface MembershipPlanData {
   title: string;
@@ -100,12 +107,11 @@ export async function getMembershipPlanById(planId: number) {
 }
 
 /*
- * This function handles roleLevel 2 and 3
+ * This function handles roleLevels
  */
 export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number,
-  compensationPrice: number = 0,
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false
@@ -113,11 +119,10 @@ export async function registerMembershipSubscription(
   let subscription;
   const now = new Date();
 
-  // If compensationPrice is greater than 0, use it; otherwise, store null.
-  const compPrice = compensationPrice > 0 ? compensationPrice : null;
-  const hasPaid = compensationPrice > 0;
-
-  console.log("hello world 593");
+  const plan = await db.membershipPlan.findUnique({
+    where: { id: membershipPlanId },
+  });
+  if (!plan) throw new Error("Plan not found");
 
   // NEW: Handle resubscription - if a membership is cancelled and the user resubscribes,
   // simply update the cancelled membership's status to "active" without any payment.
@@ -186,8 +191,6 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: null,
-          hasPaidCompensationPrice: false,
         },
       });
       subscription = newMembership;
@@ -200,8 +203,6 @@ export async function registerMembershipSubscription(
           date: startDate, // starts at old membership's nextPaymentDate
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: null,
-          hasPaidCompensationPrice: false,
         },
       });
     }
@@ -216,23 +217,23 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       include: { membershipPlan: true },
     });
-  
+
     if (!currentMembership) {
       throw new Error("Current membership not found");
     }
-  
+
     // Mark the old membership as ending
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
-  
+
     // Create or update a new membership record for the upgraded plan
     // so that we only have 1 record in "active"/"ending" for the new plan.
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
     newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-  
+
     // Check if there's an existing record for the new plan in active/ending
     let newMembership = await db.userMembership.findFirst({
       where: {
@@ -241,7 +242,7 @@ export async function registerMembershipSubscription(
         OR: [{ status: "active" }, { status: "ending" }],
       },
     });
-  
+
     if (newMembership) {
       // Update that record
       newMembership = await db.userMembership.update({
@@ -250,8 +251,6 @@ export async function registerMembershipSubscription(
           date: startDate, // new membership starts when the old membership ends
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
         },
       });
       subscription = newMembership;
@@ -264,46 +263,50 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
         },
       });
     }
-  
+
+    const freshUser = await db.user.findUnique({ where: { id: userId } });
+    if (freshUser) {
+      // If they just moved into Plan 2 and meet the Level 4 criteria, bump to 4:
+      if (
+        plan.needAdminPermission &&
+        freshUser.roleLevel >= 2 &&
+        freshUser.allowLevel4
+      ) {
+        if (freshUser.roleLevel < 4) {
+          await db.user.update({
+            where: { id: userId },
+            data: { roleLevel: 4 },
+          });
+        }
+      }
+      // Otherwise, if they’ve completed orientation and are below Level 3, at least Level 3:
+      else if (freshUser.roleLevel >= 2 && freshUser.roleLevel < 3) {
+        await db.user.update({
+          where: { id: userId },
+          data: { roleLevel: 3 },
+        });
+      }
+    }
+
     return subscription;
   } else {
     // Standard new subscription or simple update logic
-    console.log("hello world4");
-    const nextPaymentDate = new Date(now);
-    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+    console.log("Creating brand‑new subscription record");
+    const startDate = new Date(now);
+    const nextPaymentDate = incrementMonth(startDate);
 
-    const existing = await db.userMembership.findFirst({
-      where: { userId },
+    subscription = await db.userMembership.create({
+      data: {
+        userId,
+        membershipPlanId,
+        date: startDate,
+        nextPaymentDate,
+        status: "active",
+      },
     });
-
-    if (existing) {
-      subscription = await db.userMembership.update({
-        where: { id: existing.id },
-        data: {
-          membershipPlanId,
-          nextPaymentDate,
-          status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
-        },
-      });
-    } else {
-      subscription = await db.userMembership.create({
-        data: {
-          userId,
-          membershipPlanId,
-          nextPaymentDate,
-          status: "active",
-          compensationPrice: compPrice,
-          hasPaidCompensationPrice: hasPaid,
-        },
-      });
-    }
   }
 
   // Fetch the current user to determine their role - keeping your existing role logic
@@ -312,7 +315,7 @@ export async function registerMembershipSubscription(
   });
 
   if (user) {
-    if (membershipPlanId === 2) {
+    if (plan.needAdminPermission) {
       // For membershipPlan 2 (special membership that can grant level 4):
       // A user must have completed an orientation (roleLevel >= 2) and have allowLevel4 set to true.
       if (user.roleLevel >= 2 && user.allowLevel4) {
@@ -349,72 +352,52 @@ export async function registerMembershipSubscription(
 }
 
 /*
- * This function handles roleLevel 2 and 3
+ * This function handles roleLevels
  */
 export async function cancelMembership(
   userId: number,
   membershipPlanId: number
 ) {
-  // Delete the membership subscription.
-  const membershipRecord = await db.userMembership.findFirst({
-    where: {
-      userId,
-      membershipPlanId,
-    },
+  // 1) Pick out the *currently active* subscription row only
+  const activeRecord = await db.userMembership.findFirst({
+    where: { userId, membershipPlanId, status: "active" },
   });
 
-  let result;
-  if (membershipRecord) {
-    const now = new Date();
-    // If cancellation occurs before the nextPaymentDate, update the status to "cancelled"
-    if (now < membershipRecord.nextPaymentDate) {
-      result = await db.userMembership.updateMany({
-        where: {
-          userId,
-          membershipPlanId,
-        },
-        data: { status: "cancelled" },
-      });
+  // nothing active? no change
+  if (!activeRecord) return null;
 
-      // If we only set status to "cancelled," we do NOT update the user role.
-      // We immediately return so the orientation logic below is skipped.
-      return result;
-    } else {
-      // Otherwise, delete the membership subscription and run roleLevel logic.
-      result = await db.userMembership.deleteMany({
-        where: {
-          userId,
-          membershipPlanId,
-        },
-      });
-    }
+  const now = new Date();
+
+  if (now < activeRecord.nextPaymentDate) {
+    // 2a) Cancelling *before* the cycle ends → just mark this row 'cancelled'
+    //     **NO** role‐level update here (you stay at level 3/4 until the cycle lapses)
+    return db.userMembership.update({
+      where: { id: activeRecord.id },
+      data: { status: "cancelled" },
+    });
   } else {
-    // If no membership is found, set result accordingly.
-    result = null;
-  }
+    // 2b) Cancelling *after* the cycle → delete that one record
+    const deleted = await db.userMembership.delete({
+      where: { id: activeRecord.id },
+    });
 
-  // Count passed orientation registrations for the user.
-  const passedOrientationCount = await db.userWorkshop.count({
-    where: {
-      userId,
-      result: { equals: "passed", mode: "insensitive" },
-      workshop: {
-        type: { equals: "orientation", mode: "insensitive" },
+    // 3) Now that the membership is gone, recalc roleLevel:
+    //    level 2 if they passed orientation, else level 1
+    const passedOrientationCount = await db.userWorkshop.count({
+      where: {
+        userId,
+        result: { equals: "passed", mode: "insensitive" },
+        workshop: { type: { equals: "orientation", mode: "insensitive" } },
       },
-    },
-  });
+    });
+    const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
+    await db.user.update({
+      where: { id: userId },
+      data: { roleLevel: newRoleLevel },
+    });
 
-  // Determine new role level:
-  // - If at least one passed orientation exists, user becomes level 2.
-  // - Otherwise, revert to level 1.
-  const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
-
-  await db.user.update({
-    where: { id: userId },
-    data: { roleLevel: newRoleLevel },
-  });
-
-  return result;
+    return deleted;
+  }
 }
 
 export async function getUserMemberships(userId: number) {
@@ -450,12 +433,19 @@ export async function getUserActiveMembership(userId: number) {
   });
 }
 
-// Ensure that incrementMonth is imported or defined appropriately.
-
+/*
+ * This function handles roleLevels
+ */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("06 00 * * *", async () => {
+  cron.schedule("55 11 * * *", async () => {
     console.log("Running monthly membership check...");
+
+    // const rawCardNumber = "4242424242424242";
+    // const rawPostalCode = "V1V1V8";
+    // const saltRounds = 10;
+    // const hashedCard = bcrypt.hashSync(rawCardNumber, saltRounds);
+    // const hashedPostal = bcrypt.hashSync(rawPostalCode, saltRounds);
 
     try {
       const now = new Date();
@@ -473,48 +463,159 @@ export function startMonthlyMembershipCheck() {
 
       for (const membership of dueMemberships) {
         let chargeAmount: number;
+        const user = await db.user.findUnique({
+          where: { id: membership.userId },
+        });
+        if (!user) {
+          console.error(`No user found for ID ${membership.userId}, skipping`);
+          continue;
+        }
 
         if (membership.status === "active") {
           // Process active memberships.
-          if (
-            membership.compensationPrice !== null &&
-            membership.hasPaidCompensationPrice === false
-          ) {
-            // Use the compensation price for this billing cycle.
-            chargeAmount = Number(membership.compensationPrice);
-            console.log(
-              `User ID: ${membership.userId} has a compensation pending. Charging compensation price: $${chargeAmount.toFixed(2)}`
-            );
-
-            // After processing the charge, update:
-            // - Increment the nextPaymentDate by one month.
-            // - Mark compensation as paid.
-            await db.userMembership.update({
-              where: { id: membership.id },
-              data: {
-                nextPaymentDate: incrementMonth(membership.nextPaymentDate),
-                hasPaidCompensationPrice: true,
-              },
-            });
-          } else {
-            // Otherwise, charge the regular full price.
-            chargeAmount = Number(membership.membershipPlan.price);
-            console.log(
-              `User ID: ${membership.userId} is being charged the full price: $${chargeAmount.toFixed(2)}`
-            );
-
-            await db.userMembership.update({
-              where: { id: membership.id },
-              data: {
-                nextPaymentDate: incrementMonth(membership.nextPaymentDate),
-              },
-            });
-          }
-        } else if (membership.status === "ending" || membership.status === "cancelled") {
-          // Process memberships with status "ending" or "cancelled".
+          // Use the compensation price for this billing cycle.
           chargeAmount = Number(membership.membershipPlan.price);
+
+          const info = await getLatestUserPaymentInfo(membership.userId);
+          if (!info) {
+            console.error(
+              `❌ No saved payment info for user ${membership.userId}, skipping`
+            );
+            continue;
+          }
+
+          try {
+            if (info.stripeCustomerId && info.stripePaymentMethodId) {
+              // First ensure the payment method is attached to the customer
+              try {
+                // Check if payment method is already attached
+                const paymentMethod = await stripe.paymentMethods.retrieve(
+                  info.stripePaymentMethodId
+                );
+
+                // If the payment method exists but isn't attached to this customer,
+                // or is attached to a different customer, we need to attach it
+                if (
+                  !paymentMethod.customer ||
+                  paymentMethod.customer !== info.stripeCustomerId
+                ) {
+                  // Detach from any previous customer if needed
+                  if (paymentMethod.customer) {
+                    await stripe.paymentMethods.detach(
+                      info.stripePaymentMethodId
+                    );
+                  }
+
+                  // Attach to the current customer
+                  await stripe.paymentMethods.attach(
+                    info.stripePaymentMethodId,
+                    {
+                      customer: info.stripeCustomerId,
+                    }
+                  );
+
+                  console.log(
+                    `Payment method attached to customer ${info.stripeCustomerId}`
+                  );
+                }
+              } catch (attachError) {
+                console.error(
+                  "Error handling payment method attachment:",
+                  attachError
+                );
+                continue;
+              }
+
+              // Now create the payment intent
+              const pi = await stripe.paymentIntents.create({
+                amount: Math.round(chargeAmount * 100),
+                currency: "usd",
+                customer: info.stripeCustomerId,
+                payment_method: info.stripePaymentMethodId,
+                off_session: true,
+                confirm: true,
+                receipt_email: user.email,
+                metadata: {
+                  userId: String(membership.userId),
+                  membershipId: String(membership.id),
+                  planId: String(membership.membershipPlanId),
+                },
+              });
+
+              // Check if payment intent succeeded
+              if (pi.status === "succeeded") {
+                console.log(
+                  `✅ Payment intent succeeded for user ${membership.userId}, the user should be charged the price of the membership`
+                );
+
+                // If we have latest_charge, we can retrieve and log charge details
+                if (pi.latest_charge) {
+                  try {
+                    const charge = await stripe.charges.retrieve(
+                      pi.latest_charge as string
+                    );
+                    console.log(
+                      `✅ Charge details (${membership.userId}): $${(
+                        charge.amount / 100
+                      ).toFixed(2)} (id=${charge.id})`
+                    );
+                  } catch (chargeError) {
+                    console.error(
+                      `Error retrieving charge details: ${chargeError}`
+                    );
+                    // Continue with processing even if we can't get charge details
+                  }
+                }
+
+                // Update the next payment date after successful payment
+                await db.userMembership.update({
+                  where: { id: membership.id },
+                  data: {
+                    nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+                  },
+                });
+              } else {
+                console.log(
+                  `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`
+                );
+
+                // Payment intent didn't succeed, no need to update payment date
+                if (pi.last_payment_error) {
+                  console.error(
+                    `Payment error: ${JSON.stringify(pi.last_payment_error)}`
+                  );
+                }
+              }
+            } else {
+              console.log(
+                `Missing Stripe customer id or payment method id for user ${membership.userId}`
+              );
+            }
+          } catch (err: any) {
+            console.error(
+              `❌ Charge failed for user ${membership.userId}:`,
+              err
+            );
+
+            // Optional: Log more details about the error
+            if (err.raw) {
+              console.error("Error details:", JSON.stringify(err.raw, null, 2));
+            }
+
+            continue;
+          }
+        } else if (
+          membership.status === "ending" ||
+          membership.status === "cancelled"
+        ) {
+          // Process memberships with status "ending" or "cancelled".
+          // chargeAmount = Number(membership.membershipPlan.price);
+          // console.log(
+          //   `User ID: ${membership.userId} (${membership.status}) is being charged the full price: $${chargeAmount.toFixed(2)}`
+          // );
+
           console.log(
-            `User ID: ${membership.userId} (${membership.status}) is being charged the full price: $${chargeAmount.toFixed(2)}`
+            `User ID: ${membership.userId} Current status ${membership.status} switched to inactive status.`
           );
           // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
@@ -523,12 +624,8 @@ export function startMonthlyMembershipCheck() {
           });
         }
 
-        // (Integrate your actual payment gateway logic here using chargeAmount for membership.userId)
-
         // Update the user's roleLevel based on their current membership status.
-        const user = await db.user.findUnique({
-          where: { id: membership.userId },
-        });
+
         if (user) {
           // Check if the user has any subscription that is not inactive.
           const activeMembership = await db.userMembership.findFirst({
@@ -536,13 +633,19 @@ export function startMonthlyMembershipCheck() {
               userId: membership.userId,
               status: { not: "inactive" },
             },
+            include: {
+              membershipPlan: true,
+            },
           });
 
           if (activeMembership) {
             // If there is an active membership:
             // If the active membership is for plan 2 and the user has admin permission (allowLevel4 true),
             // set roleLevel to 4; otherwise, set roleLevel to 3.
-            if (activeMembership.membershipPlanId === 2 && user.allowLevel4 === true) {
+            if (
+              activeMembership.membershipPlan.needAdminPermission &&
+              user.allowLevel4 === true
+            ) {
               await db.user.update({
                 where: { id: user.id },
                 data: { roleLevel: 4 },
@@ -567,7 +670,6 @@ export function startMonthlyMembershipCheck() {
     }
   });
 }
-
 
 // export function startExpiredMembershipCheck() {
 //   cron.schedule("07 03 * * *", async () => {

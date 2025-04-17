@@ -47,6 +47,7 @@ model User {
   userWorkshops     UserWorkshop[]
   equipmentbookings EquipmentBooking[]
   userMemberships UserMembership[] 
+  userMembershipPayments UserMembershipPayment[]
 }
 
 model RoleUser {
@@ -177,6 +178,7 @@ model MembershipPlan {
   title       String
   description String
   price       Float
+  needAdminPermission Boolean @default(false)
   feature     Json
   accessHours Json // Example: {"start": "09:00", "end": "18:00"}
 
@@ -192,11 +194,31 @@ model UserMembership {
   date             DateTime @default(now())
   nextPaymentDate  DateTime
   status           String @default("active") // "active", "cancelled"
-  compensationPrice Decimal?
-  hasPaidCompensationPrice Boolean? @default(false)
 
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
 
   // @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
+}
+
+model UserMembershipPayment {
+  id                  Int      @id @default(autoincrement())
+  userId              Int
+  membershipPlanId    Int
+  date                DateTime @default(now())
+  
+  email           String
+  cardNumber      String
+  expMonth        String
+  expYear         String
+  cvc            String
+  cardholderName  String
+  region         String
+  postalCode     String
+  stripeCustomerId     String?
+  stripePaymentMethodId String? 
+
+  user                User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
