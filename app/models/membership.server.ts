@@ -430,11 +430,9 @@ export async function getUserActiveMembership(userId: number) {
   });
 }
 
-// Ensure that incrementMonth is imported or defined appropriately.
-
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("33 20 * * *", async () => {
+  cron.schedule("43 20 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -498,7 +496,7 @@ export function startMonthlyMembershipCheck() {
           // );
 
           console.log(
-            `User ID: ${membership.userId} (Current status ${membership.status}) switched to inactive status.`
+            `User ID: ${membership.userId} (Current status ${membership.status} switched to inactive status.`
           );
           // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
