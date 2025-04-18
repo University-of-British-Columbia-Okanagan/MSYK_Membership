@@ -1,37 +1,38 @@
-"use client"
+"use client";
 
-import React, { useState, useRef } from "react"
+import React, { useState, useRef } from "react";
 
 // Function to generate times in 30-minute increments between startHour and endHour
 const generateTimeSlots = (startHour: number, endHour: number) => {
-  const result: string[] = []
+  const result: string[] = [];
   for (let h = startHour; h < endHour; h++) {
-    result.push(`${h.toString().padStart(2, "0")}:00`)
-    result.push(`${h.toString().padStart(2, "0")}:30`)
+    result.push(`${h.toString().padStart(2, "0")}:00`);
+    result.push(`${h.toString().padStart(2, "0")}:30`);
   }
-  return result
-}
+  return result;
+};
 
-const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 interface Slot {
-  id: number | null
-  isBooked: boolean
-  isAvailable: boolean
-  workshopName?: string | null
+  id: number | null;
+  isBooked: boolean;
+  isAvailable: boolean;
+  workshopName?: string | null;
+  bookedByMe?: boolean;
 }
 
 interface SlotsByDay {
   [day: string]: {
-    [time: string]: Slot
-  }
+    [time: string]: Slot;
+  };
 }
 
 interface EquipmentBookingGridProps {
-  slotsByDay: SlotsByDay
-  onSelectSlots: (selectedSlots: string[]) => void
-  disabled?: boolean
-  visibleTimeRange?: { startHour: number; endHour: number } // NEW
+  slotsByDay: SlotsByDay;
+  onSelectSlots: (selectedSlots: string[]) => void;
+  disabled?: boolean;
+  visibleTimeRange?: { startHour: number; endHour: number }; // NEW
 }
 
 export default function EquipmentBookingGrid({
@@ -40,75 +41,81 @@ export default function EquipmentBookingGrid({
   disabled = false,
   visibleTimeRange,
 }: EquipmentBookingGridProps) {
-  const [selectedSlots, setSelectedSlots] = useState<string[]>([])
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const isDragging = useRef(false)
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isDragging = useRef(false);
 
   const times = generateTimeSlots(
     visibleTimeRange?.startHour ?? 0,
     visibleTimeRange?.endHour ?? 24
-  )
+  );
 
   const handleSlotToggle = (day: string, time: string) => {
-    if (disabled) return
+    if (disabled) return;
 
-    const slot = slotsByDay?.[day]?.[time]
+    const slot = slotsByDay?.[day]?.[time];
     if (!slot?.isAvailable || slot?.isBooked) {
-      setErrorMessage("This slot is already booked or unavailable.")
-      return
+      setErrorMessage("This slot is already booked or unavailable.");
+      return;
     }
 
-    const now = new Date()
-    const dayIndex = days.indexOf(day)
-    const todayIndex = now.getDay()
-    const daysToAdd = (dayIndex + 7 - todayIndex) % 7
+    const now = new Date();
+    const dayIndex = days.indexOf(day);
+    const todayIndex = now.getDay();
+    const daysToAdd = (dayIndex + 7 - todayIndex) % 7;
 
-    const [hour, minute] = time.split(":").map(Number)
-    const startTime = new Date(now)
-    startTime.setDate(now.getDate() + daysToAdd)
-    startTime.setHours(hour, minute, 0, 0)
+    const [hour, minute] = time.split(":").map(Number);
+    const startTime = new Date(now);
+    startTime.setDate(now.getDate() + daysToAdd);
+    startTime.setHours(hour, minute, 0, 0);
 
-    const endTime = new Date(startTime.getTime() + 30 * 60 * 1000)
-    const slotString = `${startTime.toISOString()}|${endTime.toISOString()}`
+    const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
+    const slotString = `${startTime.toISOString()}|${endTime.toISOString()}`;
 
-    const isAlreadySelected = selectedSlots.includes(slotString)
+    const isAlreadySelected = selectedSlots.includes(slotString);
 
     // Count current day and total week slot selections
-    const slotsPerDay: { [day: string]: number } = {}
-    let totalSlots = 0
+    const slotsPerDay: { [day: string]: number } = {};
+    let totalSlots = 0;
 
     for (const s of selectedSlots) {
-      const [start] = s.split("|")
-      const d = new Date(start).toLocaleDateString("en-US", { weekday: "short" })
-      slotsPerDay[d] = (slotsPerDay[d] || 0) + 1
-      totalSlots += 1
+      const [start] = s.split("|");
+      const d = new Date(start).toLocaleDateString("en-US", {
+        weekday: "short",
+      });
+      slotsPerDay[d] = (slotsPerDay[d] || 0) + 1;
+      totalSlots += 1;
     }
 
-    const currentDayCount = slotsPerDay[day] || 0
-    const newDayCount = isAlreadySelected ? currentDayCount - 1 : currentDayCount + 1
-    const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1
+    const currentDayCount = slotsPerDay[day] || 0;
+    const newDayCount = isAlreadySelected
+      ? currentDayCount - 1
+      : currentDayCount + 1;
+    const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1;
 
     if (!isAlreadySelected && newDayCount > 4) {
-      setErrorMessage("You can only select up to 2 hours (4 slots) per day.")
-      return
+      setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
+      return;
     }
 
     if (!isAlreadySelected && newWeekCount > 28) {
-      setErrorMessage("You can only select up to 14 hours (28 slots) per week.")
-      return
+      setErrorMessage(
+        "You can only select up to 14 hours (28 slots) per week."
+      );
+      return;
     }
 
-    setErrorMessage(null)
+    setErrorMessage(null);
 
     const updatedSlots = isAlreadySelected
       ? selectedSlots.filter((s) => s !== slotString)
-      : [...selectedSlots, slotString]
+      : [...selectedSlots, slotString];
 
-    setSelectedSlots(updatedSlots)
-    onSelectSlots(updatedSlots)
-  }
+    setSelectedSlots(updatedSlots);
+    onSelectSlots(updatedSlots);
+  };
 
-  const currentDayIndex = new Date().getDay()
+  const currentDayIndex = new Date().getDay();
 
   const grid = (
     <div
@@ -125,7 +132,7 @@ export default function EquipmentBookingGrid({
 
       {/* Day headers */}
       {days.map((day, index) => {
-        const isToday = index === currentDayIndex
+        const isToday = index === currentDayIndex;
         return (
           <div
             key={day}
@@ -135,21 +142,21 @@ export default function EquipmentBookingGrid({
           >
             <div className="text-sm">{day}</div>
           </div>
-        )
+        );
       })}
 
       {/* Time rows */}
       {times.map((time) => {
-        const showTime = time.endsWith("00")
-        const [hour] = time.split(":")
-        const displayHour = Number(hour)
+        const showTime = time.endsWith("00");
+        const [hour] = time.split(":");
+        const displayHour = Number(hour);
         const formattedTime = showTime
           ? displayHour === 0
             ? "12:00 AM"
             : displayHour === 12
             ? "12:00 PM"
             : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
-          : ""
+          : "";
 
         return (
           <React.Fragment key={time}>
@@ -167,31 +174,33 @@ export default function EquipmentBookingGrid({
               const slot = slotsByDay?.[day]?.[time] ?? {
                 isAvailable: false,
                 isBooked: false,
-              }
+              };
 
               const isSelected = selectedSlots.some((slotStr) => {
-                const [start] = slotStr.split("|")
-                const slotDate = new Date(start)
+                const [start] = slotStr.split("|");
+                const slotDate = new Date(start);
                 const slotDay = slotDate.toLocaleDateString("en-US", {
                   weekday: "short",
-                })
+                });
                 const slotTime = slotDate.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                   hour12: false,
-                })
-                return slotDay === day && slotTime === time
-              })
+                });
+                return slotDay === day && slotTime === time;
+              });
 
               const baseStyle =
-                "w-full h-6 border-b border-r border-gray-300 transition-all duration-100"
+                "w-full h-6 border-b border-r border-gray-300 transition-all duration-100";
               const colorClass = slot?.isBooked
-                ? "bg-red-400 cursor-not-allowed"
+                ? slot?.bookedByMe
+                  ? "bg-blue-400 cursor-not-allowed" // booked by me
+                  : "bg-red-400 cursor-not-allowed" // booked by others
                 : isSelected
                 ? "bg-green-500"
                 : slot?.isAvailable
                 ? "bg-white hover:bg-green-200 cursor-pointer"
-                : "bg-pink-100 cursor-not-allowed"
+                : "bg-pink-100 cursor-not-allowed";
 
               return (
                 <div
@@ -202,13 +211,13 @@ export default function EquipmentBookingGrid({
                     isDragging.current && handleSlotToggle(day, time)
                   }
                 />
-              )
+              );
             })}
           </React.Fragment>
-        )
+        );
       })}
     </div>
-  )
+  );
 
   if (disabled) {
     return (
@@ -222,7 +231,7 @@ export default function EquipmentBookingGrid({
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -250,11 +259,19 @@ export default function EquipmentBookingGrid({
             <span>Unselected</span>
           </div>
         </div>
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
+          <span>Booked by You</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-4 bg-red-400 border border-gray-300" />
+          <span>Booked by Others</span>
+        </div>
         <p className="text-md font-medium">Click and Drag to Toggle</p>
       </div>
 
       {/* Grid Render */}
       {grid}
     </div>
-  )
+  );
 }

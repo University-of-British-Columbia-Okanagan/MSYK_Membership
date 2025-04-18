@@ -291,17 +291,21 @@ export async function getAvailableEquipmentForAdmin() {
   return equipment;
 }
 
-export async function getEquipmentSlotsWithStatus() {
+
+  // equipment.server.ts
+
+export async function getEquipmentSlotsWithStatus(userId?: number) {
   const equipment = await db.equipment.findMany({
     include: {
       slots: {
-        select: {
-          id: true,
-          startTime: true,
-          isBooked: true,
-          workshopOccurrenceId: true,
+        include: {
+          bookings: true,
           workshopOccurrence: {
-            select: { workshop: { select: { name: true } } },
+            select: {
+              workshop: {
+                select: { name: true },
+              },
+            },
           },
         },
         orderBy: { startTime: "asc" },
@@ -309,9 +313,6 @@ export async function getEquipmentSlotsWithStatus() {
     },
   });
 
-  console.log("Raw Slots Data from DB:", JSON.stringify(equipment, null, 2));
-
-  // ✅ Generate Full 24/7 Grid
   const generate24_7Slots = () => {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const times = Array.from({ length: 48 }, (_, i) => {
@@ -320,14 +321,15 @@ export async function getEquipmentSlotsWithStatus() {
       return `${hours.toString().padStart(2, "0")}:${minutes}`;
     });
 
-    const fullSlots: { [key: string]: { [key: string]: any } } = {};
+    const fullSlots: { [day: string]: { [time: string]: any } } = {};
     for (const day of days) {
       fullSlots[day] = {};
       for (const time of times) {
         fullSlots[day][time] = {
-          id: null, // Default: No slot in DB
-          isBooked: false, // Default: Not booked
-          isAvailable: true, // Default: Available
+          id: null,
+          isBooked: false,
+          isAvailable: true,
+          bookedByMe: false,
           workshopName: null,
         };
       }
@@ -343,19 +345,19 @@ export async function getEquipmentSlotsWithStatus() {
       const hours = String(date.getHours()).padStart(2, "0");
       const minutes = String(date.getMinutes()).padStart(2, "0");
       const time = `${hours}:${minutes}`;
+      const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
 
-      const dayIndex = date.getDay(); // 0 - Sunday, 6 - Saturday
-      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const day = days[dayIndex];
+      const bookedByMe = userId
+        ? slot.bookings?.some((booking) => booking.userId === userId)
+        : false;
 
-      if (fullSlots[day] && fullSlots[day][time]) {
-        fullSlots[day][time] = {
-          id: slot.id,
-          isBooked: slot.isBooked,
-          isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
-          workshopName: slot.workshopOccurrence?.workshop?.name || null,
-        };
-      }
+      fullSlots[day][time] = {
+        id: slot.id,
+        isBooked: slot.isBooked,
+        isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
+        bookedByMe,
+        workshopName: slot.workshopOccurrence?.workshop?.name || null,
+      };
     });
 
     return {
@@ -366,6 +368,8 @@ export async function getEquipmentSlotsWithStatus() {
     };
   });
 }
+
+
 
 /**
  * Update existing equipment (Admin only)

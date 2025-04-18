@@ -20,12 +20,15 @@ import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
 export async function loader({ request }: { request: Request }) {
-  const equipmentWithSlots = await getEquipmentSlotsWithStatus();
   const user = await getUser(request);
+  const userId = user?.id ?? null;
   const roleLevel = user?.roleLevel ?? 1;
+
+  const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined); 
 
   return json({ equipment: equipmentWithSlots, roleLevel });
 }
+
 
 // Action
 export async function action({ request }: { request: Request }) {
