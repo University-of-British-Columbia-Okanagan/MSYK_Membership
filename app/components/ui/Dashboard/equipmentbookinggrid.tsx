@@ -98,7 +98,7 @@ export default function EquipmentBookingGrid({
       return;
     }
 
-    if (!isAlreadySelected && newWeekCount > 28) {
+    if (!isAlreadySelected && newWeekCount > 14) {
       setErrorMessage(
         "You can only select up to 14 hours (28 slots) per week."
       );
