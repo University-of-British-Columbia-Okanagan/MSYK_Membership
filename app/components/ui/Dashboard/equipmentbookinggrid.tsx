@@ -2,12 +2,15 @@
 
 import React, { useState, useRef } from "react"
 
-// Time slots in 30-minute increments
-const times = Array.from({ length: 24 * 2 }, (_, i) => {
-  const hour = Math.floor(i / 2)
-  const minutes = i % 2 === 0 ? "00" : "30"
-  return `${hour.toString().padStart(2, "0")}:${minutes}`
-})
+// Function to generate times in 30-minute increments between startHour and endHour
+const generateTimeSlots = (startHour: number, endHour: number) => {
+  const result: string[] = []
+  for (let h = startHour; h < endHour; h++) {
+    result.push(`${h.toString().padStart(2, "0")}:00`)
+    result.push(`${h.toString().padStart(2, "0")}:30`)
+  }
+  return result
+}
 
 const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
@@ -28,16 +31,23 @@ interface EquipmentBookingGridProps {
   slotsByDay: SlotsByDay
   onSelectSlots: (selectedSlots: string[]) => void
   disabled?: boolean
+  visibleTimeRange?: { startHour: number; endHour: number } // NEW
 }
 
 export default function EquipmentBookingGrid({
   slotsByDay,
   onSelectSlots,
   disabled = false,
+  visibleTimeRange,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isDragging = useRef(false)
+
+  const times = generateTimeSlots(
+    visibleTimeRange?.startHour ?? 0,
+    visibleTimeRange?.endHour ?? 24
+  )
 
   const handleSlotToggle = (day: string, time: string) => {
     if (disabled) return
