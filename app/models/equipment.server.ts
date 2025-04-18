@@ -546,3 +546,43 @@ export async function getAvailableEquipmentSlotsForWorkshopRange(
     throw new Error("Failed to fetch available slots");
   }
 }
+// Fetch all equipment with slot details and disabled status
+export async function getAllEquipmentWithBookings() {
+  return await db.equipment.findMany({
+    include: {
+      slots: {
+        include: {
+          bookings: {
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+            },
+          },
+          workshopOccurrence: {
+            select: {
+              workshop: {
+                select: { name: true },
+              },
+            },
+          },
+        },
+        orderBy: { startTime: "asc" },
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+}
+
+// Toggle availability
+export async function toggleEquipmentAvailability(equipmentId: number, availability: boolean) {
+  return await db.equipment.update({
+    where: { id: equipmentId },
+    data: { availability },
+  });
+}
