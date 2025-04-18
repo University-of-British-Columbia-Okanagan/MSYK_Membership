@@ -19,32 +19,48 @@ import { useState } from "react";
 import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
-export async function loader() {
-  const equipmentWithSlots = await getEquipmentSlotsWithStatus();
-  return json({ equipment: equipmentWithSlots });
+export async function loader({ request }: { request: Request }) {
+  const user = await getUser(request);
+  const userId = user?.id ?? null;
+  const roleLevel = user?.roleLevel ?? 1;
+
+  const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined); 
+
+  return json({ equipment: equipmentWithSlots, roleLevel });
 }
+
 
 // Action
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const user = await getUser(request);
+  const roleLevel = user?.roleLevel ?? 1;
 
   if (!user) {
-    return json({ errors: { message: "User not authenticated." } }, { status: 401 });
+    return json(
+      { errors: { message: "User not authenticated." } },
+      { status: 401 }
+    );
   }
 
   const equipmentId = Number(formData.get("equipmentId"));
   const slotsRaw = formData.get("slots");
 
   if (!equipmentId || !slotsRaw) {
-    return json({ errors: { message: "Missing equipment or slots." } }, { status: 400 });
+    return json(
+      { errors: { message: "Missing equipment or slots." } },
+      { status: 400 }
+    );
   }
 
   let slots;
   try {
     slots = JSON.parse(slotsRaw.toString());
   } catch (err) {
-    return json({ errors: { message: "Invalid slots format." } }, { status: 400 });
+    return json(
+      { errors: { message: "Invalid slots format." } },
+      { status: 400 }
+    );
   }
 
   try {
@@ -76,7 +92,10 @@ export async function action({ request }: { request: Request }) {
     if (sessionRes?.url) {
       return redirect(sessionRes.url);
     } else {
-      return json({ errors: { message: "Payment session failed." } }, { status: 500 });
+      return json(
+        { errors: { message: "Payment session failed." } },
+        { status: 500 }
+      );
     }
   } catch (error: any) {
     return json({ errors: { message: error.message } }, { status: 400 });
@@ -85,10 +104,12 @@ export async function action({ request }: { request: Request }) {
 
 // Component
 export default function EquipmentBookingForm() {
-  const { equipment } = useLoaderData();
+  const { equipment, roleLevel } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
-  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
+    null
+  );
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
   const selectedEquip = selectedEquipment
@@ -116,7 +137,9 @@ export default function EquipmentBookingForm() {
       )}
 
       <Form method="post">
-        <label className="block text-gray-700 font-bold mb-2">Select Equipment</label>
+        <label className="block text-gray-700 font-bold mb-2">
+          Select Equipment
+        </label>
         <select
           className="w-full p-2 border rounded"
           value={selectedEquipment ?? ""}
@@ -142,7 +165,12 @@ export default function EquipmentBookingForm() {
             <EquipmentBookingGrid
               slotsByDay={selectedEquip?.slotsByDay || {}}
               onSelectSlots={setSelectedSlots}
+              disabled={roleLevel === 1 || roleLevel === 2}
+              visibleTimeRange={
+                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
+              }
             />
+
             {totalPrice && (
               <p className="mt-3 font-semibold text-gray-700">
                 Total: ${totalPrice} ({selectedSlots.length} slots)
@@ -151,15 +179,27 @@ export default function EquipmentBookingForm() {
           </>
         )}
 
-        <input type="hidden" name="equipmentId" value={selectedEquipment ?? ""} />
-        <input type="hidden" name="slots" value={JSON.stringify(selectedSlots)} />
+        <input
+          type="hidden"
+          name="equipmentId"
+          value={selectedEquipment ?? ""}
+        />
+        <input
+          type="hidden"
+          name="slots"
+          value={JSON.stringify(selectedSlots)}
+        />
 
         <Button
           type="submit"
           className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md"
-          disabled={navigation.state === "submitting" || selectedSlots.length === 0}
+          disabled={
+            navigation.state === "submitting" || selectedSlots.length === 0
+          }
         >
-          {navigation.state === "submitting" ? "Booking..." : "Proceed to Payment"}
+          {navigation.state === "submitting"
+            ? "Booking..."
+            : "Proceed to Payment"}
         </Button>
       </Form>
     </div>
