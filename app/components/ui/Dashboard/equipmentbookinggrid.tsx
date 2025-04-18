@@ -27,14 +27,21 @@ interface SlotsByDay {
 interface EquipmentBookingGridProps {
   slotsByDay: SlotsByDay
   onSelectSlots: (selectedSlots: string[]) => void
+  disabled?: boolean
 }
 
-export default function EquipmentBookingGrid({ slotsByDay, onSelectSlots }: EquipmentBookingGridProps) {
+export default function EquipmentBookingGrid({
+  slotsByDay,
+  onSelectSlots,
+  disabled = false,
+}: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isDragging = useRef(false)
 
   const handleSlotToggle = (day: string, time: string) => {
+    if (disabled) return
+
     const slot = slotsByDay?.[day]?.[time]
     if (!slot?.isAvailable || slot?.isBooked) {
       setErrorMessage("This slot is already booked or unavailable.")
@@ -81,7 +88,7 @@ export default function EquipmentBookingGrid({ slotsByDay, onSelectSlots }: Equi
       return
     }
 
-    setErrorMessage(null) // clear error if valid
+    setErrorMessage(null)
 
     const updatedSlots = isAlreadySelected
       ? selectedSlots.filter((s) => s !== slotString)
@@ -92,6 +99,121 @@ export default function EquipmentBookingGrid({ slotsByDay, onSelectSlots }: Equi
   }
 
   const currentDayIndex = new Date().getDay()
+
+  const grid = (
+    <div
+      className="grid border border-gray-300 rounded text-xs"
+      style={{
+        gridTemplateColumns: "80px repeat(7, 120px)",
+      }}
+      onMouseDown={() => (isDragging.current = true)}
+      onMouseUp={() => (isDragging.current = false)}
+      onMouseLeave={() => (isDragging.current = false)}
+    >
+      {/* Empty top-left cell */}
+      <div className="bg-white border-b border-r border-gray-300"></div>
+
+      {/* Day headers */}
+      {days.map((day, index) => {
+        const isToday = index === currentDayIndex
+        return (
+          <div
+            key={day}
+            className={`text-center py-2 border-b border-r border-gray-300 ${
+              isToday ? "bg-yellow-100 font-bold" : "bg-white"
+            }`}
+          >
+            <div className="text-sm">{day}</div>
+          </div>
+        )
+      })}
+
+      {/* Time rows */}
+      {times.map((time) => {
+        const showTime = time.endsWith("00")
+        const [hour] = time.split(":")
+        const displayHour = Number(hour)
+        const formattedTime = showTime
+          ? displayHour === 0
+            ? "12:00 AM"
+            : displayHour === 12
+            ? "12:00 PM"
+            : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
+          : ""
+
+        return (
+          <React.Fragment key={time}>
+            {/* Time label column */}
+            <div
+              className={`text-right pr-2 py-1 border-b border-r border-gray-300 bg-white ${
+                showTime ? "font-medium" : ""
+              }`}
+            >
+              {formattedTime}
+            </div>
+
+            {/* Slot cells */}
+            {days.map((day) => {
+              const slot = slotsByDay?.[day]?.[time] ?? {
+                isAvailable: false,
+                isBooked: false,
+              }
+
+              const isSelected = selectedSlots.some((slotStr) => {
+                const [start] = slotStr.split("|")
+                const slotDate = new Date(start)
+                const slotDay = slotDate.toLocaleDateString("en-US", {
+                  weekday: "short",
+                })
+                const slotTime = slotDate.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })
+                return slotDay === day && slotTime === time
+              })
+
+              const baseStyle =
+                "w-full h-6 border-b border-r border-gray-300 transition-all duration-100"
+              const colorClass = slot?.isBooked
+                ? "bg-red-400 cursor-not-allowed"
+                : isSelected
+                ? "bg-green-500"
+                : slot?.isAvailable
+                ? "bg-white hover:bg-green-200 cursor-pointer"
+                : "bg-pink-100 cursor-not-allowed"
+
+              return (
+                <div
+                  key={`${day}-${time}`}
+                  className={`${baseStyle} ${colorClass}`}
+                  onClick={() => handleSlotToggle(day, time)}
+                  onMouseEnter={() =>
+                    isDragging.current && handleSlotToggle(day, time)
+                  }
+                />
+              )
+            })}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+
+  if (disabled) {
+    return (
+      <div className="relative">
+        <div className="opacity-50 pointer-events-none">{grid}</div>
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="bg-white bg-opacity-90 p-6 border border-red-300 text-red-600 rounded shadow-md text-center max-w-md">
+            <p className="text-md font-semibold">
+              🚫 You do not have the required membership to book equipment.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-screen-xl mx-auto">
@@ -121,96 +243,8 @@ export default function EquipmentBookingGrid({ slotsByDay, onSelectSlots }: Equi
         <p className="text-md font-medium">Click and Drag to Toggle</p>
       </div>
 
-      {/* Grid */}
-      <div
-        className="grid border border-gray-300 rounded text-xs"
-        style={{
-          gridTemplateColumns: "80px repeat(7, 120px)",
-        }}
-        onMouseDown={() => (isDragging.current = true)}
-        onMouseUp={() => (isDragging.current = false)}
-        onMouseLeave={() => (isDragging.current = false)}
-      >
-        {/* Empty top-left cell */}
-        <div className="bg-white border-b border-r border-gray-300"></div>
-
-        {/* Day headers */}
-        {days.map((day, index) => {
-          const isToday = index === currentDayIndex
-          return (
-            <div
-              key={day}
-              className={`text-center py-2 border-b border-r border-gray-300 ${
-                isToday ? "bg-yellow-100 font-bold" : "bg-white"
-              }`}
-            >
-              <div className="text-sm">{day}</div>
-            </div>
-          )
-        })}
-
-        {/* Time rows */}
-        {times.map((time) => {
-          const showTime = time.endsWith("00")
-          const [hour] = time.split(":")
-          const displayHour = Number(hour)
-          const formattedTime = showTime
-            ? displayHour === 0
-              ? "12:00 AM"
-              : displayHour === 12
-              ? "12:00 PM"
-              : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
-            : ""
-
-          return (
-            <React.Fragment key={time}>
-              {/* Time label column */}
-              <div
-                className={`text-right pr-2 py-1 border-b border-r border-gray-300 bg-white ${
-                  showTime ? "font-medium" : ""
-                }`}
-              >
-                {formattedTime}
-              </div>
-
-              {/* Slot cells */}
-              {days.map((day) => {
-                const slot = slotsByDay?.[day]?.[time] ?? { isAvailable: false, isBooked: false }
-
-                const isSelected = selectedSlots.some((slotStr) => {
-                  const [start] = slotStr.split("|")
-                  const slotDate = new Date(start)
-                  const slotDay = slotDate.toLocaleDateString("en-US", { weekday: "short" })
-                  const slotTime = slotDate.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    hour12: false,
-                  })
-                  return slotDay === day && slotTime === time
-                })
-
-                const baseStyle = "w-full h-6 border-b border-r border-gray-300 transition-all duration-100"
-                const colorClass = slot?.isBooked
-                  ? "bg-red-400 cursor-not-allowed"
-                  : isSelected
-                  ? "bg-green-500"
-                  : slot?.isAvailable
-                  ? "bg-white hover:bg-green-200 cursor-pointer"
-                  : "bg-pink-100 cursor-not-allowed"
-
-                return (
-                  <div
-                    key={`${day}-${time}`}
-                    className={`${baseStyle} ${colorClass}`}
-                    onClick={() => handleSlotToggle(day, time)}
-                    onMouseEnter={() => isDragging.current && handleSlotToggle(day, time)}
-                  />
-                )
-              })}
-            </React.Fragment>
-          )
-        })}
-      </div>
+      {/* Grid Render */}
+      {grid}
     </div>
   )
 }

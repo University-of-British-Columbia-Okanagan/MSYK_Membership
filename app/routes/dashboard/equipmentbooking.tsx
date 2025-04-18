@@ -19,15 +19,23 @@ import { useState } from "react";
 import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
-export async function loader() {
+export async function loader({ request }: { request: Request }) {
   const equipmentWithSlots = await getEquipmentSlotsWithStatus();
-  return json({ equipment: equipmentWithSlots });
+  const user = await getUser(request); 
+  const roleLevel = user?.roleLevel ?? 1;
+
+
+  
+  return json({ equipment: equipmentWithSlots, roleLevel });
 }
 
 // Action
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const user = await getUser(request);
+  const roleLevel = user?.roleLevel ?? 1;
+
+ 
 
   if (!user) {
     return json({ errors: { message: "User not authenticated." } }, { status: 401 });
@@ -85,7 +93,7 @@ export async function action({ request }: { request: Request }) {
 
 // Component
 export default function EquipmentBookingForm() {
-  const { equipment } = useLoaderData();
+  const { equipment, roleLevel } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(null);
@@ -142,7 +150,10 @@ export default function EquipmentBookingForm() {
             <EquipmentBookingGrid
               slotsByDay={selectedEquip?.slotsByDay || {}}
               onSelectSlots={setSelectedSlots}
-            />
+  disabled={roleLevel === 1 || roleLevel === 2}
+/>
+
+            
             {totalPrice && (
               <p className="mt-3 font-semibold text-gray-700">
                 Total: ${totalPrice} ({selectedSlots.length} slots)

@@ -182,9 +182,14 @@ export async function getUser(request: Request) {
   }
 
   const user = await db.user.findUnique({
-    select: { id: true, email: true },
+    select: {
+      id: true,
+      email: true,
+      roleLevel: true, 
+    },
     where: { id: parseInt(userId) },
   });
+
 
   if (!user) {
     throw await logout(request);
