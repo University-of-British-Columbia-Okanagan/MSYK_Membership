@@ -36,6 +36,8 @@ model User {
   emergencyContactEmail  String
   trainingCardUserNumber Int
 
+  avatarUrl              String? 
+
   // Role Connection
   roleUserId Int      @default(1)
   roleUser   RoleUser @relation(fields: [roleUserId], references: [id])
@@ -49,6 +51,7 @@ model User {
   userMemberships UserMembership[] 
   userMembershipPayments UserMembershipPayment[]
 }
+
 
 model RoleUser {
   id   Int    @id @default(autoincrement()) // Primary key with auto-increment

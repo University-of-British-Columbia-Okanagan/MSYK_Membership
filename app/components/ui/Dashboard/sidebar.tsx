@@ -37,7 +37,7 @@ export function AppSidebar() {
       <SidebarContent className="flex flex-col gap-3 px-4 flex-grow space-y-4">
         <SidebarGroup className="space-y-10">
           <Link
-            to="/profile"
+            to="/dashboard/profile"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <User className="w-5 h-5" />
