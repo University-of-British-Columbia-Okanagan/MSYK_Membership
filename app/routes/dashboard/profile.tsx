@@ -11,7 +11,7 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
 }
 
 export default function ProfilePage() {
-  const user = useLoaderData<UserProfileData>();
+    const { user } = useLoaderData<{ user: UserProfileData }>(); 
 
   if (!user) {
     return (
@@ -23,63 +23,71 @@ export default function ProfilePage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-6">
-            {/* Avatar */}
-            <div className="flex justify-center mb-4">
-              <img
-                src={
-                  user.avatarUrl ||
-                  `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
-                }
-                alt="User Avatar"
-                className="w-24 h-24 rounded-full object-cover border-2 border-gray-300"
-              />
-            </div>
-
-            <h2 className="text-xl font-bold text-center mb-2">{user.name}</h2>
-
-            <div className="text-center text-sm text-gray-700 space-y-1 mb-4">
-              <p>
-                <span className="font-semibold">Membership:</span>{" "}
-                {user.membershipTitle || "None"}
-              </p>
-              <p>
-                <span className="font-semibold">Type:</span>{" "}
-                {user.membershipType || "N/A"}
-              </p>
-            </div>
-
-            <div className="border-t my-4" />
-
-            <div className="text-sm text-gray-700 space-y-2 mb-4">
-              <div className="flex justify-between">
-                <span className="font-medium">Card:</span>
-                <span>**** **** **** {user.cardLast4}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-medium">Next Billing:</span>
-                <span>
-                  {user.nextBillingDate
-                    ? new Date(user.nextBillingDate).toLocaleDateString()
-                    : "N/A"}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-center">
-              <a
-                href="/edit-profile"
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-              >
-                Edit Profile
-              </a>
-            </div>
+  <div className="flex h-screen">
+    <Sidebar />
+    <main className="flex-1 p-10 bg-gray-50 overflow-y-auto">
+      <div className="max-w-xl mx-auto bg-white rounded-2xl shadow-md px-8 py-10">
+        {/* Avatar + User Info */}
+        <div className="flex items-center gap-5 mb-8">
+          <img
+            src={
+              user.avatarUrl ||
+              `https://api.dicebear.com/7.x/initials/svg?seed=${user.name}`
+            }
+            alt="User Avatar"
+            className="w-24 h-24 rounded-full object-cover border-4 border-indigo-500"
+          />
+          <div>
+            <h2 className="text-2xl font-extrabold text-gray-900">{user.name}</h2>
+            <p className="text-sm text-gray-600">{user.email}</p>
           </div>
-        </main>
+        </div>
+
+        <hr className="mb-6" />
+
+        {/* Membership Info */}
+        <div className="mb-6">
+          <h3 className="text-md font-semibold text-gray-800 mb-1">🎟 Membership Info</h3>
+          <div className="text-sm text-gray-700 space-y-1 pl-1">
+            <p>
+              <span className="font-medium">Membership:</span>{" "}
+              {user.membershipTitle || "None"}
+            </p>
+            <p>
+              <span className="font-medium">Type:</span>{" "}
+              {user.membershipType || "N/A"}
+            </p>
+          </div>
+        </div>
+
+        {/* Payment Info */}
+        <div className="mb-8">
+          <h3 className="text-md font-semibold text-gray-800 mb-1">💳 Payment Info</h3>
+          <div className="text-sm text-gray-700 space-y-1 pl-1">
+            <p>
+              <span className="font-medium">Card:</span>{" "}
+              **** **** **** {user.cardLast4 || "N/A"}
+            </p>
+            <p>
+              <span className="font-medium">Next Billing:</span>{" "}
+              {user.nextBillingDate
+                ? new Date(user.nextBillingDate).toLocaleDateString()
+                : "N/A"}
+            </p>
+          </div>
+        </div>
+
+        {/* Edit Button */}
+        <div className="text-center">
+          <a
+            href="/edit-profile"
+            className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold px-6 py-2 rounded-md shadow-sm transition"
+          >
+            Edit Profile
+          </a>
+        </div>
       </div>
-    </SidebarProvider>
-  );
-}
+    </main>
+  </div>
+</SidebarProvider>
+  );}
