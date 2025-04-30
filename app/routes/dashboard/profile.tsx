@@ -1,6 +1,6 @@
 import { useLoaderData } from "react-router-dom";
 import { getProfileDetails } from "../../models/profile.server";
-import type { LoaderFunction } from "@remix-run/node";
+import type { LoaderFunction } from "react-router-dom";
 import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";

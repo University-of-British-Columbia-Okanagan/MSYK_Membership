@@ -1,7 +1,6 @@
 // app/utils/profile.server.ts
 import { db } from "../utils/db.server";
 import { getUserId } from "~/utils/session.server";
-import { redirect } from "@remix-run/node";
 
 export type UserProfileData = {
     name: string;
