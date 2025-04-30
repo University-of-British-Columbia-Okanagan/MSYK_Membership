@@ -50,6 +50,7 @@ model User {
   equipmentbookings EquipmentBooking[]
   userMemberships UserMembership[] 
   userMembershipPayments UserMembershipPayment[]
+  paymentInformation  UserPaymentInformation?
 }
 
 
@@ -225,4 +226,30 @@ model UserMembershipPayment {
   user                User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
+}
+
+model UserPaymentInformation {
+  id                  Int       @id @default(autoincrement())
+  userId              Int       @unique
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId    String?   // Stripe customer ID for payment processing
+  stripePaymentMethodId String? // Stripe payment method ID
+  cardholderName      String?   // Name on card
+  cardLast4           String?   // Last 4 digits of the card
+  cardExpiry          String?   // Card expiry date in MM/YY format
+  expMonth            Int?      // Expiry month
+  expYear             Int?      // Expiry year
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  billingCity         String?
+  billingState        String?
+  billingZip          String?
+  billingCountry      String?
+  email               String?   // Email associated with the payment method
+  isDefault           Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([stripeCustomerId])
 }
