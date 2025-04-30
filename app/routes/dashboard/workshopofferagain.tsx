@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
 import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
-import { getWorkshopById} from "~/models/workshop.server";
+import { getWorkshopById, offerWorkshopAgain } from "~/models/workshop.server";
 import { Badge } from "@/components/ui/badge";
 import {
   Calendar as CalendarIcon,
@@ -30,7 +30,9 @@ const workshopOfferSchema = z.object({
       }),
       endDate: z.date().refine(date => !isNaN(date.getTime()), {
         message: "End date is required"
-      })
+      }),
+      startDatePST: z.date().optional(),
+      endDatePST: z.date().optional()
     })
   ).min(1, "At least one date is required")
 });
@@ -85,23 +87,25 @@ export async function action({ request, params }: { request: Request; params: { 
   const rawValues = Object.fromEntries(formData.entries()) as Record<string, string>;
   
   // Parse occurrences from JSON string
-  let occurrences: { startDate: Date; endDate: Date }[] = [];
+  let occurrences: { 
+    startDate: Date; 
+    endDate: Date; 
+    startDatePST: Date; 
+    endDatePST: Date; 
+  }[] = [];
+  
   try {
     occurrences = JSON.parse(rawValues.occurrences as string).map(
-      (occ: { startDate: string; endDate: string }) => {
+      (occ: { startDate: string; endDate: string; startDatePST: string; endDatePST: string }) => {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
+        const startDatePST = new Date(occ.startDatePST);
+        const endDatePST = new Date(occ.endDatePST);
 
         // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
           throw new Error("End date must be later than start date");
         }
-
-        // Calculate timezone offsets for PST conversion if needed
-        const startOffset = localStart.getTimezoneOffset();
-        const startDatePST = new Date(localStart.getTime() - startOffset * 60000);
-        const endOffset = localEnd.getTimezoneOffset();
-        const endDatePST = new Date(localEnd.getTime() - endOffset * 60000);
 
         return {
           startDate: localStart,
@@ -129,7 +133,9 @@ export async function action({ request, params }: { request: Request; params: { 
   const parsed = workshopOfferSchema.safeParse({
     occurrences: occurrences.map(occ => ({
       startDate: occ.startDate,
-      endDate: occ.endDate
+      endDate: occ.endDate,
+      startDatePST: occ.startDatePST,
+      endDatePST: occ.endDatePST
     }))
   });
 
@@ -140,9 +146,9 @@ export async function action({ request, params }: { request: Request; params: { 
   const workshopId = Number(params.id);
 
   // Add new occurrences with the same workshop ID but a new offerId
-//   await offerWorkshopAgain(workshopId, occurrences);
+  await offerWorkshopAgain(workshopId, occurrences);
 
-  return redirect(`/dashboard/workshops/${workshopId}`);
+  return redirect(`/dashboard/workshops/`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,13 +163,15 @@ export default function WorkshopOfferAgain() {
 
   // State for occurrences - pre-populated with existing workshop dates
   const [occurrences, setOccurrences] = useState<
-    { startDate: Date; endDate: Date }[]
+    { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
   >(() => {
     // Pre-populate with the workshop's existing occurrences
     if (workshop.occurrences && workshop.occurrences.length > 0) {
       return workshop.occurrences.map((occ: any) => ({
         startDate: new Date(occ.startDate),
-        endDate: new Date(occ.endDate)
+        endDate: new Date(occ.endDate),
+        startDatePST: occ.startDatePST ? new Date(occ.startDatePST) : undefined,
+        endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined
       })).filter((occ: any) => 
         !isNaN(occ.startDate.getTime()) && 
         !isNaN(occ.endDate.getTime())
@@ -206,7 +214,10 @@ export default function WorkshopOfferAgain() {
 
   // For custom dates, add an empty occurrence
   const addOccurrence = () => {
-    const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
+    const newOccurrence = { 
+      startDate: new Date(""), 
+      endDate: new Date("") 
+    };
     const updatedOccurrences = [...occurrences, newOccurrence];
     // Sort by startDate (if dates are valid)
     updatedOccurrences.sort(
@@ -225,6 +236,16 @@ export default function WorkshopOfferAgain() {
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
     updatedOccurrences[index][field] = localDate;
+    
+    // Calculate PST dates when updating
+    if (field === "startDate" && !isNaN(localDate.getTime())) {
+      const startOffset = localDate.getTimezoneOffset();
+      updatedOccurrences[index].startDatePST = new Date(localDate.getTime() - startOffset * 60000);
+    } else if (field === "endDate" && !isNaN(localDate.getTime())) {
+      const endOffset = localDate.getTimezoneOffset();
+      updatedOccurrences[index].endDatePST = new Date(localDate.getTime() - endOffset * 60000);
+    }
+    
     // Re-sort the list after updating
     updatedOccurrences.sort(
       (a, b) => a.startDate.getTime() - b.startDate.getTime()
@@ -264,7 +285,7 @@ export default function WorkshopOfferAgain() {
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">
-        Create New Workshop Offering: {workshop.name}
+        Create New Offering: {workshop.name}
       </h1>
 
       {actionData?.errors && Object.keys(actionData.errors).length > 0 && (
@@ -276,10 +297,10 @@ export default function WorkshopOfferAgain() {
       <div className="mb-8 bg-yellow-50 p-4 border border-yellow-200 rounded-md">
         <h2 className="text-lg font-semibold mb-2">Offering Workshop Again</h2>
         <p className="text-sm text-gray-700 mb-2">
-          Shown are the dates from the current workshop schedule. You can modify these dates or add new ones as needed.
+          We've pre-filled the dates from the current workshop schedule. You can modify these dates or add new ones as needed.
         </p>
         <p className="text-sm text-gray-700">
-          When you submit this form, a new set of workshop dates will be created with these dates.
+          When you submit this form, a new set of workshop occurrences will be created with these dates.
         </p>
       </div>
 
@@ -469,10 +490,21 @@ export default function WorkshopOfferAgain() {
                     !isNaN(occ.startDate.getTime()) &&
                     !isNaN(occ.endDate.getTime())
                 )
-                .map((occ) => ({
-                  startDate: occ.startDate.toISOString(),
-                  endDate: occ.endDate.toISOString(),
-                }))
+                .map((occ) => {
+                  // Calculate PST dates for any entries missing them
+                  const startOffset = occ.startDate.getTimezoneOffset();
+                  const startDatePST = occ.startDatePST || new Date(occ.startDate.getTime() - startOffset * 60000);
+                  
+                  const endOffset = occ.endDate.getTimezoneOffset();
+                  const endDatePST = occ.endDatePST || new Date(occ.endDate.getTime() - endOffset * 60000);
+                  
+                  return {
+                    startDate: occ.startDate.toISOString(),
+                    endDate: occ.endDate.toISOString(),
+                    startDatePST: startDatePST.toISOString(),
+                    endDatePST: endDatePST.toISOString()
+                  };
+                })
             )}
           />
 
