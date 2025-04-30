@@ -46,16 +46,40 @@ import {
   CalendarRange as CalendarRangeIcon,
   Check as CheckIcon,
 } from "lucide-react";
+import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
+import type SlotsByDay from "@/components/ui/Dashboard/equipmentbookinggrid";
+import { bulkBookEquipment } from "../../models/equipment.server";
 
 /**
  * Loader to fetch available workshops for prerequisites.
  */
 export async function loader() {
   const workshops = await getWorkshops();
-  const equipments = await getEquipmentSlotsWithStatus();
+  const equipmentsRaw = await getEquipmentSlotsWithStatus();
 
-  return { workshops, equipments };
+  const selectedSlotsMap: Record<number, number[]> = {};
+  for (const equipment of equipmentsRaw) {
+    const selectedSlotIds: number[] = [];
+    for (const day in equipment.slotsByDay) {
+      for (const time in equipment.slotsByDay[day]) {
+        const slot = equipment.slotsByDay[day][time];
+        if (slot?.reservedForWorkshop && slot?.id) {
+          selectedSlotIds.push(slot.id);
+        }
+      }
+    }
+    if (selectedSlotIds.length > 0) {
+      selectedSlotsMap[equipment.id] = selectedSlotIds;
+    }
+  }
+
+  return {
+    workshops,
+    equipments: equipmentsRaw,
+    selectedSlotsMap,
+  };
 }
+
 
 /**
  * Helper: Parse a datetime-local string as a local Date.
@@ -115,7 +139,15 @@ function formatDisplayDate(date: Date): string {
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
+
   const rawValues = Object.fromEntries(formData.entries());
+  let selectedSlots: Record<number, number[]> = {};
+  try {
+    selectedSlots = JSON.parse(rawValues.selectedSlots as string);
+  } catch (error) {
+    console.error("Error parsing selected slots:", error);
+    return { errors: { selectedSlots: ["Invalid selected slots format"] } };
+  }
 
   // Parse price and capacity
   const price = parseFloat(rawValues.price as string);
@@ -212,7 +244,7 @@ export async function action({ request }: { request: Request }) {
           (slot) =>
             new Date(slot.startTime).getTime() >= occ.startDate.getTime() &&
             new Date(slot.startTime).getTime() < occ.endDate.getTime() &&
-            slot.workshopId !== null
+            slot.workshopOccurrenceId !== null
         );
 
         if (conflict) {
@@ -248,7 +280,7 @@ export async function action({ request }: { request: Request }) {
 
   //  Save the workshop to the database
   try {
-    await addWorkshop({
+    const savedWorkshop = await addWorkshop({
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
@@ -259,14 +291,25 @@ export async function action({ request }: { request: Request }) {
       prerequisites: parsed.data.prerequisites,
       equipments: parsed.data.equipments,
       isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+      selectedSlots,
     });
+
+    const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
+
+    try {
+      await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
+    } catch (error) {
+      console.error("Failed to reserve equipment slots:", error);
+      return {
+        errors: {
+          slots: ["Failed to reserve equipment slots. Please try again."],
+        },
+      };
+    }
   } catch (error) {
     console.error("Error adding workshop:", error);
     return { errors: { database: ["Failed to add workshop"] } };
   }
-
-  // Redirect to admin dashboard
-  return redirect("/dashboard/admin");
 }
 
 export default function AddWorkshop() {
@@ -274,7 +317,11 @@ export default function AddWorkshop() {
   const { workshops: availableWorkshops, equipments: availableEquipments } =
     useLoaderData() as {
       workshops: { id: number; name: string; type: string }[];
-      equipments: { id: number; name: string }[];
+      equipments: {
+        id: number;
+        name: string;
+        slotsByDay: SlotsByDay;
+      }[];
     };
 
   const form = useForm<WorkshopFormValues>({
@@ -314,6 +361,9 @@ export default function AddWorkshop() {
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
 
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const [selectedSlotsMap, setSelectedSlotsMap] = useState<
+    Record<number, number[]>
+  >({});
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -392,23 +442,6 @@ export default function AddWorkshop() {
     const updated = selectedPrerequisites.filter((id) => id !== workshopId);
     setSelectedPrerequisites(updated);
     form.setValue("prerequisites", updated);
-  };
-
-  const handleEquipmentSelect = (equipmentId: number) => {
-    setSelectedEquipment(equipmentId);
-    setSelectedSlot(null);
-  };
-  const handleSlotSelect = (slotId: number, isBooked: boolean) => {
-    if (!isBooked) {
-      setSelectedSlot(slotId);
-      form.setValue("selectedSlot", slotId); // Ensure it's saved in form state
-    }
-  };
-
-  const removeEquipment = (id: number) => {
-    const updated = selectedEquipments.filter((e) => e !== id);
-    setSelectedEquipments(updated);
-    form.setValue("equipments", updated);
   };
 
   return (
@@ -722,78 +755,47 @@ export default function AddWorkshop() {
 
           {/* Slot Picker */}
           {selectedEquipment !== null && (
-            <div className="mt-4">
-              <h3 className="font-semibold text-lg">Select a Time Slot</h3>
-              <ScrollArea className="max-h-60 border rounded-md p-2">
-                <div className="grid grid-cols-3 gap-2">
-                  {availableEquipments
-                    .find((eq) => eq.id === selectedEquipment)
-                    ?.slots.map((slot) => {
-                      const isWorkshopBooked = slot.workshopName !== null; // Workshop booked
-                      const isBooked = slot.isBooked || isWorkshopBooked;
+            <div className="mt-6">
+              <h3 className="font-semibold mb-2">
+                Equipment Availability Grid
+              </h3>
 
-                      return (
-                        <Card
-                          key={slot.id}
-                          className={cn(
-                            "cursor-pointer text-center p-2 rounded-md transition",
-                            isBooked
-                              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                              : selectedSlot === slot.id
-                              ? "bg-blue-500 text-white"
-                              : "bg-white border hover:bg-blue-100"
-                          )}
-                          onClick={() =>
-                            !isBooked && handleSlotSelect(slot.id, isBooked)
-                          }
-                        >
-                          <CardContent>
-                            {new Date(slot.startTime).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+              <EquipmentBookingGrid
+                slotsByDay={
+                  availableEquipments.find((eq) => eq.id === selectedEquipment)
+                    ?.slotsByDay || {}
+                }
+                onSelectSlots={(slots) => {
+                  // Assuming slots is an array of slot IDs
+                  if (slots.length === 0) return;
 
-                            {/* Show remark for workshop-booked slots */}
-                            {isWorkshopBooked && (
-                              <span className="block text-xs text-red-600">
-                                Reserved for {slot.workshopName}
-                              </span>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                </div>
-              </ScrollArea>
+                  setSelectedEquipments((prev) => {
+                    const updated = new Set([...prev, selectedEquipment!]);
+                    return Array.from(updated);
+                  });
 
-              {/* Confirmation Button */}
-              <Button
-                type="button"
-                disabled={!selectedSlot}
-                className="mt-4 w-full bg-blue-600 text-white py-2 rounded-md"
-                onClick={() => {
-                  if (!selectedSlot) return;
-
-                  // Add selected slot to the list of confirmed slots
-                  setSelectedEquipments([
-                    ...selectedEquipments,
-                    selectedEquipment,
-                  ]);
-
-                  // Update form data
-                  form.setValue("equipments", [
-                    ...selectedEquipments,
-                    selectedEquipment,
-                  ]);
-                  form.setValue("selectedSlot", selectedSlot);
+                  form.setValue("equipments", (prev) => {
+                    const updated = new Set([...prev, selectedEquipment!]);
+                    return Array.from(updated);
+                  });
+                  const updatedMap = {
+                    ...selectedSlotsMap,
+                    [selectedEquipment!]: slots,
+                  };
+                  
+                  setSelectedSlotsMap(updatedMap);
+                  form.setValue("selectedSlots", JSON.stringify(updatedMap));
+                  
+                 
 
                   console.log(
-                    `Slot ${selectedSlot} confirmed for Equipment ${selectedEquipment}`
+                    `Slots ${slots.join(
+                      ", "
+                    )} confirmed for Equipment ${selectedEquipment}`
                   );
                 }}
-              >
-                Confirm Slot
-              </Button>
+                disabled={false}
+              />
             </div>
           )}
 
@@ -829,18 +831,6 @@ export default function AddWorkshop() {
             )}
           />
 
-          <input
-            type="hidden"
-            name="selectedSlot"
-            value={
-              selectedSlot
-                ? JSON.stringify({
-                    equipmentId: selectedEquipment,
-                    slotId: selectedSlot,
-                  })
-                : ""
-            }
-          />
           {/* Hidden input for prerequisites */}
           <input
             type="hidden"
@@ -854,16 +844,10 @@ export default function AddWorkshop() {
           />
           <input
             type="hidden"
-            name="selectedSlot"
-            value={
-              selectedSlot
-                ? JSON.stringify({
-                    equipmentId: selectedEquipment,
-                    slotId: selectedSlot,
-                  })
-                : ""
-            }
+            name="selectedSlots"
+            value={JSON.stringify(selectedSlotsMap)}
           />
+
           <input
             type="hidden"
             name="isWorkshopContinuation"

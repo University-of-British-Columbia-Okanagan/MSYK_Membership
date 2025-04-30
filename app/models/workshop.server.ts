@@ -17,6 +17,7 @@ interface WorkshopData {
     endDatePST?: Date;
   }[];
   isWorkshopContinuation?: boolean;
+  selectedSlots: Record<number, number[]>;
 }
 
 interface OccurrenceData {
@@ -91,7 +92,7 @@ export async function addWorkshop(data: WorkshopData) {
       },
     });
 
-    // Step 2: Generate a continuation ID if applicable
+    // Step 2: Generate continuation ID if it's a multi-day workshop
     let newConnectId: number | null = null;
     if (data.isWorkshopContinuation) {
       const maxResult = await db.workshopOccurrence.aggregate({
@@ -100,7 +101,7 @@ export async function addWorkshop(data: WorkshopData) {
       newConnectId = ((maxResult._max.connectId as number) || 0) + 1;
     }
 
-    // Step 3: Create occurrences
+    // Step 3: Create workshop occurrences
     const occurrences = await Promise.all(
       data.occurrences.map((occ) =>
         db.workshopOccurrence.create({
@@ -111,59 +112,64 @@ export async function addWorkshop(data: WorkshopData) {
             startDatePST: occ.startDatePST,
             endDatePST: occ.endDatePST,
             status: occ.startDate >= new Date() ? "active" : "past",
-            connectId: newConnectId, // Will be null if not a continuation
+            connectId: newConnectId,
           },
         })
       )
     );
 
-    // Step 4: Assign equipment slots for each occurrence
+    // Step 4: Book selected equipment slots
     if (data.equipments && data.equipments.length > 0) {
       for (const equipmentId of data.equipments) {
-        for (const occ of occurrences) {
-          // Fetch all slots that fully fit within the workshop occurrence
-          const availableSlots = await db.equipmentSlot.findMany({
-            where: {
-              equipmentId,
-              isBooked: false,
-              workshopOccurrenceId: occ.id,
-              startTime: { gte: occ.startDate },
-              endTime: { lte: occ.endDate },
-            },
-            orderBy: { startTime: "asc" },
-          });
+        const selectedSlotIds = data.selectedSlots?.[equipmentId] || [];
 
-          if (availableSlots.length === 0) {
-            console.warn(
-              `⚠️ No available slot for Equipment ID ${equipmentId} in range ${occ.startDate} - ${occ.endDate}`
-            );
-            throw new Error(
-              `No available slot found for Equipment ID ${equipmentId} in the given time range.`
-            );
-          }
+        if (selectedSlotIds.length === 0) {
+          console.warn(`⚠️ No slots selected for Equipment ID ${equipmentId}`);
+          continue;
+        }
 
-          // Assign all available slots within the range to the workshop
-          await db.equipmentSlot.updateMany({
-            where: { id: { in: availableSlots.map((s) => s.id) } },
-            data: {
-              workshopOccurrenceId: newWorkshop.id,
-              isBooked: true,
-            },
-          });
+        // Step 4a: Verify selected slots exist and are unbooked
+        const slots = await db.equipmentSlot.findMany({
+          where: {
+            id: { in: selectedSlotIds },
+            equipmentId,
+            isBooked: false,
+            workshopOccurrenceId: null,
+          },
+        });
 
-          console.log(
-            `Assigned ${availableSlots.length} slots to Equipment ID ${equipmentId} for workshop ${newWorkshop.id}`
+        if (slots.length !== selectedSlotIds.length) {
+          throw new Error(
+            `Some selected slots for Equipment ${equipmentId} are already booked or invalid.`
           );
         }
-      }
-    }
 
-    return { ...newWorkshop, occurrences };
-  } catch (error) {
-    console.error("Error adding workshop:", error);
-    throw new Error("Failed to add workshop");
-  }
-}
+        // Step 4b: Assign these slots evenly across workshop occurrences
+           
+             const occ = occurrences[0]; 
+
+             await db.equipmentSlot.updateMany({
+               where: { id: { in: selectedSlotIds } },
+               data: {
+                 isBooked: true,
+                 workshopOccurrenceId: occ.id,
+               },
+             });
+     
+             console.log(
+               `✅ Assigned ${selectedSlotIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
+             );
+           } 
+         }
+     
+         return { ...newWorkshop, occurrences };
+       } catch (error: any) {
+         console.error("Error adding workshop:", error);
+         throw new Error(`Failed to add workshop: ${error.message}`);
+       }
+     }
+     
+
 
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
@@ -174,14 +180,13 @@ export async function getWorkshopById(workshopId: number) {
       where: { id: workshopId },
       include: {
         occurrences: {
-          orderBy: {
-            startDate: "asc",
-          },
           include: {
-            userWorkshops: true,
-            equipmentSlots: {  // ✅ Move this inside occurrences
-              select: {
-                equipmentId: true,
+            equipmentSlots: {
+              include: {
+                equipment: true,
+              },
+              orderBy: {
+                startTime: "asc",
               },
             },
           },
@@ -198,17 +203,14 @@ export async function getWorkshopById(workshopId: number) {
       throw new Error("Workshop not found");
     }
 
-
-
-
-    // Flatten prerequisites and equipmentIds
+    // Flatten prerequisite workshop IDs
     const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
 
-    // Extract equipmentIds from occurrences
+    // Extract all equipment IDs used in the workshop occurrences
     const equipments = workshop.occurrences.flatMap((occ) =>
-      occ.equipmentSlots.map((e) => e.equipmentId)
+      occ.equipmentSlots.map((slot) => slot.equipmentId)
     );
-    
+
     return {
       ...workshop,
       prerequisites,
@@ -219,6 +221,7 @@ export async function getWorkshopById(workshopId: number) {
     throw new Error("Failed to fetch workshop");
   }
 }
+
 
 /**
  * Update a workshop, including modifying occurrences.
