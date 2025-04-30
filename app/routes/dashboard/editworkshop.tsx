@@ -61,6 +61,7 @@ interface Occurrence {
   status?: string;
   userCount?: number;
   connectId?: number | null;
+  offerId?: number | null; // Add this line
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -251,6 +252,25 @@ function formatLocalDatetime(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+const getOfferIdColor = (offerId: number | null | undefined): string => {
+  if (!offerId) return "bg-gray-100 text-gray-800"; // Default color for null/undefined
+
+  // Create a set of predefined colors to cycle through based on offerId
+  const colors = [
+    "bg-blue-100 text-blue-800",
+    "bg-green-100 text-green-800",
+    "bg-purple-100 text-purple-800",
+    "bg-pink-100 text-pink-800",
+    "bg-indigo-100 text-indigo-800",
+    "bg-yellow-100 text-yellow-800",
+    "bg-orange-100 text-orange-800",
+    "bg-teal-100 text-teal-800",
+  ];
+
+  // Use modulo to cycle through colors for different offerIds
+  return colors[(offerId - 1) % colors.length];
+};
+
 /* ──────────────────────────────────────────────────────────────────────────────
    4) Other functions
    ---------------------------------------------------------------------------*/
@@ -291,7 +311,8 @@ export default function EditWorkshop() {
         endDate: localEnd,
         status: occ.status,
         userCount: occ.userWorkshops?.length ?? 0,
-        connectId: occ.connectId, // ADDED: include connectId from DB
+        connectId: occ.connectId,
+        offerId: occ.offerId, // Add this line
       };
     }) || [];
 
@@ -806,9 +827,20 @@ export default function EditWorkshop() {
                                           className="flex justify-between items-center p-3 bg-green-50 border border-green-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
-                                            <div className="font-medium text-green-700">
-                                              {formatDateForDisplay(
-                                                occ.startDate
+                                            <div className="font-medium text-green-700 flex items-center">
+                                              <span>
+                                                {formatDateForDisplay(
+                                                  occ.startDate
+                                                )}
+                                              </span>
+                                              {occ.offerId && (
+                                                <span
+                                                  className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getOfferIdColor(
+                                                    occ.offerId
+                                                  )}`}
+                                                >
+                                                  Offer #{occ.offerId}
+                                                </span>
                                               )}
                                             </div>
                                             <div className="text-xs text-gray-600">
@@ -1011,9 +1043,20 @@ export default function EditWorkshop() {
                                           className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
-                                            <div className="font-medium text-gray-700">
-                                              {formatDateForDisplay(
-                                                occ.startDate
+                                            <div className="font-medium text-gray-700 flex items-center">
+                                              <span>
+                                                {formatDateForDisplay(
+                                                  occ.startDate
+                                                )}
+                                              </span>
+                                              {occ.offerId && (
+                                                <span
+                                                  className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getOfferIdColor(
+                                                    occ.offerId
+                                                  )}`}
+                                                >
+                                                  Offer #{occ.offerId}
+                                                </span>
                                               )}
                                             </div>
                                             <div className="text-xs text-gray-600">
@@ -1107,9 +1150,20 @@ export default function EditWorkshop() {
                                           className="flex justify-between items-center p-3 bg-red-50 border border-red-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
-                                            <div className="font-medium text-red-700">
-                                              {formatDateForDisplay(
-                                                occ.startDate
+                                            <div className="font-medium text-red-700 flex items-center">
+                                              <span>
+                                                {formatDateForDisplay(
+                                                  occ.startDate
+                                                )}
+                                              </span>
+                                              {occ.offerId && (
+                                                <span
+                                                  className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getOfferIdColor(
+                                                    occ.offerId
+                                                  )}`}
+                                                >
+                                                  Offer #{occ.offerId}
+                                                </span>
                                               )}
                                             </div>
                                             <div className="text-xs text-gray-600">
@@ -1207,7 +1261,6 @@ export default function EditWorkshop() {
             name="occurrences"
             value={JSON.stringify(
               occurrences.map((occ) => ({
-                // Keep the ID if it exists
                 id: occ.id,
                 startDate: occ.startDate,
                 endDate: occ.endDate,
@@ -1215,6 +1268,7 @@ export default function EditWorkshop() {
                 endDatePST: occ.endDatePST,
                 status: occ.status,
                 userCount: occ.userCount,
+                offerId: occ.offerId,
               }))
             )}
           />
