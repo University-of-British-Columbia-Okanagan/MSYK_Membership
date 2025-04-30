@@ -76,6 +76,7 @@ export default [
   route("/dashboard/admin/workshop/:workshopId/users", "routes/dashboard/userworkshop.tsx"),
   route("/dashboard/admin/users", "routes/dashboard/allusersregistered.tsx"),
   route("/dashboard/allequipmentbooking","routes/dashboard/allequipmentbooking.tsx"),
-  route("/dashboard/profile", "routes/dashboard/profile.tsx")
+  route("/dashboard/profile", "routes/dashboard/profile.tsx"),
+  route("/user/profile/paymentinformation", "routes/dashboard/paymentinformation.tsx"),
 
 ] satisfies RouteConfig;
