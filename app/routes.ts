@@ -42,8 +42,8 @@ export default [
   route("/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
   route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
   route(
-    "/dashboard/workshops/:id/edit/:occurrenceId",
-    "routes/dashboard/editoccurrence.tsx"
+    "/dashboard/workshops/edit/:id",
+    "routes/dashboard/workshopofferagain.tsx"
   ),
   route(
     "dashboard/payment/:workshopId/connect/:connectId",

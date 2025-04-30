@@ -103,6 +103,7 @@ model WorkshopOccurrence {
   endDatePST   DateTime?
   status       String    @default("active") // "open", "closed", "cancelled"
   connectId    Int? // For workshop continuation tracking
+  offerId     Int @default(1)
 
   // Relationships
   workshop     Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)

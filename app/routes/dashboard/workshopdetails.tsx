@@ -253,8 +253,8 @@ export default function WorkshopDetails() {
   };
 
   // Offer Again button for Admins
-  const handleOfferAgain = (occurrenceId: number) => {
-    navigate(`/dashboard/workshops/${workshop.id}/edit/${occurrenceId}`);
+  const handleOfferAgain = () => {
+    navigate(`/dashboard/workshops/edit/${workshop.id}`);
   };
 
   const handleCancel = (occurrenceId: number) => {
@@ -399,6 +399,15 @@ export default function WorkshopDetails() {
               View Users ({workshop.userCount})
             </Button>
           )}
+          {isAdmin && (
+            <Button
+              variant="outline"
+              className="text-green-600 border-green-500 hover:bg-green-50 flex items-center gap-2 ml-auto"
+              onClick={() => handleOfferAgain()}
+            >
+              Offer Again
+            </Button>
+          )}
         </CardHeader>
 
         <CardContent>
@@ -457,7 +466,8 @@ export default function WorkshopDetails() {
                     const canCancel =
                       earliestRegDate &&
                       (new Date().getTime() - earliestRegDate.getTime()) /
-                        (1000 * 60 * 60) < 48;
+                        (1000 * 60 * 60) <
+                        48;
                     return (
                       <div className="flex items-center gap-4">
                         <DropdownMenu>
@@ -549,15 +559,6 @@ export default function WorkshopDetails() {
                             <Badge className="bg-gray-500 text-white px-3 py-1">
                               Past
                             </Badge>
-                            {isAdmin && (
-                              <Button
-                                variant="outline"
-                                className="text-green-600 border-green-500 hover:bg-green-50 ml-2"
-                                onClick={() => handleOfferAgain(occurrence.id)}
-                              >
-                                Offer Again
-                              </Button>
-                            )}
                           </>
                         ) : isOccurrenceRegistered ? (
                           <>
