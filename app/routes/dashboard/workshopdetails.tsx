@@ -254,7 +254,7 @@ export default function WorkshopDetails() {
 
   // Offer Again button for Admins
   const handleOfferAgain = () => {
-    navigate(`/dashboard/workshops/edit/${workshop.id}`);
+    navigate(`/dashboard/workshops/offer/${workshop.id}`);
   };
 
   const handleCancel = (occurrenceId: number) => {
