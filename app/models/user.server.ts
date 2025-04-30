@@ -129,7 +129,9 @@ export async function savePaymentMethod(
 
     // Parse card expiry
     const [expMonth, expYearShort] = paymentData.expiry.split("/");
-    const expYear = parseInt(`20${expYearShort}`);
+    // Keep them as strings for the token call:
+    const expMonthStr = expMonth; // e.g. "04"
+    const expYearStr = `20${expYearShort}`; // e.g. "2026"
 
     // Create or retrieve Stripe customer
     let stripeCustomerId: string;
@@ -158,36 +160,22 @@ export async function savePaymentMethod(
     // Create a payment method in Stripe
     // In a real implementation, you would use Elements/SetupIntent for secure tokenization
     // This is a simplified version for the example
-    const paymentMethod = await stripe.paymentMethods.create({
-      type: "card",
+    const token = await stripe.tokens.create({
       card: {
         number: paymentData.cardNumber.replace(/\s+/g, ""),
-        exp_month: parseInt(expMonth),
-        exp_year: expYear,
-        cvc: paymentData.cvc,
-      },
-      billing_details: {
-        name: paymentData.cardholderName,
-        email: user.email,
-        address: {
-          line1: paymentData.billingAddressLine1,
-          line2: paymentData.billingAddressLine2 || undefined,
-          city: paymentData.billingCity,
-          state: paymentData.billingState,
-          postal_code: paymentData.billingZip,
-          country: paymentData.billingCountry,
-        },
+        exp_month: expMonthStr,  // ← string
+        exp_year: expYearStr,    // ← string
+        cvc: paymentData.cvc,    // ← string
       },
     });
 
-    stripePaymentMethodId = paymentMethod.id;
-
-    // Attach the payment method to the customer
-    await stripe.paymentMethods.attach(stripePaymentMethodId, {
-      customer: stripeCustomerId,
+    // 2) Attach that token to the customer as a source
+    const cardSource = await stripe.customers.createSource(stripeCustomerId, {
+      source: token.id,
     });
+    stripePaymentMethodId = (cardSource as Stripe.Card).id;
 
-    // Set as default payment method
+    // 3) Make it the default payment method
     await stripe.customers.update(stripeCustomerId, {
       invoice_settings: {
         default_payment_method: stripePaymentMethodId,
@@ -208,7 +196,7 @@ export async function savePaymentMethod(
           cardLast4,
           cardExpiry: paymentData.expiry,
           expMonth: parseInt(expMonth),
-          expYear,
+          expYear: parseInt(expYearStr),
           billingAddressLine1: paymentData.billingAddressLine1,
           billingAddressLine2: paymentData.billingAddressLine2,
           billingCity: paymentData.billingCity,
@@ -230,7 +218,7 @@ export async function savePaymentMethod(
           cardLast4,
           cardExpiry: paymentData.expiry,
           expMonth: parseInt(expMonth),
-          expYear,
+          expYear: parseInt(expYearStr),
           billingAddressLine1: paymentData.billingAddressLine1,
           billingAddressLine2: paymentData.billingAddressLine2,
           billingCity: paymentData.billingCity,
