@@ -357,6 +357,8 @@ export async function getEquipmentSlotsWithStatus(userId?: number) {
         isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
         bookedByMe,
         workshopName: slot.workshopOccurrence?.workshop?.name || null,
+        reservedForWorkshop: !!slot.workshopOccurrenceId,
+
       };
     });
 
