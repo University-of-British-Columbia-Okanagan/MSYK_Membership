@@ -20,6 +20,7 @@ interface Slot {
   isAvailable: boolean;
   workshopName?: string | null;
   bookedByMe?: boolean;
+  reservedForWorkshop?: boolean;
 }
 
 interface SlotsByDay {
@@ -27,12 +28,15 @@ interface SlotsByDay {
     [time: string]: Slot;
   };
 }
+export type { SlotsByDay };
+
 
 interface EquipmentBookingGridProps {
   slotsByDay: SlotsByDay;
   onSelectSlots: (selectedSlots: string[]) => void;
   disabled?: boolean;
   visibleTimeRange?: { startHour: number; endHour: number }; // NEW
+  preselectedSlotIds?: number[];
 }
 
 export default function EquipmentBookingGrid({
@@ -44,6 +48,7 @@ export default function EquipmentBookingGrid({
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isDragging = useRef(false);
+  
 
   const times = generateTimeSlots(
     visibleTimeRange?.startHour ?? 0,
@@ -192,10 +197,12 @@ export default function EquipmentBookingGrid({
 
               const baseStyle =
                 "w-full h-6 border-b border-r border-gray-300 transition-all duration-100";
-              const colorClass = slot?.isBooked
+              const colorClass = slot?.reservedForWorkshop
+                ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
+                : slot?.isBooked
                 ? slot?.bookedByMe
-                  ? "bg-blue-400 cursor-not-allowed" // booked by me
-                  : "bg-red-400 cursor-not-allowed" // booked by others
+                  ? "bg-blue-400 cursor-not-allowed" // Booked by me
+                  : "bg-red-400 cursor-not-allowed" // Booked by others
                 : isSelected
                 ? "bg-green-500"
                 : slot?.isAvailable
@@ -267,6 +274,11 @@ export default function EquipmentBookingGrid({
           <div className="w-4 h-4 bg-red-400 border border-gray-300" />
           <span>Booked by Others</span>
         </div>
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
+          <span>Reserved for Workshop</span>
+        </div>
+
         <p className="text-md font-medium">Click and Drag to Toggle</p>
       </div>
 
