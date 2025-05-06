@@ -174,6 +174,7 @@ export async function addWorkshop(data: WorkshopData) {
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
  */
+// here possible
 export async function getWorkshopById(workshopId: number) {
   try {
     const workshop = await db.workshop.findUnique({
@@ -181,7 +182,12 @@ export async function getWorkshopById(workshopId: number) {
       include: {
         occurrences: {
           include: {
+            userWorkshops: true,
             equipmentSlots: {
+              // ✅ Move this inside occurrences
+              select: {
+                equipmentId: true,
+              },
               include: {
                 equipment: true,
               },
@@ -203,6 +209,8 @@ export async function getWorkshopById(workshopId: number) {
       throw new Error("Workshop not found");
     }
 
+    // Flatten prerequisites and equipmentIds
+
     // Flatten prerequisite workshop IDs
     const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
 
@@ -210,7 +218,7 @@ export async function getWorkshopById(workshopId: number) {
     const equipments = workshop.occurrences.flatMap((occ) =>
       occ.equipmentSlots.map((slot) => slot.equipmentId)
     );
-
+    
     return {
       ...workshop,
       prerequisites,
@@ -317,7 +325,7 @@ export async function updateWorkshopWithOccurrences(
             : occ.startDate >= now
             ? "active"
             : "past";
-        
+
         // Create each occurrence individually to get its ID
         const createdOcc = await db.workshopOccurrence.create({
           data: {
@@ -329,13 +337,13 @@ export async function updateWorkshopWithOccurrences(
             status,
           },
         });
-        
+
         return createdOcc;
       })
     );
-    
+
     // Store the IDs of newly created occurrences
-    newOccurrenceIds = createdOccurrences.map(occ => occ.id);
+    newOccurrenceIds = createdOccurrences.map((occ) => occ.id);
   }
 
   for (const occ of updateOccurrences) {
@@ -376,7 +384,7 @@ export async function updateWorkshopWithOccurrences(
         where: { workshopId, connectId: { not: null } },
         select: { connectId: true },
       });
-      
+
       if (existingConnectId && existingConnectId.connectId) {
         // Use existing connectId to maintain continuity
         currentConnectId = existingConnectId.connectId;
@@ -409,7 +417,7 @@ export async function updateWorkshopWithOccurrences(
       where: { workshopId, connectId: { not: null } },
       select: { connectId: true },
     });
-    
+
     if (existingConnectId && existingConnectId.connectId) {
       isWorkshopContinuation = true;
       currentConnectId = existingConnectId.connectId;
@@ -419,7 +427,7 @@ export async function updateWorkshopWithOccurrences(
   // Handle auto-registration of existing users to new occurrences for workshop continuations
   if (isWorkshopContinuation && newOccurrenceIds.length > 0) {
     // Only proceed if there are new occurrences and this is a workshop continuation
-    
+
     // 1. Find all unique users who are registered to any occurrence of this workshop
     const existingRegistrations = await db.userWorkshop.findMany({
       where: {
@@ -431,11 +439,11 @@ export async function updateWorkshopWithOccurrences(
       select: {
         userId: true,
       },
-      distinct: ['userId'],
+      distinct: ["userId"],
     });
-    
-    const uniqueUserIds = existingRegistrations.map(reg => reg.userId);
-    
+
+    const uniqueUserIds = existingRegistrations.map((reg) => reg.userId);
+
     // 2. If there are existing users, register them to all new occurrences
     if (uniqueUserIds.length > 0) {
       for (const occurrenceId of newOccurrenceIds) {
@@ -444,7 +452,7 @@ export async function updateWorkshopWithOccurrences(
           where: { id: occurrenceId },
           select: { status: true },
         });
-        
+
         if (occurrenceStatus && occurrenceStatus.status === "active") {
           // Register each user to this new occurrence
           for (const userId of uniqueUserIds) {
@@ -459,7 +467,9 @@ export async function updateWorkshopWithOccurrences(
               });
             } catch (error) {
               // Handle potential unique constraint violations
-              console.log(`Could not register user ${userId} to occurrence ${occurrenceId}: ${error}`);
+              console.log(
+                `Could not register user ${userId} to occurrence ${occurrenceId}: ${error}`
+              );
             }
           }
         }
@@ -797,16 +807,19 @@ export async function getAllRegistrations() {
 }
 
 /*
-* This function handles roleLevel 2 and 3
-*/
-export async function updateRegistrationResult(registrationId: number, newResult: string) {
+ * This function handles roleLevel 2 and 3
+ */
+export async function updateRegistrationResult(
+  registrationId: number,
+  newResult: string
+) {
   // Update the registration record and include related workshop and user data.
   const updatedReg = await db.userWorkshop.update({
     where: { id: registrationId },
     data: { result: newResult },
     include: {
       workshop: true, // so we can check the workshop type
-      user: true,     // so we can check and update user's roleLevel
+      user: true, // so we can check and update user's roleLevel
     },
   });
 
@@ -882,9 +895,12 @@ export async function updateRegistrationResult(registrationId: number, newResult
 }
 
 /*
-* This function handles roleLevel 2 and 3
-*/
-export async function updateMultipleRegistrations(registrationIds: number[], newResult: string) {
+ * This function handles roleLevel 2 and 3
+ */
+export async function updateMultipleRegistrations(
+  registrationIds: number[],
+  newResult: string
+) {
   // Bulk update the registrations with the new result.
   const updateResult = await db.userWorkshop.updateMany({
     where: { id: { in: registrationIds } },
@@ -901,8 +917,8 @@ export async function updateMultipleRegistrations(registrationIds: number[], new
   const orientationUserIds = Array.from(
     new Set(
       updatedRegistrations
-        .filter(reg => reg.workshop?.type.toLowerCase() === "orientation")
-        .map(reg => reg.user.id)
+        .filter((reg) => reg.workshop?.type.toLowerCase() === "orientation")
+        .map((reg) => reg.user.id)
     )
   );
 
@@ -934,7 +950,7 @@ export async function updateMultipleRegistrations(registrationIds: number[], new
     }
 
     // Update the user’s role level if it differs.
-    const user = updatedRegistrations.find(reg => reg.user.id === uid)?.user;
+    const user = updatedRegistrations.find((reg) => reg.user.id === uid)?.user;
     if (user && user.roleLevel !== desiredRoleLevel) {
       await db.user.update({
         where: { id: uid },
@@ -1112,7 +1128,9 @@ export async function getWorkshopContinuationUserCount(workshopId: number) {
   }
 
   // Check if this is a workshop continuation by looking at connectId in occurrences
-  const isWorkshopContinuation = workshop.occurrences.some(occ => occ.connectId === workshopId);
+  const isWorkshopContinuation = workshop.occurrences.some(
+    (occ) => occ.connectId === workshopId
+  );
 
   if (!isWorkshopContinuation) {
     // For regular workshops, just count total registrations and unique users
@@ -1120,28 +1138,126 @@ export async function getWorkshopContinuationUserCount(workshopId: number) {
       (sum, occ) => sum + occ.userWorkshops.length,
       0
     );
-    
+
     // Get unique user IDs across all occurrences
-    const allUserIds = workshop.occurrences.flatMap(occ => 
-      occ.userWorkshops.map(uw => uw.userId)
+    const allUserIds = workshop.occurrences.flatMap((occ) =>
+      occ.userWorkshops.map((uw) => uw.userId)
     );
     const uniqueUsers = new Set(allUserIds).size;
-    
+
     return { totalUsers, uniqueUsers };
   } else {
     // For workshop continuations, calculate differently
     // Get unique users
-    const allUserIds = workshop.occurrences.flatMap(occ => 
-      occ.userWorkshops.map(uw => uw.userId)
+    const allUserIds = workshop.occurrences.flatMap((occ) =>
+      occ.userWorkshops.map((uw) => uw.userId)
     );
     const uniqueUserIds = [...new Set(allUserIds)];
     const uniqueUsers = uniqueUserIds.length;
-    
+
     // For continuations, total users is unique users × number of occurrences
     // This represents what would be shown after auto-registration
-    const activeOccurrences = workshop.occurrences.filter(occ => occ.status === "active").length;
+    const activeOccurrences = workshop.occurrences.filter(
+      (occ) => occ.status === "active"
+    ).length;
     const totalUsers = uniqueUsers * activeOccurrences;
-    
+
     return { totalUsers, uniqueUsers };
+  }
+}
+
+/**
+ * Add new occurrences to an existing workshop with a new offerId.
+ * This implements the "Offer Again" functionality by creating new occurrences
+ * with a unique offerId to group them together.
+ */
+export async function offerWorkshopAgain(
+  workshopId: number,
+  occurrences: {
+    startDate: Date;
+    endDate: Date;
+    startDatePST: Date;
+    endDatePST: Date;
+  }[]
+) {
+  try {
+    // Verify the workshop exists
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+    });
+
+    if (!workshop) {
+      throw new Error("Workshop not found");
+    }
+
+    // Get the maximum existing offerId for this workshop
+    const maxOfferIdResult = await db.workshopOccurrence.aggregate({
+      where: { workshopId },
+      _max: { offerId: true },
+    });
+
+    // Generate a new offerId (increment from the highest existing one, or start at 1)
+    const newOfferId = ((maxOfferIdResult._max.offerId as number) || 0) + 1;
+
+    // Create all the new occurrences with the same offerId
+    const now = new Date();
+    const createdOccurrences = await Promise.all(
+      occurrences.map(async (occ) => {
+        // Determine the status based on the start date
+        const status = occ.startDate >= now ? "active" : "past";
+
+        return await db.workshopOccurrence.create({
+          data: {
+            workshopId,
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+            startDatePST: occ.startDatePST,
+            endDatePST: occ.endDatePST,
+            status,
+            offerId: newOfferId,
+          },
+        });
+      })
+    );
+
+    // // Copy equipment assignments if the original workshop had any
+    // const equipmentSlots = await db.equipmentSlot.findMany({
+    //   where: {
+    //     workshopOccurrenceId: workshopId,
+    //   },
+    // });
+
+    // if (equipmentSlots.length > 0) {
+    //   // For each new occurrence, check if we need to assign equipment
+    //   for (const occ of createdOccurrences) {
+    //     for (const slot of equipmentSlots) {
+    //       // Look for available equipment slots that match this time period
+    //       const availableSlots = await db.equipmentSlot.findMany({
+    //         where: {
+    //           equipmentId: slot.equipmentId,
+    //           isBooked: false,
+    //           startTime: { gte: occ.startDate },
+    //           endTime: { lte: occ.endDate },
+    //         },
+    //       });
+
+    //       if (availableSlots.length > 0) {
+    //         // Assign the equipment to this occurrence
+    //         await db.equipmentSlot.update({
+    //           where: { id: availableSlots[0].id },
+    //           data: {
+    //             workshopOccurrenceId: occ.id,
+    //             isBooked: true,
+    //           },
+    //         });
+    //       }
+    //     }
+    //   }
+    // }
+
+    return createdOccurrences;
+  } catch (error) {
+    console.error("Error offering workshop again:", error);
+    throw new Error("Failed to create new workshop offer");
   }
 }

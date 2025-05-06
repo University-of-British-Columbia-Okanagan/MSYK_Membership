@@ -42,8 +42,8 @@ export default [
   route("/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
   route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
   route(
-    "/dashboard/workshops/:id/edit/:occurrenceId",
-    "routes/dashboard/editoccurrence.tsx"
+    "/dashboard/workshops/offer/:id",
+    "routes/dashboard/workshopofferagain.tsx"
   ),
   route(
     "dashboard/payment/:workshopId/connect/:connectId",
@@ -76,6 +76,7 @@ export default [
   route("/dashboard/admin/workshop/:workshopId/users", "routes/dashboard/userworkshop.tsx"),
   route("/dashboard/admin/users", "routes/dashboard/allusersregistered.tsx"),
   route("/dashboard/allequipmentbooking","routes/dashboard/allequipmentbooking.tsx"),
-  route("/dashboard/profile", "routes/dashboard/profile.tsx")
+  route("/dashboard/profile", "routes/dashboard/profile.tsx"),
+  route("/user/profile/paymentinformation", "routes/dashboard/paymentinformation.tsx"),
 
 ] satisfies RouteConfig;
