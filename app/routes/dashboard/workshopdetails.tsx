@@ -4,6 +4,7 @@ import {
   useFetcher,
   useNavigate,
   Link,
+  redirect,
 } from "react-router-dom";
 import {
   Card,
@@ -39,6 +40,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  duplicateWorkshop,
+} from "~/models/workshop.server";
 
 interface Occurrence {
   id: number;
@@ -217,6 +221,27 @@ export async function action({ request }: { request: Request }) {
     } catch (error) {
       console.error("Error cancelling registration:", error);
       return { error: "Failed to cancel registration" };
+    }
+  }
+
+  if (actionType === "duplicate") {
+    const workshopId = formData.get("workshopId");
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+    
+    try {
+      // Call your duplicate function here
+      // This should be implemented in your models/workshop.server
+      // await duplicateWorkshop(Number(workshopId));
+      await duplicateWorkshop(Number(workshopId));
+      
+      // Redirect to admin dashboard after duplication
+      return redirect("/dashboard/admin");
+    } catch (error) {
+      console.error("Error duplicating workshop:", error);
+      return { error: "Failed to duplicate workshop" };
     }
   }
 }
@@ -435,23 +460,40 @@ export default function WorkshopDetails() {
 
           {/* Admin Only: View Users Button */}
           {isAdmin && (
-            <Button
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ml-auto"
-              onClick={() =>
-                navigate(`/dashboard/admin/workshop/${workshop.id}/users`)
-              }
-            >
-              <Users size={18} />
-              View Users ({workshop.userCount})
-            </Button>
-          )}
-          {isAdmin && (
-            <Button
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ml-auto"
-              onClick={() => handleOfferAgain()}
-            >
-              Offer Again
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                onClick={() =>
+                  navigate(`/dashboard/admin/workshop/${workshop.id}/users`)
+                }
+              >
+                <Users size={18} />
+                View Users ({workshop.userCount})
+              </Button>
+
+              {/* REPLACE THIS BUTTON with the conditional Duplicate/Offer Again button */}
+              {isContinuation ? (
+                <ConfirmButton
+                  confirmTitle="Duplicate Workshop"
+                  confirmDescription="Are you sure you want to duplicate this multi-day workshop? This will create a new workshop with the same details."
+                  onConfirm={() => {
+                    fetcher.submit(
+                      { workshopId: workshop.id, actionType: "duplicate" },
+                      { method: "post" }
+                    );
+                  }}
+                  buttonLabel="Duplicate"
+                  buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                />
+              ) : (
+                <Button
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                  onClick={() => handleOfferAgain()}
+                >
+                  Offer Again
+                </Button>
+              )}
+            </div>
           )}
         </CardHeader>
 
