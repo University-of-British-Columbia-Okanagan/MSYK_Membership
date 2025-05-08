@@ -51,6 +51,23 @@ import {
   CalendarRange as CalendarRangeIcon,
   Check as CheckIcon,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface Occurrence {
   id?: number;
@@ -252,6 +269,31 @@ function formatLocalDatetime(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+/**
+ * Check if a date is in the past
+ */
+function isDateInPast(date: Date): boolean {
+  const now = new Date();
+  return date < now && !isNaN(date.getTime());
+}
+
+/**
+ * Check if any occurrence dates are in the past
+ */
+function hasOccurrencesInPast(occurrences: Occurrence[]): boolean {
+  // Only check active occurrences with valid dates
+  const activeOccurrences = occurrences.filter(
+    (occ) => occ.status === "active" || !occ.status // Include new occurrences with no status
+  );
+
+  return activeOccurrences.some(
+    (occ) =>
+      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
+      !isNaN(occ.startDate.getTime()) &&
+      !isNaN(occ.endDate.getTime())
+  );
+}
+
 const getOfferIdColor = (offerId: number | null | undefined): string => {
   if (!offerId) return "bg-gray-100 text-gray-800"; // Default color for null/undefined
 
@@ -376,6 +418,9 @@ export default function EditWorkshop() {
 
   const [isWorkshopContinuation, setIsWorkshopContinuation] =
     useState<boolean>(defaultContinuation);
+
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   // Let's track the date selection approach (custom, weekly, monthly).
   // Default to "custom" if we already have occurrences, but you can tweak if desired.
@@ -554,6 +599,32 @@ export default function EditWorkshop() {
     return userCounts.uniqueUsers;
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Check for active occurrences that have past dates
+    const pastActiveOccurrences = occurrences.filter(
+      (occ) =>
+        occ.status === "active" &&
+        (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
+        !isNaN(occ.startDate.getTime()) &&
+        !isNaN(occ.endDate.getTime())
+    );
+
+    if (pastActiveOccurrences.length > 0) {
+      // We found active occurrences with past dates, show confirmation dialog
+      setIsConfirmDialogOpen(true);
+      console.log("Found past dates, showing confirmation dialog");
+      return; // Important: prevent form submission until user confirms
+    } else {
+      // No past dates in active occurrences, proceed with submission
+      console.log("No past dates found, submitting form");
+      setFormSubmitting(true);
+      const formElement = e.currentTarget as HTMLFormElement;
+      formElement.submit();
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Edit Workshop</h1>
@@ -566,7 +637,7 @@ export default function EditWorkshop() {
       )}
 
       <Form {...form}>
-        <form method="post">
+        <form method="post" onSubmit={handleFormSubmit}>
           {/* Basic Workshop Fields */}
           <GenericFormField
             control={form.control}
@@ -706,15 +777,54 @@ export default function EditWorkshop() {
                             </p>
                           </div>
                         ) : (
-                          occurrences.map((occ, index) => (
-                            <OccurrenceRow
-                              key={index}
-                              index={index}
-                              occurrence={occ}
-                              updateOccurrence={updateOccurrence}
-                              formatLocalDatetime={formatLocalDatetime}
-                            />
-                          ))
+                          occurrences.map((occ, index) => {
+                            const isStartDatePast = isDateInPast(occ.startDate);
+                            const isEndDatePast = isDateInPast(occ.endDate);
+                            const hasWarning =
+                              (isStartDatePast || isEndDatePast) &&
+                              occ.status !== "past" &&
+                              occ.status !== "cancelled";
+
+                            return (
+                              <TooltipProvider key={index}>
+                                <Tooltip open={hasWarning ? undefined : false}>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={cn(
+                                        "w-full",
+                                        hasWarning &&
+                                          "border-l-4 border-amber-500 pl-2"
+                                      )}
+                                    >
+                                      <OccurrenceRow
+                                        key={index}
+                                        index={index}
+                                        occurrence={occ}
+                                        updateOccurrence={updateOccurrence}
+                                        formatLocalDatetime={
+                                          formatLocalDatetime
+                                        }
+                                      />
+                                    </div>
+                                  </TooltipTrigger>
+                                  {hasWarning && (
+                                    <TooltipContent
+                                      side="right"
+                                      className="bg-amber-100 text-amber-800 border border-amber-300"
+                                    >
+                                      <p className="text-sm font-medium">
+                                        {isStartDatePast && isEndDatePast
+                                          ? "Both start and end dates are in the past"
+                                          : isStartDatePast
+                                          ? "Start date is in the past"
+                                          : "End date is in the past"}
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          })
                         )}
                         <Button
                           type="button"
@@ -1053,7 +1163,7 @@ export default function EditWorkshop() {
                                       return (
                                         <div
                                           key={index}
-                                          className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
+                                          className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 border-l-4 border-l-amber-500 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                         >
                                           <div className="text-sm">
                                             <div className="font-medium text-gray-700 flex items-center">
@@ -1062,6 +1172,12 @@ export default function EditWorkshop() {
                                                   occ.startDate
                                                 )}
                                               </span>
+                                              <Badge
+                                                variant="outline"
+                                                className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                              >
+                                                Past Date
+                                              </Badge>
                                               {occ.offerId && (
                                                 <span
                                                   className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getOfferIdColor(
@@ -1310,9 +1426,68 @@ export default function EditWorkshop() {
             value={isWorkshopContinuation ? "true" : "false"}
           />
 
+          {/* Confirmation Dialog for Past Dates */}
+          <AlertDialog
+            open={isConfirmDialogOpen}
+            onOpenChange={(open) => {
+              setIsConfirmDialogOpen(open);
+              // If dialog is closed without submitting, reset the submitting state
+              if (!open) {
+                setFormSubmitting(false);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Warning: Past Workshop Dates
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Some of your workshop dates are in the past. Are you sure you
+                  want to save a workshop with past dates?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setFormSubmitting(false)}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    console.log("User confirmed to proceed with past dates");
+                    setFormSubmitting(true);
+                    // Use setTimeout to ensure React state updates before form submission
+                    setTimeout(() => {
+                      const formElement = document.querySelector(
+                        "form"
+                      ) as HTMLFormElement;
+                      if (formElement) {
+                        console.log("Submitting form after confirmation");
+                        formElement.submit();
+                      }
+                    }, 50);
+                  }}
+                >
+                  Proceed Anyway
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <Button
             type="submit"
             className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+            disabled={formSubmitting}
+            onClick={() => {
+              console.log("Submit button clicked");
+              console.log(
+                "Occurrences with past dates:",
+                occurrences.filter(
+                  (occ) =>
+                    occ.status === "active" &&
+                    (isDateInPast(occ.startDate) || isDateInPast(occ.endDate))
+                )
+              );
+            }}
           >
             Update Workshop
           </Button>
