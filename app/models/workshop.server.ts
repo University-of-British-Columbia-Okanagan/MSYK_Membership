@@ -607,7 +607,7 @@ export async function duplicateWorkshop(workshopId: number) {
       // 2. Create copied workshop with "(Copy)" suffix
       const newWorkshop = await prisma.workshop.create({
         data: {
-          name: originalWorkshop.name,
+          name: `${originalWorkshop.name} (Copy)`,
           description: originalWorkshop.description,
           price: originalWorkshop.price,
           location: originalWorkshop.location,
@@ -616,15 +616,79 @@ export async function duplicateWorkshop(workshopId: number) {
         },
       });
 
-      // 3. Duplicate all occurrences with new workshopId
-      if (originalWorkshop.occurrences.length > 0) {
-        await prisma.workshopOccurrence.createMany({
-          data: originalWorkshop.occurrences.map((occ) => ({
+      // 3. Check if this is a multi-day workshop (any occurrence has a non-null connectId)
+      const isMultiDayWorkshop = originalWorkshop.occurrences.some(
+        (occ) => occ.connectId !== null
+      );
+
+      if (isMultiDayWorkshop) {
+        // For multi-day workshops, we need to create a new connectId
+        // Find the highest connectId in the database to ensure uniqueness
+        const highestConnectIdResult =
+          await prisma.workshopOccurrence.findFirst({
+            orderBy: {
+              connectId: "desc",
+            },
+            where: {
+              connectId: {
+                not: null,
+              },
+            },
+            select: {
+              connectId: true,
+            },
+          });
+
+        const nextConnectId = highestConnectIdResult?.connectId
+          ? highestConnectIdResult.connectId + 1
+          : 1;
+
+        // For multi-day workshops, create occurrences with the new connectId
+        if (originalWorkshop.occurrences.length > 0) {
+          await Promise.all(
+            originalWorkshop.occurrences.map(async (occ) => {
+              return prisma.workshopOccurrence.create({
+                data: {
+                  workshopId: newWorkshop.id,
+                  startDate: occ.startDate,
+                  endDate: occ.endDate,
+                  startDatePST: occ.startDatePST,
+                  endDatePST: occ.endDatePST,
+                  connectId: nextConnectId, // Use the same new connectId for all occurrences
+                  offerId: occ.offerId || 1,
+                  status: "active", // Reset status to active for the copy
+                },
+              });
+            })
+          );
+        }
+      } else {
+        // For regular workshops, duplicate occurrences without connectId
+        if (originalWorkshop.occurrences.length > 0) {
+          await prisma.workshopOccurrence.createMany({
+            data: originalWorkshop.occurrences.map((occ) => ({
+              workshopId: newWorkshop.id,
+              startDate: occ.startDate,
+              endDate: occ.endDate,
+              startDatePST: occ.startDatePST,
+              endDatePST: occ.endDatePST,
+              offerId: occ.offerId || 1,
+              status: "active", // Reset status to active for the copy
+            })),
+          });
+        }
+      }
+
+      // 4. Copy any prerequisites
+      const prerequisites = await prisma.workshopPrerequisite.findMany({
+        where: { workshopId },
+      });
+
+      if (prerequisites.length > 0) {
+        await prisma.workshopPrerequisite.createMany({
+          data: prerequisites.map((prereq) => ({
             workshopId: newWorkshop.id,
-            startDate: occ.startDate,
-            endDate: occ.endDate,
-            startDatePST: occ.startDatePST,
-            endDatePST: occ.endDatePST,
+            prerequisiteId: prereq.prerequisiteId,
           })),
         });
       }
