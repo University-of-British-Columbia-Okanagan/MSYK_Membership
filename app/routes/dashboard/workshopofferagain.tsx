@@ -3,12 +3,7 @@ import { useLoaderData, redirect, useActionData } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { 
-  Form,
-  FormItem,
-  FormLabel,
-  FormMessage
-} from "@/components/ui/form";
+import { Form, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import OccurrenceRow from "~/components/ui/OccurrenceRow";
 import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
@@ -20,21 +15,40 @@ import {
   CalendarDays as CalendarDaysIcon,
   CalendarRange as CalendarRangeIcon,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 // Schema for workshop offer form
 const workshopOfferSchema = z.object({
-  occurrences: z.array(
-    z.object({
-      startDate: z.date().refine(date => !isNaN(date.getTime()), {
-        message: "Start date is required"
-      }),
-      endDate: z.date().refine(date => !isNaN(date.getTime()), {
-        message: "End date is required"
-      }),
-      startDatePST: z.date().optional(),
-      endDatePST: z.date().optional()
-    })
-  ).min(1, "At least one date is required")
+  occurrences: z
+    .array(
+      z.object({
+        startDate: z.date().refine((date) => !isNaN(date.getTime()), {
+          message: "Start date is required",
+        }),
+        endDate: z.date().refine((date) => !isNaN(date.getTime()), {
+          message: "End date is required",
+        }),
+        startDatePST: z.date().optional(),
+        endDatePST: z.date().optional(),
+      })
+    )
+    .min(1, "At least one date is required"),
 });
 
 type WorkshopOfferValues = z.infer<typeof workshopOfferSchema>;
@@ -64,39 +78,75 @@ function parseDateTimeAsLocal(value: string): Date {
   return new Date(year, month - 1, day, hours, minutes);
 }
 
+/**
+ * Check if a date is in the past
+ */
+function isDateInPast(date: Date): boolean {
+  const now = new Date();
+  return date < now && !isNaN(date.getTime());
+}
+
+/**
+ * Check if any occurrence dates are in the past
+ */
+function hasOccurrencesInPast(
+  occurrences: { startDate: Date; endDate: Date }[]
+): boolean {
+  return occurrences.some(
+    (occ) =>
+      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
+      !isNaN(occ.startDate.getTime()) &&
+      !isNaN(occ.endDate.getTime())
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  3) Loader
 // ─────────────────────────────────────────────────────────────────────────────
 export async function loader({ params }: { params: { id: string } }) {
   const workshopId = Number(params.id);
-  
+
   // Get workshop details including existing occurrences
   const workshop = await getWorkshopById(workshopId);
   if (!workshop) {
     throw new Response("Workshop not found", { status: 404 });
   }
-  
+
   return { workshopId, workshop };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  4) Action
 // ─────────────────────────────────────────────────────────────────────────────
-export async function action({ request, params }: { request: Request; params: { id: string } }) {
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id: string };
+}) {
   const formData = await request.formData();
-  const rawValues = Object.fromEntries(formData.entries()) as Record<string, string>;
-  
+  const rawValues = Object.fromEntries(formData.entries()) as Record<
+    string,
+    string
+  >;
+
   // Parse occurrences from JSON string
-  let occurrences: { 
-    startDate: Date; 
-    endDate: Date; 
-    startDatePST: Date; 
-    endDatePST: Date; 
+  let occurrences: {
+    startDate: Date;
+    endDate: Date;
+    startDatePST: Date;
+    endDatePST: Date;
   }[] = [];
-  
+
   try {
     occurrences = JSON.parse(rawValues.occurrences as string).map(
-      (occ: { startDate: string; endDate: string; startDatePST: string; endDatePST: string }) => {
+      (occ: {
+        startDate: string;
+        endDate: string;
+        startDatePST: string;
+        endDatePST: string;
+      }) => {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
         const startDatePST = new Date(occ.startDatePST);
@@ -131,18 +181,18 @@ export async function action({ request, params }: { request: Request; params: { 
 
   // Validate with zod schema
   const parsed = workshopOfferSchema.safeParse({
-    occurrences: occurrences.map(occ => ({
+    occurrences: occurrences.map((occ) => ({
       startDate: occ.startDate,
       endDate: occ.endDate,
       startDatePST: occ.startDatePST,
-      endDatePST: occ.endDatePST
-    }))
+      endDatePST: occ.endDatePST,
+    })),
   });
 
   if (!parsed.success) {
     return { errors: parsed.error.flatten().fieldErrors };
   }
-  
+
   const workshopId = Number(params.id);
 
   // Add new occurrences with the same workshop ID but a new offerId
@@ -167,19 +217,23 @@ export default function WorkshopOfferAgain() {
   >(() => {
     // Pre-populate with the workshop's existing occurrences
     if (workshop.occurrences && workshop.occurrences.length > 0) {
-      return workshop.occurrences.map((occ: any) => ({
-        startDate: new Date(occ.startDate),
-        endDate: new Date(occ.endDate),
-        startDatePST: occ.startDatePST ? new Date(occ.startDatePST) : undefined,
-        endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined
-      })).filter((occ: any) => 
-        !isNaN(occ.startDate.getTime()) && 
-        !isNaN(occ.endDate.getTime())
-      );
+      return workshop.occurrences
+        .map((occ: any) => ({
+          startDate: new Date(occ.startDate),
+          endDate: new Date(occ.endDate),
+          startDatePST: occ.startDatePST
+            ? new Date(occ.startDatePST)
+            : undefined,
+          endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined,
+        }))
+        .filter(
+          (occ: any) =>
+            !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
+        );
     }
     return [];
   });
-  
+
   // Date selection type state
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
@@ -197,10 +251,13 @@ export default function WorkshopOfferAgain() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
   const form = useForm<WorkshopOfferValues>({
     resolver: zodResolver(workshopOfferSchema),
     defaultValues: {
-      occurrences: occurrences
+      occurrences: occurrences,
     },
   });
 
@@ -214,9 +271,9 @@ export default function WorkshopOfferAgain() {
 
   // For custom dates, add an empty occurrence
   const addOccurrence = () => {
-    const newOccurrence = { 
-      startDate: new Date(""), 
-      endDate: new Date("") 
+    const newOccurrence = {
+      startDate: new Date(""),
+      endDate: new Date(""),
     };
     const updatedOccurrences = [...occurrences, newOccurrence];
     // Sort by startDate (if dates are valid)
@@ -236,16 +293,20 @@ export default function WorkshopOfferAgain() {
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
     updatedOccurrences[index][field] = localDate;
-    
+
     // Calculate PST dates when updating
     if (field === "startDate" && !isNaN(localDate.getTime())) {
       const startOffset = localDate.getTimezoneOffset();
-      updatedOccurrences[index].startDatePST = new Date(localDate.getTime() - startOffset * 60000);
+      updatedOccurrences[index].startDatePST = new Date(
+        localDate.getTime() - startOffset * 60000
+      );
     } else if (field === "endDate" && !isNaN(localDate.getTime())) {
       const endOffset = localDate.getTimezoneOffset();
-      updatedOccurrences[index].endDatePST = new Date(localDate.getTime() - endOffset * 60000);
+      updatedOccurrences[index].endDatePST = new Date(
+        localDate.getTime() - endOffset * 60000
+      );
     }
-    
+
     // Re-sort the list after updating
     updatedOccurrences.sort(
       (a, b) => a.startDate.getTime() - b.startDate.getTime()
@@ -282,6 +343,22 @@ export default function WorkshopOfferAgain() {
     });
   }
 
+  // Form submission handler with past date check
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // First check if any dates are in the past
+    if (hasOccurrencesInPast(occurrences)) {
+      setIsConfirmDialogOpen(true);
+      return; // Prevent the normal form submission flow
+    } else {
+      // No past dates, submit directly
+      setFormSubmitting(true);
+      const form = e.currentTarget as HTMLFormElement;
+      form.submit();
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">
@@ -290,22 +367,25 @@ export default function WorkshopOfferAgain() {
 
       {actionData?.errors && Object.keys(actionData.errors).length > 0 && (
         <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-          There are some errors in your form. Please review the highlighted fields below.
+          There are some errors in your form. Please review the highlighted
+          fields below.
         </div>
       )}
 
       <div className="mb-8 bg-yellow-50 p-4 border border-yellow-200 rounded-md">
         <h2 className="text-lg font-semibold mb-2">Offering Workshop Again</h2>
         <p className="text-sm text-gray-700 mb-2">
-          We've pre-filled the dates from the current workshop schedule. You can modify these dates or add new ones as needed.
+          We've pre-filled the dates from the current workshop schedule. You can
+          modify these dates or add new ones as needed.
         </p>
         <p className="text-sm text-gray-700">
-          When you submit this form, a new set of workshop occurrences will be created with these dates.
+          When you submit this form, a new set of workshop occurrences will be
+          created with these dates.
         </p>
       </div>
 
       <Form {...form}>
-        <form method="post" className="space-y-6">
+        <form method="post" className="space-y-6" onSubmit={handleFormSubmit}>
           {/* Workshop Dates Section */}
           <FormItem className="mt-6">
             <div className="flex items-center mb-2">
@@ -325,7 +405,7 @@ export default function WorkshopOfferAgain() {
                 </Badge>
               )}
             </div>
-            
+
             <div className="flex flex-col items-start space-y-6 w-full">
               {/* Radio Buttons for selecting date input type */}
               <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
@@ -349,9 +429,7 @@ export default function WorkshopOfferAgain() {
                   ]}
                   selectedValue={dateSelectionType}
                   onChange={(val) =>
-                    setDateSelectionType(
-                      val as "custom" | "weekly" | "monthly"
-                    )
+                    setDateSelectionType(val as "custom" | "weekly" | "monthly")
                   }
                   name="dateType"
                   className="grid grid-cols-1 md:grid-cols-3 gap-3"
@@ -370,15 +448,49 @@ export default function WorkshopOfferAgain() {
                       </p>
                     </div>
                   ) : (
-                    occurrences.map((occ, index) => (
-                      <OccurrenceRow
-                        key={index}
-                        index={index}
-                        occurrence={occ}
-                        updateOccurrence={updateOccurrence}
-                        formatLocalDatetime={formatLocalDatetime}
-                      />
-                    ))
+                    occurrences.map((occ, index) => {
+                      const isStartDatePast = isDateInPast(occ.startDate);
+                      const isEndDatePast = isDateInPast(occ.endDate);
+                      const hasWarning = isStartDatePast || isEndDatePast;
+
+                      return (
+                        <TooltipProvider key={index}>
+                          <Tooltip open={hasWarning ? undefined : false}>
+                            <TooltipTrigger asChild>
+                              <div
+                                className={`w-full ${
+                                  hasWarning
+                                    ? "border-l-4 border-amber-500 pl-2"
+                                    : ""
+                                }`}
+                              >
+                                <OccurrenceRow
+                                  key={index}
+                                  index={index}
+                                  occurrence={occ}
+                                  updateOccurrence={updateOccurrence}
+                                  formatLocalDatetime={formatLocalDatetime}
+                                />
+                              </div>
+                            </TooltipTrigger>
+                            {hasWarning && (
+                              <TooltipContent
+                                side="right"
+                                className="bg-amber-100 text-amber-800 border border-amber-300"
+                              >
+                                <p className="text-sm font-medium">
+                                  {isStartDatePast && isEndDatePast
+                                    ? "Both start and end dates are in the past"
+                                    : isStartDatePast
+                                    ? "Start date is in the past"
+                                    : "End date is in the past"}
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
+                      );
+                    })
                   )}
                   <Button
                     type="button"
@@ -448,34 +560,58 @@ export default function WorkshopOfferAgain() {
                     Your New Workshop Dates
                   </h3>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    {occurrences.map((occ, index) => (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
-                      >
-                        <div className="flex-1">
-                          <div className="font-medium">
-                            {formatDisplayDate(occ.startDate)}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            to {formatDisplayDate(occ.endDate)}
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => removeOccurrence(index)}
-                          className="text-sm text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
+                    {occurrences.map((occ, index) => {
+                      const isStartDatePast = isDateInPast(occ.startDate);
+                      const isEndDatePast = isDateInPast(occ.endDate);
+                      const hasWarning = isStartDatePast || isEndDatePast;
+
+                      return (
+                        <div
+                          key={index}
+                          className={`flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150 ${
+                            hasWarning ? "border-l-4 border-amber-500" : ""
+                          }`}
                         >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
+                          <div className="flex-1">
+                            <div className="font-medium flex items-center">
+                              {formatDisplayDate(occ.startDate)}
+                              {isStartDatePast && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                >
+                                  Past Date
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 flex items-center">
+                              to {formatDisplayDate(occ.endDate)}
+                              {isEndDatePast && !isStartDatePast && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                >
+                                  Past Date
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => removeOccurrence(index)}
+                            className="text-sm text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
             </div>
-            
+
             <FormMessage>{actionData?.errors?.occurrences}</FormMessage>
           </FormItem>
 
@@ -493,27 +629,78 @@ export default function WorkshopOfferAgain() {
                 .map((occ) => {
                   // Calculate PST dates for any entries missing them
                   const startOffset = occ.startDate.getTimezoneOffset();
-                  const startDatePST = occ.startDatePST || new Date(occ.startDate.getTime() - startOffset * 60000);
-                  
+                  const startDatePST =
+                    occ.startDatePST ||
+                    new Date(occ.startDate.getTime() - startOffset * 60000);
+
                   const endOffset = occ.endDate.getTimezoneOffset();
-                  const endDatePST = occ.endDatePST || new Date(occ.endDate.getTime() - endOffset * 60000);
-                  
+                  const endDatePST =
+                    occ.endDatePST ||
+                    new Date(occ.endDate.getTime() - endOffset * 60000);
+
                   return {
                     startDate: occ.startDate.toISOString(),
                     endDate: occ.endDate.toISOString(),
                     startDatePST: startDatePST.toISOString(),
-                    endDatePST: endDatePST.toISOString()
+                    endDatePST: endDatePST.toISOString(),
                   };
                 })
             )}
           />
+
+          {/* Confirmation Dialog for Past Dates */}
+          <AlertDialog
+            open={isConfirmDialogOpen}
+            onOpenChange={(open) => {
+              setIsConfirmDialogOpen(open);
+              // If dialog is closed without submitting, reset the submitting state
+              if (!open) {
+                setFormSubmitting(false);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Warning: Past Workshop Dates
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Some of your workshop dates are in the past. Are you sure you
+                  want to create a new offering with past dates?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setFormSubmitting(false)}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    console.log("User confirmed to proceed with past dates");
+                    setFormSubmitting(true);
+                    // Use setTimeout to ensure React state updates before form submission
+                    setTimeout(() => {
+                      const formElement = document.querySelector(
+                        "form"
+                      ) as HTMLFormElement;
+                      if (formElement) {
+                        console.log("Submitting form after confirmation");
+                        formElement.submit();
+                      }
+                    }, 50);
+                  }}
+                >
+                  Proceed Anyway
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           {/* Submit Button */}
           <div className="flex justify-center">
             <Button
               type="submit"
               className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-              disabled={occurrences.length === 0}
+              disabled={occurrences.length === 0 || formSubmitting}
             >
               Create New Offering
             </Button>
