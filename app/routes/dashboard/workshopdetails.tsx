@@ -401,8 +401,7 @@ export default function WorkshopDetails() {
           )}
           {isAdmin && (
             <Button
-              variant="outline"
-              className="text-green-600 border-green-500 hover:bg-green-50 flex items-center gap-2 ml-auto"
+              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ml-auto"
               onClick={() => handleOfferAgain()}
             >
               Offer Again
