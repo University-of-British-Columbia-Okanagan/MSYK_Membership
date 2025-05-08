@@ -274,17 +274,6 @@ export default function WorkshopDetails() {
     (prereq: PrerequisiteWorkshop) => !prereq.completed
   );
 
-  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
-  const isContinuation = workshop.occurrences.some(
-    (occ: any) => occ.connectId !== null
-  );
-
-  // If user is registered for ANY occurrence in a continuation workshop,
-  // consider them registered for the entire workshop.
-  const isUserRegisteredForAny = workshop.occurrences.some(
-    (occ: any) => registrations[occ.id]?.registered
-  );
-
   // Gather the earliest registration date for cancellation window
   const userRegistrationDates = workshop.occurrences
     .filter((occ: any) => registrations[occ.id]?.registered)
@@ -298,14 +287,6 @@ export default function WorkshopDetails() {
     userRegistrationDates.length > 0
       ? new Date(Math.min(...userRegistrationDates.map((d) => d.getTime())))
       : null;
-
-  // Check if ALL occurrences are "past" or "cancelled"
-  const allPast = workshop.occurrences.every(
-    (occ: any) => occ.status === "past"
-  );
-  const allCancelled = workshop.occurrences.every(
-    (occ: any) => occ.status === "cancelled"
-  );
 
   // For continuation workshops: single registration/cancellation handling
   function handleRegisterAll() {
@@ -360,6 +341,27 @@ export default function WorkshopDetails() {
       }
     });
   }
+
+  const sortedOccurrences = [...workshop.occurrences].sort((a, b) => {
+    return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+  });
+
+  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
+  const isContinuation = sortedOccurrences.some(
+    (occ: any) => occ.connectId !== null
+  );
+
+  // If user is registered for ANY occurrence in a continuation workshop,
+  // consider them registered for the entire workshop.
+  const isUserRegisteredForAny = sortedOccurrences.some(
+    (occ: any) => registrations[occ.id]?.registered
+  );
+
+  const allPast = sortedOccurrences.every((occ: any) => occ.status === "past");
+
+  const allCancelled = sortedOccurrences.every(
+    (occ: any) => occ.status === "cancelled"
+  );
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -426,7 +428,7 @@ export default function WorkshopDetails() {
             <>
               <h2 className="text-lg font-semibold mb-4">Workshop Dates</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {workshop.occurrences.map((occ: any) => (
+                {sortedOccurrences.map((occ: any) => (
                   <div
                     key={occ.id}
                     className="border p-4 rounded-lg shadow-md bg-gray-50"
@@ -531,7 +533,7 @@ export default function WorkshopDetails() {
             <>
               <h2 className="text-lg font-semibold mb-4">Available Dates</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {workshop.occurrences.map((occurrence: Occurrence) => {
+                {sortedOccurrences.map((occurrence: Occurrence) => {
                   const regData = registrations[occurrence.id] || {
                     registered: false,
                     registeredAt: null,
