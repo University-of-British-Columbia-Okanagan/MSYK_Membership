@@ -470,19 +470,69 @@ export default function WorkshopDetails() {
           {/* Continuation Workshop Block */}
           {isContinuation ? (
             <>
-              <h2 className="text-lg font-semibold mb-4">Workshop Dates</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {sortedOccurrences.map((occ: any) => (
-                  <div
-                    key={occ.id}
-                    className="border p-4 rounded-lg shadow-md bg-gray-50"
-                  >
-                    <p className="text-lg font-medium text-gray-800">
-                      📅 {new Date(occ.startDate).toLocaleString()} -{" "}
-                      {new Date(occ.endDate).toLocaleString()}
-                    </p>
-                  </div>
-                ))}
+              <h2 className="text-lg font-semibold mb-4">
+                Multi-day Workshop Dates
+              </h2>
+              {/* New Box-Style UI for multi-day workshops */}
+              <div className="border rounded-lg shadow-md bg-white p-4 mb-6">
+                <div className="grid gap-3">
+                  {sortedOccurrences.map((occ: any, index: number) => (
+                    <div
+                      key={occ.id}
+                      className="flex items-center p-3 rounded-md bg-gray-50 border border-gray-200"
+                      // className={`flex items-center p-3 rounded-md ${
+                      //   occ.status === "cancelled"
+                      //     ? "bg-red-50 border border-red-200"
+                      //     : occ.status === "past"
+                      //     ? "bg-gray-50 border border-gray-200"
+                      //     : "bg-green-50 border border-green-200"
+                      // }`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center">
+                          <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-500 text-white text-xs mr-2">
+                            {index + 1}
+                          </span>
+                          <p className="font-medium">
+                            {new Date(occ.startDate).toLocaleDateString(
+                              undefined,
+                              {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )}
+                          </p>
+                        </div>
+                        <p className="text-sm text-gray-600 ml-8">
+                          {new Date(occ.startDate).toLocaleTimeString(
+                            undefined,
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}{" "}
+                          {" - "}
+                          {new Date(occ.endDate).toLocaleTimeString(undefined, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+
+                      {/* <div>
+              {occ.status === "cancelled" ? (
+                <Badge className="bg-red-500 text-white">Cancelled</Badge>
+              ) : occ.status === "past" ? (
+                <Badge className="bg-gray-500 text-white">Past</Badge>
+              ) : (
+                <Badge className="bg-green-500 text-white">Active</Badge>
+              )}
+            </div> */}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <Separator className="my-6" />
@@ -504,7 +554,7 @@ export default function WorkshopDetails() {
                   if (anyDatePassed) {
                     return (
                       <Badge className="bg-gray-500 text-white px-3 py-1">
-                        Workshop has passed
+                        Workshop registration has passed
                       </Badge>
                     );
                   } else if (isUserRegisteredForAny) {
@@ -530,7 +580,7 @@ export default function WorkshopDetails() {
                                     handleCancelAll();
                                   }}
                                 >
-                                  Yes, Cancel Entire Workshop
+                                  Yes, Cancel Entire Workshop Registration
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onSelect={(e) => {
@@ -559,14 +609,21 @@ export default function WorkshopDetails() {
                       </div>
                     );
                   } else {
+                    // CHANGE 2: Replace the Register button with a Confirm button
+                    // This shows number of sessions being registered for
+                    const activeOccurrences = sortedOccurrences.filter(
+                      (occ: any) =>
+                        occ.status !== "past" && occ.status !== "cancelled"
+                    );
+
                     return (
-                      <Button
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                        onClick={() => handleRegisterAll()}
-                        disabled={!hasCompletedAllPrerequisites}
-                      >
-                        Register for Entire Workshop
-                      </Button>
+                      <ConfirmButton
+                        confirmTitle="Register for Multi-Day Workshop"
+                        confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
+                        onConfirm={() => handleRegisterAll()}
+                        buttonLabel={`Register for Entire Workshop`}
+                        buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                      />
                     );
                   }
                 })()
