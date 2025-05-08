@@ -184,10 +184,6 @@ export async function getWorkshopById(workshopId: number) {
           include: {
             userWorkshops: true,
             equipmentSlots: {
-              // ✅ Move this inside occurrences
-              select: {
-                equipmentId: true,
-              },
               include: {
                 equipment: true,
               },
