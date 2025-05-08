@@ -659,7 +659,7 @@ export default function WorkshopDetails() {
                         ) : occurrence.status === "past" ? (
                           <>
                             <Badge className="bg-gray-500 text-white px-3 py-1">
-                              Past
+                              Registration has past
                             </Badge>
                           </>
                         ) : isOccurrenceRegistered ? (
