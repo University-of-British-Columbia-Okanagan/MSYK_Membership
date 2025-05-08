@@ -419,7 +419,20 @@ export default function EditWorkshop() {
       }
     }
 
-    const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
+    // Find the highest offerId from existing occurrences
+    const offerIds = occurrences
+      .map((occ) => occ.offerId || 0)
+      .filter((id) => id !== null && id !== undefined);
+
+    const highestOfferId = offerIds.length > 0 ? Math.max(...offerIds) : 1;
+
+    // Create new occurrence with the highest offerId
+    const newOccurrence = {
+      startDate: new Date(""),
+      endDate: new Date(""),
+      offerId: highestOfferId, // Use the highest existing offerId
+    };
+
     const updatedOccurrences = [...occurrences, newOccurrence];
 
     // Sort by startDate

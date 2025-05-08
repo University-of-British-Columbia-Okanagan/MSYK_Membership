@@ -145,31 +145,29 @@ export async function addWorkshop(data: WorkshopData) {
         }
 
         // Step 4b: Assign these slots evenly across workshop occurrences
-           
-             const occ = occurrences[0]; 
 
-             await db.equipmentSlot.updateMany({
-               where: { id: { in: selectedSlotIds } },
-               data: {
-                 isBooked: true,
-                 workshopOccurrenceId: occ.id,
-               },
-             });
-     
-             console.log(
-               `✅ Assigned ${selectedSlotIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
-             );
-           } 
-         }
-     
-         return { ...newWorkshop, occurrences };
-       } catch (error: any) {
-         console.error("Error adding workshop:", error);
-         throw new Error(`Failed to add workshop: ${error.message}`);
-       }
-     }
-     
+        const occ = occurrences[0];
 
+        await db.equipmentSlot.updateMany({
+          where: { id: { in: selectedSlotIds } },
+          data: {
+            isBooked: true,
+            workshopOccurrenceId: occ.id,
+          },
+        });
+
+        console.log(
+          `✅ Assigned ${selectedSlotIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
+        );
+      }
+    }
+
+    return { ...newWorkshop, occurrences };
+  } catch (error: any) {
+    console.error("Error adding workshop:", error);
+    throw new Error(`Failed to add workshop: ${error.message}`);
+  }
+}
 
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
@@ -214,7 +212,7 @@ export async function getWorkshopById(workshopId: number) {
     const equipments = workshop.occurrences.flatMap((occ) =>
       occ.equipmentSlots.map((slot) => slot.equipmentId)
     );
-    
+
     return {
       ...workshop,
       prerequisites,
@@ -225,7 +223,6 @@ export async function getWorkshopById(workshopId: number) {
     throw new Error("Failed to fetch workshop");
   }
 }
-
 
 /**
  * Update a workshop, including modifying occurrences.
@@ -313,6 +310,16 @@ export async function updateWorkshopWithOccurrences(
 
   if (createOccurrences.length > 0) {
     const now = new Date();
+
+    // Get the maximum existing offerId for this workshop
+    const maxOfferIdResult = await db.workshopOccurrence.aggregate({
+      where: { workshopId },
+      _max: { offerId: true },
+    });
+
+    // Use the highest existing offerId (or default to 1 if none exists)
+    const currentOfferId = (maxOfferIdResult._max.offerId as number) || 1;
+
     const createdOccurrences = await Promise.all(
       createOccurrences.map(async (occ) => {
         const status =
@@ -331,6 +338,7 @@ export async function updateWorkshopWithOccurrences(
             startDatePST: occ.startDatePST,
             endDatePST: occ.endDatePST,
             status,
+            offerId: currentOfferId, // Use the current highest offerId
           },
         });
 
