@@ -1,10 +1,12 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { TimeIntervalPicker } from "./TimeIntervalPicker";
+import { cn } from "@/lib/utils"; // Make sure to import cn
 
 export interface Occurrence {
   startDate: Date;
   endDate: Date;
+  status?: string;
 }
 
 export interface OccurrenceRowProps {
@@ -16,6 +18,7 @@ export interface OccurrenceRowProps {
     value: string
   ) => void;
   formatLocalDatetime: (date: Date) => string;
+  className?: string; // Add this to accept custom styling
 }
 
 const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
@@ -23,13 +26,14 @@ const OccurrenceRow: React.FC<OccurrenceRowProps> = ({
   occurrence,
   updateOccurrence,
   formatLocalDatetime,
+  className, // Accept className prop
 }) => {
   // Determine if a valid date has been selected for each occurrence.
   const startDateValid = !isNaN(occurrence.startDate.getTime());
   const endDateValid = !isNaN(occurrence.endDate.getTime());
 
   return (
-    <div className="flex gap-2 items-center mb-2 w-full">
+    <div className={cn("flex gap-2 items-center mb-2 w-full", className)}>
       <div className="flex items-center gap-2 flex-1">
         <Input
           type="date"

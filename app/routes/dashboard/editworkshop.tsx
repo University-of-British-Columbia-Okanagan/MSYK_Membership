@@ -786,43 +786,48 @@ export default function EditWorkshop() {
                               occ.status !== "cancelled";
 
                             return (
-                              <TooltipProvider key={index}>
-                                <Tooltip open={hasWarning ? undefined : false}>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      className={cn(
-                                        "w-full",
-                                        hasWarning &&
-                                          "border-l-4 border-amber-500 pl-2"
-                                      )}
-                                    >
-                                      <OccurrenceRow
-                                        key={index}
-                                        index={index}
-                                        occurrence={occ}
-                                        updateOccurrence={updateOccurrence}
-                                        formatLocalDatetime={
-                                          formatLocalDatetime
-                                        }
-                                      />
-                                    </div>
-                                  </TooltipTrigger>
-                                  {hasWarning && (
-                                    <TooltipContent
-                                      side="right"
-                                      className="bg-amber-100 text-amber-800 border border-amber-300"
-                                    >
-                                      <p className="text-sm font-medium">
-                                        {isStartDatePast && isEndDatePast
-                                          ? "Both start and end dates are in the past"
-                                          : isStartDatePast
-                                          ? "Start date is in the past"
-                                          : "End date is in the past"}
-                                      </p>
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </TooltipProvider>
+                              <div key={index} style={{ width: "100%" }}>
+                                <TooltipProvider>
+                                  <Tooltip
+                                    open={hasWarning ? undefined : false}
+                                  >
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        style={{
+                                          borderLeft: hasWarning
+                                            ? "4px solid #f59e0b"
+                                            : "none",
+                                          paddingLeft: hasWarning ? "8px" : "0",
+                                          width: "100%",
+                                        }}
+                                      >
+                                        <OccurrenceRow
+                                          index={index}
+                                          occurrence={occ}
+                                          updateOccurrence={updateOccurrence}
+                                          formatLocalDatetime={
+                                            formatLocalDatetime
+                                          }
+                                        />
+                                      </div>
+                                    </TooltipTrigger>
+                                    {hasWarning && (
+                                      <TooltipContent
+                                        side="right"
+                                        className="bg-amber-100 text-amber-800 border border-amber-300"
+                                      >
+                                        <p className="text-sm font-medium">
+                                          {isStartDatePast && isEndDatePast
+                                            ? "Both start and end dates are in the past"
+                                            : isStartDatePast
+                                            ? "Start date is in the past"
+                                            : "End date is in the past"}
+                                        </p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
                             );
                           })
                         )}
