@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 // run npx tsx seed.ts
 async function main() {
-
+  await prisma.adminSettings.deleteMany();
   await prisma.userMembershipPayment.deleteMany();
   await prisma.userMembership.deleteMany();
   await prisma.user.deleteMany();
@@ -117,7 +117,7 @@ async function main() {
           start: "00:00", // 24/7 Access
           end: "23:59",
         },
-        type: "monthly"
+        type: "monthly",
       },
       {
         title: "Drop-In 10 Pass",
@@ -238,9 +238,19 @@ async function main() {
         description:
           "Machine for cutting adhesive vinyl for signs and stickers.",
         availability: true,
-        price: 30.
+        price: 30,
       },
     ],
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "workshop_visibility_days" },
+    update: { value: "60" },
+    create: {
+      key: "workshop_visibility_days",
+      value: "60",
+      description: "Max number of days ahead that workshops are visible",
+    },
   });
 
   console.log("Database seeded successfully!");
