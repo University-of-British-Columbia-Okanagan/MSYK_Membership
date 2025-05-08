@@ -22,6 +22,7 @@ import {
   cancelUserWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
+import { getWorkshopVisibilityDays } from "../../models/admin.server";
 import { useState, useEffect } from "react";
 import { AlertCircle, Users } from "lucide-react";
 import {
@@ -67,6 +68,49 @@ export async function loader({
 
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
+
+  // Get the current date
+  const now = new Date();
+
+  // Get admin settings for workshop visibility days
+  const visibilityDays = await getWorkshopVisibilityDays();
+
+  // Calculate the future cutoff date based on admin settings
+  const futureCutoffDate = new Date();
+  futureCutoffDate.setDate(futureCutoffDate.getDate() + visibilityDays);
+
+  // Find the most recent (highest) offerId that has active dates
+  const currentOfferIds = workshop.occurrences
+    .filter(
+      (occ: any) => new Date(occ.endDate) >= now && occ.status === "active"
+    )
+    .map((occ: any) => occ.offerId);
+
+  // If there are no current offers, show all active future dates
+  const latestOfferId =
+    currentOfferIds.length > 0
+      ? Math.max(...currentOfferIds)
+      : Math.max(...workshop.occurrences.map((occ: any) => occ.offerId), 0);
+
+  // Filter occurrences based on rules:
+  // 1. Include all active dates from the latest offer
+  // 2. Include past dates from the current offer
+  // 3. Exclude past dates from previous offers
+  // 4. Only show dates within the visibility window
+  workshop.occurrences = workshop.occurrences.filter((occ: any) => {
+    const occDate = new Date(occ.startDate);
+    const isPast = occDate < now;
+    const isCurrentOffer = occ.offerId === latestOfferId;
+    const isWithinVisibilityWindow = occDate <= futureCutoffDate;
+
+    // Include if:
+    // - It's from the current offer (regardless of past/future)
+    // - OR it's an active date from any offer within visibility window
+    return (
+      (isCurrentOffer || (!isPast && occ.status === "active")) &&
+      isWithinVisibilityWindow
+    );
+  });
 
   // Instead of storing just a boolean, we'll store { registered, registeredAt } for each occurrence
   let registrations: {
