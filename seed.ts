@@ -20,6 +20,7 @@ async function main() {
   await prisma.$executeRaw`ALTER SEQUENCE "Workshop_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "WorkshopOccurrence_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "Equipment_id_seq" RESTART WITH 1`;
+  await prisma.$executeRaw`ALTER SEQUENCE "AdminSettings_id_seq" RESTART WITH 1`;
 
   const hashedPassword = await bcrypt.hash("password", 10);
   const now = new Date();
@@ -250,6 +251,16 @@ async function main() {
       key: "workshop_visibility_days",
       value: "60",
       description: "Max number of days ahead that workshops are visible",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "equipment_visible_registrable_days" },
+    update: { value: "7" },
+    create: {
+      key: "equipment_visible_registrable_days",
+      value: "7",
+      description: "Max number of days ahead that equipment is visible and registrable",
     },
   });
 
