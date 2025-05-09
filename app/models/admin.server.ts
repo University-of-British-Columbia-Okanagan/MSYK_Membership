@@ -53,3 +53,20 @@ export async function getWorkshopVisibilityDays(): Promise<number> {
   );
   return parseInt(visibilityDays, 10);
 }
+
+/**
+ * Update a workshop's registration cutoff
+ * @param workshopId The workshop ID to update
+ * @param cutoffMinutes The new cutoff time in minutes
+ * @returns The updated workshop
+ */
+export async function updateWorkshopCutoff(workshopId: number, cutoffMinutes: number) {
+  return db.workshop.update({
+    where: {
+      id: workshopId,
+    },
+    data: {
+      registrationCutoff: cutoffMinutes,
+    },
+  });
+}
