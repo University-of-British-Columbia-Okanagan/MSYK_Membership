@@ -28,7 +28,10 @@ import {
   updateWorkshopCutoff,
   getEquipmentVisibilityDays,
 } from "~/models/admin.server";
-import { getLevel3ScheduleRestrictions } from "~/models/equipment.server";
+import {
+  getLevel3ScheduleRestrictions,
+  getLevel4UnavailableHours,
+} from "~/models/equipment.server";
 import { getWorkshops } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import {
@@ -76,6 +79,7 @@ export async function loader({ request }: { request: Request }) {
   const users = await getAllUsers();
 
   const level3Schedule = await getLevel3ScheduleRestrictions();
+  const level4UnavailableHours = await getLevel4UnavailableHours();
 
   // Return settings to the component
   return {
@@ -84,6 +88,7 @@ export async function loader({ request }: { request: Request }) {
       workshopVisibilityDays,
       equipmentVisibilityDays,
       level3Schedule,
+      level4UnavailableHours,
     },
     workshops,
     users,
@@ -126,6 +131,17 @@ export async function action({ request }: { request: Request }) {
             "level3_start_end_hours",
             scheduleData.toString(),
             "Configurable start and end hours for level 3 users to book equipment on each day of the week"
+          );
+        }
+      }
+
+      if (settingType === "level4UnavailableHours") {
+        const unavailableData = formData.get("level4UnavailableHours");
+        if (unavailableData) {
+          await updateAdminSetting(
+            "level4_unavaliable_hours",
+            unavailableData.toString(),
+            "Hours when level 4 users cannot book equipment. If start > end, it represents a period that crosses midnight."
           );
         }
       }
@@ -270,6 +286,10 @@ export default function AdminSettings() {
       level3Schedule: {
         [day: string]: { start: number; end: number; closed?: boolean };
       };
+      level4UnavailableHours: {
+        start: number;
+        end: number;
+      };
     };
     workshops: Array<{
       id: number;
@@ -330,12 +350,17 @@ export default function AdminSettings() {
   });
   const [editingDay, setEditingDay] = useState<string | null>(null);
 
+  const [level4UnavailableHours, setLevel4UnavailableHours] = useState({
+    start: settings.level4UnavailableHours?.start ?? 0,
+    end: settings.level4UnavailableHours?.end ?? 0,
+  });
+  const [editingLevel4Hours, setEditingLevel4Hours] = useState(false);
+
   const [editingWorkshop, setEditingWorkshop] = useState<number | null>(null);
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
 
   const [searchName, setSearchName] = useState("");
-
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -343,7 +368,6 @@ export default function AdminSettings() {
       return searchName === "" || fullName.includes(searchName.toLowerCase());
     });
   }, [users, searchName]);
-
   // Sort filtered users by user.id in ascending order
   const sortedFilteredUsers = useMemo(() => {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
@@ -436,6 +460,18 @@ export default function AdminSettings() {
   // Function to toggle editing mode for a day
   const toggleEditDay = (day: string) => {
     setEditingDay(editingDay === day ? null : day);
+  };
+
+  const handleLevel4HoursSave = () => {
+    const formData = new FormData();
+    formData.append("actionType", "updateSettings");
+    formData.append("settingType", "level4UnavailableHours");
+    formData.append(
+      "level4UnavailableHours",
+      JSON.stringify(level4UnavailableHours)
+    );
+    submit(formData, { method: "post" });
+    setEditingLevel4Hours(false);
   };
 
   return (
@@ -895,6 +931,133 @@ export default function AdminSettings() {
                       Save All Schedule Changes
                     </Button>
                   </CardFooter>
+                </Card>
+
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Level 4 User Booking Hours</CardTitle>
+                    <CardDescription>
+                      Configure when level 4 users cannot book equipment
+                      (applies to all days)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <p className="text-sm text-gray-500">
+                        Level 4 users can book equipment 24/7 by default, but
+                        you can set a daily time window when booking is not
+                        allowed. For example, if you set "Start: 20" and "End:
+                        5", they cannot book from 8 PM to 5 AM. Setting both "Start: 0"
+                        and "End: 0" means no restrictions.
+                      </p>
+
+                      <div className="flex space-x-6 items-end">
+                        <div className="space-y-2">
+                          <Label htmlFor="level4-start">
+                            Unavailable Start Hour (24h)
+                          </Label>
+                          <Input
+                            id="level4-start"
+                            type="number"
+                            min="0"
+                            max="23"
+                            value={level4UnavailableHours.start}
+                            onChange={(e) =>
+                              setLevel4UnavailableHours((prev) => ({
+                                ...prev,
+                                start: parseInt(e.target.value) || 0,
+                              }))
+                            }
+                            className="w-24"
+                            disabled={!editingLevel4Hours}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="level4-end">
+                            Unavailable End Hour (24h)
+                          </Label>
+                          <Input
+                            id="level4-end"
+                            type="number"
+                            min="0"
+                            max="23"
+                            value={level4UnavailableHours.end}
+                            onChange={(e) =>
+                              setLevel4UnavailableHours((prev) => ({
+                                ...prev,
+                                end: parseInt(e.target.value) || 0,
+                              }))
+                            }
+                            className="w-24"
+                            disabled={!editingLevel4Hours}
+                          />
+                        </div>
+
+                        {!editingLevel4Hours ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => setEditingLevel4Hours(true)}
+                            className="mb-[2px]"
+                          >
+                            <Edit2 className="h-4 w-4 mr-2" />
+                            Edit Hours
+                          </Button>
+                        ) : (
+                          <div className="flex space-x-2 mb-[2px]">
+                            <Button
+                              variant="outline"
+                              onClick={handleLevel4HoursSave}
+                              className="text-green-600"
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Save
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setEditingLevel4Hours(false);
+                                setLevel4UnavailableHours({
+                                  start:
+                                    settings.level4UnavailableHours?.start ?? 0,
+                                  end:
+                                    settings.level4UnavailableHours?.end ?? 0,
+                                });
+                              }}
+                              className="text-red-600"
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-4">
+                        <div className="p-4 bg-gray-50 rounded-md">
+                          <div className="text-sm font-medium mb-2">
+                            Current Setting
+                          </div>
+                          {level4UnavailableHours.start === 0 &&
+                          level4UnavailableHours.end === 0 ? (
+                            <p className="text-sm text-gray-600">
+                              No restrictions - Level 4 users can book 24/7
+                            </p>
+                          ) : (
+                            <p className="text-sm text-gray-600">
+                              Level 4 users cannot book from{" "}
+                              {level4UnavailableHours.start}:00 to{" "}
+                              {level4UnavailableHours.end}:00
+                              {level4UnavailableHours.start >
+                              level4UnavailableHours.end
+                                ? " (overnight)"
+                                : ""}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
                 </Card>
               </TabsContent>
 

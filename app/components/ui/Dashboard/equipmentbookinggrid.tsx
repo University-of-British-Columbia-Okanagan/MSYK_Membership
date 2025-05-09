@@ -349,22 +349,26 @@ export default function EquipmentBookingGrid({
                 ? "bg-white hover:bg-green-200 cursor-pointer"
                 : "bg-pink-100 cursor-not-allowed";
 
-                return (
-                  <div
-                    key={`${day}-${time}`}
-                    className={`${baseStyle} ${colorClass} relative group`}
-                    onClick={() => !isAdminRestricted && handleSlotToggle(day, time)}
-                    onMouseEnter={() =>
-                      !isAdminRestricted && isDragging.current && handleSlotToggle(day, time)
-                    }
-                  >
-                    {isAdminRestricted && (
-                      <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
-                        Restricted by admin
-                      </div>
-                    )}
-                  </div>
-                );
+              return (
+                <div
+                  key={`${day}-${time}`}
+                  className={`${baseStyle} ${colorClass} relative group`}
+                  onClick={() =>
+                    !isAdminRestricted && handleSlotToggle(day, time)
+                  }
+                  onMouseEnter={() =>
+                    !isAdminRestricted &&
+                    isDragging.current &&
+                    handleSlotToggle(day, time)
+                  }
+                >
+                  {isAdminRestricted && (
+                    <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
+                      Restricted by admin
+                    </div>
+                  )}
+                </div>
+              );
             })}
           </React.Fragment>
         );
@@ -398,43 +402,43 @@ export default function EquipmentBookingGrid({
 
       {/* Legend */}
       <div className="flex flex-col items-center mb-6">
-  <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-    <div className="flex items-center gap-1">
-      <div className="w-4 h-4 bg-pink-100 border border-gray-300" />
-      <span>Unavailable</span>
-    </div>
-    <div className="flex items-center gap-1">
-      <div className="w-4 h-4 bg-green-500 border border-gray-300" />
-      <span>Available</span>
-    </div>
-    <div className="flex items-center gap-1">
-      <div className="w-4 h-4 bg-white border border-gray-300" />
-      <span>Unselected</span>
-    </div>
-  </div>
-  <div className="flex items-center gap-4 justify-center text-sm">
-    <div className="flex items-center gap-1">
-      <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
-      <span>Booked by You</span>
-    </div>
-    <div className="flex items-center gap-1">
-      <div className="w-4 h-4 bg-red-400 border border-gray-300" />
-      <span>Booked by Others</span>
-    </div>
-    <div className="flex items-center gap-1">
-      <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
-      <span>Reserved for Workshop</span>
-    </div>
-    {level3Restrictions && (
-      <div className="flex items-center gap-1">
-        <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
-        <span>Admin Restricted</span>
-      </div>
-    )}
-  </div>
+        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-pink-100 border border-gray-300" />
+            <span>Unavailable</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-green-500 border border-gray-300" />
+            <span>Available</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-white border border-gray-300" />
+            <span>Unselected</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 justify-center text-sm">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
+            <span>Booked by You</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-red-400 border border-gray-300" />
+            <span>Booked by Others</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
+            <span>Reserved for Workshop</span>
+          </div>
+          {level3Restrictions && (
+            <div className="flex items-center gap-1">
+              <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
+              <span>Admin Restricted</span>
+            </div>
+          )}
+        </div>
 
-  <p className="text-md font-medium mt-2">Click and Drag to Toggle</p>
-</div>
+        <p className="text-md font-medium mt-2">Click and Drag to Toggle</p>
+      </div>
 
       {/* Grid Render */}
       {grid}

@@ -715,3 +715,28 @@ export async function getLevel3ScheduleRestrictions() {
     };
   }
 }
+
+export async function getLevel4UnavailableHours() {
+  try {
+    const setting = await db.adminSettings.findUnique({
+      where: { key: "level4_unavaliable_hours" },
+    });
+    
+    if (!setting) {
+      // Return default - no restrictions
+      return {
+        start: 0,
+        end: 0
+      };
+    }
+    
+    return JSON.parse(setting.value);
+  } catch (error) {
+    console.error("Error fetching level 4 unavailable hours:", error);
+    // Return default on error
+    return {
+      start: 0,
+      end: 0
+    };
+  }
+}
