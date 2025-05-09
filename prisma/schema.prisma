@@ -53,13 +53,13 @@ model User {
   paymentInformation  UserPaymentInformation?
 }
 
-
 model RoleUser {
   id   Int    @id @default(autoincrement()) // Primary key with auto-increment
   name String @unique // Role name, e.g., "Admin" or "User"
 
   users User[] // Back-reference for the relation
 }
+
 model WorkshopPrerequisite {
   id             Int @id @default(autoincrement())
   workshopId     Int // The workshop that has prerequisites
@@ -85,6 +85,7 @@ model Workshop {
   type               String // "workshop" or "orientation"
   imageUrl           String?
   cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.")
+  registrationCutoff Int @default(60) // Registration cut-off in minutes before the workshop starts
 
   // Relationships
   occurrences    WorkshopOccurrence[] // Relationship to occurrences
