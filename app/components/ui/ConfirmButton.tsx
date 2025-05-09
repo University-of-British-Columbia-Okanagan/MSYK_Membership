@@ -19,6 +19,7 @@ interface ConfirmButtonProps {
   onConfirm: () => void;
   buttonLabel: React.ReactNode;
   buttonClassName?: string;
+  disabled?: boolean;
 }
 
 export function ConfirmButton({
@@ -27,12 +28,13 @@ export function ConfirmButton({
   onConfirm,
   buttonLabel,
   buttonClassName,
+  disabled,
 }: ConfirmButtonProps) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button type="button" className={buttonClassName}>
-          {buttonLabel}
+        <Button type="button" className={buttonClassName} disabled={disabled}>
+          {buttonLabel} 
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>

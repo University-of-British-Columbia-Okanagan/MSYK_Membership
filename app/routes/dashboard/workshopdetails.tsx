@@ -40,9 +40,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  duplicateWorkshop,
-} from "~/models/workshop.server";
+import { duplicateWorkshop } from "~/models/workshop.server";
 
 interface Occurrence {
   id: number;
@@ -230,13 +228,13 @@ export async function action({ request }: { request: Request }) {
     if (!user) {
       return { error: "User not authenticated" };
     }
-    
+
     try {
       // Call your duplicate function here
       // This should be implemented in your models/workshop.server
       // await duplicateWorkshop(Number(workshopId));
       await duplicateWorkshop(Number(workshopId));
-      
+
       // Redirect to admin dashboard after duplication
       return redirect("/dashboard/admin");
     } catch (error) {
@@ -245,6 +243,71 @@ export async function action({ request }: { request: Request }) {
     }
   }
 }
+
+/**
+ * Check if current time is within the registration cutoff period
+ * @param startDate Workshop start date
+ * @param cutoffMinutes Registration cutoff in minutes
+ * @returns true if within cutoff period (too late to register)
+ */
+const isWithinCutoffPeriod = (
+  startDate: Date,
+  cutoffMinutes: number
+): boolean => {
+  const now = new Date();
+  const cutoffTime = new Date(startDate.getTime() - cutoffMinutes * 60 * 1000);
+  return now >= cutoffTime;
+};
+
+/**
+ * Format cutoff time in a human-readable format
+ * @param minutes Cutoff minutes
+ * @returns Formatted string (e.g., "1 hour and 15 minutes" or "30 minutes")
+ */
+const formatCutoffTime = (minutes: number): string => {
+  if (minutes <= 0) {
+    return "0 minutes";
+  }
+
+  if (minutes >= 1440) {
+    // 1 day or more
+    const days = Math.floor(minutes / 1440);
+    const remainingMinutes = minutes % 1440;
+
+    if (remainingMinutes === 0) {
+      return `${days} ${days === 1 ? "day" : "days"}`;
+    }
+
+    const hours = Math.floor(remainingMinutes / 60);
+    const mins = remainingMinutes % 60;
+
+    let result = `${days} ${days === 1 ? "day" : "days"}`;
+    if (hours > 0) {
+      result += ` and ${hours} ${hours === 1 ? "hour" : "hours"}`;
+    }
+    if (mins > 0) {
+      result += `${hours > 0 ? " and " : " and "}${mins} ${
+        mins === 1 ? "minute" : "minutes"
+      }`;
+    }
+    return result;
+  } else if (minutes >= 60) {
+    // 1 hour or more
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+
+    if (mins === 0) {
+      return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    } else {
+      return `${hours} ${hours === 1 ? "hour" : "hours"} and ${mins} ${
+        mins === 1 ? "minute" : "minutes"
+      }`;
+    }
+  } else {
+    // Less than 1 hour
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+};
 
 export default function WorkshopDetails() {
   const {
@@ -658,14 +721,71 @@ export default function WorkshopDetails() {
                         occ.status !== "past" && occ.status !== "cancelled"
                     );
 
+                    const earliestActiveOccurrence = activeOccurrences.reduce(
+                      (earliest, current) => {
+                        const currentDate = new Date(current.startDate);
+                        const earliestDate = new Date(earliest.startDate);
+                        return currentDate < earliestDate ? current : earliest;
+                      },
+                      activeOccurrences[0]
+                    );
+
+                    const withinCutoffPeriod = earliestActiveOccurrence
+                      ? isWithinCutoffPeriod(
+                          new Date(earliestActiveOccurrence.startDate),
+                          workshop.registrationCutoff
+                        )
+                      : false;
+
                     return (
-                      <ConfirmButton
-                        confirmTitle="Register for Multi-Day Workshop"
-                        confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
-                        onConfirm={() => handleRegisterAll()}
-                        buttonLabel={`Register for Entire Workshop`}
-                        buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                      />
+                      <>
+                        {withinCutoffPeriod ? (
+                          <div className="flex flex-col items-start gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div>
+                                    <Button
+                                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg opacity-70"
+                                      disabled={true}
+                                    >
+                                      Register for Entire Workshop
+                                    </Button>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  align="start"
+                                  className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs"
+                                >
+                                  <p>
+                                    Registration is closed. Registration cutoff
+                                    is{" "}
+                                    {formatCutoffTime(
+                                      workshop.registrationCutoff
+                                    )}{" "}
+                                    before the first workshop session.
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <div className="bg-amber-100 text-amber-800 border border-amber-300 rounded-md p-3 text-sm">
+                              Registration is closed. Registration cutoff is{" "}
+                              {formatCutoffTime(workshop.registrationCutoff)}{" "}
+                              before the first workshop session.
+                            </div>
+                          </div>
+                        ) : (
+                          <ConfirmButton
+                            confirmTitle="Register for Multi-Day Workshop"
+                            confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
+                            onConfirm={() => handleRegisterAll()}
+                            buttonLabel={`Register for Entire Workshop`}
+                            buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                            disabled={!hasCompletedAllPrerequisites}
+                          />
+                        )}
+                      </>
                     );
                   }
                 })()
@@ -778,13 +898,44 @@ export default function WorkshopDetails() {
                             </DropdownMenu>
                           </>
                         ) : (
-                          <Button
-                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                            onClick={() => handleRegister(occurrence.id)}
-                            disabled={!hasCompletedAllPrerequisites}
-                          >
-                            Register
-                          </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Button
+                                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                                    onClick={() =>
+                                      handleRegister(occurrence.id)
+                                    }
+                                    disabled={
+                                      !hasCompletedAllPrerequisites ||
+                                      isWithinCutoffPeriod(
+                                        new Date(occurrence.startDate),
+                                        workshop.registrationCutoff
+                                      )
+                                    }
+                                  >
+                                    Register
+                                  </Button>
+                                </div>
+                              </TooltipTrigger>
+                              {isWithinCutoffPeriod(
+                                new Date(occurrence.startDate),
+                                workshop.registrationCutoff
+                              ) && (
+                                <TooltipContent className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs">
+                                  <p>
+                                    Registration is closed. Registration cutoff
+                                    is{" "}
+                                    {formatCutoffTime(
+                                      workshop.registrationCutoff
+                                    )}{" "}
+                                    before the workshop starts.
+                                  </p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                       </div>
                     </div>
