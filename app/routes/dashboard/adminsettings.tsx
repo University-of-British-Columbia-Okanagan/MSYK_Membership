@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Form,
   useLoaderData,
@@ -49,6 +49,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Edit2, Check, X } from "lucide-react";
+import { FiSearch } from "react-icons/fi";
+import {
+  getAllUsers,
+  updateUserRole,
+  updateUserAllowLevel,
+} from "~/models/user.server";
+import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ConfirmButton } from "@/components/ui/ConfirmButton";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -61,6 +69,9 @@ export async function loader({ request }: { request: Request }) {
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
   const workshops = await getWorkshops();
 
+  // Fetch all users for the user management tab
+  const users = await getAllUsers();
+
   // Return settings to the component
   return {
     roleUser,
@@ -68,6 +79,7 @@ export async function loader({ request }: { request: Request }) {
       workshopVisibilityDays,
     },
     workshops,
+    users,
   };
 }
 
@@ -130,11 +142,98 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updateUserRole") {
+    const userId = formData.get("userId");
+    const newRoleId = formData.get("newRoleId");
+    try {
+      await updateUserRole(Number(userId), String(newRoleId));
+      return {
+        success: true,
+        message: "User role updated successfully",
+      };
+    } catch (error) {
+      console.error("Error updating user role:", error);
+      return {
+        success: false,
+        message: "Failed to update user role",
+      };
+    }
+  }
+
+  if (actionType === "updateAllowLevel4") {
+    const userId = formData.get("userId");
+    const allowLevel4 = formData.get("allowLevel4");
+    try {
+      await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
+      return {
+        success: true,
+        message: "User permissions updated successfully",
+      };
+    } catch (error) {
+      console.error("Error updating allowLevel4:", error);
+      return {
+        success: false,
+        message: "Failed to update user permissions",
+      };
+    }
+  }
+
   return null;
 }
 
+/**
+ * RoleControl component:
+ * - Displays the user's current role level (read-only).
+ * - If the user's roleLevel is 3, it shows a button:
+ *    - "Allow Level 4" if allowLevel4 is false.
+ *    - "Revoke Level 4" if allowLevel4 is true.
+ * The ConfirmButton calls the updateAllowLevel4 action which now updates both allowLevel4 and roleLevel.
+ */
+function RoleControl({
+  user,
+}: {
+  user: { id: number; roleLevel: number; allowLevel4: boolean };
+}) {
+  const [allowLevel4, setAllowLevel4] = useState<boolean>(user.allowLevel4);
+  const submit = useSubmit();
+
+  const updateAllow = (newAllow: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateAllowLevel4");
+    formData.append("userId", user.id.toString());
+    formData.append("allowLevel4", newAllow.toString());
+    submit(formData, { method: "post" });
+    setAllowLevel4(newAllow);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-semibold">{user.roleLevel}</span>
+      {allowLevel4 ? (
+        <ConfirmButton
+          confirmTitle="Confirm Revoke Level 4"
+          confirmDescription="Are you sure you want to revoke Level 4 for this user? This will remove the extra privileges."
+          onConfirm={() => updateAllow(false)}
+          buttonLabel="Revoke Level 4"
+          buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+        />
+      ) : (
+        user.roleLevel === 3 && (
+          <ConfirmButton
+            confirmTitle="Confirm Enable Level 4"
+            confirmDescription="Are you sure you want to enable Level 4 for this user? This will grant extra privileges."
+            onConfirm={() => updateAllow(true)}
+            buttonLabel="Allow Level 4"
+            buttonClassName="bg-green-500 hover:bg-green-600 text-white"
+          />
+        )
+      )}
+    </div>
+  );
+}
+
 export default function AdminSettings() {
-  const { roleUser, settings, workshops } = useLoaderData<{
+  const { roleUser, settings, workshops, users } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
     settings: { workshopVisibilityDays: number };
     workshops: Array<{
@@ -142,6 +241,16 @@ export default function AdminSettings() {
       name: string;
       price: number;
       registrationCutoff: number;
+    }>;
+    users: Array<{
+      id: number;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      trainingCardUserNumber: string;
+      roleLevel: number;
+      allowLevel4: boolean;
     }>;
   }>();
 
@@ -158,6 +267,35 @@ export default function AdminSettings() {
   const [editingWorkshop, setEditingWorkshop] = useState<number | null>(null);
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
+
+  const [searchName, setSearchName] = useState("");
+
+  // Filter users by first and last name
+  const filteredUsers = useMemo(() => {
+    return users.filter((user) => {
+      const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
+      return searchName === "" || fullName.includes(searchName.toLowerCase());
+    });
+  }, [users, searchName]);
+
+  // Sort filtered users by user.id in ascending order
+  const sortedFilteredUsers = useMemo(() => {
+    return filteredUsers.slice().sort((a, b) => a.id - b.id);
+  }, [filteredUsers]);
+
+  // Define columns for the ShadTable
+  type UserRow = (typeof users)[number];
+  const columns: ColumnDefinition<UserRow>[] = [
+    { header: "First Name", render: (user) => user.firstName },
+    { header: "Last Name", render: (user) => user.lastName },
+    { header: "Email", render: (user) => user.email },
+    { header: "Phone Number", render: (user) => user.phone },
+    {
+      header: "Training Card User Number",
+      render: (user) => user.trainingCardUserNumber,
+    },
+    { header: "Role Level", render: (user) => <RoleControl user={user} /> },
+  ];
 
   // Helper function to convert time units to minutes
   const convertToMinutes = (value: number, unit: string): number => {
@@ -233,6 +371,7 @@ export default function AdminSettings() {
             <Tabs defaultValue="workshops" className="w-full">
               <TabsList className="mb-4">
                 <TabsTrigger value="workshops">Workshop Settings</TabsTrigger>
+                <TabsTrigger value="users">User Settings</TabsTrigger>
                 <TabsTrigger value="placeholder">Other Settings</TabsTrigger>
                 {/* Add more tabs here in the future */}
               </TabsList>
@@ -429,6 +568,33 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="users">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>User Management</CardTitle>
+                    <CardDescription>
+                      View and manage all registered users
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2 mb-6">
+                      <FiSearch className="text-gray-500" />
+                      <Input
+                        placeholder="Search by first or last name"
+                        value={searchName}
+                        onChange={(e) => setSearchName(e.target.value)}
+                        className="w-full md:w-64"
+                      />
+                    </div>
+                    <ShadTable
+                      columns={columns}
+                      data={sortedFilteredUsers}
+                      emptyMessage="No users found"
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               {/* Tab 2: Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
@@ -445,6 +611,7 @@ export default function AdminSettings() {
                   </CardContent>
                 </Card>
               </TabsContent>
+              
             </Tabs>
           </div>
         </main>

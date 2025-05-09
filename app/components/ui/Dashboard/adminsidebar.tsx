@@ -55,13 +55,6 @@ export function AdminAppSidebar() {
             Workshops
           </Link>
           <Link
-            to="/dashboard/admin/users"
-            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-          >
-            <UserSearch className="w-5 h-5" />
-            Users
-          </Link>
-          <Link
             to="/dashboard/events"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
