@@ -68,6 +68,8 @@ export default [
     "routes/dashboard/equipmentbooking.tsx"
   ),
   route("/dashboard/equipments", "routes/dashboard/equipments.tsx"),
+  route("/dashboard/equipment/edit/:id", "routes/dashboard/equipmentsedit.tsx"),
+  route("/dashboard/equipment/delete/:id", "routes/dashboard/equipmentsdelete.tsx"),
   route("/dashboard/myequipments", "routes/dashboard/myequipments.tsx"),
   route("/dashboard/equipments/:id", "routes/dashboard/equipmentdetails.tsx"),
   route("/dashboard/addequipment", "routes/dashboard/addequipment.tsx"),

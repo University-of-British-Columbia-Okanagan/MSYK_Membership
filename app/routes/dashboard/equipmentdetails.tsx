@@ -1,4 +1,4 @@
-import { useParams, useLoaderData, useFetcher, useNavigate } from "react-router-dom";
+import { useLoaderData, useFetcher, useNavigate } from "react-router-dom";
 import {
   Card,
   CardHeader,
@@ -9,10 +9,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import  { getEquipmentById, getAvailableSlots} from "../../models/equipment.server";
+import  { getEquipmentById, getAvailableSlots } from "../../models/equipment.server";
+import { getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
 
-export async function loader({ params }: { params: { id: string } }) {
+export async function loader({ request, params }: { request: Request; params: { id: string } }) {
+  const currentUserRole = await getRoleUser(request);
   const equipmentId = parseInt(params.id);
   (equipmentId);
   const slots = await getAvailableSlots(equipmentId)
@@ -20,11 +22,11 @@ export async function loader({ params }: { params: { id: string } }) {
   if (!equipment) {
     throw new Response("Equipment not found", { status: 404 });
   }
-  return { equipment, slots };
+  return { equipment, slots, currentUserRole };
 }
 
 export default function EquipmentDetails() {
-  const { equipment } = useLoaderData();
+  const { equipment, currentUserRole } = useLoaderData();
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
@@ -44,6 +46,32 @@ export default function EquipmentDetails() {
     navigate(`/dashboard/equipmentbooking/${equipment.id}`);
   };
 
+  const handleEditing = () => {
+    navigate(`/dashboard/equipment/edit/${equipment.id}`);
+  }
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm("Are you sure you want to delete this equipment?");
+    if (confirmed) {
+      try {
+        const response = await fetch(`/dashboard/equipment/delete/${equipment.id}`, {method: "DELETE"});
+  
+        const result = await response.json();
+  
+        if (result.success) {
+          navigate(-1);
+        } else {
+          setPopupMessage(result.error || "Failed to delete equipment.");
+          setShowPopup(true);
+        }
+      } catch (error) {
+        console.error("Failed to delete equipment:", error);
+        setPopupMessage("An error occurred while deleting the equipment.");
+        setShowPopup(true);
+      }
+    }
+  };  
+
   return (
     <div className="max-w-3xl mx-auto p-6">
       {showPopup && (
@@ -53,10 +81,21 @@ export default function EquipmentDetails() {
       )}
 
       <Card className="mt-6">
+        <div className="flex items-center justify-between">
         <CardHeader>
           <CardTitle className="text-2xl">{equipment.name}</CardTitle>
           <CardDescription>{equipment.description}</CardDescription>
         </CardHeader>
+        {currentUserRole && currentUserRole.roleName === "Admin" && (
+        <Button
+          className="bg-red-600 text-white w-max mr-5"
+          onClick={handleDelete}
+        >
+          Delete
+        </Button>
+      )}
+        </div>
+        
 
         <CardContent>
           <div className="flex gap-2">
@@ -67,14 +106,25 @@ export default function EquipmentDetails() {
 
           <Separator className="my-6" />
 
-          {/* Book Equipment Button */}
-          <Button
-            className="w-full bg-yellow-500 text-white"
-            onClick={handleBooking}
-            disabled={!equipment.availability}
-          >
-            {equipment.availability ? "Book Equipment" : "Unavailable"}
-          </Button>
+          {/* Book + Edit Equipment */}
+          <div className="flex gap-4">
+            <Button
+              className="flex-[3] bg-yellow-500 text-white"
+              onClick={handleBooking}
+              disabled={!equipment.availability}
+            >
+              {equipment.availability ? "Book Equipment" : "Unavailable"}
+            </Button>
+
+            {currentUserRole && currentUserRole.roleName === "Admin" && (
+              <Button
+                className="flex-[1] bg-slate-600 text-white"
+                onClick={handleEditing}
+              >
+                Edit
+              </Button>
+            )}
+          </div>
 
           <Separator className="my-6" />
 
