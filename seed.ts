@@ -264,6 +264,34 @@ async function main() {
     },
   });
 
+  await prisma.adminSettings.upsert({
+    where: { key: "level3_start_end_hours" },
+    update: { 
+      value: JSON.stringify({
+        Sunday: { start: 9, end: 17 },
+        Monday: { start: 9, end: 17 },
+        Tuesday: { start: 9, end: 17 },
+        Wednesday: { start: 9, end: 17 },
+        Thursday: { start: 9, end: 17 },
+        Friday: { start: 9, end: 17 },
+        Saturday: { start: 9, end: 17 }
+      })
+    },
+    create: {
+      key: "level3_start_end_hours",
+      value: JSON.stringify({
+        Sunday: { start: 9, end: 17 },
+        Monday: { start: 9, end: 17 },
+        Tuesday: { start: 9, end: 17 },
+        Wednesday: { start: 9, end: 17 },
+        Thursday: { start: 9, end: 17 },
+        Friday: { start: 9, end: 17 },
+        Saturday: { start: 9, end: 17 }
+      }),
+      description: "Configurable start and end hours for level 3 users to book equipment on each day of the week",
+    },
+  });
+
   console.log("Database seeded successfully!");
 }
 
