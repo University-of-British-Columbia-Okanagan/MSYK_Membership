@@ -61,6 +61,11 @@ interface EquipmentBookingGridProps {
   level3Restrictions?: {
     [day: string]: { start: number; end: number };
   };
+  level4Restrictions?: {
+    start: number;
+    end: number;
+  };
+  userRoleLevel?: number;
 }
 
 // export default function EquipmentBookingGrid({
@@ -84,6 +89,8 @@ export default function EquipmentBookingGrid({
   visibleTimeRange,
   visibleDays = 7, // Default to 7 days if not specified
   level3Restrictions,
+  level4Restrictions,
+  userRoleLevel,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -120,6 +127,29 @@ export default function EquipmentBookingGrid({
       hour < level3Restrictions[fullDayName].start ||
       hour >= level3Restrictions[fullDayName].end
     );
+  };
+
+  // Helper function to check if a slot is restricted by admin settings for level 4 users
+  const isLevel4Restricted = (day: string, time: string): boolean => {
+    // If there are no restrictions or settings are 0,0 (no restrictions)
+    if (
+      !level4Restrictions ||
+      (level4Restrictions.start === 0 && level4Restrictions.end === 0)
+    ) {
+      return false;
+    }
+  
+    // Get the hour from the time (e.g., "09:00" -> 9)
+    const hour = parseInt(time.split(":")[0], 10);
+  
+    // For restrictions that span overnight (e.g., 20 to 2)
+    if (level4Restrictions.start > level4Restrictions.end) {
+      return hour >= level4Restrictions.start || hour < level4Restrictions.end;
+    }
+    // For restrictions within the same day (e.g., 9 to 17)
+    else {
+      return hour >= level4Restrictions.start && hour < level4Restrictions.end;
+    }
   };
 
   // Generate day labels for the specified number of days
@@ -332,7 +362,13 @@ export default function EquipmentBookingGrid({
                 return slotDayStr === day && slotTimeStr === time;
               });
 
-              const isAdminRestricted = isRestrictedByAdmin(day, time);
+              const isAdminRestricted =
+                userRoleLevel === 3 ? isRestrictedByAdmin(day, time) : false;
+              const isLevel4AdminRestricted =
+                userRoleLevel === 4 ? isLevel4Restricted(day, time) : false;
+              const isAnyRestriction =
+                isAdminRestricted || isLevel4AdminRestricted;
+
               const baseStyle =
                 "w-full h-6 border-b border-r border-gray-300 transition-all duration-100";
               const colorClass = slot?.reservedForWorkshop
@@ -341,7 +377,7 @@ export default function EquipmentBookingGrid({
                 ? slot?.bookedByMe
                   ? "bg-blue-400 cursor-not-allowed" // Booked by me
                   : "bg-red-400 cursor-not-allowed" // Booked by others
-                : isAdminRestricted
+                : isAnyRestriction
                 ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
                 : isSelected
                 ? "bg-green-500"
@@ -354,15 +390,15 @@ export default function EquipmentBookingGrid({
                   key={`${day}-${time}`}
                   className={`${baseStyle} ${colorClass} relative group`}
                   onClick={() =>
-                    !isAdminRestricted && handleSlotToggle(day, time)
+                    !isAnyRestriction && handleSlotToggle(day, time)
                   }
                   onMouseEnter={() =>
-                    !isAdminRestricted &&
+                    !isAnyRestriction &&
                     isDragging.current &&
                     handleSlotToggle(day, time)
                   }
                 >
-                  {isAdminRestricted && (
+                  {isAnyRestriction && (
                     <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
                       Restricted by admin
                     </div>
@@ -429,7 +465,7 @@ export default function EquipmentBookingGrid({
             <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
           </div>
-          {level3Restrictions && (
+          {(level3Restrictions || level4Restrictions) && (
             <div className="flex items-center gap-1">
               <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
               <span>Admin Restricted</span>

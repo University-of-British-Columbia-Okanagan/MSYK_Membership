@@ -10,6 +10,7 @@ import {
   bookEquipment,
   getEquipmentById,
   getLevel3ScheduleRestrictions,
+  getLevel4UnavailableHours,
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
@@ -42,13 +43,18 @@ export async function loader({ request }: { request: Request }) {
     "7"
   );
 
-  const level3Restrictions = await getLevel3ScheduleRestrictions();
+  // Get level-specific restrictions
+  const level3Restrictions =
+    roleLevel === 3 ? await getLevel3ScheduleRestrictions() : null;
+  const level4Restrictions =
+    roleLevel === 4 ? await getLevel4UnavailableHours() : null;
 
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
     visibleDays: parseInt(visibleDays, 10),
     level3Restrictions,
+    level4Restrictions,
   });
 }
 
@@ -134,8 +140,13 @@ export async function action({ request }: { request: Request }) {
 //   );
 //   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 export default function EquipmentBookingForm() {
-  const { equipment, roleLevel, visibleDays, level3Restrictions } =
-    useLoaderData();
+  const {
+    equipment,
+    roleLevel,
+    visibleDays,
+    level3Restrictions,
+    level4Restrictions,
+  } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
@@ -221,6 +232,10 @@ export default function EquipmentBookingForm() {
               level3Restrictions={
                 roleLevel === 3 ? level3Restrictions : undefined
               }
+              level4Restrictions={
+                roleLevel === 4 ? level4Restrictions : undefined
+              }
+              userRoleLevel={roleLevel} 
             />
 
             {totalPrice && (
