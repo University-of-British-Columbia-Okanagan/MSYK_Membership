@@ -683,3 +683,35 @@ export async function toggleEquipmentAvailability(equipmentId: number, availabil
     data: { availability },
   });
 }
+
+export async function getLevel3ScheduleRestrictions() {
+  try {
+    const settingStr = await getAdminSetting("level3_start_end_hours", "");
+    if (!settingStr) {
+      // Default schedule if setting is not found
+      return {
+        Sunday: { start: 9, end: 17 },
+        Monday: { start: 9, end: 17 },
+        Tuesday: { start: 9, end: 17 },
+        Wednesday: { start: 9, end: 17 },
+        Thursday: { start: 9, end: 17 },
+        Friday: { start: 9, end: 17 },
+        Saturday: { start: 9, end: 17 }
+      };
+    }
+    
+    return JSON.parse(settingStr);
+  } catch (error) {
+    console.error("Error fetching level 3 schedule restrictions:", error);
+    // Fallback to default schedule
+    return {
+      Sunday: { start: 9, end: 17 },
+      Monday: { start: 9, end: 17 },
+      Tuesday: { start: 9, end: 17 },
+      Wednesday: { start: 9, end: 17 },
+      Thursday: { start: 9, end: 17 },
+      Friday: { start: 9, end: 17 },
+      Saturday: { start: 9, end: 17 }
+    };
+  }
+}

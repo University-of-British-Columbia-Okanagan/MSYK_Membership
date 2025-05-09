@@ -9,14 +9,13 @@ import {
   getEquipmentSlotsWithStatus,
   bookEquipment,
   getEquipmentById,
+  getLevel3ScheduleRestrictions,
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
 import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { useState } from "react";
 import { getAdminSetting } from "../../models/admin.server";
-
-// ✅ Import this!
 import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
@@ -43,10 +42,13 @@ export async function loader({ request }: { request: Request }) {
     "7"
   );
 
+  const level3Restrictions = await getLevel3ScheduleRestrictions();
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
     visibleDays: parseInt(visibleDays, 10),
+    level3Restrictions,
   });
 }
 
@@ -132,7 +134,8 @@ export async function action({ request }: { request: Request }) {
 //   );
 //   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 export default function EquipmentBookingForm() {
-  const { equipment, roleLevel, visibleDays } = useLoaderData();
+  const { equipment, roleLevel, visibleDays, level3Restrictions } =
+    useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
@@ -198,7 +201,7 @@ export default function EquipmentBookingForm() {
                 roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
               }
             /> */}
-            <EquipmentBookingGrid
+            {/* <EquipmentBookingGrid
               slotsByDay={selectedEquip?.slotsByDay || {}}
               onSelectSlots={setSelectedSlots}
               disabled={roleLevel === 1 || roleLevel === 2}
@@ -206,6 +209,18 @@ export default function EquipmentBookingForm() {
                 roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
               }
               visibleDays={visibleDays} // Pass the number of visible days
+            /> */}
+            <EquipmentBookingGrid
+              slotsByDay={selectedEquip?.slotsByDay || {}}
+              onSelectSlots={setSelectedSlots}
+              disabled={roleLevel === 1 || roleLevel === 2}
+              visibleTimeRange={
+                roleLevel === 3 ? { startHour: 9, endHour: 17 } : undefined
+              }
+              visibleDays={visibleDays} // Pass the number of visible days
+              level3Restrictions={
+                roleLevel === 3 ? level3Restrictions : undefined
+              }
             />
 
             {totalPrice && (
