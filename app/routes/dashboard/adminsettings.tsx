@@ -26,6 +26,7 @@ import {
   updateAdminSetting,
   getWorkshopVisibilityDays,
   updateWorkshopCutoff,
+  getEquipmentVisibilityDays,
 } from "~/models/admin.server";
 import { getWorkshops } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
@@ -67,6 +68,7 @@ export async function loader({ request }: { request: Request }) {
 
   // Load current settings
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
+  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
   const workshops = await getWorkshops();
 
   // Fetch all users for the user management tab
@@ -77,6 +79,7 @@ export async function loader({ request }: { request: Request }) {
     roleUser,
     settings: {
       workshopVisibilityDays,
+      equipmentVisibilityDays,
     },
     workshops,
     users,
@@ -91,13 +94,24 @@ export async function action({ request }: { request: Request }) {
     try {
       // Get values from form
       const workshopVisibilityDays = formData.get("workshopVisibilityDays");
+      const equipmentVisibilityDays = formData.get("equipmentVisibilityDays");
+      const settingType = formData.get("settingType");
 
       // Update workshop visibility days
-      if (workshopVisibilityDays) {
+      if (settingType === "workshop" && workshopVisibilityDays) {
         await updateAdminSetting(
           "workshop_visibility_days",
           workshopVisibilityDays.toString(),
           "Number of days to show future workshop dates"
+        );
+      }
+
+      // Update equipment visibility days
+      if (settingType === "equipment" && equipmentVisibilityDays) {
+        await updateAdminSetting(
+          "equipment_visible_registrable_days",
+          equipmentVisibilityDays.toString(),
+          "Number of days to show future equipment booking slots"
         );
       }
 
@@ -235,7 +249,7 @@ function RoleControl({
 export default function AdminSettings() {
   const { roleUser, settings, workshops, users } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
-    settings: { workshopVisibilityDays: number };
+    settings: { workshopVisibilityDays: number, equipmentVisibilityDays: number };
     workshops: Array<{
       id: number;
       name: string;
@@ -263,6 +277,9 @@ export default function AdminSettings() {
 
   const [workshopVisibilityDays, setWorkshopVisibilityDays] = useState(
     settings.workshopVisibilityDays.toString()
+  );
+  const [equipmentVisibilityDays, setEquipmentVisibilityDays] = useState(
+    settings.equipmentVisibilityDays.toString()
   );
   const [editingWorkshop, setEditingWorkshop] = useState<number | null>(null);
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
@@ -372,6 +389,7 @@ export default function AdminSettings() {
               <TabsList className="mb-4">
                 <TabsTrigger value="workshops">Workshop Settings</TabsTrigger>
                 <TabsTrigger value="users">User Settings</TabsTrigger>
+                <TabsTrigger value="equipment">Equipment Settings</TabsTrigger>
                 <TabsTrigger value="placeholder">Other Settings</TabsTrigger>
                 {/* Add more tabs here in the future */}
               </TabsList>
@@ -595,6 +613,59 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="equipment">
+                <Form method="post" className="space-y-6 mb-8">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input type="hidden" name="settingType" value="equipment" />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Equipment Booking Settings</CardTitle>
+                      <CardDescription>
+                        Configure how far ahead users can book equipment
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="equipmentVisibilityDays">
+                          Equipment Booking Visibility Days
+                        </Label>
+                        <Input
+                          id="equipmentVisibilityDays"
+                          name="equipmentVisibilityDays"
+                          type="number"
+                          value={equipmentVisibilityDays}
+                          onChange={(e) =>
+                            setEquipmentVisibilityDays(e.target.value)
+                          }
+                          min="1"
+                          max="365"
+                          className="w-full max-w-xs"
+                        />
+                        <p className="text-sm text-gray-500">
+                          Number of days in the future to display equipment
+                          booking slots. This controls how far ahead users can
+                          book equipment.
+                        </p>
+                      </div>
+                      {/* Additional equipment settings can be added here */}
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Equipment Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+              </TabsContent>
+
               {/* Tab 2: Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
@@ -611,7 +682,6 @@ export default function AdminSettings() {
                   </CardContent>
                 </Card>
               </TabsContent>
-              
             </Tabs>
           </div>
         </main>

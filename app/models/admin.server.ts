@@ -70,3 +70,36 @@ export async function updateWorkshopCutoff(workshopId: number, cutoffMinutes: nu
     },
   });
 }
+
+export async function getEquipmentVisibilityDays(): Promise<number> {
+  try {
+    const setting = await db.adminSettings.findUnique({
+      where: { key: "equipment_visible_registrable_days" },
+    });
+    
+    return setting ? parseInt(setting.value, 10) : 7; // Default to 7 days if not set
+  } catch (error) {
+    console.error("Error fetching equipment visibility days:", error);
+    return 7; // Default to 7 days on error
+  }
+}
+
+export async function updateEquipmentVisibilityDays(days: number): Promise<void> {
+  try {
+    await db.adminSettings.upsert({
+      where: { key: "equipment_visible_registrable_days" },
+      update: { 
+        value: days.toString(),
+        updatedAt: new Date()
+      },
+      create: {
+        key: "equipment_visible_registrable_days",
+        value: days.toString(),
+        description: "Number of days to show future equipment booking slots"
+      },
+    });
+  } catch (error) {
+    console.error("Error updating equipment visibility days:", error);
+    throw error;
+  }
+}
