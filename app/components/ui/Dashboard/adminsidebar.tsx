@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   Users,
   UserSearch,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -80,6 +81,13 @@ export function AdminAppSidebar() {
           >
             <Home className="w-5 h-5" />
             Membership Plans
+          </Link>
+          <Link
+            to="/dashboard/admin/settings"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <Settings className="w-5 h-5" />
+            Settings
           </Link>
         </SidebarGroup>
       </SidebarContent>
