@@ -4,6 +4,7 @@ import {
   useFetcher,
   useNavigate,
   Link,
+  redirect,
 } from "react-router-dom";
 import {
   Card,
@@ -22,6 +23,7 @@ import {
   cancelUserWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
+import { getWorkshopVisibilityDays } from "../../models/admin.server";
 import { useState, useEffect } from "react";
 import { AlertCircle, Users } from "lucide-react";
 import {
@@ -38,6 +40,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { duplicateWorkshop } from "~/models/workshop.server";
 
 interface Occurrence {
   id: number;
@@ -67,6 +70,49 @@ export async function loader({
 
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
+
+  // Get the current date
+  const now = new Date();
+
+  // Get admin settings for workshop visibility days
+  const visibilityDays = await getWorkshopVisibilityDays();
+
+  // Calculate the future cutoff date based on admin settings
+  const futureCutoffDate = new Date();
+  futureCutoffDate.setDate(futureCutoffDate.getDate() + visibilityDays);
+
+  // Find the most recent (highest) offerId that has active dates
+  const currentOfferIds = workshop.occurrences
+    .filter(
+      (occ: any) => new Date(occ.endDate) >= now && occ.status === "active"
+    )
+    .map((occ: any) => occ.offerId);
+
+  // If there are no current offers, show all active future dates
+  const latestOfferId =
+    currentOfferIds.length > 0
+      ? Math.max(...currentOfferIds)
+      : Math.max(...workshop.occurrences.map((occ: any) => occ.offerId), 0);
+
+  // Filter occurrences based on rules:
+  // 1. Include all active dates from the latest offer
+  // 2. Include past dates from the current offer
+  // 3. Exclude past dates from previous offers
+  // 4. Only show dates within the visibility window
+  workshop.occurrences = workshop.occurrences.filter((occ: any) => {
+    const occDate = new Date(occ.startDate);
+    const isPast = occDate < now;
+    const isCurrentOffer = occ.offerId === latestOfferId;
+    const isWithinVisibilityWindow = occDate <= futureCutoffDate;
+
+    // Include if:
+    // - It's from the current offer (regardless of past/future)
+    // - OR it's an active date from any offer within visibility window
+    return (
+      (isCurrentOffer || (!isPast && occ.status === "active")) &&
+      isWithinVisibilityWindow
+    );
+  });
 
   // Instead of storing just a boolean, we'll store { registered, registeredAt } for each occurrence
   let registrations: {
@@ -175,7 +221,93 @@ export async function action({ request }: { request: Request }) {
       return { error: "Failed to cancel registration" };
     }
   }
+
+  if (actionType === "duplicate") {
+    const workshopId = formData.get("workshopId");
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+
+    try {
+      // Call your duplicate function here
+      // This should be implemented in your models/workshop.server
+      // await duplicateWorkshop(Number(workshopId));
+      await duplicateWorkshop(Number(workshopId));
+
+      // Redirect to admin dashboard after duplication
+      return redirect("/dashboard/admin");
+    } catch (error) {
+      console.error("Error duplicating workshop:", error);
+      return { error: "Failed to duplicate workshop" };
+    }
+  }
 }
+
+/**
+ * Check if current time is within the registration cutoff period
+ * @param startDate Workshop start date
+ * @param cutoffMinutes Registration cutoff in minutes
+ * @returns true if within cutoff period (too late to register)
+ */
+const isWithinCutoffPeriod = (
+  startDate: Date,
+  cutoffMinutes: number
+): boolean => {
+  const now = new Date();
+  const cutoffTime = new Date(startDate.getTime() - cutoffMinutes * 60 * 1000);
+  return now >= cutoffTime;
+};
+
+/**
+ * Format cutoff time in a human-readable format
+ * @param minutes Cutoff minutes
+ * @returns Formatted string (e.g., "1 hour and 15 minutes" or "30 minutes")
+ */
+const formatCutoffTime = (minutes: number): string => {
+  if (minutes <= 0) {
+    return "0 minutes";
+  }
+
+  if (minutes >= 1440) {
+    // 1 day or more
+    const days = Math.floor(minutes / 1440);
+    const remainingMinutes = minutes % 1440;
+
+    if (remainingMinutes === 0) {
+      return `${days} ${days === 1 ? "day" : "days"}`;
+    }
+
+    const hours = Math.floor(remainingMinutes / 60);
+    const mins = remainingMinutes % 60;
+
+    let result = `${days} ${days === 1 ? "day" : "days"}`;
+    if (hours > 0) {
+      result += ` and ${hours} ${hours === 1 ? "hour" : "hours"}`;
+    }
+    if (mins > 0) {
+      result += `${hours > 0 ? " and " : " and "}${mins} ${
+        mins === 1 ? "minute" : "minutes"
+      }`;
+    }
+    return result;
+  } else if (minutes >= 60) {
+    // 1 hour or more
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+
+    if (mins === 0) {
+      return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    } else {
+      return `${hours} ${hours === 1 ? "hour" : "hours"} and ${mins} ${
+        mins === 1 ? "minute" : "minutes"
+      }`;
+    }
+  } else {
+    // Less than 1 hour
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+};
 
 export default function WorkshopDetails() {
   const {
@@ -274,17 +406,6 @@ export default function WorkshopDetails() {
     (prereq: PrerequisiteWorkshop) => !prereq.completed
   );
 
-  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
-  const isContinuation = workshop.occurrences.some(
-    (occ: any) => occ.connectId !== null
-  );
-
-  // If user is registered for ANY occurrence in a continuation workshop,
-  // consider them registered for the entire workshop.
-  const isUserRegisteredForAny = workshop.occurrences.some(
-    (occ: any) => registrations[occ.id]?.registered
-  );
-
   // Gather the earliest registration date for cancellation window
   const userRegistrationDates = workshop.occurrences
     .filter((occ: any) => registrations[occ.id]?.registered)
@@ -298,14 +419,6 @@ export default function WorkshopDetails() {
     userRegistrationDates.length > 0
       ? new Date(Math.min(...userRegistrationDates.map((d) => d.getTime())))
       : null;
-
-  // Check if ALL occurrences are "past" or "cancelled"
-  const allPast = workshop.occurrences.every(
-    (occ: any) => occ.status === "past"
-  );
-  const allCancelled = workshop.occurrences.every(
-    (occ: any) => occ.status === "cancelled"
-  );
 
   // For continuation workshops: single registration/cancellation handling
   function handleRegisterAll() {
@@ -361,6 +474,27 @@ export default function WorkshopDetails() {
     });
   }
 
+  const sortedOccurrences = [...workshop.occurrences].sort((a, b) => {
+    return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+  });
+
+  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
+  const isContinuation = sortedOccurrences.some(
+    (occ: any) => occ.connectId !== null
+  );
+
+  // If user is registered for ANY occurrence in a continuation workshop,
+  // consider them registered for the entire workshop.
+  const isUserRegisteredForAny = sortedOccurrences.some(
+    (occ: any) => registrations[occ.id]?.registered
+  );
+
+  const allPast = sortedOccurrences.every((occ: any) => occ.status === "past");
+
+  const allCancelled = sortedOccurrences.every(
+    (occ: any) => occ.status === "cancelled"
+  );
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       {/* Popup Notification */}
@@ -389,24 +523,40 @@ export default function WorkshopDetails() {
 
           {/* Admin Only: View Users Button */}
           {isAdmin && (
-            <Button
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 ml-auto"
-              onClick={() =>
-                navigate(`/dashboard/admin/workshop/${workshop.id}/users`)
-              }
-            >
-              <Users size={18} />
-              View Users ({workshop.userCount})
-            </Button>
-          )}
-          {isAdmin && (
-            <Button
-              variant="outline"
-              className="text-green-600 border-green-500 hover:bg-green-50 flex items-center gap-2 ml-auto"
-              onClick={() => handleOfferAgain()}
-            >
-              Offer Again
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                onClick={() =>
+                  navigate(`/dashboard/admin/workshop/${workshop.id}/users`)
+                }
+              >
+                <Users size={18} />
+                View Users ({workshop.userCount})
+              </Button>
+
+              {/* REPLACE THIS BUTTON with the conditional Duplicate/Offer Again button */}
+              {isContinuation ? (
+                <ConfirmButton
+                  confirmTitle="Duplicate Workshop"
+                  confirmDescription="Are you sure you want to duplicate this multi-day workshop? This will create a new workshop with the same details."
+                  onConfirm={() => {
+                    fetcher.submit(
+                      { workshopId: workshop.id, actionType: "duplicate" },
+                      { method: "post" }
+                    );
+                  }}
+                  buttonLabel="Duplicate"
+                  buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                />
+              ) : (
+                <Button
+                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                  onClick={() => handleOfferAgain()}
+                >
+                  Offer Again
+                </Button>
+              )}
+            </div>
           )}
         </CardHeader>
 
@@ -425,19 +575,69 @@ export default function WorkshopDetails() {
           {/* Continuation Workshop Block */}
           {isContinuation ? (
             <>
-              <h2 className="text-lg font-semibold mb-4">Workshop Dates</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {workshop.occurrences.map((occ: any) => (
-                  <div
-                    key={occ.id}
-                    className="border p-4 rounded-lg shadow-md bg-gray-50"
-                  >
-                    <p className="text-lg font-medium text-gray-800">
-                      📅 {new Date(occ.startDate).toLocaleString()} -{" "}
-                      {new Date(occ.endDate).toLocaleString()}
-                    </p>
-                  </div>
-                ))}
+              <h2 className="text-lg font-semibold mb-4">
+                Multi-day Workshop Dates
+              </h2>
+              {/* New Box-Style UI for multi-day workshops */}
+              <div className="border rounded-lg shadow-md bg-white p-4 mb-6">
+                <div className="grid gap-3">
+                  {sortedOccurrences.map((occ: any, index: number) => (
+                    <div
+                      key={occ.id}
+                      className="flex items-center p-3 rounded-md bg-gray-50 border border-gray-200"
+                      // className={`flex items-center p-3 rounded-md ${
+                      //   occ.status === "cancelled"
+                      //     ? "bg-red-50 border border-red-200"
+                      //     : occ.status === "past"
+                      //     ? "bg-gray-50 border border-gray-200"
+                      //     : "bg-green-50 border border-green-200"
+                      // }`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center">
+                          <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-500 text-white text-xs mr-2">
+                            {index + 1}
+                          </span>
+                          <p className="font-medium">
+                            {new Date(occ.startDate).toLocaleDateString(
+                              undefined,
+                              {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }
+                            )}
+                          </p>
+                        </div>
+                        <p className="text-sm text-gray-600 ml-8">
+                          {new Date(occ.startDate).toLocaleTimeString(
+                            undefined,
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }
+                          )}{" "}
+                          {" - "}
+                          {new Date(occ.endDate).toLocaleTimeString(undefined, {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+
+                      {/* <div>
+              {occ.status === "cancelled" ? (
+                <Badge className="bg-red-500 text-white">Cancelled</Badge>
+              ) : occ.status === "past" ? (
+                <Badge className="bg-gray-500 text-white">Past</Badge>
+              ) : (
+                <Badge className="bg-green-500 text-white">Active</Badge>
+              )}
+            </div> */}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <Separator className="my-6" />
@@ -459,7 +659,7 @@ export default function WorkshopDetails() {
                   if (anyDatePassed) {
                     return (
                       <Badge className="bg-gray-500 text-white px-3 py-1">
-                        Workshop has passed
+                        Workshop registration has passed
                       </Badge>
                     );
                   } else if (isUserRegisteredForAny) {
@@ -485,7 +685,7 @@ export default function WorkshopDetails() {
                                     handleCancelAll();
                                   }}
                                 >
-                                  Yes, Cancel Entire Workshop
+                                  Yes, Cancel Entire Workshop Registration
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onSelect={(e) => {
@@ -514,14 +714,78 @@ export default function WorkshopDetails() {
                       </div>
                     );
                   } else {
+                    // CHANGE 2: Replace the Register button with a Confirm button
+                    // This shows number of sessions being registered for
+                    const activeOccurrences = sortedOccurrences.filter(
+                      (occ: any) =>
+                        occ.status !== "past" && occ.status !== "cancelled"
+                    );
+
+                    const earliestActiveOccurrence = activeOccurrences.reduce(
+                      (earliest, current) => {
+                        const currentDate = new Date(current.startDate);
+                        const earliestDate = new Date(earliest.startDate);
+                        return currentDate < earliestDate ? current : earliest;
+                      },
+                      activeOccurrences[0]
+                    );
+
+                    const withinCutoffPeriod = earliestActiveOccurrence
+                      ? isWithinCutoffPeriod(
+                          new Date(earliestActiveOccurrence.startDate),
+                          workshop.registrationCutoff
+                        )
+                      : false;
+
                     return (
-                      <Button
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                        onClick={() => handleRegisterAll()}
-                        disabled={!hasCompletedAllPrerequisites}
-                      >
-                        Register for Entire Workshop
-                      </Button>
+                      <>
+                        {withinCutoffPeriod ? (
+                          <div className="flex flex-col items-start gap-2">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div>
+                                    <Button
+                                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg opacity-70"
+                                      disabled={true}
+                                    >
+                                      Register for Entire Workshop
+                                    </Button>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="top"
+                                  align="start"
+                                  className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs"
+                                >
+                                  <p>
+                                    Registration is closed. Registration cutoff
+                                    is{" "}
+                                    {formatCutoffTime(
+                                      workshop.registrationCutoff
+                                    )}{" "}
+                                    before the first workshop session.
+                                  </p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <div className="bg-amber-100 text-amber-800 border border-amber-300 rounded-md p-3 text-sm">
+                              Registration is closed. Registration cutoff is{" "}
+                              {formatCutoffTime(workshop.registrationCutoff)}{" "}
+                              before the first workshop session.
+                            </div>
+                          </div>
+                        ) : (
+                          <ConfirmButton
+                            confirmTitle="Register for Multi-Day Workshop"
+                            confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
+                            onConfirm={() => handleRegisterAll()}
+                            buttonLabel={`Register for Entire Workshop`}
+                            buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                            disabled={!hasCompletedAllPrerequisites}
+                          />
+                        )}
+                      </>
                     );
                   }
                 })()
@@ -532,7 +796,7 @@ export default function WorkshopDetails() {
             <>
               <h2 className="text-lg font-semibold mb-4">Available Dates</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {workshop.occurrences.map((occurrence: Occurrence) => {
+                {sortedOccurrences.map((occurrence: Occurrence) => {
                   const regData = registrations[occurrence.id] || {
                     registered: false,
                     registeredAt: null,
@@ -557,7 +821,7 @@ export default function WorkshopDetails() {
                         ) : occurrence.status === "past" ? (
                           <>
                             <Badge className="bg-gray-500 text-white px-3 py-1">
-                              Past
+                              Registration has past
                             </Badge>
                           </>
                         ) : isOccurrenceRegistered ? (
@@ -634,13 +898,44 @@ export default function WorkshopDetails() {
                             </DropdownMenu>
                           </>
                         ) : (
-                          <Button
-                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                            onClick={() => handleRegister(occurrence.id)}
-                            disabled={!hasCompletedAllPrerequisites}
-                          >
-                            Register
-                          </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div>
+                                  <Button
+                                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                                    onClick={() =>
+                                      handleRegister(occurrence.id)
+                                    }
+                                    disabled={
+                                      !hasCompletedAllPrerequisites ||
+                                      isWithinCutoffPeriod(
+                                        new Date(occurrence.startDate),
+                                        workshop.registrationCutoff
+                                      )
+                                    }
+                                  >
+                                    Register
+                                  </Button>
+                                </div>
+                              </TooltipTrigger>
+                              {isWithinCutoffPeriod(
+                                new Date(occurrence.startDate),
+                                workshop.registrationCutoff
+                              ) && (
+                                <TooltipContent className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs">
+                                  <p>
+                                    Registration is closed. Registration cutoff
+                                    is{" "}
+                                    {formatCutoffTime(
+                                      workshop.registrationCutoff
+                                    )}{" "}
+                                    before the workshop starts.
+                                  </p>
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                       </div>
                     </div>

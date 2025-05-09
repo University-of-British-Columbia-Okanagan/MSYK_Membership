@@ -49,6 +49,22 @@ import {
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
 import type SlotsByDay from "@/components/ui/Dashboard/equipmentbookinggrid";
 import { bulkBookEquipment } from "../../models/equipment.server";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -79,7 +95,6 @@ export async function loader() {
     selectedSlotsMap,
   };
 }
-
 
 /**
  * Helper: Parse a datetime-local string as a local Date.
@@ -135,6 +150,25 @@ function formatDisplayDate(date: Date): string {
     minute: "2-digit",
     hour12: true,
   });
+}
+
+function isDateInPast(date: Date): boolean {
+  const now = new Date();
+  return date < now && !isNaN(date.getTime());
+}
+
+/**
+ * Check if any occurrence dates are in the past
+ */
+function hasOccurrencesInPast(
+  occurrences: { startDate: Date; endDate: Date }[]
+): boolean {
+  return occurrences.some(
+    (occ) =>
+      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
+      !isNaN(occ.startDate.getTime()) &&
+      !isNaN(occ.endDate.getTime())
+  );
 }
 
 export async function action({ request }: { request: Request }) {
@@ -298,6 +332,7 @@ export async function action({ request }: { request: Request }) {
 
     try {
       await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
+      return redirect("/dashboard/admin");
     } catch (error) {
       console.error("Failed to reserve equipment slots:", error);
       return {
@@ -346,6 +381,9 @@ export default function AddWorkshop() {
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
   >("custom");
+
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   // This will track the selected prerequisites
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
@@ -444,6 +482,21 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // First check if any dates are in the past
+    if (hasOccurrencesInPast(occurrences)) {
+      setIsConfirmDialogOpen(true);
+      return; // Important: prevent the normal form submission flow
+    } else {
+      // No past dates, submit directly
+      setFormSubmitting(true);
+      const form = e.currentTarget as HTMLFormElement;
+      form.submit();
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Add Workshop</h1>
@@ -456,7 +509,7 @@ export default function AddWorkshop() {
       )}
 
       <Form {...form}>
-        <form method="post">
+        <form method="post" onSubmit={handleFormSubmit}>
           {/* Workshop Fields */}
           <GenericFormField
             control={form.control}
@@ -591,15 +644,51 @@ export default function AddWorkshop() {
                             </p>
                           </div>
                         ) : (
-                          occurrences.map((occ, index) => (
-                            <OccurrenceRow
-                              key={index}
-                              index={index}
-                              occurrence={occ}
-                              updateOccurrence={updateOccurrence}
-                              formatLocalDatetime={formatLocalDatetime}
-                            />
-                          ))
+                          occurrences.map((occ, index) => {
+                            const isStartDatePast = isDateInPast(occ.startDate);
+                            const isEndDatePast = isDateInPast(occ.endDate);
+                            const hasWarning = isStartDatePast || isEndDatePast;
+
+                            return (
+                              <TooltipProvider key={index}>
+                                <Tooltip open={hasWarning ? undefined : false}>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={cn(
+                                        "w-full",
+                                        hasWarning &&
+                                          "border-l-4 border-amber-500 pl-2"
+                                      )}
+                                    >
+                                      <OccurrenceRow
+                                        key={index}
+                                        index={index}
+                                        occurrence={occ}
+                                        updateOccurrence={updateOccurrence}
+                                        formatLocalDatetime={
+                                          formatLocalDatetime
+                                        }
+                                      />
+                                    </div>
+                                  </TooltipTrigger>
+                                  {hasWarning && (
+                                    <TooltipContent
+                                      side="right"
+                                      className="bg-amber-100 text-amber-800 border border-amber-300"
+                                    >
+                                      <p className="text-sm font-medium">
+                                        {isStartDatePast && isEndDatePast
+                                          ? "Both start and end dates are in the past"
+                                          : isStartDatePast
+                                          ? "Start date is in the past"
+                                          : "End date is in the past"}
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          })
                         )}
                         <Button
                           type="button"
@@ -678,28 +767,53 @@ export default function AddWorkshop() {
                           Your Workshop Dates
                         </h3>
                         <div className="border border-gray-200 rounded-lg overflow-hidden">
-                          {occurrences.map((occ, index) => (
-                            <div
-                              key={index}
-                              className="flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150"
-                            >
-                              <div className="flex-1">
-                                <div className="font-medium">
-                                  {formatDisplayDate(occ.startDate)}
+                          {occurrences.map((occ, index) => {
+                            const isStartDatePast = isDateInPast(occ.startDate);
+                            const isEndDatePast = isDateInPast(occ.endDate);
+                            const hasWarning = isStartDatePast || isEndDatePast;
+
+                            return (
+                              <div
+                                key={index}
+                                className={cn(
+                                  "flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150",
+                                  hasWarning && "border-l-4 border-amber-500"
+                                )}
+                              >
+                                <div className="flex-1">
+                                  <div className="font-medium flex items-center">
+                                    {formatDisplayDate(occ.startDate)}
+                                    {isStartDatePast && (
+                                      <Badge
+                                        variant="outline"
+                                        className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                      >
+                                        Past Date
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-gray-600 flex items-center">
+                                    to {formatDisplayDate(occ.endDate)}
+                                    {isEndDatePast && !isStartDatePast && (
+                                      <Badge
+                                        variant="outline"
+                                        className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                      >
+                                        Past Date
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="text-sm text-gray-600">
-                                  to {formatDisplayDate(occ.endDate)}
-                                </div>
+                                <ConfirmButton
+                                  confirmTitle="Delete Occurrence"
+                                  confirmDescription="Are you sure you want to delete this occurrence?"
+                                  onConfirm={() => removeOccurrence(index)}
+                                  buttonLabel="Remove"
+                                  buttonClassName="text-sm bg-white text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
+                                />
                               </div>
-                              <ConfirmButton
-                                confirmTitle="Delete Occurrence"
-                                confirmDescription="Are you sure you want to delete this occurrence?"
-                                onConfirm={() => removeOccurrence(index)}
-                                buttonLabel="Remove"
-                                buttonClassName="text-sm bg-white text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
-                              />
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -782,11 +896,9 @@ export default function AddWorkshop() {
                     ...selectedSlotsMap,
                     [selectedEquipment!]: slots,
                   };
-                  
+
                   setSelectedSlotsMap(updatedMap);
                   form.setValue("selectedSlots", JSON.stringify(updatedMap));
-                  
-                 
 
                   console.log(
                     `Slots ${slots.join(
@@ -855,15 +967,51 @@ export default function AddWorkshop() {
           />
 
           {/* Submit Button */}
-          <Button
-            type="submit"
-            className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
-            onClick={() => {
-              console.log("Final Form Data:", form.getValues());
-            }}
+          <AlertDialog
+            open={isConfirmDialogOpen}
+            onOpenChange={setIsConfirmDialogOpen}
           >
-            Submit
-          </Button>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Warning: Past Workshop Dates
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Some of your workshop dates are in the past. Are you sure you
+                  want to create a workshop with past dates?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    // Close the dialog
+                    setIsConfirmDialogOpen(false);
+                    // Set the form as submitting
+                    setFormSubmitting(true);
+                    // Use the native form submission to trigger the action function's redirect
+                    const form = document.querySelector(
+                      "form"
+                    ) as HTMLFormElement;
+                    if (form) form.submit();
+                  }}
+                >
+                  Proceed Anyway
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+
+            <Button
+              type="submit"
+              className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+              onClick={() => {
+                console.log("Final Form Data:", form.getValues());
+              }}
+              disabled={formSubmitting}
+            >
+              Submit
+            </Button>
+          </AlertDialog>
         </form>
       </Form>
     </div>

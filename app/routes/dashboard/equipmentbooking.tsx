@@ -9,26 +9,54 @@ import {
   getEquipmentSlotsWithStatus,
   bookEquipment,
   getEquipmentById,
+  getLevel3ScheduleRestrictions,
+  getLevel4UnavailableHours,
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
 import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { useState } from "react";
-
-// ✅ Import this!
+import { getAdminSetting } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
+// export async function loader({ request }: { request: Request }) {
+//   const user = await getUser(request);
+//   const userId = user?.id ?? null;
+//   const roleLevel = user?.roleLevel ?? 1;
+
+//   const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined);
+
+//   return json({ equipment: equipmentWithSlots, roleLevel });
+// }
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
   const userId = user?.id ?? null;
   const roleLevel = user?.roleLevel ?? 1;
 
-  const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined); 
+  // Get the equipment_visible_registrable_days setting
+  const equipmentWithSlots = await getEquipmentSlotsWithStatus(
+    userId ?? undefined
+  );
+  const visibleDays = await getAdminSetting(
+    "equipment_visible_registrable_days",
+    "7"
+  );
 
-  return json({ equipment: equipmentWithSlots, roleLevel });
+  // Get level-specific restrictions
+  const level3Restrictions =
+    roleLevel === 3 ? await getLevel3ScheduleRestrictions() : null;
+  const level4Restrictions =
+    roleLevel === 4 ? await getLevel4UnavailableHours() : null;
+
+  return json({
+    equipment: equipmentWithSlots,
+    roleLevel,
+    visibleDays: parseInt(visibleDays, 10),
+    level3Restrictions,
+    level4Restrictions,
+  });
 }
-
 
 // Action
 export async function action({ request }: { request: Request }) {
@@ -103,8 +131,22 @@ export async function action({ request }: { request: Request }) {
 }
 
 // Component
+// export default function EquipmentBookingForm() {
+//   const { equipment, roleLevel } = useLoaderData();
+//   const actionData = useActionData();
+//   const navigation = useNavigation();
+//   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
+//     null
+//   );
+//   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 export default function EquipmentBookingForm() {
-  const { equipment, roleLevel } = useLoaderData();
+  const {
+    equipment,
+    roleLevel,
+    visibleDays,
+    level3Restrictions,
+    level4Restrictions,
+  } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
@@ -162,13 +204,38 @@ export default function EquipmentBookingForm() {
             <label className="block text-gray-700 font-bold mt-4 mb-2">
               Select Time Slots
             </label>
-            <EquipmentBookingGrid
+            {/* <EquipmentBookingGrid
               slotsByDay={selectedEquip?.slotsByDay || {}}
               onSelectSlots={setSelectedSlots}
               disabled={roleLevel === 1 || roleLevel === 2}
               visibleTimeRange={
                 roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
               }
+            /> */}
+            {/* <EquipmentBookingGrid
+              slotsByDay={selectedEquip?.slotsByDay || {}}
+              onSelectSlots={setSelectedSlots}
+              disabled={roleLevel === 1 || roleLevel === 2}
+              visibleTimeRange={
+                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
+              }
+              visibleDays={visibleDays} // Pass the number of visible days
+            /> */}
+            <EquipmentBookingGrid
+              slotsByDay={selectedEquip?.slotsByDay || {}}
+              onSelectSlots={setSelectedSlots}
+              disabled={roleLevel === 1 || roleLevel === 2}
+              visibleTimeRange={
+                roleLevel === 3 ? { startHour: 9, endHour: 17 } : undefined
+              }
+              visibleDays={visibleDays} // Pass the number of visible days
+              level3Restrictions={
+                roleLevel === 3 ? level3Restrictions : undefined
+              }
+              level4Restrictions={
+                roleLevel === 4 ? level4Restrictions : undefined
+              }
+              userRoleLevel={roleLevel} 
             />
 
             {totalPrice && (

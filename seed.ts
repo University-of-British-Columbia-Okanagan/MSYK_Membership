@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 // run npx tsx seed.ts
 async function main() {
-
+  await prisma.adminSettings.deleteMany();
   await prisma.userMembershipPayment.deleteMany();
   await prisma.userMembership.deleteMany();
   await prisma.user.deleteMany();
@@ -20,6 +20,7 @@ async function main() {
   await prisma.$executeRaw`ALTER SEQUENCE "Workshop_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "WorkshopOccurrence_id_seq" RESTART WITH 1`;
   await prisma.$executeRaw`ALTER SEQUENCE "Equipment_id_seq" RESTART WITH 1`;
+  await prisma.$executeRaw`ALTER SEQUENCE "AdminSettings_id_seq" RESTART WITH 1`;
 
   const hashedPassword = await bcrypt.hash("password", 10);
   const now = new Date();
@@ -117,7 +118,7 @@ async function main() {
           start: "00:00", // 24/7 Access
           end: "23:59",
         },
-        type: "monthly"
+        type: "monthly",
       },
       {
         title: "Drop-In 10 Pass",
@@ -238,9 +239,77 @@ async function main() {
         description:
           "Machine for cutting adhesive vinyl for signs and stickers.",
         availability: true,
-        price: 30.
+        price: 30,
       },
     ],
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "workshop_visibility_days" },
+    update: { value: "60" },
+    create: {
+      key: "workshop_visibility_days",
+      value: "60",
+      description: "Max number of days ahead that workshops are visible",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "equipment_visible_registrable_days" },
+    update: { value: "7" },
+    create: {
+      key: "equipment_visible_registrable_days",
+      value: "7",
+      description:
+        "Max number of days ahead that equipment is visible and registrable after the current date",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "level3_start_end_hours" },
+    update: {
+      value: JSON.stringify({
+        Sunday: { start: 9, end: 17 },
+        Monday: { start: 9, end: 17 },
+        Tuesday: { start: 9, end: 17 },
+        Wednesday: { start: 9, end: 17 },
+        Thursday: { start: 9, end: 17 },
+        Friday: { start: 9, end: 17 },
+        Saturday: { start: 9, end: 17 },
+      }),
+    },
+    create: {
+      key: "level3_start_end_hours",
+      value: JSON.stringify({
+        Sunday: { start: 9, end: 17 },
+        Monday: { start: 9, end: 17 },
+        Tuesday: { start: 9, end: 17 },
+        Wednesday: { start: 9, end: 17 },
+        Thursday: { start: 9, end: 17 },
+        Friday: { start: 9, end: 17 },
+        Saturday: { start: 9, end: 17 },
+      }),
+      description:
+        "Configurable start and end hours for level 3 users to book equipment on each day of the week",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "level4_unavaliable_hours" },
+    update: { 
+      value: JSON.stringify({
+        start: 0, 
+        end: 0
+      })
+    },
+    create: {
+      key: "level4_unavaliable_hours",
+      value: JSON.stringify({
+        start: 0,
+        end: 0
+      }),
+      description: "Hours when level 4 users cannot book equipment. Special case: start=0, end=0 means no restrictions. If start > end (e.g. 22 to 5), it represents a period that crosses midnight.",
+    },
   });
 
   console.log("Database seeded successfully!");
