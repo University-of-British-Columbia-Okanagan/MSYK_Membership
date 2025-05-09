@@ -260,13 +260,14 @@ async function main() {
     create: {
       key: "equipment_visible_registrable_days",
       value: "7",
-      description: "Max number of days ahead that equipment is visible and registrable after the current date",
+      description:
+        "Max number of days ahead that equipment is visible and registrable after the current date",
     },
   });
 
   await prisma.adminSettings.upsert({
     where: { key: "level3_start_end_hours" },
-    update: { 
+    update: {
       value: JSON.stringify({
         Sunday: { start: 9, end: 17 },
         Monday: { start: 9, end: 17 },
@@ -274,8 +275,8 @@ async function main() {
         Wednesday: { start: 9, end: 17 },
         Thursday: { start: 9, end: 17 },
         Friday: { start: 9, end: 17 },
-        Saturday: { start: 9, end: 17 }
-      })
+        Saturday: { start: 9, end: 17 },
+      }),
     },
     create: {
       key: "level3_start_end_hours",
@@ -286,9 +287,28 @@ async function main() {
         Wednesday: { start: 9, end: 17 },
         Thursday: { start: 9, end: 17 },
         Friday: { start: 9, end: 17 },
-        Saturday: { start: 9, end: 17 }
+        Saturday: { start: 9, end: 17 },
       }),
-      description: "Configurable start and end hours for level 3 users to book equipment on each day of the week",
+      description:
+        "Configurable start and end hours for level 3 users to book equipment on each day of the week",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "level4_unavaliable_hours" },
+    update: { 
+      value: JSON.stringify({
+        start: 0, 
+        end: 0
+      })
+    },
+    create: {
+      key: "level4_unavaliable_hours",
+      value: JSON.stringify({
+        start: 0,
+        end: 0
+      }),
+      description: "Hours when level 4 users cannot book equipment. Special case: start=0, end=0 means no restrictions. If start > end (e.g. 22 to 5), it represents a period that crosses midnight.",
     },
   });
 
