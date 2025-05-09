@@ -14,21 +14,41 @@ import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
 import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { useState } from "react";
+import { getAdminSetting } from "../../models/admin.server";
 
 // ✅ Import this!
 import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
+// export async function loader({ request }: { request: Request }) {
+//   const user = await getUser(request);
+//   const userId = user?.id ?? null;
+//   const roleLevel = user?.roleLevel ?? 1;
+
+//   const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined);
+
+//   return json({ equipment: equipmentWithSlots, roleLevel });
+// }
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
   const userId = user?.id ?? null;
   const roleLevel = user?.roleLevel ?? 1;
 
-  const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined); 
+  // Get the equipment_visible_registrable_days setting
+  const equipmentWithSlots = await getEquipmentSlotsWithStatus(
+    userId ?? undefined
+  );
+  const visibleDays = await getAdminSetting(
+    "equipment_visible_registrable_days",
+    "7"
+  );
 
-  return json({ equipment: equipmentWithSlots, roleLevel });
+  return json({
+    equipment: equipmentWithSlots,
+    roleLevel,
+    visibleDays: parseInt(visibleDays, 10),
+  });
 }
-
 
 // Action
 export async function action({ request }: { request: Request }) {
@@ -103,8 +123,16 @@ export async function action({ request }: { request: Request }) {
 }
 
 // Component
+// export default function EquipmentBookingForm() {
+//   const { equipment, roleLevel } = useLoaderData();
+//   const actionData = useActionData();
+//   const navigation = useNavigation();
+//   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
+//     null
+//   );
+//   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 export default function EquipmentBookingForm() {
-  const { equipment, roleLevel } = useLoaderData();
+  const { equipment, roleLevel, visibleDays } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
@@ -162,6 +190,14 @@ export default function EquipmentBookingForm() {
             <label className="block text-gray-700 font-bold mt-4 mb-2">
               Select Time Slots
             </label>
+            {/* <EquipmentBookingGrid
+              slotsByDay={selectedEquip?.slotsByDay || {}}
+              onSelectSlots={setSelectedSlots}
+              disabled={roleLevel === 1 || roleLevel === 2}
+              visibleTimeRange={
+                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
+              }
+            /> */}
             <EquipmentBookingGrid
               slotsByDay={selectedEquip?.slotsByDay || {}}
               onSelectSlots={setSelectedSlots}
@@ -169,6 +205,7 @@ export default function EquipmentBookingForm() {
               visibleTimeRange={
                 roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
               }
+              visibleDays={visibleDays} // Pass the number of visible days
             />
 
             {totalPrice && (

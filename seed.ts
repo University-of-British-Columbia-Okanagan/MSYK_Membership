@@ -260,7 +260,7 @@ async function main() {
     create: {
       key: "equipment_visible_registrable_days",
       value: "7",
-      description: "Max number of days ahead that equipment is visible and registrable",
+      description: "Max number of days ahead that equipment is visible and registrable after the current date",
     },
   });
 
