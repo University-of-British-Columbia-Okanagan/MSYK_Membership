@@ -28,6 +28,7 @@ import {
   updateWorkshopCutoff,
   getEquipmentVisibilityDays,
 } from "~/models/admin.server";
+import { getLevel3ScheduleRestrictions } from "~/models/equipment.server";
 import { getWorkshops } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import {
@@ -74,12 +75,15 @@ export async function loader({ request }: { request: Request }) {
   // Fetch all users for the user management tab
   const users = await getAllUsers();
 
+  const level3Schedule = await getLevel3ScheduleRestrictions();
+
   // Return settings to the component
   return {
     roleUser,
     settings: {
       workshopVisibilityDays,
       equipmentVisibilityDays,
+      level3Schedule,
     },
     workshops,
     users,
@@ -113,6 +117,17 @@ export async function action({ request }: { request: Request }) {
           equipmentVisibilityDays.toString(),
           "Number of days to show future equipment booking slots"
         );
+      }
+
+      if (settingType === "level3Schedule") {
+        const scheduleData = formData.get("level3Schedule");
+        if (scheduleData) {
+          await updateAdminSetting(
+            "level3_start_end_hours",
+            scheduleData.toString(),
+            "Configurable start and end hours for level 3 users to book equipment on each day of the week"
+          );
+        }
       }
 
       return {
@@ -249,7 +264,13 @@ function RoleControl({
 export default function AdminSettings() {
   const { roleUser, settings, workshops, users } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
-    settings: { workshopVisibilityDays: number, equipmentVisibilityDays: number };
+    settings: {
+      workshopVisibilityDays: number;
+      equipmentVisibilityDays: number;
+      level3Schedule: {
+        [day: string]: { start: number; end: number; closed?: boolean };
+      };
+    };
     workshops: Array<{
       id: number;
       name: string;
@@ -281,6 +302,34 @@ export default function AdminSettings() {
   const [equipmentVisibilityDays, setEquipmentVisibilityDays] = useState(
     settings.equipmentVisibilityDays.toString()
   );
+
+  const [level3Schedule, setLevel3Schedule] = useState(() => {
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const defaultSchedule = days.reduce((acc, day) => {
+      acc[day] = { start: 9, end: 17, closed: false };
+      return acc;
+    }, {} as Record<string, { start: number; end: number; closed: boolean }>);
+
+    // Merge the default with settings from the server
+    return days.reduce((acc, day) => {
+      acc[day] = {
+        start: settings.level3Schedule[day]?.start ?? 9,
+        end: settings.level3Schedule[day]?.end ?? 17,
+        closed: settings.level3Schedule[day]?.closed ?? false,
+      };
+      return acc;
+    }, defaultSchedule);
+  });
+  const [editingDay, setEditingDay] = useState<string | null>(null);
+
   const [editingWorkshop, setEditingWorkshop] = useState<number | null>(null);
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
@@ -357,6 +406,36 @@ export default function AdminSettings() {
 
     submit(formData, { method: "post" });
     setEditingWorkshop(null);
+  };
+
+  // Function to handle saving level 3 schedule changes
+  const handleScheduleSave = () => {
+    const formData = new FormData();
+    formData.append("actionType", "updateSettings");
+    formData.append("settingType", "level3Schedule");
+    formData.append("level3Schedule", JSON.stringify(level3Schedule));
+    submit(formData, { method: "post" });
+    setEditingDay(null);
+  };
+
+  // Function to update a day's schedule
+  const updateDaySchedule = (
+    day: string,
+    field: "start" | "end" | "closed",
+    value: number | boolean
+  ) => {
+    setLevel3Schedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: value,
+      },
+    }));
+  };
+
+  // Function to toggle editing mode for a day
+  const toggleEditDay = (day: string) => {
+    setEditingDay(editingDay === day ? null : day);
   };
 
   return (
@@ -664,6 +743,159 @@ export default function AdminSettings() {
                     </CardFooter>
                   </Card>
                 </Form>
+
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Level 3 User Booking Hours</CardTitle>
+                    <CardDescription>
+                      Configure when level 3 users can book equipment on each
+                      day of the week
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableCaption>
+                        Set the time range during which level 3 users can book
+                        equipment for each day. Default is 9 AM to 5 PM. You can
+                        also mark days as closed.
+                      </TableCaption>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Day</TableHead>
+                          <TableHead>Start Hour (24h)</TableHead>
+                          <TableHead>End Hour (24h)</TableHead>
+                          <TableHead>Closed</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {Object.entries(level3Schedule).map(
+                          ([day, schedule]) => (
+                            <TableRow key={day}>
+                              <TableCell className="font-medium">
+                                {day}
+                              </TableCell>
+                              <TableCell>
+                                {editingDay === day ? (
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    max="23"
+                                    value={schedule.start}
+                                    onChange={(e) =>
+                                      updateDaySchedule(
+                                        day,
+                                        "start",
+                                        parseInt(e.target.value)
+                                      )
+                                    }
+                                    className="w-20"
+                                    disabled={schedule.closed}
+                                  />
+                                ) : (
+                                  <span
+                                    className={
+                                      schedule.closed ? "text-gray-400" : ""
+                                    }
+                                  >
+                                    {schedule.start}:00
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {editingDay === day ? (
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max="24"
+                                    value={schedule.end}
+                                    onChange={(e) =>
+                                      updateDaySchedule(
+                                        day,
+                                        "end",
+                                        parseInt(e.target.value)
+                                      )
+                                    }
+                                    className="w-20"
+                                    disabled={schedule.closed}
+                                  />
+                                ) : (
+                                  <span
+                                    className={
+                                      schedule.closed ? "text-gray-400" : ""
+                                    }
+                                  >
+                                    {schedule.end}:00
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={schedule.closed}
+                                    onChange={(e) =>
+                                      updateDaySchedule(
+                                        day,
+                                        "closed",
+                                        e.target.checked
+                                      )
+                                    }
+                                    className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+                                    id={`closed-${day}`}
+                                  />
+                                  <label
+                                    htmlFor={`closed-${day}`}
+                                    className="ml-2 text-sm text-gray-600"
+                                  >
+                                    Closed
+                                  </label>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {editingDay === day ? (
+                                  <div className="flex justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={handleScheduleSave}
+                                    >
+                                      <Check className="h-4 w-4 text-green-500" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setEditingDay(null)}
+                                    >
+                                      <X className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => toggleEditDay(day)}
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        )}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                  <CardFooter>
+                    <Button
+                      onClick={handleScheduleSave}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      Save All Schedule Changes
+                    </Button>
+                  </CardFooter>
+                </Card>
               </TabsContent>
 
               {/* Tab 2: Placeholder for Future Settings */}
