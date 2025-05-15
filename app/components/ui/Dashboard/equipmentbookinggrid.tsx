@@ -59,7 +59,7 @@ interface EquipmentBookingGridProps {
   preselectedSlotIds?: number[];
   visibleDays?: number; // NEW: Number of days to display
   level3Restrictions?: {
-    [day: string]: { start: number; end: number };
+    [day: string]: { start: number; end: number; closed: boolean };
   };
   level4Restrictions?: {
     start: number;
@@ -119,6 +119,9 @@ export default function EquipmentBookingGrid({
     // If we don't have restrictions for this day, it's not restricted
     if (!level3Restrictions[fullDayName]) return false;
 
+    // If the day is marked as closed, restrict all slots
+    if (level3Restrictions[fullDayName].closed) return true;
+
     // Get the hour from the time (e.g., "09:00" -> 9)
     const hour = parseInt(time.split(":")[0], 10);
 
@@ -138,10 +141,10 @@ export default function EquipmentBookingGrid({
     ) {
       return false;
     }
-  
+
     // Get the hour from the time (e.g., "09:00" -> 9)
     const hour = parseInt(time.split(":")[0], 10);
-  
+
     // For restrictions that span overnight (e.g., 20 to 2)
     if (level4Restrictions.start > level4Restrictions.end) {
       return hour >= level4Restrictions.start || hour < level4Restrictions.end;
