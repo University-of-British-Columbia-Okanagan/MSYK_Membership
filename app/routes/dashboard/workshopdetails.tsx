@@ -511,19 +511,15 @@ export default function WorkshopDetails() {
       )}
 
       <Card className="mt-6 shadow-lg">
-        <CardHeader className="flex justify-between items-center">
-          <div>
-            <CardTitle className="text-2xl font-bold">
-              {workshop.name}
-            </CardTitle>
-            <CardDescription className="text-gray-600">
-              {workshop.description}
-            </CardDescription>
-          </div>
+        <CardHeader className="flex flex-col items-center text-center">
+          <CardTitle className="text-2xl font-bold">{workshop.name}</CardTitle>
+          <CardDescription className="text-gray-600 max-w-2xl mx-auto">
+            {workshop.description}
+          </CardDescription>
 
           {/* Admin Only: View Users Button */}
           {isAdmin && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mt-4">
               <Button
                 className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
                 onClick={() =>
@@ -534,7 +530,6 @@ export default function WorkshopDetails() {
                 View Users ({workshop.userCount})
               </Button>
 
-              {/* REPLACE THIS BUTTON with the conditional Duplicate/Offer Again button */}
               {isContinuation ? (
                 <ConfirmButton
                   confirmTitle="Duplicate Workshop"
@@ -575,9 +570,17 @@ export default function WorkshopDetails() {
           {/* Continuation Workshop Block */}
           {isContinuation ? (
             <>
-              <h2 className="text-lg font-semibold mb-4">
-                Multi-day Workshop Dates
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">
+                  Multi-day Workshop Dates
+                </h2>
+                <Badge
+                  variant="outline"
+                  className="bg-blue-50 border-blue-200 text-blue-700"
+                >
+                  {sortedOccurrences.length} Workshop Dates
+                </Badge>
+              </div>
               {/* New Box-Style UI for multi-day workshops */}
               <div className="border rounded-lg shadow-md bg-white p-4 mb-6">
                 <div className="grid gap-3">
@@ -780,7 +783,7 @@ export default function WorkshopDetails() {
                             confirmTitle="Register for Multi-Day Workshop"
                             confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
                             onConfirm={() => handleRegisterAll()}
-                            buttonLabel={`Register for Entire Workshop`}
+                            buttonLabel={`Register for Entire Workshop (${activeOccurrences.length} Sessions)`}
                             buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
                             disabled={!hasCompletedAllPrerequisites}
                           />
