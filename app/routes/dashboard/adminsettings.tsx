@@ -418,12 +418,12 @@ export default function AdminSettings() {
   const getBestUnit = (minutes: number): { value: number; unit: string } => {
     if (minutes >= 1440 && minutes % 1440 === 0) {
       // Divisible by days
-      return { value: minutes / 1440, unit: "day(s)" };
+      return { value: minutes / 1440, unit: "days" };
     } else if (minutes >= 60 && minutes % 60 === 0) {
       // Divisible by hours
-      return { value: minutes / 60, unit: "hour(s)" };
+      return { value: minutes / 60, unit: "hours" };
     } else {
-      return { value: minutes, unit: "minute(s)" };
+      return { value: minutes, unit: "minutes" };
     }
   };
 
@@ -718,13 +718,18 @@ export default function AdminSettings() {
                                           onClick={() => {
                                             setEditingWorkshop(workshop.id);
                                             // Initialize with the best unit for this workshop
+                                            const currentBestUnit = getBestUnit(
+                                              workshop.registrationCutoff
+                                            );
                                             setCutoffUnits({
                                               ...cutoffUnits,
-                                              [workshop.id]: bestUnit.unit,
+                                              [workshop.id]:
+                                                currentBestUnit.unit,
                                             });
                                             setCutoffValues({
                                               ...cutoffValues,
-                                              [workshop.id]: bestUnit.value,
+                                              [workshop.id]:
+                                                currentBestUnit.value,
                                             });
                                           }}
                                         >
@@ -863,24 +868,28 @@ export default function AdminSettings() {
                                         </div>
                                       ) : (
                                         <Button
-  variant="ghost"
-  size="icon"
-  onClick={() => {
-    setEditingWorkshop(workshop.id);
-    // Initialize with the best unit for this workshop (the current displayed unit)
-    const currentBestUnit = getBestUnit(workshop.registrationCutoff);
-    setCutoffUnits({
-      ...cutoffUnits,
-      [workshop.id]: currentBestUnit.unit,
-    });
-    setCutoffValues({
-      ...cutoffValues,
-      [workshop.id]: currentBestUnit.value,
-    });
-  }}
->
-  <Edit2 className="h-4 w-4" />
-</Button>
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => {
+                                            setEditingWorkshop(workshop.id);
+                                            // Initialize with the best unit for this workshop (the current displayed unit)
+                                            const currentBestUnit = getBestUnit(
+                                              workshop.registrationCutoff
+                                            );
+                                            setCutoffUnits({
+                                              ...cutoffUnits,
+                                              [workshop.id]:
+                                                currentBestUnit.unit,
+                                            });
+                                            setCutoffValues({
+                                              ...cutoffValues,
+                                              [workshop.id]:
+                                                currentBestUnit.value,
+                                            });
+                                          }}
+                                        >
+                                          <Edit2 className="h-4 w-4" />
+                                        </Button>
                                       )}
                                     </TableCell>
                                   </TableRow>
