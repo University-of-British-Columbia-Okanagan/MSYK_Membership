@@ -518,6 +518,7 @@ export default function AdminSettings() {
                     name="actionType"
                     value="updateSettings"
                   />
+                  <input type="hidden" name="settingType" value="workshop" />
                   <Card>
                     <CardHeader>
                       <CardTitle>Workshop Visibility Settings</CardTitle>
