@@ -18,6 +18,7 @@ import {
   Users,
   UserSearch,
   Settings,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -80,7 +81,14 @@ export function AdminAppSidebar() {
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <Settings className="w-5 h-5" />
-            Settings
+            Admin Panel
+          </Link>
+          <Link
+            to="/dashboard/admin/reports"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <BarChart3 className="w-5 h-5" />
+            Admin Reports
           </Link>
         </SidebarGroup>
       </SidebarContent>
