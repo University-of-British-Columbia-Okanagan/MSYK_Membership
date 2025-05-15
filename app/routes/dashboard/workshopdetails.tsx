@@ -967,56 +967,95 @@ export default function WorkshopDetails() {
 
           {/* Prerequisites Section */}
           {prerequisiteWorkshops.length > 0 && (
-            <>
-              <h2 className="text-lg font-semibold mb-2">Prerequisites</h2>
-              <ul className="list-disc pl-5 mb-4">
-                {prerequisiteWorkshops.map((prereq) => (
-                  <li
-                    key={prereq.id}
-                    className={`text-lg ${
-                      prereq.completed ? "text-green-600" : "text-red-600"
-                    }`}
-                  >
-                    <Link
-                      to={`/dashboard/workshops/${prereq.id}`}
-                      className="hover:underline"
+            <div className="mt-6 mb-8">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h2 className="text-lg font-semibold mb-3 flex items-center">
+                  <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      className="w-5 h-5"
                     >
-                      {prereq.name}
-                    </Link>
-                    {prereq.completed ? " ✓ (Completed)" : " ✗ (Not completed)"}
-                  </li>
-                ))}
-              </ul>
+                      <path
+                        fillRule="evenodd"
+                        d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </span>
+                  Prerequisites Required
+                </h2>
 
-              {user && !hasCompletedAllPrerequisites && (
-                <div className="bg-amber-50 border border-amber-300 p-3 rounded-md mb-4 flex items-start">
-                  <AlertCircle className="text-amber-500 mr-2 h-5 w-5 mt-1 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-amber-800">
-                      Prerequisites Required
-                    </p>
-                    <p className="text-amber-700">
-                      Complete the following prerequisites before registering:
-                    </p>
-                    <ul className="list-disc pl-5 text-amber-700">
-                      {incompletePrerequisites.map(
-                        (prereq: PrerequisiteWorkshop) => (
-                          <li key={prereq.id}>
-                            <Link
-                              to={`/dashboard/workshops/${prereq.id}`}
-                              className="text-amber-800 hover:underline"
-                            >
-                              {prereq.name}
-                            </Link>
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  </div>
+                <div className="space-y-3">
+                  {prerequisiteWorkshops.map((prereq) => (
+                    <div
+                      key={prereq.id}
+                      className={`flex items-center p-3 rounded-md ${
+                        prereq.completed
+                          ? "bg-green-50 border border-green-200"
+                          : "bg-red-50 border border-red-200"
+                      }`}
+                    >
+                      <div
+                        className={`flex-shrink-0 mr-3 h-8 w-8 rounded-full flex items-center justify-center ${
+                          prereq.completed ? "bg-green-500" : "bg-red-500"
+                        } text-white`}
+                      >
+                        {prereq.completed ? "✓" : "!"}
+                      </div>
+                      <div className="flex-1">
+                        <Link
+                          to={`/dashboard/workshops/${prereq.id}`}
+                          className={`font-medium hover:underline ${
+                            prereq.completed ? "text-green-700" : "text-red-700"
+                          }`}
+                        >
+                          {prereq.name}
+                        </Link>
+                        <p
+                          className={`text-sm ${
+                            prereq.completed ? "text-green-600" : "text-red-600"
+                          }`}
+                        >
+                          {prereq.completed
+                            ? "Completed"
+                            : "Not completed - you must complete this workshop first"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
-              <Separator className="my-6" />
-            </>
+
+                {!hasCompletedAllPrerequisites && (
+                  <div className="mt-4 p-3 bg-amber-100 border border-amber-300 rounded-md">
+                    <div className="flex items-start">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5 text-amber-500 mt-0.5 mr-2"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <div>
+                        <p className="font-medium text-amber-800">
+                          Registration Blocked
+                        </p>
+                        <p className="text-amber-700 text-sm">
+                          You cannot register for this workshop until you have
+                          completed all prerequisites listed above.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           <h2 className="text-lg font-semibold">Cancellation Policy</h2>

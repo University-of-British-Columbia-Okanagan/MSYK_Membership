@@ -92,6 +92,15 @@ export async function addWorkshop(data: WorkshopData) {
       },
     });
 
+    if (data.prerequisites && data.prerequisites.length > 0) {
+      await db.workshopPrerequisite.createMany({
+        data: data.prerequisites.map((prereqId) => ({
+          workshopId: newWorkshop.id,
+          prerequisiteId: prereqId,
+        })),
+      });
+    }
+
     // Step 2: Generate continuation ID if it's a multi-day workshop
     let newConnectId: number | null = null;
     if (data.isWorkshopContinuation) {
