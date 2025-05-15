@@ -132,6 +132,31 @@ export default function EquipmentBookingGrid({
     );
   };
 
+  const getLevel3TimeRange = () => {
+    if (!level3Restrictions) {
+      return visibleTimeRange ?? { startHour: 0, endHour: 24 };
+    }
+
+    // Find the earliest start hour and latest end hour across all days
+    let earliestStart = 24; // Initialize to end of day
+    let latestEnd = 0; // Initialize to beginning of day
+
+    Object.values(level3Restrictions).forEach((restriction) => {
+      // Skip closed days when calculating range
+      if (restriction.closed !== true) {
+        earliestStart = Math.min(earliestStart, restriction.start);
+        latestEnd = Math.max(latestEnd, restriction.end);
+      }
+    });
+
+    // If no valid time range found (all days closed), use default or visible time range
+    if (earliestStart >= latestEnd) {
+      return visibleTimeRange ?? { startHour: 0, endHour: 24 };
+    }
+
+    return { startHour: earliestStart, endHour: latestEnd };
+  };
+
   // Helper function to check if a slot is restricted by admin settings for level 4 users
   const isLevel4Restricted = (day: string, time: string): boolean => {
     // If there are no restrictions or settings are 0,0 (no restrictions)
@@ -158,9 +183,18 @@ export default function EquipmentBookingGrid({
   // Generate day labels for the specified number of days
   const days = generateDateLabels(visibleDays);
 
+  // const times = generateTimeSlots(
+  //   visibleTimeRange?.startHour ?? 0,
+  //   visibleTimeRange?.endHour ?? 24
+  // );
+  const level3TimeRange = getLevel3TimeRange();
   const times = generateTimeSlots(
-    visibleTimeRange?.startHour ?? 0,
-    visibleTimeRange?.endHour ?? 24
+    userRoleLevel === 3
+      ? level3TimeRange.startHour
+      : visibleTimeRange?.startHour ?? 0,
+    userRoleLevel === 3
+      ? level3TimeRange.endHour
+      : visibleTimeRange?.endHour ?? 24
   );
 
   const handleSlotToggle = (day: string, time: string) => {

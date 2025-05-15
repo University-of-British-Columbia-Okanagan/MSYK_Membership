@@ -489,6 +489,27 @@ export default function AdminSettings() {
     setEditingLevel4Hours(false);
   };
 
+  const calculateLevel3TimeRange = () => {
+    let minHour = 24;
+    let maxHour = 0;
+
+    Object.values(level3Schedule).forEach((schedule) => {
+      if (!schedule.closed) {
+        minHour = Math.min(minHour, schedule.start);
+        maxHour = Math.max(maxHour, schedule.end);
+      }
+    });
+
+    // Return default if all days are closed
+    if (minHour >= maxHour) {
+      return { minHour: 9, maxHour: 17 };
+    }
+
+    return { minHour, maxHour };
+  };
+
+  const level3TimeRange = calculateLevel3TimeRange();
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
@@ -999,6 +1020,23 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    <div className="mb-4 p-3 bg-blue-50/70 border border-blue-100 rounded-md text-blue-700 text-sm">
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className="font-medium">Dynamic Time Range:</span>
+                        <span className="font-bold">
+                          {level3TimeRange.minHour}:00
+                        </span>{" "}
+                        to
+                        <span className="font-bold">
+                          {level3TimeRange.maxHour}:00
+                        </span>
+                      </div>
+                      <p className="text-s text-blue-600">
+                        Reflects earliest start and latest end times across all
+                        open days. The booking grid will automatically adjust to
+                        these hours.
+                      </p>
+                    </div>
                     <Table>
                       <TableCaption>
                         Set the time range during which level 3 users can book
