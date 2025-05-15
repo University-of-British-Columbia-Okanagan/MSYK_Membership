@@ -315,139 +315,160 @@ export default function EquipmentBookingGrid({
 
   const today = new Date().getDate();
 
-  const grid = (
-    <div
-      className="grid border border-gray-300 rounded text-xs"
-      style={{
-        gridTemplateColumns: "80px repeat(7, 120px)",
-      }}
-      onMouseDown={() => (isDragging.current = true)}
-      onMouseUp={() => (isDragging.current = false)}
-      onMouseLeave={() => (isDragging.current = false)}
-    >
-      {/* Empty top-left cell */}
-      <div className="bg-white border-b border-r border-gray-300"></div>
+  const grid = (() => {
+    // Calculate how many rows of 7 days we need
+    const totalRows = Math.ceil(days.length / 7);
+    const rows = [];
 
-      {/* Day headers */}
-      {days.map((day) => {
-        const dayParts = day.split(" ");
-        const dayName = dayParts[0]; // e.g., "Thu"
-        const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
-        const isToday =
-          dayNumber === today &&
-          dayName ===
-            new Date().toLocaleDateString("en-US", { weekday: "short" });
+    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+      // Get days for this row (7 days or fewer for the last row)
+      const rowDays = days.slice(rowIndex * 7, (rowIndex + 1) * 7);
 
-        return (
-          <div
-            key={day}
-            className={`text-center py-2 border-b border-r border-gray-300 ${
-              isToday ? "bg-yellow-100 font-bold" : "bg-white"
-            }`}
-          >
-            <div className="text-sm">{dayName}</div>
-            <div className="text-xs">{dayNumber}</div>
-          </div>
-        );
-      })}
+      rows.push(
+        <div key={`row-${rowIndex}`} className="mb-8">
+          <table className="border-collapse border border-gray-300 text-xs w-full">
+            <thead>
+              <tr>
+                {/* Empty header cell for time column */}
+                <th className="border border-gray-300 bg-white w-20"></th>
 
-      {/* Time rows */}
-      {times.map((time) => {
-        const showTime = time.endsWith("00");
-        const [hour] = time.split(":");
-        const displayHour = Number(hour);
-        const formattedTime = showTime
-          ? displayHour === 0
-            ? "12:00 AM"
-            : displayHour === 12
-            ? "12:00 PM"
-            : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
-          : "";
+                {/* Day headers for this row */}
+                {rowDays.map((day) => {
+                  const dayParts = day.split(" ");
+                  const dayName = dayParts[0]; // e.g., "Thu"
+                  const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
+                  const isToday =
+                    dayNumber === today &&
+                    dayName ===
+                      new Date().toLocaleDateString("en-US", {
+                        weekday: "short",
+                      });
 
-        return (
-          <React.Fragment key={time}>
-            {/* Time label column */}
-            <div
-              className={`text-right pr-2 py-1 border-b border-r border-gray-300 bg-white ${
-                showTime ? "font-medium" : ""
-              }`}
-            >
-              {formattedTime}
-            </div>
+                  return (
+                    <th
+                      key={day}
+                      className={`border border-gray-300 p-2 text-center ${
+                        isToday ? "bg-yellow-100 font-bold" : "bg-white"
+                      }`}
+                    >
+                      <div className="text-sm">{dayName}</div>
+                      <div className="text-xs">{dayNumber}</div>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {/* Time rows */}
+              {times.map((time) => {
+                const showTime = time.endsWith("00");
+                const [hour] = time.split(":");
+                const displayHour = Number(hour);
+                const formattedTime = showTime
+                  ? displayHour === 0
+                    ? "12:00 AM"
+                    : displayHour === 12
+                    ? "12:00 PM"
+                    : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
+                  : "";
 
-            {/* Slot cells */}
-            {days.map((day) => {
-              const slot = slotsByDay?.[day]?.[time] ?? {
-                isAvailable: false,
-                isBooked: false,
-              };
+                return (
+                  <tr key={time}>
+                    {/* Time label column */}
+                    <td
+                      className={`text-right pr-2 py-1 border border-gray-300 bg-white ${
+                        showTime ? "font-medium" : ""
+                      }`}
+                    >
+                      {formattedTime}
+                    </td>
 
-              const isSelected = selectedSlots.some((slotStr) => {
-                const [start] = slotStr.split("|");
-                const slotDate = new Date(start);
-                // Create the day string in the same format as our grid headers (e.g., "Thu 8")
-                const slotDayStr = `${slotDate.toLocaleDateString("en-US", {
-                  weekday: "short",
-                })} ${slotDate.getDate()}`;
-                const hours = slotDate.getHours().toString().padStart(2, "0");
-                const minutes = slotDate
-                  .getMinutes()
-                  .toString()
-                  .padStart(2, "0");
-                const slotTimeStr = `${hours}:${minutes}`;
+                    {/* Slot cells for this row of days */}
+                    {rowDays.map((day) => {
+                      const slot = slotsByDay?.[day]?.[time] ?? {
+                        isAvailable: false,
+                        isBooked: false,
+                      };
 
-                return slotDayStr === day && slotTimeStr === time;
-              });
+                      const isSelected = selectedSlots.some((slotStr) => {
+                        const [start] = slotStr.split("|");
+                        const slotDate = new Date(start);
+                        const slotDayStr = `${slotDate.toLocaleDateString(
+                          "en-US",
+                          {
+                            weekday: "short",
+                          }
+                        )} ${slotDate.getDate()}`;
+                        const hours = slotDate
+                          .getHours()
+                          .toString()
+                          .padStart(2, "0");
+                        const minutes = slotDate
+                          .getMinutes()
+                          .toString()
+                          .padStart(2, "0");
+                        const slotTimeStr = `${hours}:${minutes}`;
 
-              const isAdminRestricted =
-                userRoleLevel === 3 ? isRestrictedByAdmin(day, time) : false;
-              const isLevel4AdminRestricted =
-                userRoleLevel === 4 ? isLevel4Restricted(day, time) : false;
-              const isAnyRestriction =
-                isAdminRestricted || isLevel4AdminRestricted;
+                        return slotDayStr === day && slotTimeStr === time;
+                      });
 
-              const baseStyle =
-                "w-full h-6 border-b border-r border-gray-300 transition-all duration-100";
-              const colorClass = slot?.reservedForWorkshop
-                ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
-                : slot?.isBooked
-                ? slot?.bookedByMe
-                  ? "bg-blue-400 cursor-not-allowed" // Booked by me
-                  : "bg-red-400 cursor-not-allowed" // Booked by others
-                : isAnyRestriction
-                ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
-                : isSelected
-                ? "bg-green-500"
-                : slot?.isAvailable
-                ? "bg-white hover:bg-green-200 cursor-pointer"
-                : "bg-pink-100 cursor-not-allowed";
+                      const isAdminRestricted =
+                        userRoleLevel === 3
+                          ? isRestrictedByAdmin(day, time)
+                          : false;
+                      const isLevel4AdminRestricted =
+                        userRoleLevel === 4
+                          ? isLevel4Restricted(day, time)
+                          : false;
+                      const isAnyRestriction =
+                        isAdminRestricted || isLevel4AdminRestricted;
 
-              return (
-                <div
-                  key={`${day}-${time}`}
-                  className={`${baseStyle} ${colorClass} relative group`}
-                  onClick={() =>
-                    !isAnyRestriction && handleSlotToggle(day, time)
-                  }
-                  onMouseEnter={() =>
-                    !isAnyRestriction &&
-                    isDragging.current &&
-                    handleSlotToggle(day, time)
-                  }
-                >
-                  {isAnyRestriction && (
-                    <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
-                      Restricted by admin
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
+                      const colorClass = slot?.reservedForWorkshop
+                        ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
+                        : slot?.isBooked
+                        ? slot?.bookedByMe
+                          ? "bg-blue-400 cursor-not-allowed" // Booked by me
+                          : "bg-red-400 cursor-not-allowed" // Booked by others
+                        : isAnyRestriction
+                        ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
+                        : isSelected
+                        ? "bg-green-500"
+                        : slot?.isAvailable
+                        ? "bg-white hover:bg-green-200 cursor-pointer"
+                        : "bg-pink-100 cursor-not-allowed";
+
+                      return (
+                        <td
+                          key={`${day}-${time}`}
+                          className={`border border-gray-300 h-6 relative group ${colorClass}`}
+                          onClick={() =>
+                            !isAnyRestriction && handleSlotToggle(day, time)
+                          }
+                          onMouseEnter={() =>
+                            !isAnyRestriction &&
+                            isDragging.current &&
+                            handleSlotToggle(day, time)
+                          }
+                        >
+                          {isAnyRestriction && (
+                            <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
+                              Restricted by admin
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    return <div className="w-full">{rows}</div>;
+  })();
 
   if (disabled) {
     return (
