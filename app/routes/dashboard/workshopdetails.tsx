@@ -533,12 +533,27 @@ export default function WorkshopDetails() {
               {isContinuation ? (
                 <ConfirmButton
                   confirmTitle="Duplicate Workshop"
-                  confirmDescription="Are you sure you want to duplicate this multi-day workshop? This will create a new workshop with the same details."
+                  confirmDescription="This will open the Add Workshop form with the current workshop's details pre-filled. You can then add new dates and make any other changes before saving."
                   onConfirm={() => {
-                    fetcher.submit(
-                      { workshopId: workshop.id, actionType: "duplicate" },
-                      { method: "post" }
+                    // Store the workshop data in localStorage for the add workshop page to use
+                    localStorage.setItem(
+                      "duplicateWorkshopData",
+                      JSON.stringify({
+                        id: workshop.id,
+                        name: workshop.name,
+                        description: workshop.description,
+                        price: workshop.price,
+                        location: workshop.location,
+                        capacity: workshop.capacity || 10,
+                        type: workshop.type,
+                        prerequisites: workshop.prerequisites || [],
+                        equipments: workshop.equipments || [],
+                        // Exclude occurrences/dates
+                        isContinuation: isContinuation,
+                      })
                     );
+                    // Navigate to the add workshop page
+                    navigate("/addworkshop");
                   }}
                   buttonLabel="Duplicate"
                   buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
