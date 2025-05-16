@@ -211,13 +211,23 @@ export default function WorkshopOfferAgain() {
   };
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
 
-  // State for occurrences - pre-populated with existing workshop dates
-  const [occurrences, setOccurrences] = useState<
+  // Store original workshop dates for reference
+  const [originalOccurrences, setOriginalOccurrences] = useState<
     { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
   >(() => {
     // Pre-populate with the workshop's existing occurrences
     if (workshop.occurrences && workshop.occurrences.length > 0) {
+      // First, find the latest offerId
+      let latestOfferId = 0;
+      workshop.occurrences.forEach((occ: any) => {
+        if (occ.offerId && occ.offerId > latestOfferId) {
+          latestOfferId = occ.offerId;
+        }
+      });
+
+      // Filter for occurrences with the latest offerId only
       return workshop.occurrences
+        .filter((occ: any) => occ.offerId === latestOfferId)
         .map((occ: any) => ({
           startDate: new Date(occ.startDate),
           endDate: new Date(occ.endDate),
@@ -229,10 +239,19 @@ export default function WorkshopOfferAgain() {
         .filter(
           (occ: any) =>
             !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
-        );
+        )
+        .sort(
+          (a: { startDate: Date }, b: { startDate: Date }) =>
+            a.startDate.getTime() - b.startDate.getTime()
+        ); // Sort by start date ascending
     }
     return [];
   });
+
+  // State for occurrences - initialize as empty
+  const [occurrences, setOccurrences] = useState<
+    { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
+  >([]);
 
   // Date selection type state
   const [dateSelectionType, setDateSelectionType] = useState<
@@ -257,17 +276,16 @@ export default function WorkshopOfferAgain() {
   const form = useForm<WorkshopOfferValues>({
     resolver: zodResolver(workshopOfferSchema),
     defaultValues: {
-      occurrences: occurrences,
+      occurrences: [],
     },
   });
 
-  // Update form with pre-populated occurrences
+  // Update form with occurrences when they change
   useEffect(() => {
-    // Update the form with pre-populated occurrences
     if (occurrences.length > 0) {
       form.setValue("occurrences", occurrences);
     }
-  }, [form, form.setValue]);
+  }, [occurrences, form, form.setValue]);
 
   // For custom dates, add an empty occurrence
   const addOccurrence = () => {
@@ -375,18 +393,46 @@ export default function WorkshopOfferAgain() {
       <div className="mb-8 bg-yellow-50 p-4 border border-yellow-200 rounded-md">
         <h2 className="text-lg font-semibold mb-2">Offering Workshop Again</h2>
         <p className="text-sm text-gray-700 mb-2">
-          We've pre-filled the dates from the current workshop schedule. You can
-          modify these dates or add new ones as needed.
+          You can view the current workshop dates below as a reference. Add new
+          dates for this workshop offering.
         </p>
         <p className="text-sm text-gray-700">
           When you submit this form, a new set of workshop occurrences will be
-          created with these dates.
+          created with the dates you add.
         </p>
       </div>
 
       <Form {...form}>
         <form method="post" className="space-y-6" onSubmit={handleFormSubmit}>
           {/* Workshop Dates Section */}
+
+          {/* Display Reference Occurrences if they exist */}
+          {originalOccurrences.length > 0 && (
+            <div className="w-full mb-6">
+              <h3 className="font-medium mb-4 flex items-center">
+                <CalendarIcon className="w-5 h-5 mr-2 text-gray-500" />
+                Most Recent Workshop Dates (Reference)
+              </h3>
+              <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                {originalOccurrences.map((occ, index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center p-3 border-b last:border-b-0"
+                  >
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-700">
+                        {formatDisplayDate(occ.startDate)}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        to {formatDisplayDate(occ.endDate)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <FormItem className="mt-6">
             <div className="flex items-center mb-2">
               <FormLabel
@@ -443,8 +489,8 @@ export default function WorkshopOfferAgain() {
                   {occurrences.length === 0 ? (
                     <div className="text-center py-6 text-gray-500">
                       <p className="text-sm">
-                        No dates added yet. Click the button below to add
-                        workshop dates.
+                        No new dates added yet. Please use the button below to
+                        add workshop dates for the new offering.
                       </p>
                     </div>
                   ) : (

@@ -73,7 +73,21 @@ export async function loader({ request }: { request: Request }) {
   // Load current settings
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
-  const workshops = await getWorkshops();
+
+  const workshopsRaw = await getWorkshops();
+  // Process workshops to determine which have active occurrences
+  const now = new Date();
+  const workshops = workshopsRaw.map((workshop) => {
+    // A workshop is considered active if it has at least one occurrence in the future
+    const hasActiveOccurrences = workshop.occurrences.some(
+      (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
+    );
+
+    return {
+      ...workshop,
+      hasActiveOccurrences,
+    };
+  });
 
   // Fetch all users for the user management tab
   const users = await getAllUsers();
@@ -296,6 +310,7 @@ export default function AdminSettings() {
       name: string;
       price: number;
       registrationCutoff: number;
+      hasActiveOccurrences: boolean;
     }>;
     users: Array<{
       id: number;
@@ -403,12 +418,12 @@ export default function AdminSettings() {
   const getBestUnit = (minutes: number): { value: number; unit: string } => {
     if (minutes >= 1440 && minutes % 1440 === 0) {
       // Divisible by days
-      return { value: minutes / 1440, unit: "day(s)" };
+      return { value: minutes / 1440, unit: "days" };
     } else if (minutes >= 60 && minutes % 60 === 0) {
       // Divisible by hours
-      return { value: minutes / 60, unit: "hour(s)" };
+      return { value: minutes / 60, unit: "hours" };
     } else {
-      return { value: minutes, unit: "minute(s)" };
+      return { value: minutes, unit: "minutes" };
     }
   };
 
@@ -474,6 +489,27 @@ export default function AdminSettings() {
     setEditingLevel4Hours(false);
   };
 
+  const calculateLevel3TimeRange = () => {
+    let minHour = 24;
+    let maxHour = 0;
+
+    Object.values(level3Schedule).forEach((schedule) => {
+      if (!schedule.closed) {
+        minHour = Math.min(minHour, schedule.start);
+        maxHour = Math.max(maxHour, schedule.end);
+      }
+    });
+
+    // Return default if all days are closed
+    if (minHour >= maxHour) {
+      return { minHour: 9, maxHour: 17 };
+    }
+
+    return { minHour, maxHour };
+  };
+
+  const level3TimeRange = calculateLevel3TimeRange();
+
   return (
     <SidebarProvider>
       <div className="flex h-screen">
@@ -518,6 +554,7 @@ export default function AdminSettings() {
                     name="actionType"
                     value="updateSettings"
                   />
+                  <input type="hidden" name="settingType" value="workshop" />
                   <Card>
                     <CardHeader>
                       <CardTitle>Workshop Visibility Settings</CardTitle>
@@ -563,6 +600,7 @@ export default function AdminSettings() {
                 </Form>
 
                 {/* Workshop Registration Cutoffs Section */}
+                {/* Workshop Registration Cutoffs Section */}
                 <Card>
                   <CardHeader>
                     <CardTitle>Workshop Registration Cutoffs</CardTitle>
@@ -572,131 +610,324 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <Table>
-                      <TableCaption>
-                        Registration cutoff is the minimum time before a
-                        workshop starts that users can register. Values are
-                        stored in minutes in the database.
-                      </TableCaption>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>ID</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Price</TableHead>
-                          <TableHead className="w-[150px]">
-                            Registration Cutoff
-                          </TableHead>
-                          <TableHead className="w-[100px]">Unit</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {workshops.map((workshop) => {
-                          // Calculate best display unit for the current value
-                          const bestUnit = getBestUnit(
-                            workshop.registrationCutoff
-                          );
-                          const displayValue =
-                            editingWorkshop === workshop.id
-                              ? cutoffValues[workshop.id] ?? bestUnit.value
-                              : bestUnit.value;
-                          const displayUnit =
-                            editingWorkshop === workshop.id
-                              ? cutoffUnits[workshop.id] ?? bestUnit.unit
-                              : bestUnit.unit;
+                    <Tabs defaultValue="active" className="w-full">
+                      <TabsList className="mb-4">
+                        <TabsTrigger value="active">
+                          Active Workshops
+                        </TabsTrigger>
+                        <TabsTrigger value="past">Past Workshops</TabsTrigger>
+                      </TabsList>
 
-                          return (
-                            <TableRow key={workshop.id}>
-                              <TableCell className="font-medium">
-                                {workshop.id}
-                              </TableCell>
-                              <TableCell>{workshop.name}</TableCell>
-                              <TableCell>${workshop.price}</TableCell>
-                              <TableCell>
-                                {editingWorkshop === workshop.id ? (
-                                  <Input
-                                    type="number"
-                                    min="1"
-                                    max="10000"
-                                    value={displayValue}
-                                    onChange={(e) => {
-                                      setCutoffValues({
-                                        ...cutoffValues,
-                                        [workshop.id]: Number(e.target.value),
-                                      });
-                                    }}
-                                    className="w-24"
-                                  />
-                                ) : (
-                                  displayValue
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                {editingWorkshop === workshop.id ? (
-                                  <select
-                                    value={displayUnit}
-                                    onChange={(e) => {
-                                      setCutoffUnits({
-                                        ...cutoffUnits,
-                                        [workshop.id]: e.target.value,
-                                      });
-                                    }}
-                                    className="border rounded px-2 py-1 text-sm"
-                                  >
-                                    <option value="minutes">Minutes</option>
-                                    <option value="hours">Hours</option>
-                                    <option value="days">Days</option>
-                                  </select>
-                                ) : (
-                                  displayUnit
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {editingWorkshop === workshop.id ? (
-                                  <div className="flex justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() =>
-                                        handleCutoffSave(workshop.id)
-                                      }
-                                    >
-                                      <Check className="h-4 w-4 text-green-500" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => setEditingWorkshop(null)}
-                                    >
-                                      <X className="h-4 w-4 text-red-500" />
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => {
-                                      setEditingWorkshop(workshop.id);
-                                      // Initialize with the best unit for this workshop
-                                      setCutoffUnits({
-                                        ...cutoffUnits,
-                                        [workshop.id]: bestUnit.unit,
-                                      });
-                                      setCutoffValues({
-                                        ...cutoffValues,
-                                        [workshop.id]: bestUnit.value,
-                                      });
-                                    }}
-                                  >
-                                    <Edit2 className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </TableCell>
+                      <TabsContent value="active">
+                        <Table>
+                          <TableCaption>
+                            Active workshops with at least one future date.
+                            Registration cutoff is the minimum time before a
+                            workshop starts that users can register. Values are
+                            stored in minutes in the database.
+                          </TableCaption>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>ID</TableHead>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Price</TableHead>
+                              <TableHead className="w-[150px]">
+                                Registration Cutoff
+                              </TableHead>
+                              <TableHead className="w-[100px]">Unit</TableHead>
+                              <TableHead className="text-right">
+                                Actions
+                              </TableHead>
                             </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {workshops
+                              .filter(
+                                (workshop) => workshop.hasActiveOccurrences
+                              )
+                              .map((workshop) => {
+                                // Calculate best display unit for the current value
+                                const bestUnit = getBestUnit(
+                                  workshop.registrationCutoff
+                                );
+                                const displayValue =
+                                  editingWorkshop === workshop.id
+                                    ? cutoffValues[workshop.id] ??
+                                      bestUnit.value
+                                    : bestUnit.value;
+                                const displayUnit =
+                                  editingWorkshop === workshop.id
+                                    ? cutoffUnits[workshop.id] ?? bestUnit.unit
+                                    : bestUnit.unit;
+
+                                return (
+                                  <TableRow key={workshop.id}>
+                                    <TableCell className="font-medium">
+                                      {workshop.id}
+                                    </TableCell>
+                                    <TableCell>{workshop.name}</TableCell>
+                                    <TableCell>${workshop.price}</TableCell>
+                                    <TableCell>
+                                      {editingWorkshop === workshop.id ? (
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          max="10000"
+                                          value={displayValue}
+                                          onChange={(e) => {
+                                            setCutoffValues({
+                                              ...cutoffValues,
+                                              [workshop.id]: Number(
+                                                e.target.value
+                                              ),
+                                            });
+                                          }}
+                                          className="w-24"
+                                        />
+                                      ) : (
+                                        displayValue
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      {editingWorkshop === workshop.id ? (
+                                        <select
+                                          value={displayUnit}
+                                          onChange={(e) => {
+                                            setCutoffUnits({
+                                              ...cutoffUnits,
+                                              [workshop.id]: e.target.value,
+                                            });
+                                          }}
+                                          className="border rounded px-2 py-1 text-sm"
+                                        >
+                                          <option value="minutes">
+                                            Minutes
+                                          </option>
+                                          <option value="hours">Hours</option>
+                                          <option value="days">Days</option>
+                                        </select>
+                                      ) : (
+                                        displayUnit
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {editingWorkshop === workshop.id ? (
+                                        <div className="flex justify-end gap-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              handleCutoffSave(workshop.id)
+                                            }
+                                          >
+                                            <Check className="h-4 w-4 text-green-500" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              setEditingWorkshop(null)
+                                            }
+                                          >
+                                            <X className="h-4 w-4 text-red-500" />
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => {
+                                            setEditingWorkshop(workshop.id);
+                                            // Initialize with the best unit for this workshop
+                                            const currentBestUnit = getBestUnit(
+                                              workshop.registrationCutoff
+                                            );
+                                            setCutoffUnits({
+                                              ...cutoffUnits,
+                                              [workshop.id]:
+                                                currentBestUnit.unit,
+                                            });
+                                            setCutoffValues({
+                                              ...cutoffValues,
+                                              [workshop.id]:
+                                                currentBestUnit.value,
+                                            });
+                                          }}
+                                        >
+                                          <Edit2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                          </TableBody>
+                        </Table>
+
+                        {workshops.filter(
+                          (workshop) => workshop.hasActiveOccurrences
+                        ).length === 0 && (
+                          <div className="text-center py-10 text-gray-500">
+                            No active workshops found.
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="past">
+                        <Table>
+                          <TableCaption>
+                            Past workshops with no future dates. Registration
+                            cutoff is the minimum time before a workshop starts
+                            that users can register. Values are stored in
+                            minutes in the database.
+                          </TableCaption>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>ID</TableHead>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Price</TableHead>
+                              <TableHead className="w-[150px]">
+                                Registration Cutoff
+                              </TableHead>
+                              <TableHead className="w-[100px]">Unit</TableHead>
+                              <TableHead className="text-right">
+                                Actions
+                              </TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {workshops
+                              .filter(
+                                (workshop) => !workshop.hasActiveOccurrences
+                              )
+                              .map((workshop) => {
+                                // Calculate best display unit for the current value
+                                const bestUnit = getBestUnit(
+                                  workshop.registrationCutoff
+                                );
+                                const displayValue =
+                                  editingWorkshop === workshop.id
+                                    ? cutoffValues[workshop.id] ??
+                                      bestUnit.value
+                                    : bestUnit.value;
+                                const displayUnit =
+                                  editingWorkshop === workshop.id
+                                    ? cutoffUnits[workshop.id] ?? bestUnit.unit
+                                    : bestUnit.unit;
+
+                                return (
+                                  <TableRow key={workshop.id}>
+                                    <TableCell className="font-medium">
+                                      {workshop.id}
+                                    </TableCell>
+                                    <TableCell>{workshop.name}</TableCell>
+                                    <TableCell>${workshop.price}</TableCell>
+                                    <TableCell>
+                                      {editingWorkshop === workshop.id ? (
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          max="10000"
+                                          value={displayValue}
+                                          onChange={(e) => {
+                                            setCutoffValues({
+                                              ...cutoffValues,
+                                              [workshop.id]: Number(
+                                                e.target.value
+                                              ),
+                                            });
+                                          }}
+                                          className="w-24"
+                                        />
+                                      ) : (
+                                        displayValue
+                                      )}
+                                    </TableCell>
+                                    <TableCell>
+                                      {editingWorkshop === workshop.id ? (
+                                        <select
+                                          value={displayUnit}
+                                          onChange={(e) => {
+                                            setCutoffUnits({
+                                              ...cutoffUnits,
+                                              [workshop.id]: e.target.value,
+                                            });
+                                          }}
+                                          className="border rounded px-2 py-1 text-sm"
+                                        >
+                                          <option value="minutes">
+                                            Minutes
+                                          </option>
+                                          <option value="hours">Hours</option>
+                                          <option value="days">Days</option>
+                                        </select>
+                                      ) : (
+                                        displayUnit
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {editingWorkshop === workshop.id ? (
+                                        <div className="flex justify-end gap-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              handleCutoffSave(workshop.id)
+                                            }
+                                          >
+                                            <Check className="h-4 w-4 text-green-500" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() =>
+                                              setEditingWorkshop(null)
+                                            }
+                                          >
+                                            <X className="h-4 w-4 text-red-500" />
+                                          </Button>
+                                        </div>
+                                      ) : (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => {
+                                            setEditingWorkshop(workshop.id);
+                                            // Initialize with the best unit for this workshop (the current displayed unit)
+                                            const currentBestUnit = getBestUnit(
+                                              workshop.registrationCutoff
+                                            );
+                                            setCutoffUnits({
+                                              ...cutoffUnits,
+                                              [workshop.id]:
+                                                currentBestUnit.unit,
+                                            });
+                                            setCutoffValues({
+                                              ...cutoffValues,
+                                              [workshop.id]:
+                                                currentBestUnit.value,
+                                            });
+                                          }}
+                                        >
+                                          <Edit2 className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                          </TableBody>
+                        </Table>
+
+                        {workshops.filter(
+                          (workshop) => !workshop.hasActiveOccurrences
+                        ).length === 0 && (
+                          <div className="text-center py-10 text-gray-500">
+                            No past workshops found.
+                          </div>
+                        )}
+                      </TabsContent>
+                    </Tabs>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -789,6 +1020,23 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    <div className="mb-4 p-3 bg-blue-50/70 border border-blue-100 rounded-md text-blue-700 text-sm">
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className="font-medium">Dynamic Time Range:</span>
+                        <span className="font-bold">
+                          {level3TimeRange.minHour}:00
+                        </span>{" "}
+                        to
+                        <span className="font-bold">
+                          {level3TimeRange.maxHour}:00
+                        </span>
+                      </div>
+                      <p className="text-s text-blue-600">
+                        Reflects earliest start and latest end times across all
+                        open days. The booking grid will automatically adjust to
+                        these hours.
+                      </p>
+                    </div>
                     <Table>
                       <TableCaption>
                         Set the time range during which level 3 users can book
@@ -947,8 +1195,8 @@ export default function AdminSettings() {
                         Level 4 users can book equipment 24/7 by default, but
                         you can set a daily time window when booking is not
                         allowed. For example, if you set "Start: 20" and "End:
-                        5", they cannot book from 8 PM to 5 AM. Setting both "Start: 0"
-                        and "End: 0" means no restrictions.
+                        5", they cannot book from 8 PM to 5 AM. Setting both
+                        "Start: 0" and "End: 0" means no restrictions.
                       </p>
 
                       <div className="flex space-x-6 items-end">

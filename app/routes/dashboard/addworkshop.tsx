@@ -497,6 +497,53 @@ export default function AddWorkshop() {
     }
   };
 
+  {/* This is for duplicate workshop from multi day workshop */}
+  React.useEffect(() => {
+    const duplicateData = localStorage.getItem("duplicateWorkshopData");
+
+    if (duplicateData) {
+      try {
+        const workshopData = JSON.parse(duplicateData);
+
+        // Pre-fill the form with the workshop data
+        form.setValue("name", `${workshopData.name} (Copy)`);
+        form.setValue("description", workshopData.description);
+        form.setValue("price", workshopData.price);
+        form.setValue("location", workshopData.location);
+        form.setValue("capacity", workshopData.capacity);
+        form.setValue("type", workshopData.type);
+
+        // Set prerequisites
+        if (
+          workshopData.prerequisites &&
+          workshopData.prerequisites.length > 0
+        ) {
+          setSelectedPrerequisites(workshopData.prerequisites);
+          form.setValue("prerequisites", workshopData.prerequisites);
+        }
+
+        // Set equipments
+        if (workshopData.equipments && workshopData.equipments.length > 0) {
+          setSelectedEquipments(workshopData.equipments);
+          form.setValue("equipments", workshopData.equipments);
+        }
+
+        // Set continuation flag
+        setIsWorkshopContinuation(!!workshopData.isContinuation);
+
+        // Clear the localStorage to prevent pre-filling again on refresh
+        localStorage.removeItem("duplicateWorkshopData");
+      } catch (error) {
+        console.error("Error parsing duplicate workshop data:", error);
+      }
+    }
+  }, [
+    form,
+    setSelectedPrerequisites,
+    setSelectedEquipments,
+    setIsWorkshopContinuation,
+  ]); // Include dependencies
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Add Workshop</h1>
