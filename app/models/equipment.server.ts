@@ -371,8 +371,9 @@ export async function getAvailableEquipmentForAdmin() {
 //     };
 //   });
 // }
-export async function getEquipmentSlotsWithStatus(userId?: number) {
+export async function getEquipmentSlotsWithStatus(userId?: number, onlyAvailable: boolean = false) {
   const equipment = await db.equipment.findMany({
+    where: onlyAvailable ? { availability: true } : undefined,
     include: {
       slots: {
         include: {
