@@ -16,7 +16,7 @@ import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
 import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { useState } from "react";
-import { getAdminSetting } from "../../models/admin.server";
+import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
 
 // Loader
@@ -49,12 +49,15 @@ export async function loader({ request }: { request: Request }) {
   const level4Restrictions =
     roleLevel === 4 ? await getLevel4UnavailableHours() : null;
 
+  const plannedClosures = roleLevel === 3 ? await getPlannedClosures() : [];
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
     visibleDays: parseInt(visibleDays, 10),
     level3Restrictions,
     level4Restrictions,
+    plannedClosures,
   });
 }
 
@@ -146,6 +149,7 @@ export default function EquipmentBookingForm() {
     visibleDays,
     level3Restrictions,
     level4Restrictions,
+    plannedClosures,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -228,14 +232,15 @@ export default function EquipmentBookingForm() {
               visibleTimeRange={
                 roleLevel === 3 ? { startHour: 9, endHour: 17 } : undefined
               }
-              visibleDays={visibleDays} // Pass the number of visible days
+              visibleDays={visibleDays}
               level3Restrictions={
                 roleLevel === 3 ? level3Restrictions : undefined
               }
               level4Restrictions={
                 roleLevel === 4 ? level4Restrictions : undefined
               }
-              userRoleLevel={roleLevel} 
+              plannedClosures={roleLevel === 3 ? plannedClosures : undefined} // Add this prop
+              userRoleLevel={roleLevel}
             />
 
             {totalPrice && (
