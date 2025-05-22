@@ -29,14 +29,15 @@ import { createCheckoutSession } from "../../models/payment.server";
 
 //   return json({ equipment: equipmentWithSlots, roleLevel });
 // }
-export async function loader({ request }: { request: Request }) {
+export async function loader({ request, params }: { request: Request; params: { id?: string } }) {
   const user = await getUser(request);
   const userId = user?.id ?? null;
   const roleLevel = user?.roleLevel ?? 1;
+  const equipmentId = params.id ? parseInt(params.id) : null;
 
   // Get the equipment_visible_registrable_days setting
   const equipmentWithSlots = await getEquipmentSlotsWithStatus(
-    userId ?? undefined
+    userId ?? undefined, true
   );
   const visibleDays = await getAdminSetting(
     "equipment_visible_registrable_days",
@@ -57,6 +58,7 @@ export async function loader({ request }: { request: Request }) {
     visibleDays: parseInt(visibleDays, 10),
     level3Restrictions,
     level4Restrictions,
+    equipmentId,
     plannedClosures,
   });
 }
@@ -94,16 +96,22 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
+  const equipment = await getEquipmentById(equipmentId);
+  if (!equipment) {
+    throw new Response("Equpiment Not Found", { status: 404 });
+  }
+  if (!equipment.availability) {
+    throw new Response("Equpiment Not Available", { status: 419 });
+  }
+
+  for (const entry of slots) {
+    const [startTime, endTime] = entry.split("|");
+    await bookEquipment(request, equipmentId, startTime, endTime);
+  }
+
+  // ✅ Direct call to your Stripe session creator
   try {
-    for (const entry of slots) {
-      const [startTime, endTime] = entry.split("|");
-      await bookEquipment(request, equipmentId, startTime, endTime);
-    }
-
-    const equipment = await getEquipmentById(equipmentId);
     const totalPrice = equipment?.price * slots.length;
-
-    // ✅ Direct call to your Stripe session creator
     const fakeRequest = new Request("http://localhost", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -149,12 +157,13 @@ export default function EquipmentBookingForm() {
     visibleDays,
     level3Restrictions,
     level4Restrictions,
+    equipmentId,
     plannedClosures,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
-    null
+    equipmentId
   );
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
