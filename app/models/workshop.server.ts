@@ -54,6 +54,9 @@ export async function getWorkshops() {
     include: {
       occurrences: {
         orderBy: { startDate: "asc" },
+        include: {
+          userWorkshops: true, // Include user workshops to count registrations
+        },
       },
     },
   });
@@ -65,12 +68,30 @@ export async function getWorkshops() {
         ? workshop.occurrences[workshop.occurrences.length - 1].status
         : "expired"; // Default to expired if no occurrences exist
 
+    // Map occurrences to include registration count
+    const occurrencesWithCounts = workshop.occurrences.map(
+      (occurrence: any) => {
+        // Use type assertion (any) to bypass TypeScript checking
+        const registrationCount = occurrence.userWorkshops?.length || 0;
+
+        // Create a new object without the userWorkshops property
+        const { userWorkshops, ...occWithoutUserWorkshops } = occurrence;
+
+        // Return the occurrence with the registration count added
+        return {
+          ...occWithoutUserWorkshops,
+          registrationCount,
+        };
+      }
+    );
+
     // Keep all existing fields in 'workshop',
     // then add/override status, and ensure 'type' is included.
     return {
       ...workshop,
       status: latestStatus,
       type: workshop.type, // explicitly include workshop.type
+      occurrences: occurrencesWithCounts, // Replace occurrences with our version that includes counts
     };
   });
 }
