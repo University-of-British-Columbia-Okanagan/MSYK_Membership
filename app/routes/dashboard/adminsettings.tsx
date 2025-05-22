@@ -64,6 +64,15 @@ import {
 } from "~/models/user.server";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -416,31 +425,35 @@ export default function AdminSettings() {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
   }, [filteredUsers]);
 
-  const [plannedClosures, setPlannedClosures] = useState<
-    Array<{
-      id: number;
-      startDate: Date;
-      endDate: Date;
-      editing?: boolean;
-    }>
-  >(
+  const [plannedClosures, setPlannedClosures] = useState(
     settings.plannedClosures.map((closure) => ({
-      ...closure,
+      id: closure.id,
       startDate: new Date(closure.startDate),
       endDate: new Date(closure.endDate),
     }))
   );
 
-  const [newClosure, setNewClosure] = useState<{
-    startDate: Date;
-    startTime: string;
-    endDate: Date;
-    endTime: string;
+  const [newClosure, setNewClosure] = useState(() => {
+    // Initialize with today's date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to midnight
+
+    return {
+      startDate: today,
+      startTime: "09:00",
+      endDate: today, // Same day as start date, not tomorrow
+      endTime: "17:00",
+    };
+  });
+
+  const [validationError, setValidationError] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
   }>({
-    startDate: new Date(),
-    startTime: "09:00",
-    endDate: new Date(),
-    endTime: "17:00",
+    show: false,
+    title: "",
+    message: "",
   });
 
   // Define columns for the ShadTable
@@ -564,20 +577,70 @@ export default function AdminSettings() {
   };
 
   // Function to add a new planned closure
+  // Function to add a new planned closure
   const handleAddClosure = () => {
-    const start = new Date(newClosure.startDate);
+    // Create dates from user input, preserving the selected day
+    const startDateInput = newClosure.startDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+    const endDateInput = newClosure.endDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+
+    // Parse the dates using the date string directly to avoid timezone issues
+    const [startYear, startMonth, startDay] = startDateInput
+      .split("-")
+      .map(Number);
     const [startHours, startMinutes] = newClosure.startTime
       .split(":")
       .map(Number);
-    start.setHours(startHours, startMinutes, 0, 0);
 
-    const end = new Date(newClosure.endDate);
+    const [endYear, endMonth, endDay] = endDateInput.split("-").map(Number);
     const [endHours, endMinutes] = newClosure.endTime.split(":").map(Number);
-    end.setHours(endHours, endMinutes, 0, 0);
+
+    // Create Date objects with the correct day, ensuring we use local timezone
+    const start = new Date(
+      startYear,
+      startMonth - 1,
+      startDay,
+      startHours,
+      startMinutes,
+      0
+    );
+    const end = new Date(
+      endYear,
+      endMonth - 1,
+      endDay,
+      endHours,
+      endMinutes,
+      0
+    );
 
     // Validate dates
     if (end <= start) {
-      alert("End date must be after start date");
+      setValidationError({
+        show: true,
+        title: "Invalid Time Period",
+        message: "End date and time must be after start date and time.",
+      });
+      return;
+    }
+
+    // Check for overlapping closures
+    const hasOverlap = plannedClosures.some((closure) => {
+      const closureStart = new Date(closure.startDate);
+      const closureEnd = new Date(closure.endDate);
+
+      // Check if the new closure overlaps with an existing one
+      return (
+        (start <= closureEnd && end >= closureStart) ||
+        (closureStart <= end && closureEnd >= start)
+      );
+    });
+
+    if (hasOverlap) {
+      setValidationError({
+        show: true,
+        title: "Overlapping Closure",
+        message:
+          "This closure period overlaps with an existing planned closure. Please choose a different time period.",
+      });
       return;
     }
 
@@ -608,11 +671,13 @@ export default function AdminSettings() {
     );
     submit(formData, { method: "post" });
 
-    // Reset form
+    // Reset form with today's date
+    const today = new Date();
+
     setNewClosure({
-      startDate: new Date(),
+      startDate: today,
       startTime: "09:00",
-      endDate: new Date(),
+      endDate: today, // Same date as start
       endTime: "17:00",
     });
   };
@@ -1562,6 +1627,40 @@ export default function AdminSettings() {
                         >
                           Add Closure Period
                         </Button>
+
+                        {/* Validation Error Dialog */}
+                        <AlertDialog
+                          open={validationError.show}
+                          onOpenChange={(open) =>
+                            setValidationError((prev) => ({
+                              ...prev,
+                              show: open,
+                            }))
+                          }
+                        >
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                {validationError.title}
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                {validationError.message}
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogAction
+                                onClick={() =>
+                                  setValidationError({
+                                    ...validationError,
+                                    show: false,
+                                  })
+                                }
+                              >
+                                OK
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
 
                       {/* List of existing closures */}
