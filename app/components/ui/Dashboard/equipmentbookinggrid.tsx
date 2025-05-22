@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Function to generate times in 30-minute increments between startHour and endHour
 const generateTimeSlots = (startHour: number, endHour: number) => {
@@ -65,6 +66,12 @@ interface EquipmentBookingGridProps {
     start: number;
     end: number;
   };
+  plannedClosures?: Array<{
+    // Add this new prop
+    id: number;
+    startDate: string | Date;
+    endDate: string | Date;
+  }>;
   userRoleLevel?: number;
 }
 
@@ -90,11 +97,13 @@ export default function EquipmentBookingGrid({
   visibleDays = 7, // Default to 7 days if not specified
   level3Restrictions,
   level4Restrictions,
+  plannedClosures = [],
   userRoleLevel,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isDragging = useRef(false);
+  const [activeTab, setActiveTab] = useState("week-0");
 
   // Helper function to check if a slot is restricted by admin settings for level 3 users
   const isRestrictedByAdmin = (day: string, time: string): boolean => {
@@ -180,8 +189,69 @@ export default function EquipmentBookingGrid({
     }
   };
 
-  // Generate day labels for the specified number of days
-  const days = generateDateLabels(visibleDays);
+  // Convert planned closures dates to Date objects if they're strings
+  const normalizedPlannedClosures = useMemo(() => {
+    return plannedClosures.map((closure) => ({
+      id: closure.id,
+      startDate:
+        closure.startDate instanceof Date
+          ? closure.startDate
+          : new Date(closure.startDate),
+      endDate:
+        closure.endDate instanceof Date
+          ? closure.endDate
+          : new Date(closure.endDate),
+    }));
+  }, [plannedClosures]);
+
+  // Add function to check if a slot is within a planned closure
+  const isInPlannedClosure = (day: string, time: string): boolean => {
+    if (!normalizedPlannedClosures.length || userRoleLevel !== 3) return false;
+
+    // Extract day parts and create a date for the slot
+    const dayParts = day.split(" ");
+    const dayName = dayParts[0]; // e.g., "Thu"
+    const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
+
+    const [hour, minute] = time.split(":").map(Number);
+
+    // Get current month and year
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Create a date for the slot
+    const slotDate = new Date(
+      currentYear,
+      currentMonth,
+      dayNumber,
+      hour,
+      minute
+    );
+
+    // If the day is less than today's date and we're near the end of the month,
+    // it probably means we're booking for the next month
+    if (dayNumber < now.getDate() && now.getDate() > 20) {
+      slotDate.setMonth(currentMonth + 1);
+    }
+
+    // Check if the slot date falls within any planned closure
+    return normalizedPlannedClosures.some((closure) => {
+      return slotDate >= closure.startDate && slotDate < closure.endDate;
+    });
+  };
+
+  // Generate day labels for all visible days
+  const allDays = generateDateLabels(visibleDays);
+
+  // Calculate how many weeks we need to display
+  const totalWeeks = Math.ceil(visibleDays / 7);
+
+  // Organize days into weeks
+  const weekDays: string[][] = [];
+  for (let i = 0; i < totalWeeks; i++) {
+    weekDays.push(allDays.slice(i * 7, (i + 1) * 7));
+  }
 
   // const times = generateTimeSlots(
   //   visibleTimeRange?.startHour ?? 0,
@@ -315,165 +385,220 @@ export default function EquipmentBookingGrid({
 
   const today = new Date().getDate();
 
-  const grid = (() => {
-    // Calculate how many rows of 7 days we need
-    const totalRows = Math.ceil(days.length / 7);
-    const rows = [];
+  // Render a single week grid
+  const renderWeekGrid = (days: string[]) => {
+    return (
+      <table className="border-collapse border border-gray-300 text-xs w-full">
+        <thead>
+          <tr>
+            {/* Empty header cell for time column */}
+            <th className="border border-gray-300 bg-white w-20"></th>
 
-    for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
-      // Get days for this row (7 days or fewer for the last row)
-      const rowDays = days.slice(rowIndex * 7, (rowIndex + 1) * 7);
+            {/* Day headers for this week */}
+            {days.map((day) => {
+              const dayParts = day.split(" ");
+              const dayName = dayParts[0]; // e.g., "Thu"
+              const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
+              const isToday =
+                dayNumber === today &&
+                dayName ===
+                  new Date().toLocaleDateString("en-US", {
+                    weekday: "short",
+                  });
 
-      rows.push(
-        <div key={`row-${rowIndex}`} className="mb-8">
-          <table className="border-collapse border border-gray-300 text-xs w-full">
-            <thead>
-              <tr>
-                {/* Empty header cell for time column */}
-                <th className="border border-gray-300 bg-white w-20"></th>
+              return (
+                <th
+                  key={day}
+                  className={`border border-gray-300 p-2 text-center ${
+                    isToday ? "bg-yellow-100 font-bold" : "bg-white"
+                  }`}
+                >
+                  <div className="text-sm">{dayName}</div>
+                  <div className="text-xs">{dayNumber}</div>
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {/* Time rows */}
+          {times.map((time) => {
+            const showTime = time.endsWith("00");
+            const [hour] = time.split(":");
+            const displayHour = Number(hour);
+            const formattedTime = showTime
+              ? displayHour === 0
+                ? "12:00 AM"
+                : displayHour === 12
+                ? "12:00 PM"
+                : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
+              : "";
 
-                {/* Day headers for this row */}
-                {rowDays.map((day) => {
-                  const dayParts = day.split(" ");
-                  const dayName = dayParts[0]; // e.g., "Thu"
-                  const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
-                  const isToday =
-                    dayNumber === today &&
-                    dayName ===
-                      new Date().toLocaleDateString("en-US", {
-                        weekday: "short",
-                      });
+            return (
+              <tr key={time}>
+                {/* Time label column */}
+                <td
+                  className={`text-right pr-2 py-1 border border-gray-300 bg-white ${
+                    showTime ? "font-medium" : ""
+                  }`}
+                >
+                  {formattedTime}
+                </td>
+
+                {/* Slot cells for this row of days */}
+                {days.map((day) => {
+                  const slot = slotsByDay?.[day]?.[time] ?? {
+                    isAvailable: false,
+                    isBooked: false,
+                  };
+
+                  const isSelected = selectedSlots.some((slotStr) => {
+                    const [start] = slotStr.split("|");
+                    const slotDate = new Date(start);
+                    const slotDayStr = `${slotDate.toLocaleDateString("en-US", {
+                      weekday: "short",
+                    })} ${slotDate.getDate()}`;
+                    const hours = slotDate
+                      .getHours()
+                      .toString()
+                      .padStart(2, "0");
+                    const minutes = slotDate
+                      .getMinutes()
+                      .toString()
+                      .padStart(2, "0");
+                    const slotTimeStr = `${hours}:${minutes}`;
+
+                    return slotDayStr === day && slotTimeStr === time;
+                  });
+
+                  const isAdminRestricted =
+                    userRoleLevel === 3
+                      ? isRestrictedByAdmin(day, time)
+                      : false;
+                  const isLevel4AdminRestricted =
+                    userRoleLevel === 4 ? isLevel4Restricted(day, time) : false;
+                  const isAnyRestriction =
+                    isAdminRestricted || isLevel4AdminRestricted;
+
+                  const isPlannedClosure =
+                    userRoleLevel === 3 && isInPlannedClosure(day, time);
+                  const colorClass = slot?.reservedForWorkshop
+                    ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
+                    : slot?.isBooked
+                    ? slot?.bookedByMe
+                      ? "bg-blue-400 cursor-not-allowed" // Booked by me
+                      : "bg-red-400 cursor-not-allowed" // Booked by others
+                    : isPlannedClosure
+                    ? "bg-orange-300 cursor-not-allowed" // Planned closure (new color)
+                    : isAnyRestriction
+                    ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
+                    : isSelected
+                    ? "bg-green-500"
+                    : slot?.isAvailable
+                    ? "bg-white hover:bg-green-200 cursor-pointer"
+                    : "bg-pink-100 cursor-not-allowed";
 
                   return (
-                    <th
-                      key={day}
-                      className={`border border-gray-300 p-2 text-center ${
-                        isToday ? "bg-yellow-100 font-bold" : "bg-white"
-                      }`}
+                    <td
+                      key={`${day}-${time}`}
+                      className={`border border-gray-300 h-6 relative group ${colorClass}`}
+                      onClick={() =>
+                        !isAnyRestriction &&
+                        !isPlannedClosure &&
+                        handleSlotToggle(day, time)
+                      }
+                      onMouseEnter={() =>
+                        !isAnyRestriction &&
+                        !isPlannedClosure &&
+                        isDragging.current &&
+                        handleSlotToggle(day, time)
+                      }
                     >
-                      <div className="text-sm">{dayName}</div>
-                      <div className="text-xs">{dayNumber}</div>
-                    </th>
+                      {isAnyRestriction && (
+                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
+                          Restricted by admin
+                        </div>
+                      )}
+                      {isPlannedClosure && (
+                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap">
+                          Planned closure
+                        </div>
+                      )}
+                    </td>
                   );
                 })}
               </tr>
-            </thead>
-            <tbody>
-              {/* Time rows */}
-              {times.map((time) => {
-                const showTime = time.endsWith("00");
-                const [hour] = time.split(":");
-                const displayHour = Number(hour);
-                const formattedTime = showTime
-                  ? displayHour === 0
-                    ? "12:00 AM"
-                    : displayHour === 12
-                    ? "12:00 PM"
-                    : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
-                  : "";
+            );
+          })}
+        </tbody>
+      </table>
+    );
+  };
 
-                return (
-                  <tr key={time}>
-                    {/* Time label column */}
-                    <td
-                      className={`text-right pr-2 py-1 border border-gray-300 bg-white ${
-                        showTime ? "font-medium" : ""
-                      }`}
-                    >
-                      {formattedTime}
-                    </td>
+  // Render all week tabs
+  const renderWeekTabs = () => {
+    // Generate tab labels like "May 22-28"
+    const getTabLabel = (weekIndex: number, days: string[]) => {
+      if (days.length === 0) return `Week ${weekIndex + 1}`;
 
-                    {/* Slot cells for this row of days */}
-                    {rowDays.map((day) => {
-                      const slot = slotsByDay?.[day]?.[time] ?? {
-                        isAvailable: false,
-                        isBooked: false,
-                      };
+      const firstDay = days[0].split(" ")[1];
+      const lastDay = days[days.length - 1].split(" ")[1];
 
-                      const isSelected = selectedSlots.some((slotStr) => {
-                        const [start] = slotStr.split("|");
-                        const slotDate = new Date(start);
-                        const slotDayStr = `${slotDate.toLocaleDateString(
-                          "en-US",
-                          {
-                            weekday: "short",
-                          }
-                        )} ${slotDate.getDate()}`;
-                        const hours = slotDate
-                          .getHours()
-                          .toString()
-                          .padStart(2, "0");
-                        const minutes = slotDate
-                          .getMinutes()
-                          .toString()
-                          .padStart(2, "0");
-                        const slotTimeStr = `${hours}:${minutes}`;
+      // Get month names
+      const today = new Date();
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
 
-                        return slotDayStr === day && slotTimeStr === time;
-                      });
+      // Find the month for the first day
+      let firstDayMonth = currentMonth;
+      if (parseInt(firstDay) < today.getDate() && today.getDate() > 20) {
+        firstDayMonth = (currentMonth + 1) % 12;
+      }
 
-                      const isAdminRestricted =
-                        userRoleLevel === 3
-                          ? isRestrictedByAdmin(day, time)
-                          : false;
-                      const isLevel4AdminRestricted =
-                        userRoleLevel === 4
-                          ? isLevel4Restricted(day, time)
-                          : false;
-                      const isAnyRestriction =
-                        isAdminRestricted || isLevel4AdminRestricted;
+      const firstMonthName = new Date(
+        currentYear,
+        firstDayMonth,
+        1
+      ).toLocaleString("default", { month: "short" });
 
-                      const colorClass = slot?.reservedForWorkshop
-                        ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
-                        : slot?.isBooked
-                        ? slot?.bookedByMe
-                          ? "bg-blue-400 cursor-not-allowed" // Booked by me
-                          : "bg-red-400 cursor-not-allowed" // Booked by others
-                        : isAnyRestriction
-                        ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
-                        : isSelected
-                        ? "bg-green-500"
-                        : slot?.isAvailable
-                        ? "bg-white hover:bg-green-200 cursor-pointer"
-                        : "bg-pink-100 cursor-not-allowed";
+      return `${firstMonthName} ${firstDay}-${lastDay}`;
+    };
 
-                      return (
-                        <td
-                          key={`${day}-${time}`}
-                          className={`border border-gray-300 h-6 relative group ${colorClass}`}
-                          onClick={() =>
-                            !isAnyRestriction && handleSlotToggle(day, time)
-                          }
-                          onMouseEnter={() =>
-                            !isAnyRestriction &&
-                            isDragging.current &&
-                            handleSlotToggle(day, time)
-                          }
-                        >
-                          {isAnyRestriction && (
-                            <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
-                              Restricted by admin
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
+    return (
+      <div className="w-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="border-b mb-4">
+            <TabsList className="bg-transparent h-auto p-0 mb-0 flex w-full justify-start overflow-x-auto">
+              {weekDays.map((days, index) => (
+                <TabsTrigger
+                  key={`week-${index}`}
+                  value={`week-${index}`}
+                  className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-yellow-500 data-[state=active]:shadow-none data-[state=active]:bg-transparent rounded-none"
+                >
+                  {getTabLabel(index, days)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
-    return <div className="w-full">{rows}</div>;
-  })();
+          {weekDays.map((days, index) => (
+            <TabsContent
+              key={`week-content-${index}`}
+              value={`week-${index}`}
+              className="mt-0 p-0"
+            >
+              {renderWeekGrid(days)}
+            </TabsContent>
+          ))}
+        </Tabs>
+      </div>
+    );
+  };
 
   if (disabled) {
     return (
       <div className="relative">
-        <div className="opacity-50 pointer-events-none">{grid}</div>
+        <div className="opacity-50 pointer-events-none">{renderWeekTabs()}</div>
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="bg-white bg-opacity-90 p-6 border border-red-300 text-red-600 rounded shadow-md text-center max-w-md">
             <p className="text-md font-semibold">
@@ -534,8 +659,8 @@ export default function EquipmentBookingGrid({
         <p className="text-md font-medium mt-2">Click and Drag to Toggle</p>
       </div>
 
-      {/* Grid Render */}
-      {grid}
+      {/* Week Tabs */}
+      {renderWeekTabs()}
     </div>
   );
 }

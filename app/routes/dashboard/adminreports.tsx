@@ -45,6 +45,7 @@ const generateCSV = (workshopOccurrences: any[]) => {
     "Start Date",
     "End Date",
     "Duration",
+    "Registered Users",
     "Offer ID",
     "Status",
   ];
@@ -58,6 +59,7 @@ const generateCSV = (workshopOccurrences: any[]) => {
       new Date(occ.startDate).toLocaleString(),
       new Date(occ.endDate).toLocaleString(),
       calculateDuration(occ.startDate, occ.endDate),
+      occ.registrationCount,
       occ.offerId,
       occ.status,
     ])
@@ -158,6 +160,7 @@ export default function AdminReports() {
         endDate: string;
         status: string;
         offerId: number;
+        registrationCount: number;
       }>;
     }>;
   }>();
@@ -345,6 +348,9 @@ export default function AdminReports() {
                                           <TableHead>Start Date</TableHead>
                                           <TableHead>End Date</TableHead>
                                           <TableHead>Duration</TableHead>
+                                          <TableHead>
+                                            Registered Users
+                                          </TableHead>
                                           <TableHead>Offer ID</TableHead>
                                           <TableHead>Status</TableHead>
                                         </TableRow>
@@ -369,6 +375,9 @@ export default function AdminReports() {
                                                   occurrence.startDate,
                                                   occurrence.endDate
                                                 )}
+                                              </TableCell>
+                                              <TableCell>
+                                                {occurrence.registrationCount}
                                               </TableCell>
                                               <TableCell>
                                                 {occurrence.offerId}
@@ -455,6 +464,9 @@ export default function AdminReports() {
                                           <TableHead>Start Date</TableHead>
                                           <TableHead>End Date</TableHead>
                                           <TableHead>Duration</TableHead>
+                                          <TableHead>
+                                            Registered Users
+                                          </TableHead>
                                           <TableHead>Offer ID</TableHead>
                                           <TableHead>Status</TableHead>
                                         </TableRow>
@@ -479,6 +491,9 @@ export default function AdminReports() {
                                                   occurrence.startDate,
                                                   occurrence.endDate
                                                 )}
+                                              </TableCell>
+                                              <TableCell>
+                                                {occurrence.registrationCount}
                                               </TableCell>
                                               <TableCell>
                                                 {occurrence.offerId}
