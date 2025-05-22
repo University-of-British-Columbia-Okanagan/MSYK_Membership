@@ -47,7 +47,7 @@ import {
   Check as CheckIcon,
 } from "lucide-react";
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
-import type SlotsByDay from "@/components/ui/Dashboard/equipmentbookinggrid";
+import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
 import { bulkBookEquipment } from "../../models/equipment.server";
 import {
   AlertDialog,
@@ -397,11 +397,19 @@ export default function AddWorkshop() {
     null
   );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
-
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const { selectedSlotsMap: initialSelectedSlotsMap } = useLoaderData() as {
+    workshops: { id: number; name: string; type: string }[];
+    equipments: {
+      id: number;
+      name: string;
+      slotsByDay: SlotsByDay;
+    }[];
+    selectedSlotsMap: Record<number, number[]>;
+  };
   const [selectedSlotsMap, setSelectedSlotsMap] = useState<
     Record<number, number[]>
-  >({});
+  >(initialSelectedSlotsMap || {});
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -497,7 +505,9 @@ export default function AddWorkshop() {
     }
   };
 
-  {/* This is for duplicate workshop from multi day workshop */}
+  {
+    /* This is for duplicate workshop from multi day workshop */
+  }
   React.useEffect(() => {
     const duplicateData = localStorage.getItem("duplicateWorkshopData");
 
@@ -893,68 +903,144 @@ export default function AddWorkshop() {
           )}
 
           {/* Equipments */}
-          <FormItem className="mt-6">
-            <FormLabel>Select Equipment</FormLabel>
-            <Select
-              onValueChange={(value) => setSelectedEquipment(Number(value))}
-            >
-              <SelectTrigger className="w-full border rounded-md p-2">
-                <SelectValue placeholder="Choose an equipment" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableEquipments.map((equipment) => (
-                  <SelectItem
-                    key={equipment.id}
-                    value={equipment.id.toString()}
-                  >
-                    {equipment.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </FormItem>
+          <MultiSelectField
+            control={form.control}
+            name="equipments"
+            label="Equipment"
+            options={availableEquipments}
+            selectedItems={selectedEquipments}
+            onSelect={(equipmentId: number) => {
+              // Add equipment to selection if not already selected
+              if (!selectedEquipments.includes(equipmentId)) {
+                // Update the selected equipments state
+                const updatedEquipments = [...selectedEquipments, equipmentId];
+                setSelectedEquipments(updatedEquipments);
 
-          {/* Slot Picker */}
-          {selectedEquipment !== null && (
+                // Set the form value directly (not with a function)
+                form.setValue("equipments", updatedEquipments);
+
+                // Initialize the slots map for this equipment if needed
+                if (!selectedSlotsMap[equipmentId]) {
+                  setSelectedSlotsMap({
+                    ...selectedSlotsMap,
+                    [equipmentId]: [],
+                  });
+                }
+              }
+            }}
+            onRemove={(equipmentId: number) => {
+              // Remove equipment from selection
+              const updatedEquipments = selectedEquipments.filter(
+                (id) => id !== equipmentId
+              );
+
+              // Update state
+              setSelectedEquipments(updatedEquipments);
+
+              // Set form value directly
+              form.setValue("equipments", updatedEquipments);
+
+              // Remove slots for this equipment
+              const newMap = { ...selectedSlotsMap };
+              delete newMap[equipmentId];
+              setSelectedSlotsMap(newMap);
+            }}
+            error={actionData?.errors?.equipments}
+            placeholder="Select equipment..."
+            helperText="Select equipment that will be used in this workshop."
+          />
+
+          {/* Equipment Slot Pickers */}
+          {selectedEquipments.length > 0 && (
             <div className="mt-6">
               <h3 className="font-semibold mb-2">
-                Equipment Availability Grid
+                Equipment Availability Grids
               </h3>
 
-              <EquipmentBookingGrid
-                slotsByDay={
-                  availableEquipments.find((eq) => eq.id === selectedEquipment)
-                    ?.slotsByDay || {}
-                }
-                onSelectSlots={(slots) => {
-                  // Assuming slots is an array of slot IDs
-                  if (slots.length === 0) return;
+              <Tabs
+                defaultValue={selectedEquipments[0].toString()}
+                className="w-full"
+              >
+                <TabsList className="mb-4">
+                  {/* Sort selectedEquipments by ID before mapping */}
+                  {[...selectedEquipments]
+                    .sort((a, b) => a - b)
+                    .map((equipmentId) => {
+                      const equipment = availableEquipments.find(
+                        (eq) => eq.id === equipmentId
+                      );
+                      return (
+                        <TabsTrigger
+                          key={`eq-tab-${equipmentId}`}
+                          value={equipmentId.toString()}
+                          className="px-4 py-2"
+                        >
+                          {equipment?.name || `Equipment ${equipmentId}`}
+                        </TabsTrigger>
+                      );
+                    })}
+                </TabsList>
 
-                  setSelectedEquipments((prev) => {
-                    const updated = new Set([...prev, selectedEquipment!]);
-                    return Array.from(updated);
-                  });
+                {/* Also sort selectedEquipments in the TabsContent section */}
+                {[...selectedEquipments]
+                  .sort((a, b) => a - b)
+                  .map((equipmentId) => {
+                    const equipment = availableEquipments.find(
+                      (eq) => eq.id === equipmentId
+                    );
 
-                  form.setValue("equipments", (prev) => {
-                    const updated = new Set([...prev, selectedEquipment!]);
-                    return Array.from(updated);
-                  });
-                  const updatedMap = {
-                    ...selectedSlotsMap,
-                    [selectedEquipment!]: slots,
-                  };
+                    return (
+                      <TabsContent
+                        key={`eq-content-${equipmentId}`}
+                        value={equipmentId.toString()}
+                        className="mt-0 p-0"
+                      >
+                        <EquipmentBookingGrid
+                          slotsByDay={equipment?.slotsByDay || {}}
+                          onSelectSlots={(slots: string[]) => {
+                            // Convert all slots to numbers
+                            const numericSlots = slots.map((slot) => {
+                              // Try to parse as a number
+                              const parsed = Number(slot);
+                              // If it's a string like "1|2", extract just the ID
+                              if (isNaN(parsed) && slot.includes("|")) {
+                                const slotId = slot.split("|")[0];
+                                return Number(slotId);
+                              }
+                              return parsed;
+                            });
 
-                  setSelectedSlotsMap(updatedMap);
-                  form.setValue("selectedSlots", JSON.stringify(updatedMap));
+                            // Update slots for this specific equipment
+                            const newSlotsMap = { ...selectedSlotsMap };
 
-                  console.log(
-                    `Slots ${slots.join(
-                      ", "
-                    )} confirmed for Equipment ${selectedEquipment}`
-                  );
-                }}
-                disabled={false}
-              />
+                            if (
+                              slots.length === 0 &&
+                              selectedSlotsMap[equipmentId]
+                            ) {
+                              // If no slots selected, remove this equipment's entry
+                              delete newSlotsMap[equipmentId];
+                            } else {
+                              // Update slots for this equipment - ensure they're all numbers
+                              newSlotsMap[equipmentId] = numericSlots.filter(
+                                (id) => !isNaN(id)
+                              ) as number[];
+                            }
+
+                            // Update state
+                            setSelectedSlotsMap(newSlotsMap);
+
+                            console.log(
+                              `Slots ${numericSlots.join(
+                                ", "
+                              )} confirmed for Equipment ${equipmentId}`
+                            );
+                          }}
+                          disabled={false}
+                        />
+                      </TabsContent>
+                    );
+                  })}
+              </Tabs>
             </div>
           )}
 
@@ -1011,6 +1097,13 @@ export default function AddWorkshop() {
             type="hidden"
             name="isWorkshopContinuation"
             value={isWorkshopContinuation ? "true" : "false"}
+          />
+
+          {/* Hidden input for selected slots */}
+          <input
+            type="hidden"
+            name="selectedSlots"
+            value={JSON.stringify(selectedSlotsMap)}
           />
 
           {/* Submit Button */}
