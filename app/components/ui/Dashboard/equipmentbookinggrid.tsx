@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Function to generate times in 30-minute increments between startHour and endHour
@@ -66,6 +66,12 @@ interface EquipmentBookingGridProps {
     start: number;
     end: number;
   };
+  plannedClosures?: Array<{
+    // Add this new prop
+    id: number;
+    startDate: string | Date;
+    endDate: string | Date;
+  }>;
   userRoleLevel?: number;
 }
 
@@ -91,6 +97,7 @@ export default function EquipmentBookingGrid({
   visibleDays = 7, // Default to 7 days if not specified
   level3Restrictions,
   level4Restrictions,
+  plannedClosures = [],
   userRoleLevel,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
@@ -180,6 +187,58 @@ export default function EquipmentBookingGrid({
     else {
       return hour >= level4Restrictions.start && hour < level4Restrictions.end;
     }
+  };
+
+  // Convert planned closures dates to Date objects if they're strings
+  const normalizedPlannedClosures = useMemo(() => {
+    return plannedClosures.map((closure) => ({
+      id: closure.id,
+      startDate:
+        closure.startDate instanceof Date
+          ? closure.startDate
+          : new Date(closure.startDate),
+      endDate:
+        closure.endDate instanceof Date
+          ? closure.endDate
+          : new Date(closure.endDate),
+    }));
+  }, [plannedClosures]);
+
+  // Add function to check if a slot is within a planned closure
+  const isInPlannedClosure = (day: string, time: string): boolean => {
+    if (!normalizedPlannedClosures.length || userRoleLevel !== 3) return false;
+
+    // Extract day parts and create a date for the slot
+    const dayParts = day.split(" ");
+    const dayName = dayParts[0]; // e.g., "Thu"
+    const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
+
+    const [hour, minute] = time.split(":").map(Number);
+
+    // Get current month and year
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Create a date for the slot
+    const slotDate = new Date(
+      currentYear,
+      currentMonth,
+      dayNumber,
+      hour,
+      minute
+    );
+
+    // If the day is less than today's date and we're near the end of the month,
+    // it probably means we're booking for the next month
+    if (dayNumber < now.getDate() && now.getDate() > 20) {
+      slotDate.setMonth(currentMonth + 1);
+    }
+
+    // Check if the slot date falls within any planned closure
+    return normalizedPlannedClosures.some((closure) => {
+      return slotDate >= closure.startDate && slotDate < closure.endDate;
+    });
   };
 
   // Generate day labels for all visible days
@@ -421,12 +480,16 @@ export default function EquipmentBookingGrid({
                   const isAnyRestriction =
                     isAdminRestricted || isLevel4AdminRestricted;
 
+                  const isPlannedClosure =
+                    userRoleLevel === 3 && isInPlannedClosure(day, time);
                   const colorClass = slot?.reservedForWorkshop
                     ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
                     : slot?.isBooked
                     ? slot?.bookedByMe
                       ? "bg-blue-400 cursor-not-allowed" // Booked by me
                       : "bg-red-400 cursor-not-allowed" // Booked by others
+                    : isPlannedClosure
+                    ? "bg-orange-300 cursor-not-allowed" // Planned closure (new color)
                     : isAnyRestriction
                     ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
                     : isSelected
@@ -440,10 +503,13 @@ export default function EquipmentBookingGrid({
                       key={`${day}-${time}`}
                       className={`border border-gray-300 h-6 relative group ${colorClass}`}
                       onClick={() =>
-                        !isAnyRestriction && handleSlotToggle(day, time)
+                        !isAnyRestriction &&
+                        !isPlannedClosure &&
+                        handleSlotToggle(day, time)
                       }
                       onMouseEnter={() =>
                         !isAnyRestriction &&
+                        !isPlannedClosure &&
                         isDragging.current &&
                         handleSlotToggle(day, time)
                       }
@@ -451,6 +517,11 @@ export default function EquipmentBookingGrid({
                       {isAnyRestriction && (
                         <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
                           Restricted by admin
+                        </div>
+                      )}
+                      {isPlannedClosure && (
+                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap">
+                          Planned closure
                         </div>
                       )}
                     </td>
