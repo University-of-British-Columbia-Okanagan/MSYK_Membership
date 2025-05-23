@@ -139,6 +139,7 @@ export async function login(rawValues: Record<string, any>) {
     id: user.id,
     email: user.email,
     roleUserId: user.roleUserId,
+    password: data.password
   };
 }
 
@@ -169,9 +170,28 @@ function getUserSession(request: Request) {
 export async function getUserId(request: Request) {
   const session = await getUserSession(request);
   const userId = session.get("userId");
-  if (!userId || typeof userId !== "string") {
-    return null;
+  const userPassword = session.get("password");
+  if (!userId || typeof userId !== "string" || !userPassword) {
+    throw await logout(request);
   }
+
+  const user = await db.user.findUnique({
+    where: { id: Number(userId) },
+    select: {
+      id: true,
+      password: true,
+    },
+  });
+
+  if (!user) {
+    throw await logout(request);
+  }
+
+  const isPasswordValid = await bcrypt.compare(userPassword, user.password);
+  if (!isPasswordValid) {
+    throw await logout(request);
+  }
+
   return userId;
 }
 
@@ -207,9 +227,10 @@ export async function logout(request: Request) {
   });
 }
 
-export async function createUserSession(userId: number, redirectTo: string) {
+export async function createUserSession(userId: number, password: string, redirectTo: string) {
   const session = await storage.getSession();
   session.set("userId", userId.toString());
+  session.set("userPassword", password);
   return redirect(redirectTo, {
     headers: {
       "Set-Cookie": await storage.commitSession(session),

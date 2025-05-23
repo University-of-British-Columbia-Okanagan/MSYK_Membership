@@ -68,6 +68,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { getRoleUser } from "~/utils/session.server";
 
 interface Occurrence {
   id?: number;
@@ -117,6 +118,10 @@ export async function action({
 }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
 
   // Check if this submission is a cancellation request.
   if (rawValues.cancelOccurrenceId) {

@@ -134,6 +134,10 @@ export async function action({ request }: { request: Request }) {
 
   if (action === "delete") {
     try {
+      const roleUser = await getRoleUser(request);
+      if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+        throw new Response("Not Authorized", { status: 419 });
+      }
       const result = await deleteMembershipPlan(Number(planId));
       if (confirmationDelete !== "confirmed") {
         console.warn("Deletion was not confirmed.");

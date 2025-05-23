@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { redirect, useActionData, useLoaderData } from "react-router";
+import { redirect, useActionData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,11 +14,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { equipmentFormSchema } from "../../schemas/equipmentFormSchema";
 import type { EquipmentFormValues } from "../../schemas/equipmentFormSchema";
-import {
-  getAvailableEquipmentForAdmin,
-  addEquipment,
-  getEquipmentByName,
-} from "~/models/equipment.server";
+import { addEquipment, getEquipmentByName } from "~/models/equipment.server";
 import {
   Select,
   SelectContent,
@@ -33,22 +28,7 @@ import {
   TooltipContent,
   TooltipProvider,
 } from "@/components/ui/tooltip";
-
-/**
- * Loader to fetch available equipment for admin.
- */
-export async function loader() {
-  const equipments = await getAvailableEquipmentForAdmin();
-  return { equipments };
-}
-
-/**
- * Helper: Parse a datetime-local string as a local Date.
- */
-function parseDateTimeAsLocal(value: string): Date {
-  if (!value) return new Date("");
-  return new Date(value);
-}
+import { getRoleUser } from "~/utils/session.server";
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
@@ -68,6 +48,11 @@ export async function action({ request }: { request: Request }) {
   }
 
   try {
+    const roleUser = await getRoleUser(request);
+    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+    }
+
     // Check if equipment name already exists
     const existingEquipment = await getEquipmentByName(parsed.data.name);
     if (existingEquipment) {
@@ -98,9 +83,6 @@ export async function action({ request }: { request: Request }) {
 
 export default function AddEquipment() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
-  const { equipments } = useLoaderData() as {
-    equipments: { id: number; name: string }[];
-  };
 
   const form = useForm<EquipmentFormValues>({
     resolver: zodResolver(equipmentFormSchema),

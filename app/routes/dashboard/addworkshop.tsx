@@ -65,6 +65,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getRoleUser } from "~/utils/session.server";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -248,6 +249,11 @@ export async function action({ request }: { request: Request }) {
         ],
       },
     };
+  }
+
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
   }
 
   // Fetch up-to-date available equipment to avoid conflicts

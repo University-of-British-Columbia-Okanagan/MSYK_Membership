@@ -10,9 +10,9 @@ import  { updateEquipment, getEquipmentById } from "../../models/equipment.serve
 import { getRoleUser } from "~/utils/session.server";
 
 export async function action({ request }: { request: Request }) {
-    const currentUserRole = await getRoleUser(request);
-    if (currentUserRole?.roleName !== "Admin") {
-      throw new Response("Access Denied", { status: 403 });
+    const roleUser = await getRoleUser(request);
+    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+      throw new Response("Not Authorized", { status: 419 });
     }
 
     const form = await request.formData();
