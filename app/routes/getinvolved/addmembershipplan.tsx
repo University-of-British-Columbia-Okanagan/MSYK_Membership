@@ -26,8 +26,13 @@ import type { Route } from "./+types/addmembershipplan";
 import { membershipPlanFormSchema } from "../../schemas/membershipPlanFormSchema";
 import type { MembershipPlanFormValues } from "../../schemas/membershipPlanFormSchema";
 import { addMembershipPlan } from "~/models/membership.server";
+import { getRoleUser } from "~/utils/session.server";
 
 export async function action({ request }: Route.ActionArgs) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
   const formData = await request.formData();
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 

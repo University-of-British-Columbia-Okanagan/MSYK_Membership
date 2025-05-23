@@ -32,6 +32,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { getRoleUser } from "~/utils/session.server";
 
 // Schema for workshop offer form
 const workshopOfferSchema = z.object({
@@ -125,6 +126,11 @@ export async function action({
   request: Request;
   params: { id: string };
 }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
+
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries()) as Record<
     string,

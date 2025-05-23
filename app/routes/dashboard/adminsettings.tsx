@@ -125,6 +125,10 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const actionType = formData.get("actionType");
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
 
   if (actionType === "updateSettings") {
     try {

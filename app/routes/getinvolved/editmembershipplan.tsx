@@ -30,6 +30,7 @@ import {
   getMembershipPlan,
 } from "~/models/membership.server";
 import { useLoaderData } from "react-router";
+import { getRoleUser } from "~/utils/session.server";
 
 export async function loader({ params }: { params: { planId: string } }) {
   const membershipPlan = await getMembershipPlan(Number(params.planId));
@@ -57,6 +58,11 @@ export async function action({
   request: Request;
   params: { planId: string };
 }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
+
   const formData = await request.formData();
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 

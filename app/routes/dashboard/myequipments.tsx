@@ -6,6 +6,7 @@ import EquipmentCard from "@/components/ui/Dashboard/equipmentcard";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
+import { json } from "@remix-run/node";
 
 
 export async function loader({ request }: { request: Request }) {
@@ -36,7 +37,20 @@ export async function action({ request }: { request: Request }) {
     const formData = await request.formData();
     const actionType = formData.get("action");
     const bookingId = Number(formData.get("bookingId"));
-  
+
+    const roleUser = await getRoleUser(request);
+    if (!roleUser || !roleUser.userId) {
+      console.log(" No valid user found, redirecting to login.");
+      return redirect("/login");
+    }
+    const myEquipments = await getUserBookedEquipments(roleUser.userId);
+    
+
+    const hasBooking = myEquipments.some((equipment) => equipment.id === bookingId) || roleUser.roleName.toLowerCase() === "admin";
+    if (!hasBooking) {
+      return new Response("Can only edit your own booking", { status: 419 });
+    }
+
     if (actionType === "cancel" && bookingId) {
       try {
         await cancelEquipmentBooking(bookingId);

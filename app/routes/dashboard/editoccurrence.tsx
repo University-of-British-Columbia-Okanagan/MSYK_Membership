@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { redirect } from "react-router";
 import GenericFormField from "@/components/ui/GenericFormField";
+import { getRoleUser } from "~/utils/session.server";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  1) Helper: format a Date as "YYYY-MM-DDTHH:mm" for datetime-local
@@ -68,6 +69,11 @@ export async function action({
   request: Request;
   params: { id: string; occurrenceId: string };
 }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
+  
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries()) as Record<
     string,
