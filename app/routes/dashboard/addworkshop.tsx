@@ -79,7 +79,7 @@ export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
   const userId = user?.id || undefined;
 
-  const equipmentsRaw = await getEquipmentSlotsWithStatus(userId);
+  const equipmentsRaw = await getEquipmentSlotsWithStatus(userId, true);
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
 
   const selectedSlotsMap: Record<number, number[]> = {};
