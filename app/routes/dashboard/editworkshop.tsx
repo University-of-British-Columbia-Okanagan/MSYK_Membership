@@ -672,11 +672,17 @@ export default function EditWorkshop() {
       : workshop.prerequisites || []
   );
 
+  // const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
+  //   Array.isArray(workshop.equipments) &&
+  //     typeof workshop.equipments[0] === "object"
+  //     ? workshop.equipments.map((e: any) => e.equipmentId)
+  //     : workshop.equipments || []
+  // );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
     Array.isArray(workshop.equipments) &&
       typeof workshop.equipments[0] === "object"
-      ? workshop.equipments.map((e: any) => e.equipmentId)
-      : workshop.equipments || []
+      ? [...new Set(workshop.equipments.map((e: any) => e.equipmentId))]
+      : [...new Set(workshop.equipments || [])]
   );
 
   const [selectedSlotsMap, setSelectedSlotsMap] = useState<
@@ -866,12 +872,20 @@ export default function EditWorkshop() {
       ? selectedEquipments.filter((e) => e !== id)
       : [...new Set([...selectedEquipments, id])]; // Use Set to ensure no duplicates
 
-    setSelectedEquipments(updated);
-    form.setValue("equipments", updated);
+    // Make sure we deduplicate the array before setting state
+    const uniqueUpdated = [...new Set(updated)];
+    setSelectedEquipments(uniqueUpdated);
+    form.setValue("equipments", uniqueUpdated);
   };
 
+  // const removeEquipment = (id: number) => {
+  //   const updated = selectedEquipments.filter((e) => e !== id);
+  //   setSelectedEquipments(updated);
+  //   form.setValue("equipments", updated);
+  // };
   const removeEquipment = (id: number) => {
-    const updated = selectedEquipments.filter((e) => e !== id);
+    // Filter out the equipment and ensure the result is unique
+    const updated = [...new Set(selectedEquipments.filter((e) => e !== id))];
     setSelectedEquipments(updated);
     form.setValue("equipments", updated);
   };
@@ -1789,7 +1803,8 @@ export default function EditWorkshop() {
             name="equipments"
             label="Equipments"
             options={availableEquipments}
-            selectedItems={selectedEquipments}
+            // Ensure we're only displaying unique selected items
+            selectedItems={[...new Set(selectedEquipments)]}
             onSelect={handleEquipmentSelect}
             onRemove={removeEquipment}
             error={actionData?.errors?.equipments}
