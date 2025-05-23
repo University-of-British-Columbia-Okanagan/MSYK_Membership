@@ -181,6 +181,86 @@ function hasOccurrencesInPast(
   );
 }
 
+function checkForEquipmentOverlaps(
+  currentOccurrences: { startDate: Date; endDate: Date }[],
+  currentSelectedEquipments: number[],
+  currentAvailableEquipments: {
+    id: number;
+    name: string;
+    slotsByDay: SlotsByDay;
+  }[]
+) {
+  const overlaps: {
+    equipmentId: number;
+    name: string;
+    overlappingTimes: string[];
+  }[] = [];
+
+  // Filter for valid dates only
+  const validOccurrences = currentOccurrences.filter(
+    (occ) => !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
+  );
+
+  if (validOccurrences.length === 0 || currentSelectedEquipments.length === 0) {
+    return overlaps;
+  }
+
+  // Check each selected equipment for overlaps
+  currentSelectedEquipments.forEach((equipmentId) => {
+    const equipment = currentAvailableEquipments.find(
+      (eq) => eq.id === equipmentId
+    );
+    if (!equipment) return;
+
+    const overlappingTimes: string[] = [];
+
+    // For each workshop occurrence, check for overlaps in equipment slots
+    validOccurrences.forEach((occ) => {
+      // Create 30-minute slots for the entire workshop duration
+      const currentTime = new Date(occ.startDate);
+      while (currentTime < occ.endDate) {
+        // Format day as "Sat 24"
+        const dayName = currentTime.toLocaleDateString("en-US", {
+          weekday: "short",
+        });
+        const dayNumber = currentTime.getDate();
+        const dayKey = `${dayName} ${dayNumber}`;
+
+        // Format time as "05:00"
+        const hours = String(currentTime.getHours()).padStart(2, "0");
+        const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+        const timeKey = `${hours}:${minutes}`;
+
+        // Check if this slot exists in the equipment's slots and is booked or unavailable
+        if (
+          equipment.slotsByDay[dayKey] &&
+          equipment.slotsByDay[dayKey][timeKey] &&
+          (equipment.slotsByDay[dayKey][timeKey].isBooked ||
+            equipment.slotsByDay[dayKey][timeKey].reservedForWorkshop)
+        ) {
+          const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes}`;
+          if (!overlappingTimes.includes(formattedTime)) {
+            overlappingTimes.push(formattedTime);
+          }
+        }
+
+        // Move to next 30-minute slot
+        currentTime.setTime(currentTime.getTime() + 30 * 60 * 1000);
+      }
+    });
+
+    if (overlappingTimes.length > 0) {
+      overlaps.push({
+        equipmentId,
+        name: equipment.name || `Equipment ${equipmentId}`,
+        overlappingTimes,
+      });
+    }
+  });
+
+  return overlaps;
+}
+
 // Add this function after your other helper functions
 function getEquipmentSlotsForOccurrences(
   occurrences: { startDate: Date; endDate: Date }[]
@@ -254,50 +334,6 @@ function getSlotStringsForOccurrences(
   });
 
   return slotStrings;
-}
-
-// Add this helper function to check if a slot corresponds to a workshop occurrence
-function isSlotInWorkshopOccurrences(
-  day: string,
-  time: string,
-  occurrences: { startDate: Date; endDate: Date }[]
-): boolean {
-  // Skip if occurrences is empty or has invalid dates
-  if (!occurrences.length) return false;
-
-  // Extract day parts
-  const dayParts = day.split(" ");
-  if (dayParts.length !== 2) return false;
-
-  const dayName = dayParts[0]; // e.g., "Fri"
-  const dayNumber = parseInt(dayParts[1], 10); // e.g., 23
-
-  // Parse time
-  const [hour, minute] = time.split(":").map(Number);
-  if (isNaN(hour) || isNaN(minute)) return false;
-
-  // Create a date object for this slot
-  const now = new Date();
-  const slotDate = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    dayNumber,
-    hour,
-    minute
-  );
-
-  // Adjust month if day is in next month
-  if (dayNumber < now.getDate() && now.getDate() > 20) {
-    slotDate.setMonth(slotDate.getMonth() + 1);
-  }
-
-  // Check if slot falls within any workshop occurrence
-  return occurrences.some((occ) => {
-    if (isNaN(occ.startDate.getTime()) || isNaN(occ.endDate.getTime())) {
-      return false;
-    }
-    return slotDate >= occ.startDate && slotDate < occ.endDate;
-  });
 }
 
 export async function action({ request }: { request: Request }) {
@@ -418,6 +454,52 @@ export async function action({ request }: { request: Request }) {
               ],
             },
           };
+        }
+      }
+    }
+  }
+
+  for (const equipmentId of equipments) {
+    const conflictingEquipment = availableEquipments.find(
+      (e) => e.id === equipmentId
+    );
+
+    if (conflictingEquipment?.slots) {
+      for (const occ of occurrences) {
+        // Check each 30-minute slot during the workshop
+        const currentTime = new Date(occ.startDate);
+        while (currentTime < occ.endDate) {
+          // Find if any slot at this time is already booked
+          const conflictingSlot = conflictingEquipment.slots.find(
+            (slot) =>
+              new Date(slot.startTime).getTime() === currentTime.getTime() &&
+              (slot.isBooked || slot.workshopOccurrenceId !== null)
+          );
+
+          if (conflictingSlot) {
+            const formattedTime = new Date(currentTime).toLocaleString(
+              undefined,
+              {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "numeric",
+                hour12: true,
+              }
+            );
+
+            return {
+              errors: {
+                equipments: [
+                  `The equipment "${conflictingEquipment.name}" is already booked at ${formattedTime}. Please choose different dates or equipment.`,
+                ],
+              },
+            };
+          }
+
+          // Move to next 30-minute slot
+          currentTime.setTime(currentTime.getTime() + 30 * 60 * 1000);
         }
       }
     }
@@ -608,6 +690,16 @@ export default function AddWorkshop() {
     Record<number, number[]>
   >(initialSelectedSlotsMap || {});
 
+  const [equipmentOverlaps, setEquipmentOverlaps] = useState<
+    {
+      equipmentId: number;
+      name: string;
+      overlappingTimes: string[];
+    }[]
+  >([]);
+  const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
+  const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
+
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
   const [weeklyCount, setWeeklyCount] = useState(1);
@@ -687,13 +779,46 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
+  // const handleFormSubmit = (e: React.FormEvent) => {
+  //   e.preventDefault();
+
+  //   // First check if any dates are in the past
+  //   if (hasOccurrencesInPast(occurrences)) {
+  //     setIsConfirmDialogOpen(true);
+  //     return; // Important: prevent the normal form submission flow
+  //   } else {
+  //     // No past dates, submit directly
+  //     setFormSubmitting(true);
+  //     const form = e.currentTarget as HTMLFormElement;
+  //     form.submit();
+  //   }
+  // };
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // First check if any dates are in the past
+    // Check for overlaps first
+    const overlaps = checkForEquipmentOverlaps(
+      occurrences,
+      selectedEquipments,
+      availableEquipments
+    );
+
+    if (overlaps.length > 0 && !proceedDespiteOverlaps) {
+      setEquipmentOverlaps(overlaps);
+      setShowOverlapConfirm(true);
+      return; // Stop form submission
+    }
+
+    // Reset overlap flag after using it
+    if (proceedDespiteOverlaps) {
+      setProceedDespiteOverlaps(false);
+    }
+
+    // Then check if any dates are in the past (your existing code)
     if (hasOccurrencesInPast(occurrences)) {
       setIsConfirmDialogOpen(true);
-      return; // Important: prevent the normal form submission flow
+      return;
     } else {
       // No past dates, submit directly
       setFormSubmitting(true);
@@ -1321,6 +1446,61 @@ export default function AddWorkshop() {
             value={isWorkshopContinuation ? "true" : "false"}
           />
 
+          <AlertDialog
+            open={showOverlapConfirm}
+            onOpenChange={setShowOverlapConfirm}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-red-600">
+                  Equipment Booking Conflicts Detected
+                </AlertDialogTitle>
+                <AlertDialogDescription className="space-y-4">
+                  <p>
+                    Your workshop dates overlap with existing bookings for the
+                    following equipment:
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {equipmentOverlaps.map((overlap, index) => (
+                      <div
+                        key={index}
+                        className="border-l-4 border-red-500 pl-3 py-2 bg-red-50"
+                      >
+                        <p className="font-medium">{overlap.name}</p>
+                        <ul className="text-sm mt-1 list-disc pl-5">
+                          {overlap.overlappingTimes
+                            .slice(0, 3)
+                            .map((time, idx) => (
+                              <li key={idx}>{time}</li>
+                            ))}
+                          {overlap.overlappingTimes.length > 3 && (
+                            <li>
+                              ...and {overlap.overlappingTimes.length - 3} more
+                              times
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm mt-4 font-medium">
+                    Workshop cannot be scheduled at times when equipment is
+                    already booked. Please adjust your workshop dates or select
+                    different equipment.
+                  </p>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Go Back & Edit</AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Submit Button */}
+          <AlertDialog
+            open={isConfirmDialogOpen}
+            onOpenChange={setIsConfirmDialogOpen}
+          ></AlertDialog>
           {/* Submit Button */}
           <AlertDialog
             open={isConfirmDialogOpen}
