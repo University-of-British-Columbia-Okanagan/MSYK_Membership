@@ -475,33 +475,51 @@ export async function action({ request }: { request: Request }) {
     // }
     // Process workshop time slots for equipment
     // Process workshop time slots for equipment
+    // Process workshop time slots for equipment
     try {
       // Get the current user ID
       const user = await getUser(request);
       const userId = user?.id || 1; // Default to 1 if no user found
 
-      // First book the explicitly selected slots
-      if (allSelectedSlotIds.length > 0) {
-        const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
-        if (validSelectedSlotIds.length > 0) {
+      // First, check if there are any valid slot IDs to book
+      const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
+
+      if (validSelectedSlotIds.length > 0) {
+        try {
+          // Only attempt to book if we have valid slots
           await bulkBookEquipment(
             savedWorkshop.id,
             validSelectedSlotIds,
             userId
           );
+        } catch (error) {
+          console.error("Error in bulkBookEquipment:", error);
+          // Continue with the rest of the process instead of failing
         }
+      } else {
+        console.log(
+          "No valid equipment slots selected, skipping bulkBookEquipment"
+        );
       }
 
-      // Now create slots for all workshop occurrences
+      // Create slots for all workshop occurrences
       for (const occurrence of savedWorkshop.occurrences) {
         for (const equipmentId of equipments) {
-          await createEquipmentSlotsForOccurrence(
-            occurrence.id,
-            equipmentId,
-            occurrence.startDate,
-            occurrence.endDate,
-            userId
-          );
+          try {
+            await createEquipmentSlotsForOccurrence(
+              occurrence.id,
+              equipmentId,
+              occurrence.startDate,
+              occurrence.endDate,
+              userId
+            );
+          } catch (error) {
+            console.error(
+              `Error creating slots for equipment ${equipmentId}:`,
+              error
+            );
+            // Continue with other equipment instead of failing the whole operation
+          }
         }
       }
 

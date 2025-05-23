@@ -606,19 +606,69 @@ export async function getUserBookedEquipments(userId: number) {
 // In equipment.server.ts
 // Find the bulkBookEquipment function and modify it:
 
-export async function bulkBookEquipment(
-  workshopId: number,
-  slots: number[],
-  userId: number
-) {
-  // Filter out negative IDs (these are the temporary IDs for workshop slots)
-  const validSlots = slots.filter((id) => id > 0);
+// export async function bulkBookEquipment(
+//   workshopId: number,
+//   slots: number[],
+//   userId: number
+// ) {
+//   // Filter out negative IDs (these are the temporary IDs for workshop slots)
+//   const validSlots = slots.filter((id) => id > 0);
 
-  // If no valid slots, just return success
+//   // If no valid slots, just return success
+//   if (validSlots.length === 0) {
+//     return { count: 0 };
+//   }
+
+//   const availableSlots = await db.equipmentSlot.findMany({
+//     where: {
+//       id: { in: validSlots },
+//       isBooked: false,
+//     },
+//   });
+
+//   if (availableSlots.length !== validSlots.length) {
+//     throw new Error("One or more slots are already booked.");
+//   }
+
+//   // Update the slots to be booked and associated with the workshop
+//   await db.equipmentSlot.updateMany({
+//     where: { id: { in: validSlots } },
+//     data: {
+//       isBooked: true,
+//       workshopOccurrenceId: workshopId,
+//     },
+//   });
+
+//   // Create equipment booking records for each slot
+//   const bookings = await Promise.all(
+//     availableSlots.map((slot) =>
+//       db.equipmentBooking.create({
+//         data: {
+//           userId: userId,
+//           equipmentId: slot.equipmentId,
+//           slotId: slot.id,
+//           status: "pending", // Keep default status as pending
+//           bookedFor: "workshop", // Set the new bookedFor field
+//           workshopId: workshopId, // Connect to the workshop
+//         },
+//       })
+//     )
+//   );
+
+//   return { count: bookings.length };
+// }
+
+export async function bulkBookEquipment(workshopId: number, slots: number[], userId: number) {
+  // Filter out negative IDs (these are the temporary IDs for workshop dates)
+  const validSlots = slots.filter(id => id > 0);
+  
+  // If no valid slots, just return success instead of proceeding
   if (validSlots.length === 0) {
+    console.log("No valid slots to book - skipping bulkBookEquipment");
     return { count: 0 };
   }
 
+  // Find which slots are actually available
   const availableSlots = await db.equipmentSlot.findMany({
     where: {
       id: { in: validSlots },
@@ -626,30 +676,40 @@ export async function bulkBookEquipment(
     },
   });
 
+  // Just log a warning and continue with available slots
   if (availableSlots.length !== validSlots.length) {
-    throw new Error("One or more slots are already booked.");
+    console.warn(`Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`);
+  }
+  
+  // If no slots are available at all, return early
+  if (availableSlots.length === 0) {
+    console.log("No available slots found among the requested IDs - skipping");
+    return { count: 0 };
   }
 
-  // Update the slots to be booked and associated with the workshop
+  // Get the IDs of the slots that are actually available
+  const availableSlotIds = availableSlots.map(slot => slot.id);
+
+  // Update only the available slots
   await db.equipmentSlot.updateMany({
-    where: { id: { in: validSlots } },
+    where: { id: { in: availableSlotIds } },
     data: {
       isBooked: true,
       workshopOccurrenceId: workshopId,
     },
   });
 
-  // Create equipment booking records for each slot
+  // Create equipment booking records only for available slots
   const bookings = await Promise.all(
-    availableSlots.map((slot) =>
+    availableSlots.map(slot => 
       db.equipmentBooking.create({
         data: {
           userId: userId,
           equipmentId: slot.equipmentId,
           slotId: slot.id,
-          status: "pending", // Keep default status as pending
-          bookedFor: "workshop", // Set the new bookedFor field
-          workshopId: workshopId, // Connect to the workshop
+          status: "pending",
+          bookedFor: "workshop",
+          workshopId: workshopId,
         },
       })
     )

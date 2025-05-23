@@ -158,70 +158,73 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
     );
 
     // Step 4: Book selected equipment slots
-    if (data.equipments && data.equipments.length > 0) {
-      for (const equipmentId of data.equipments) {
-        const selectedSlotIds = data.selectedSlots?.[equipmentId] || [];
+if (data.equipments && data.equipments.length > 0) {
+  for (const equipmentId of data.equipments) {
+    const selectedSlotIds = data.selectedSlots?.[equipmentId] || [];
+    
+    // Filter out negative IDs (these are our placeholder IDs for workshop dates)
+    const validSlotIds = selectedSlotIds.filter(id => id > 0);
+    
+    // If there are no valid slot IDs, just continue to the next equipment
+    if (validSlotIds.length === 0) {
+      console.log(`No valid slots selected for Equipment ID ${equipmentId}. Only workshop date slots were found.`);
+      continue; // Skip to next equipment
+    }
 
-        // Filter out negative IDs (these are our placeholder IDs for workshop dates)
-        const validSlotIds = selectedSlotIds.filter((id) => id > 0);
-
-        // If there are no valid slot IDs, just continue
-        if (validSlotIds.length === 0) {
-          console.log(
-            `No valid slots selected for Equipment ID ${equipmentId}. Only workshop date slots were found.`
-          );
-          continue;
-        }
-
-        // Step 4a: Verify selected slots exist and are unbooked
-        const slots = await db.equipmentSlot.findMany({
-          where: {
-            id: { in: validSlotIds },
-            equipmentId,
-            isBooked: false,
-            workshopOccurrenceId: null,
+    try {
+      // Step 4a: Verify selected slots exist and are unbooked
+      const slots = await db.equipmentSlot.findMany({
+        where: {
+          id: { in: validSlotIds },
+          equipmentId,
+          isBooked: false,
+          workshopOccurrenceId: null,
+        },
+      });
+  
+      if (slots.length !== validSlotIds.length) {
+        console.warn(
+          `Some selected slots for Equipment ${equipmentId} are already booked or invalid. Found ${slots.length} of ${validSlotIds.length}`
+        );
+      }
+      
+      // Only proceed if we have valid slots to book
+      if (slots.length > 0) {
+        const validIds = slots.map(slot => slot.id);
+        const occ = occurrences[0];
+  
+        await db.equipmentSlot.updateMany({
+          where: { id: { in: validIds } },
+          data: {
+            isBooked: true,
+            workshopOccurrenceId: occ.id,
           },
         });
-
-        if (slots.length !== validSlotIds.length) {
-          console.warn(
-            `Some selected slots for Equipment ${equipmentId} are already booked or invalid. Found ${slots.length} of ${validSlotIds.length}`
-          );
-        }
-
-        // Only proceed if we have valid slots to book
-        if (slots.length > 0) {
-          const validIds = slots.map((slot) => slot.id);
-          const occ = occurrences[0];
-
-          await db.equipmentSlot.updateMany({
-            where: { id: { in: validIds } },
+  
+        // Create equipment booking records
+        for (const slotId of validIds) {
+          await db.equipmentBooking.create({
             data: {
-              isBooked: true,
-              workshopOccurrenceId: occ.id,
+              userId: userId, // Use the current logged-in user's ID
+              equipmentId,
+              slotId,
+              status: "pending", // Default status as pending
+              bookedFor: "workshop", // Set the new bookedFor field
+              workshopId: newWorkshop.id, // Connect directly to the workshop
             },
           });
-
-          // Create equipment booking records
-          for (const slotId of validIds) {
-            await db.equipmentBooking.create({
-              data: {
-                userId: userId, // Use the current logged-in user's ID
-                equipmentId,
-                slotId,
-                status: "pending", // Default status as pending
-                bookedFor: "workshop", // Set the new bookedFor field
-                workshopId: newWorkshop.id, // Connect directly to the workshop
-              },
-            });
-          }
-
-          console.log(
-            `✅ Assigned ${validIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
-          );
         }
+  
+        console.log(
+          `✅ Assigned ${validIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
+        );
       }
+    } catch (error) {
+      console.error(`Error processing slots for equipment ${equipmentId}:`, error);
+      // Continue with other equipment instead of failing the whole operation
     }
+  }
+}
 
     // Step 5: Create equipment slots for workshop dates
     // This will handle creating slots for all workshop occurrences and equipment
