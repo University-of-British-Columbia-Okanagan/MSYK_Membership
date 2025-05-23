@@ -853,10 +853,19 @@ export default function EditWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
+  // const handleEquipmentSelect = (id: number) => {
+  //   const updated = selectedEquipments.includes(id)
+  //     ? selectedEquipments.filter((e) => e !== id)
+  //     : [...selectedEquipments, id];
+  //   setSelectedEquipments(updated);
+  //   form.setValue("equipments", updated);
+  // };
   const handleEquipmentSelect = (id: number) => {
+    // If already included, remove it; otherwise add it (but prevent duplicates)
     const updated = selectedEquipments.includes(id)
       ? selectedEquipments.filter((e) => e !== id)
-      : [...selectedEquipments, id];
+      : [...new Set([...selectedEquipments, id])]; // Use Set to ensure no duplicates
+
     setSelectedEquipments(updated);
     form.setValue("equipments", updated);
   };
@@ -1800,18 +1809,20 @@ export default function EditWorkshop() {
               </div>
 
               <Tabs
-                defaultValue={[...selectedEquipments]
-                  .sort((a, b) => a - b)[0]
-                  .toString()}
+                defaultValue={
+                  [...new Set(selectedEquipments)]
+                    .sort((a, b) => a - b)[0]
+                    ?.toString() || ""
+                }
                 className="w-full"
               >
                 <TabsList className="mb-4">
-                  {[...selectedEquipments]
+                  {[...new Set(selectedEquipments)]
                     .sort((a, b) => a - b)
                     .map((equipmentId) => {
                       const equipment = useLoaderData<
                         typeof loader
-                      >().equipments.find((eq) => eq.id === equipmentId);
+                      >().equipments.find((eq: any) => eq.id === equipmentId);
                       return (
                         <TabsTrigger
                           key={`eq-tab-${equipmentId}`}
@@ -1824,12 +1835,12 @@ export default function EditWorkshop() {
                     })}
                 </TabsList>
 
-                {[...selectedEquipments]
+                {[...new Set(selectedEquipments)]
                   .sort((a, b) => a - b)
                   .map((equipmentId) => {
                     const equipment = useLoaderData<
                       typeof loader
-                    >().equipments.find((eq) => eq.id === equipmentId);
+                    >().equipments.find((eq: any) => eq.id === equipmentId);
 
                     // Filter for valid dates only
                     const validOccurrences = occurrences.filter(
