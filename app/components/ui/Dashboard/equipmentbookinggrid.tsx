@@ -56,6 +56,7 @@ interface EquipmentBookingGridProps {
   slotsByDay: SlotsByDay;
   onSelectSlots: (selectedSlots: string[]) => void;
   disabled?: boolean;
+  readOnly?: boolean;
   visibleTimeRange?: { startHour: number; endHour: number };
   preselectedSlotIds?: number[];
   visibleDays?: number; // NEW: Number of days to display
@@ -74,26 +75,14 @@ interface EquipmentBookingGridProps {
   }>;
   userRoleLevel?: number;
   workshopSlots?: { [day: string]: string[] };
+  currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
 }
 
-// export default function EquipmentBookingGrid({
-//   slotsByDay,
-//   onSelectSlots,
-//   disabled = false,
-//   visibleTimeRange,
-// }: EquipmentBookingGridProps) {
-//   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
-//   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-//   const isDragging = useRef(false);
-
-//   const times = generateTimeSlots(
-//     visibleTimeRange?.startHour ?? 0,
-//     visibleTimeRange?.endHour ?? 24
-//   );
 export default function EquipmentBookingGrid({
   slotsByDay,
   onSelectSlots,
   disabled = false,
+  readOnly = false,
   visibleTimeRange,
   visibleDays = 7, // Default to 7 days if not specified
   level3Restrictions,
@@ -101,6 +90,7 @@ export default function EquipmentBookingGrid({
   plannedClosures = [],
   userRoleLevel,
   workshopSlots,
+  currentWorkshopOccurrences,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -270,7 +260,7 @@ export default function EquipmentBookingGrid({
   );
 
   const handleSlotToggle = (day: string, time: string) => {
-    if (disabled) return;
+    if (disabled || readOnly) return;
 
     const slot = slotsByDay?.[day]?.[time];
     if (!slot?.isAvailable || slot?.isBooked) {
@@ -490,14 +480,57 @@ export default function EquipmentBookingGrid({
                     workshopSlots[day] &&
                     workshopSlots[day].includes(time);
 
-                  const colorClass = slot?.reservedForWorkshop
-                    ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
+                  // Check if this slot is part of the current workshop occurrences
+                  const isCurrentWorkshopSlot =
+                    currentWorkshopOccurrences?.length
+                      ? currentWorkshopOccurrences.some((occ) => {
+                          if (
+                            isNaN(occ.startDate.getTime()) ||
+                            isNaN(occ.endDate.getTime())
+                          ) {
+                            return false;
+                          }
+
+                          // Extract day parts
+                          const dayParts = day.split(" ");
+                          if (dayParts.length !== 2) return false;
+
+                          const dayNumber = parseInt(dayParts[1], 10);
+
+                          // Parse time
+                          const [hour, minute] = time.split(":").map(Number);
+
+                          // Create a date object for this slot
+                          const now = new Date();
+                          const slotDate = new Date(
+                            now.getFullYear(),
+                            now.getMonth(),
+                            dayNumber,
+                            hour,
+                            minute
+                          );
+
+                          // Adjust month if day is in next month
+                          if (dayNumber < now.getDate() && now.getDate() > 20) {
+                            slotDate.setMonth(slotDate.getMonth() + 1);
+                          }
+
+                          return (
+                            slotDate >= occ.startDate && slotDate < occ.endDate
+                          );
+                        })
+                      : false;
+
+                  const colorClass = isCurrentWorkshopSlot
+                    ? "bg-green-500 cursor-not-allowed" // Green for current workshop slots
+                    : isWorkshopSlot || slot?.reservedForWorkshop
+                    ? "bg-purple-400 cursor-not-allowed" // Reserved by another workshop
                     : slot?.isBooked
                     ? slot?.bookedByMe
                       ? "bg-blue-400 cursor-not-allowed" // Booked by me
                       : "bg-red-400 cursor-not-allowed" // Booked by others
                     : isPlannedClosure
-                    ? "bg-orange-300 cursor-not-allowed" // Planned closure (new color)
+                    ? "bg-orange-300 cursor-not-allowed" // Planned closure
                     : isAnyRestriction
                     ? "bg-gray-300 cursor-not-allowed" // Restricted by admin
                     : isSelected
@@ -513,11 +546,13 @@ export default function EquipmentBookingGrid({
                       onClick={() =>
                         !isAnyRestriction &&
                         !isPlannedClosure &&
+                        !readOnly && // Add this check
                         handleSlotToggle(day, time)
                       }
                       onMouseEnter={() =>
                         !isAnyRestriction &&
                         !isPlannedClosure &&
+                        !readOnly && // Add this check
                         isDragging.current &&
                         handleSlotToggle(day, time)
                       }
@@ -530,6 +565,11 @@ export default function EquipmentBookingGrid({
                       {isPlannedClosure && (
                         <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap">
                           Planned closure
+                        </div>
+                      )}
+                      {isCurrentWorkshopSlot && (
+                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap">
+                          Reserved for this workshop
                         </div>
                       )}
                     </td>
@@ -603,6 +643,20 @@ export default function EquipmentBookingGrid({
     );
   };
 
+  // if (disabled) {
+  //   return (
+  //     <div className="relative">
+  //       <div className="opacity-50 pointer-events-none">{renderWeekTabs()}</div>
+  //       <div className="absolute inset-0 flex items-center justify-center z-10">
+  //         <div className="bg-white bg-opacity-90 p-6 border border-red-300 text-red-600 rounded shadow-md text-center max-w-md">
+  //           <p className="text-md font-semibold">
+  //             🚫 You do not have the required membership to book equipment.
+  //           </p>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // }
   if (disabled) {
     return (
       <div className="relative">
@@ -664,7 +718,12 @@ export default function EquipmentBookingGrid({
           )}
         </div>
 
-        <p className="text-md font-medium mt-2">Click and Drag to Toggle</p>
+        {/* <p className="text-md font-medium mt-2">Click and Drag to Toggle</p> */}
+        <p className="text-md font-medium mt-2">
+          {readOnly
+            ? "Equipment availability view"
+            : "Click and Drag to Toggle"}
+        </p>
       </div>
 
       {/* Week Tabs */}

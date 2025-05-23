@@ -225,6 +225,81 @@ function getEquipmentSlotsForOccurrences(
   return slotsForOccurrences;
 }
 
+// Add this function to help with auto-selecting workshop slots
+function getSlotStringsForOccurrences(
+  equipmentId: number,
+  occurrences: { startDate: Date; endDate: Date }[]
+): string[] {
+  const slotStrings: string[] = [];
+
+  occurrences.forEach((occ) => {
+    if (isNaN(occ.startDate.getTime()) || isNaN(occ.endDate.getTime())) {
+      return; // Skip invalid dates
+    }
+
+    // Calculate all 30-minute time slots between start and end
+    const currentTime = new Date(occ.startDate);
+    while (currentTime < occ.endDate) {
+      // Create the slot string format that matches what the grid expects
+      const slotStartTime = new Date(currentTime);
+      const slotEndTime = new Date(currentTime.getTime() + 30 * 60000);
+      const slotString = `${slotStartTime.toISOString()}|${slotEndTime.toISOString()}`;
+
+      // Add to the array
+      slotStrings.push(slotString);
+
+      // Move to next 30-minute slot
+      currentTime.setTime(currentTime.getTime() + 30 * 60000);
+    }
+  });
+
+  return slotStrings;
+}
+
+// Add this helper function to check if a slot corresponds to a workshop occurrence
+function isSlotInWorkshopOccurrences(
+  day: string,
+  time: string,
+  occurrences: { startDate: Date; endDate: Date }[]
+): boolean {
+  // Skip if occurrences is empty or has invalid dates
+  if (!occurrences.length) return false;
+
+  // Extract day parts
+  const dayParts = day.split(" ");
+  if (dayParts.length !== 2) return false;
+
+  const dayName = dayParts[0]; // e.g., "Fri"
+  const dayNumber = parseInt(dayParts[1], 10); // e.g., 23
+
+  // Parse time
+  const [hour, minute] = time.split(":").map(Number);
+  if (isNaN(hour) || isNaN(minute)) return false;
+
+  // Create a date object for this slot
+  const now = new Date();
+  const slotDate = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    dayNumber,
+    hour,
+    minute
+  );
+
+  // Adjust month if day is in next month
+  if (dayNumber < now.getDate() && now.getDate() > 20) {
+    slotDate.setMonth(slotDate.getMonth() + 1);
+  }
+
+  // Check if slot falls within any workshop occurrence
+  return occurrences.some((occ) => {
+    if (isNaN(occ.startDate.getTime()) || isNaN(occ.endDate.getTime())) {
+      return false;
+    }
+    return slotDate >= occ.startDate && slotDate < occ.endDate;
+  });
+}
+
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
 
@@ -636,6 +711,44 @@ export default function AddWorkshop() {
     setIsWorkshopContinuation,
   ]); // Include dependencies
 
+  // Add this useEffect to update the selected slots when occurrences change
+  React.useEffect(() => {
+    // Only process valid occurrences
+    const validOccurrences = occurrences.filter(
+      (occ) => !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
+    );
+
+    if (validOccurrences.length > 0 && selectedEquipments.length > 0) {
+      // Create a new map to store the selected slots
+      const newSlotsMap: Record<number, number[]> = { ...selectedSlotsMap };
+
+      // For each equipment, add the slots from the occurrences
+      selectedEquipments.forEach((equipmentId) => {
+        // Get existing selected slots for this equipment
+        const existingSlots = selectedSlotsMap[equipmentId] || [];
+
+        // For workshop dates, we'll use dummy slot IDs (negative numbers)
+        // These will be replaced with real slot IDs when saved to the database
+        const slotStrings = getSlotStringsForOccurrences(
+          equipmentId,
+          validOccurrences
+        );
+
+        // Use -1, -2, etc. as temporary IDs for slots that don't exist yet
+        const newSlotIds = Array.from(
+          { length: slotStrings.length },
+          (_, i) => -(i + 1)
+        );
+
+        // Combine existing selected slots with new workshop slots
+        newSlotsMap[equipmentId] = [...existingSlots, ...newSlotIds];
+      });
+
+      // Update the selected slots map
+      setSelectedSlotsMap(newSlotsMap);
+    }
+  }, [occurrences, selectedEquipments]); // Run when occurrences or selected equipments change
+
   return (
     <div className="max-w-4xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-8 text-center">Add Workshop</h1>
@@ -1040,6 +1153,10 @@ export default function AddWorkshop() {
                 Equipment Availability Grids
               </h3>
 
+              <div className="mb-4 text-sm text-center text-amber-600 bg-amber-100 p-3 rounded border border-amber-300">
+                <p>Workshop dates are shown in green. Grid is read only.</p>
+              </div>
+
               <Tabs
                 defaultValue={[...selectedEquipments]
                   .sort((a, b) => a - b)[0]
@@ -1072,14 +1189,12 @@ export default function AddWorkshop() {
                       (eq) => eq.id === equipmentId
                     );
 
-                    // Get workshop slots for highlighting - filter for valid dates only
+                    // Filter for valid dates only
                     const validOccurrences = occurrences.filter(
                       (occ) =>
                         !isNaN(occ.startDate.getTime()) &&
                         !isNaN(occ.endDate.getTime())
                     );
-                    const workshopSlots =
-                      getEquipmentSlotsForOccurrences(validOccurrences);
 
                     return (
                       <TabsContent
@@ -1090,48 +1205,18 @@ export default function AddWorkshop() {
                         <EquipmentBookingGrid
                           slotsByDay={equipment?.slotsByDay || {}}
                           onSelectSlots={(slots: string[]) => {
-                            // Convert all slots to numbers
-                            const numericSlots = slots.map((slot) => {
-                              // Try to parse as a number
-                              const parsed = Number(slot);
-                              // If it's a string like "1|2", extract just the ID
-                              if (isNaN(parsed) && slot.includes("|")) {
-                                const slotId = slot.split("|")[0];
-                                return Number(slotId);
-                              }
-                              return parsed;
-                            });
-
-                            // Update slots for this specific equipment
-                            const newSlotsMap = { ...selectedSlotsMap };
-
-                            if (
-                              slots.length === 0 &&
-                              selectedSlotsMap[equipmentId]
-                            ) {
-                              // If no slots selected, remove this equipment's entry
-                              delete newSlotsMap[equipmentId];
-                            } else {
-                              // Update slots for this equipment - ensure they're all numbers
-                              newSlotsMap[equipmentId] = numericSlots.filter(
-                                (id) => !isNaN(id)
-                              ) as number[];
-                            }
-
-                            // Update state
-                            setSelectedSlotsMap(newSlotsMap);
-                            
+                            // This will never be called since we're using readOnly mode
                             console.log(
-                              `Slots ${numericSlots.join(
-                                ", "
-                              )} confirmed for Equipment ${equipmentId}`
+                              "Equipment grid is read-only, selections ignored"
                             );
                           }}
-                          disabled={false}
-                          // Use the dynamically fetched visibility days
+                          readOnly={true} // Use readOnly instead of disabled
+                          disabled={false} // Keep disabled=false so the grid is not greyed out
                           visibleDays={equipmentVisibilityDays}
-                          // Highlight workshop occurrence slots
-                          workshopSlots={workshopSlots}
+                          workshopSlots={getEquipmentSlotsForOccurrences(
+                            validOccurrences
+                          )}
+                          currentWorkshopOccurrences={validOccurrences}
                         />
                       </TabsContent>
                     );
@@ -1183,7 +1268,7 @@ export default function AddWorkshop() {
             name="equipments"
             value={JSON.stringify(selectedEquipments)}
           />
-           {/* Hidden input for selected slots */}
+          {/* Hidden input for selected slots */}
           <input
             type="hidden"
             name="selectedSlots"
@@ -1195,7 +1280,6 @@ export default function AddWorkshop() {
             name="isWorkshopContinuation"
             value={isWorkshopContinuation ? "true" : "false"}
           />
-  
 
           {/* Submit Button */}
           <AlertDialog

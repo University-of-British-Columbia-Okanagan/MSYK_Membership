@@ -771,17 +771,14 @@ export async function createEquipmentSlotsForWorkshop(
     for (const equipmentId of equipmentIds) {
       for (const occurrence of occurrences) {
         // Skip invalid dates
-        if (
-          isNaN(occurrence.startDate.getTime()) ||
-          isNaN(occurrence.endDate.getTime())
-        ) {
+        if (isNaN(occurrence.startDate.getTime()) || isNaN(occurrence.endDate.getTime())) {
           console.warn("Skipping invalid date in occurrence", occurrence);
           continue;
         }
-
+        
         const startTime = new Date(occurrence.startDate);
         const endTime = new Date(occurrence.endDate);
-
+        
         // Create 30-minute slots for the workshop duration
         const currentTime = new Date(startTime);
         while (currentTime < endTime) {
@@ -793,13 +790,12 @@ export async function createEquipmentSlotsForWorkshop(
                 startTime: new Date(currentTime),
               },
             });
-
+            
+            let slotId: number;
+            
             if (existingSlot) {
               // Update existing slot if not already booked for another workshop
-              if (
-                !existingSlot.workshopOccurrenceId ||
-                existingSlot.workshopOccurrenceId === workshopOccurrenceId
-              ) {
+              if (!existingSlot.workshopOccurrenceId || existingSlot.workshopOccurrenceId === workshopOccurrenceId) {
                 await db.equipmentSlot.update({
                   where: { id: existingSlot.id },
                   data: {
@@ -807,14 +803,18 @@ export async function createEquipmentSlotsForWorkshop(
                     workshopOccurrenceId,
                   },
                 });
+                slotId = existingSlot.id;
               } else {
                 console.warn(
                   `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`
                 );
+                // Move to next slot
+                currentTime.setTime(currentTime.getTime() + 30 * 60000);
+                continue;
               }
             } else {
               // Create new slot
-              await db.equipmentSlot.create({
+              const newSlot = await db.equipmentSlot.create({
                 data: {
                   equipmentId,
                   startTime: new Date(currentTime),
@@ -823,6 +823,34 @@ export async function createEquipmentSlotsForWorkshop(
                   workshopOccurrenceId,
                 },
               });
+              slotId = newSlot.id;
+            }
+            
+            // Now create a booking record in EquipmentBooking table
+            // We'll create this with a special userId of -1 to indicate it's a workshop booking
+            // You can adjust this based on your schema requirements
+            try {
+              // Check if booking already exists for this slot
+              const existingBooking = await db.equipmentBooking.findFirst({
+                where: {
+                  slotId: slotId,
+                  status: "workshop", // Use "workshop" status to differentiate
+                },
+              });
+              
+              if (!existingBooking) {
+                await db.equipmentBooking.create({
+                  data: {
+                    userId: -1, // Special user ID for workshop (adjust as needed)
+                    equipmentId,
+                    slotId,
+                    status: "workshop", // Use special status for workshop bookings
+                  },
+                });
+              }
+            } catch (bookingError) {
+              console.error("Error creating equipment booking:", bookingError);
+              // Continue even if booking creation fails
             }
           } catch (error) {
             console.error("Error creating/updating equipment slot:", error, {
@@ -831,7 +859,7 @@ export async function createEquipmentSlotsForWorkshop(
             });
             // Continue to next slot even if this one fails
           }
-
+          
           // Move to next 30-minute slot
           currentTime.setTime(currentTime.getTime() + 30 * 60000);
         }
