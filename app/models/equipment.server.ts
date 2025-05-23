@@ -1109,3 +1109,23 @@ export async function createEquipmentSlotsForOccurrence(
     throw new Error("Failed to create equipment slots for workshop occurrence");
   }
 }
+
+/**
+ * Check if a slot is available for booking
+ */
+export async function checkSlotAvailability(
+  equipmentId: number,
+  startTime: Date,
+  endTime: Date
+) {
+  // Check if there's any existing slot that matches the criteria and is already booked
+  const conflictingSlot = await db.equipmentSlot.findFirst({
+    where: {
+      equipmentId,
+      startTime,
+      isBooked: true,
+    },
+  });
+  
+  return !conflictingSlot; // Return true if no conflicting slot found
+}
