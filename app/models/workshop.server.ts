@@ -100,8 +100,16 @@ export async function getWorkshops() {
 /**
  * Add a new workshop along with its occurrences and equipment.
  */
-export async function addWorkshop(data: WorkshopData) {
+export async function addWorkshop(data: WorkshopData, request?: Request) {
   try {
+    let userId = -1;
+    if (request) {
+      const user = await getUser(request);
+      if (user) {
+        userId = user.id;
+      }
+    }
+
     // Step 1: Create the workshop
     const newWorkshop = await db.workshop.create({
       data: {
@@ -153,13 +161,15 @@ export async function addWorkshop(data: WorkshopData) {
     if (data.equipments && data.equipments.length > 0) {
       for (const equipmentId of data.equipments) {
         const selectedSlotIds = data.selectedSlots?.[equipmentId] || [];
-        
+
         // Filter out negative IDs (these are our placeholder IDs for workshop dates)
-        const validSlotIds = selectedSlotIds.filter(id => id > 0);
-        
+        const validSlotIds = selectedSlotIds.filter((id) => id > 0);
+
         // If there are no valid slot IDs, just continue
         if (validSlotIds.length === 0) {
-          console.log(`No valid slots selected for Equipment ID ${equipmentId}. Only workshop date slots were found.`);
+          console.log(
+            `No valid slots selected for Equipment ID ${equipmentId}. Only workshop date slots were found.`
+          );
           continue;
         }
 
@@ -177,15 +187,11 @@ export async function addWorkshop(data: WorkshopData) {
           console.warn(
             `Some selected slots for Equipment ${equipmentId} are already booked or invalid. Found ${slots.length} of ${validSlotIds.length}`
           );
-          // Instead of throwing an error, let's continue with the valid slots we found
-          // throw new Error(
-          //  `Some selected slots for Equipment ${equipmentId} are already booked or invalid.`
-          // );
         }
-        
+
         // Only proceed if we have valid slots to book
         if (slots.length > 0) {
-          const validIds = slots.map(slot => slot.id);
+          const validIds = slots.map((slot) => slot.id);
           const occ = occurrences[0];
 
           await db.equipmentSlot.updateMany({
@@ -195,6 +201,19 @@ export async function addWorkshop(data: WorkshopData) {
               workshopOccurrenceId: occ.id,
             },
           });
+
+          // Create equipment booking records
+          for (const slotId of validIds) {
+            await db.equipmentBooking.create({
+              data: {
+                userId: userId, // Use the current logged-in user's ID
+                equipmentId,
+                slotId,
+                status: "workshop", // Special status for workshop bookings
+                workshopId: newWorkshop.id, // Connect directly to the workshop
+              },
+            });
+          }
 
           console.log(
             `✅ Assigned ${validIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
@@ -212,7 +231,8 @@ export async function addWorkshop(data: WorkshopData) {
           occurrence.id,
           equipmentId,
           occurrence.startDate,
-          occurrence.endDate
+          occurrence.endDate,
+          userId // Pass the current user ID
         );
       }
     }

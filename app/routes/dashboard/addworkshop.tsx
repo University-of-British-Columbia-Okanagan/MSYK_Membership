@@ -50,7 +50,7 @@ import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid
 import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
 import {
   bulkBookEquipment,
-  createEquipmentSlotsForWorkshop,
+  createEquipmentSlotsForOccurrence,
 } from "../../models/equipment.server";
 import {
   AlertDialog,
@@ -443,19 +443,22 @@ export async function action({ request }: { request: Request }) {
 
   //  Save the workshop to the database
   try {
-    const savedWorkshop = await addWorkshop({
-      name: parsed.data.name,
-      description: parsed.data.description,
-      price: parsed.data.price,
-      location: parsed.data.location,
-      capacity: parsed.data.capacity,
-      type: parsed.data.type,
-      occurrences: parsed.data.occurrences,
-      prerequisites: parsed.data.prerequisites,
-      equipments: parsed.data.equipments,
-      isWorkshopContinuation: parsed.data.isWorkshopContinuation,
-      selectedSlots,
-    });
+    const savedWorkshop = await addWorkshop(
+      {
+        name: parsed.data.name,
+        description: parsed.data.description,
+        price: parsed.data.price,
+        location: parsed.data.location,
+        capacity: parsed.data.capacity,
+        type: parsed.data.type,
+        occurrences: parsed.data.occurrences,
+        prerequisites: parsed.data.prerequisites,
+        equipments: parsed.data.equipments,
+        isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+        selectedSlots,
+      },
+      request
+    );
 
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
 
@@ -474,15 +477,28 @@ export async function action({ request }: { request: Request }) {
     try {
       // First book the explicitly selected slots
       if (allSelectedSlotIds.length > 0) {
-        await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
+        const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
+        if (validSelectedSlotIds.length > 0) {
+          await bulkBookEquipment(savedWorkshop.id, validSelectedSlotIds);
+        }
       }
 
+       // Get the current user ID
+      const user = await getUser(request);
+      const userId = user?.id || -1; // Default to 1 if no user found
+
       // Now create slots for all workshop occurrences
-      await createEquipmentSlotsForWorkshop(
-        savedWorkshop.id,
-        equipments,
-        occurrences
-      );
+      for (const occurrence of savedWorkshop.occurrences) {
+        for (const equipmentId of equipments) {
+          await createEquipmentSlotsForOccurrence(
+            occurrence.id,
+            equipmentId,
+            occurrence.startDate,
+            occurrence.endDate,
+            userId
+          );
+        }
+      }
 
       return redirect("/dashboard/admin");
     } catch (error) {
@@ -514,6 +530,7 @@ export default function AddWorkshop() {
     }[];
     selectedSlotsMap: Record<number, number[]>;
     equipmentVisibilityDays: number;
+    userId: number;
   };
 
   const form = useForm<WorkshopFormValues>({

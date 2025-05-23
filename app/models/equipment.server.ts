@@ -583,25 +583,74 @@ export async function getUserBookedEquipments(userId: number) {
   }));
 }
 
+// export async function bulkBookEquipment(workshopId: number, slots: number[]) {
+//   const availableSlots = await db.equipmentSlot.findMany({
+//     where: {
+//       id: { in: slots },
+//       isBooked: false,
+//     },
+//   });
+
+//   if (availableSlots.length !== slots.length) {
+//     throw new Error("One or more slots are already booked.");
+//   }
+
+//   return await db.equipmentSlot.updateMany({
+//     where: { id: { in: slots } },
+//     data: {
+//       isBooked: true,
+//       workshopOccurrenceId: workshopId,
+//     },
+//   });
+// }
+// In equipment.server.ts
+// Find the bulkBookEquipment function and modify it:
+
 export async function bulkBookEquipment(workshopId: number, slots: number[]) {
+  // Filter out negative IDs (these are the temporary IDs for workshop slots)
+  const validSlots = slots.filter(id => id > 0);
+  
+  // If no valid slots, just return success
+  if (validSlots.length === 0) {
+    return { count: 0 };
+  }
+
   const availableSlots = await db.equipmentSlot.findMany({
     where: {
-      id: { in: slots },
+      id: { in: validSlots },
       isBooked: false,
     },
   });
 
-  if (availableSlots.length !== slots.length) {
+  if (availableSlots.length !== validSlots.length) {
     throw new Error("One or more slots are already booked.");
   }
 
-  return await db.equipmentSlot.updateMany({
-    where: { id: { in: slots } },
+  // Update the slots to be booked and associated with the workshop
+  await db.equipmentSlot.updateMany({
+    where: { id: { in: validSlots } },
     data: {
       isBooked: true,
       workshopOccurrenceId: workshopId,
     },
   });
+
+  // Create equipment booking records for each slot
+  const bookings = await Promise.all(
+    availableSlots.map(slot => 
+      db.equipmentBooking.create({
+        data: {
+          userId: -1, // Special ID for workshop bookings
+          equipmentId: slot.equipmentId,
+          slotId: slot.id,
+          status: "workshop",
+          workshopId: workshopId, // Connect to the workshop
+        },
+      })
+    )
+  );
+
+  return { count: bookings.length };
 }
 
 export async function setSlotAvailability(
@@ -877,9 +926,22 @@ export async function createEquipmentSlotsForOccurrence(
   occurrenceId: number,
   equipmentId: number,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  userId: number // Add userId parameter
 ) {
   try {
+    // Get the workshop ID from the occurrence first
+    const occurrence = await db.workshopOccurrence.findUnique({
+      where: { id: occurrenceId },
+      select: { workshopId: true },
+    });
+    
+    if (!occurrence) {
+      throw new Error(`Workshop occurrence ${occurrenceId} not found`);
+    }
+    
+    const workshopId = occurrence.workshopId;
+    
     // Create 30-minute slots for the workshop duration
     const currentTime = new Date(startDate);
     while (currentTime < endDate) {
@@ -893,6 +955,8 @@ export async function createEquipmentSlotsForOccurrence(
           },
         });
         
+        let slotId: number;
+        
         if (existingSlot) {
           // Update existing slot if not already booked for another workshop
           if (!existingSlot.workshopOccurrenceId || existingSlot.workshopOccurrenceId === occurrenceId) {
@@ -903,15 +967,19 @@ export async function createEquipmentSlotsForOccurrence(
                 workshopOccurrenceId: occurrenceId,
               },
             });
+            slotId = existingSlot.id;
           } else {
             console.warn(
               `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`
             );
+            // Move to next slot
+            currentTime.setTime(currentTime.getTime() + 30 * 60000);
+            continue;
           }
         } else {
           // Create new slot
           const slotEndTime = new Date(currentTime.getTime() + 30 * 60000);
-          await db.equipmentSlot.create({
+          const newSlot = await db.equipmentSlot.create({
             data: {
               equipmentId,
               startTime: new Date(currentTime),
@@ -920,6 +988,30 @@ export async function createEquipmentSlotsForOccurrence(
               workshopOccurrenceId: occurrenceId,
             },
           });
+          slotId = newSlot.id;
+        }
+        
+        // Now create a booking record in EquipmentBooking table
+        try {
+          // Check if booking already exists for this slot
+          const existingBooking = await db.equipmentBooking.findFirst({
+            where: { slotId: slotId },
+          });
+          
+          if (!existingBooking) {
+            await db.equipmentBooking.create({
+              data: {
+                userId: userId, // Use the userId of the logged-in admin
+                equipmentId,
+                slotId,
+                status: "workshop", // Use special status for workshop bookings
+                workshopId, // Connect to the workshop
+              },
+            });
+          }
+        } catch (bookingError) {
+          console.error("Error creating equipment booking:", bookingError);
+          // Continue even if booking creation fails
         }
       } catch (error) {
         console.error("Error creating/updating equipment slot:", error, {
