@@ -28,7 +28,7 @@ export async function getEquipmentById(equipmentId: number) {
 /**
  * Fetch all available equipment
  */
-export async function getAvailableEquipment(startTime: Date, endTime: Date) {
+export async function getAvailableEquipment() {
   return await db.equipment
     .findMany({
       include: {
