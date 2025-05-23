@@ -209,7 +209,8 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
                 userId: userId, // Use the current logged-in user's ID
                 equipmentId,
                 slotId,
-                status: "workshop", // Special status for workshop bookings
+                status: "pending", // Default status as pending
+                bookedFor: "workshop", // Set the new bookedFor field
                 workshopId: newWorkshop.id, // Connect directly to the workshop
               },
             });

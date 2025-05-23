@@ -474,18 +474,23 @@ export async function action({ request }: { request: Request }) {
     //   };
     // }
     // Process workshop time slots for equipment
+    // Process workshop time slots for equipment
     try {
+      // Get the current user ID
+      const user = await getUser(request);
+      const userId = user?.id || 1; // Default to 1 if no user found
+
       // First book the explicitly selected slots
       if (allSelectedSlotIds.length > 0) {
         const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
         if (validSelectedSlotIds.length > 0) {
-          await bulkBookEquipment(savedWorkshop.id, validSelectedSlotIds);
+          await bulkBookEquipment(
+            savedWorkshop.id,
+            validSelectedSlotIds,
+            userId
+          );
         }
       }
-
-       // Get the current user ID
-      const user = await getUser(request);
-      const userId = user?.id || -1; // Default to 1 if no user found
 
       // Now create slots for all workshop occurrences
       for (const occurrence of savedWorkshop.occurrences) {

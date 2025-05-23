@@ -606,10 +606,14 @@ export async function getUserBookedEquipments(userId: number) {
 // In equipment.server.ts
 // Find the bulkBookEquipment function and modify it:
 
-export async function bulkBookEquipment(workshopId: number, slots: number[]) {
+export async function bulkBookEquipment(
+  workshopId: number,
+  slots: number[],
+  userId: number
+) {
   // Filter out negative IDs (these are the temporary IDs for workshop slots)
-  const validSlots = slots.filter(id => id > 0);
-  
+  const validSlots = slots.filter((id) => id > 0);
+
   // If no valid slots, just return success
   if (validSlots.length === 0) {
     return { count: 0 };
@@ -637,13 +641,14 @@ export async function bulkBookEquipment(workshopId: number, slots: number[]) {
 
   // Create equipment booking records for each slot
   const bookings = await Promise.all(
-    availableSlots.map(slot => 
+    availableSlots.map((slot) =>
       db.equipmentBooking.create({
         data: {
-          userId: -1, // Special ID for workshop bookings
+          userId: userId,
           equipmentId: slot.equipmentId,
           slotId: slot.id,
-          status: "workshop",
+          status: "pending", // Keep default status as pending
+          bookedFor: "workshop", // Set the new bookedFor field
           workshopId: workshopId, // Connect to the workshop
         },
       })
@@ -820,14 +825,17 @@ export async function createEquipmentSlotsForWorkshop(
     for (const equipmentId of equipmentIds) {
       for (const occurrence of occurrences) {
         // Skip invalid dates
-        if (isNaN(occurrence.startDate.getTime()) || isNaN(occurrence.endDate.getTime())) {
+        if (
+          isNaN(occurrence.startDate.getTime()) ||
+          isNaN(occurrence.endDate.getTime())
+        ) {
           console.warn("Skipping invalid date in occurrence", occurrence);
           continue;
         }
-        
+
         const startTime = new Date(occurrence.startDate);
         const endTime = new Date(occurrence.endDate);
-        
+
         // Create 30-minute slots for the workshop duration
         const currentTime = new Date(startTime);
         while (currentTime < endTime) {
@@ -839,12 +847,15 @@ export async function createEquipmentSlotsForWorkshop(
                 startTime: new Date(currentTime),
               },
             });
-            
+
             let slotId: number;
-            
+
             if (existingSlot) {
               // Update existing slot if not already booked for another workshop
-              if (!existingSlot.workshopOccurrenceId || existingSlot.workshopOccurrenceId === workshopOccurrenceId) {
+              if (
+                !existingSlot.workshopOccurrenceId ||
+                existingSlot.workshopOccurrenceId === workshopOccurrenceId
+              ) {
                 await db.equipmentSlot.update({
                   where: { id: existingSlot.id },
                   data: {
@@ -874,7 +885,7 @@ export async function createEquipmentSlotsForWorkshop(
               });
               slotId = newSlot.id;
             }
-            
+
             // Now create a booking record in EquipmentBooking table
             // We'll create this with a special userId of -1 to indicate it's a workshop booking
             // You can adjust this based on your schema requirements
@@ -886,7 +897,7 @@ export async function createEquipmentSlotsForWorkshop(
                   status: "workshop", // Use "workshop" status to differentiate
                 },
               });
-              
+
               if (!existingBooking) {
                 await db.equipmentBooking.create({
                   data: {
@@ -908,7 +919,7 @@ export async function createEquipmentSlotsForWorkshop(
             });
             // Continue to next slot even if this one fails
           }
-          
+
           // Move to next 30-minute slot
           currentTime.setTime(currentTime.getTime() + 30 * 60000);
         }
@@ -935,13 +946,13 @@ export async function createEquipmentSlotsForOccurrence(
       where: { id: occurrenceId },
       select: { workshopId: true },
     });
-    
+
     if (!occurrence) {
       throw new Error(`Workshop occurrence ${occurrenceId} not found`);
     }
-    
+
     const workshopId = occurrence.workshopId;
-    
+
     // Create 30-minute slots for the workshop duration
     const currentTime = new Date(startDate);
     while (currentTime < endDate) {
@@ -954,12 +965,15 @@ export async function createEquipmentSlotsForOccurrence(
             startTime: new Date(currentTime),
           },
         });
-        
+
         let slotId: number;
-        
+
         if (existingSlot) {
           // Update existing slot if not already booked for another workshop
-          if (!existingSlot.workshopOccurrenceId || existingSlot.workshopOccurrenceId === occurrenceId) {
+          if (
+            !existingSlot.workshopOccurrenceId ||
+            existingSlot.workshopOccurrenceId === occurrenceId
+          ) {
             await db.equipmentSlot.update({
               where: { id: existingSlot.id },
               data: {
@@ -990,21 +1004,22 @@ export async function createEquipmentSlotsForOccurrence(
           });
           slotId = newSlot.id;
         }
-        
+
         // Now create a booking record in EquipmentBooking table
         try {
           // Check if booking already exists for this slot
           const existingBooking = await db.equipmentBooking.findFirst({
             where: { slotId: slotId },
           });
-          
+
           if (!existingBooking) {
             await db.equipmentBooking.create({
               data: {
                 userId: userId, // Use the userId of the logged-in admin
                 equipmentId,
                 slotId,
-                status: "workshop", // Use special status for workshop bookings
+                status: "pending", // Keep default status as pending
+                bookedFor: "workshop", // Set the new bookedFor field
                 workshopId, // Connect to the workshop
               },
             });
@@ -1020,14 +1035,17 @@ export async function createEquipmentSlotsForOccurrence(
         });
         // Continue to next slot even if this one fails
       }
-      
+
       // Move to next 30-minute slot
       currentTime.setTime(currentTime.getTime() + 30 * 60000);
     }
-    
+
     return true;
   } catch (error) {
-    console.error("Failed to create equipment slots for workshop occurrence:", error);
+    console.error(
+      "Failed to create equipment slots for workshop occurrence:",
+      error
+    );
     throw new Error("Failed to create equipment slots for workshop occurrence");
   }
 }

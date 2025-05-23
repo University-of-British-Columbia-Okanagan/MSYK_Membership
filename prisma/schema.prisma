@@ -154,6 +154,7 @@ model EquipmentBooking {
   slotId      Int
   workshopId  Int? 
   status      String @default("pending")
+  bookedFor   String @default("user") // "user" or "workshop"
 
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
