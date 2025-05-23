@@ -872,3 +872,70 @@ export async function createEquipmentSlotsForWorkshop(
     throw new Error("Failed to create equipment slots for workshop");
   }
 }
+
+export async function createEquipmentSlotsForOccurrence(
+  occurrenceId: number,
+  equipmentId: number,
+  startDate: Date,
+  endDate: Date
+) {
+  try {
+    // Create 30-minute slots for the workshop duration
+    const currentTime = new Date(startDate);
+    while (currentTime < endDate) {
+      // Try to find existing slot or create a new one
+      try {
+        // Check if slot already exists
+        const existingSlot = await db.equipmentSlot.findFirst({
+          where: {
+            equipmentId,
+            startTime: new Date(currentTime),
+          },
+        });
+        
+        if (existingSlot) {
+          // Update existing slot if not already booked for another workshop
+          if (!existingSlot.workshopOccurrenceId || existingSlot.workshopOccurrenceId === occurrenceId) {
+            await db.equipmentSlot.update({
+              where: { id: existingSlot.id },
+              data: {
+                isBooked: true,
+                workshopOccurrenceId: occurrenceId,
+              },
+            });
+          } else {
+            console.warn(
+              `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`
+            );
+          }
+        } else {
+          // Create new slot
+          const slotEndTime = new Date(currentTime.getTime() + 30 * 60000);
+          await db.equipmentSlot.create({
+            data: {
+              equipmentId,
+              startTime: new Date(currentTime),
+              endTime: slotEndTime,
+              isBooked: true,
+              workshopOccurrenceId: occurrenceId,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("Error creating/updating equipment slot:", error, {
+          equipmentId,
+          startTime: currentTime,
+        });
+        // Continue to next slot even if this one fails
+      }
+      
+      // Move to next 30-minute slot
+      currentTime.setTime(currentTime.getTime() + 30 * 60000);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Failed to create equipment slots for workshop occurrence:", error);
+    throw new Error("Failed to create equipment slots for workshop occurrence");
+  }
+}

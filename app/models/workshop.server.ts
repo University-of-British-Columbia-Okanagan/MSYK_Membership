@@ -1,5 +1,6 @@
 import { db } from "../utils/db.server";
 import { getUser } from "~/utils/session.server";
+import { createEquipmentSlotsForOccurrence } from "../models/equipment.server";
 
 interface WorkshopData {
   name: string;
@@ -152,42 +153,66 @@ export async function addWorkshop(data: WorkshopData) {
     if (data.equipments && data.equipments.length > 0) {
       for (const equipmentId of data.equipments) {
         const selectedSlotIds = data.selectedSlots?.[equipmentId] || [];
-
-        if (selectedSlotIds.length === 0) {
-          console.warn(`⚠️ No slots selected for Equipment ID ${equipmentId}`);
+        
+        // Filter out negative IDs (these are our placeholder IDs for workshop dates)
+        const validSlotIds = selectedSlotIds.filter(id => id > 0);
+        
+        // If there are no valid slot IDs, just continue
+        if (validSlotIds.length === 0) {
+          console.log(`No valid slots selected for Equipment ID ${equipmentId}. Only workshop date slots were found.`);
           continue;
         }
 
         // Step 4a: Verify selected slots exist and are unbooked
         const slots = await db.equipmentSlot.findMany({
           where: {
-            id: { in: selectedSlotIds },
+            id: { in: validSlotIds },
             equipmentId,
             isBooked: false,
             workshopOccurrenceId: null,
           },
         });
 
-        if (slots.length !== selectedSlotIds.length) {
-          throw new Error(
-            `Some selected slots for Equipment ${equipmentId} are already booked or invalid.`
+        if (slots.length !== validSlotIds.length) {
+          console.warn(
+            `Some selected slots for Equipment ${equipmentId} are already booked or invalid. Found ${slots.length} of ${validSlotIds.length}`
+          );
+          // Instead of throwing an error, let's continue with the valid slots we found
+          // throw new Error(
+          //  `Some selected slots for Equipment ${equipmentId} are already booked or invalid.`
+          // );
+        }
+        
+        // Only proceed if we have valid slots to book
+        if (slots.length > 0) {
+          const validIds = slots.map(slot => slot.id);
+          const occ = occurrences[0];
+
+          await db.equipmentSlot.updateMany({
+            where: { id: { in: validIds } },
+            data: {
+              isBooked: true,
+              workshopOccurrenceId: occ.id,
+            },
+          });
+
+          console.log(
+            `✅ Assigned ${validIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
           );
         }
+      }
+    }
 
-        // Step 4b: Assign these slots evenly across workshop occurrences
-
-        const occ = occurrences[0];
-
-        await db.equipmentSlot.updateMany({
-          where: { id: { in: selectedSlotIds } },
-          data: {
-            isBooked: true,
-            workshopOccurrenceId: occ.id,
-          },
-        });
-
-        console.log(
-          `✅ Assigned ${selectedSlotIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
+    // Step 5: Create equipment slots for workshop dates
+    // This will handle creating slots for all workshop occurrences and equipment
+    for (const occurrence of occurrences) {
+      for (const equipmentId of data.equipments) {
+        // Create equipment slots for this occurrence's time range
+        await createEquipmentSlotsForOccurrence(
+          occurrence.id,
+          equipmentId,
+          occurrence.startDate,
+          occurrence.endDate
         );
       }
     }
@@ -202,7 +227,6 @@ export async function addWorkshop(data: WorkshopData) {
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
  */
-// here possible
 export async function getWorkshopById(workshopId: number) {
   try {
     const workshop = await db.workshop.findUnique({

@@ -90,6 +90,7 @@ model Workshop {
   // Relationships
   occurrences    WorkshopOccurrence[] // Relationship to occurrences
   userWorkshops  UserWorkshop[] // Many-to-many relationship with User
+  equipmentBookings   EquipmentBooking[]
 
   // Prerequisite relationships
   prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
@@ -151,11 +152,13 @@ model EquipmentBooking {
   userId      Int
   equipmentId Int
   slotId      Int
+  workshopId  Int? 
   status      String @default("pending")
 
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   slot        EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking") 
+  workshop    Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
 
   @@unique([slotId]) // Prevents double booking of slots
 }
