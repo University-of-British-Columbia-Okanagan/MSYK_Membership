@@ -65,6 +65,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+// Add this import at the top of your file with the other imports
+import { getEquipmentVisibilityDays } from "../../models/admin.server";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -72,6 +74,7 @@ import {
 export async function loader() {
   const workshops = await getWorkshops();
   const equipmentsRaw = await getEquipmentSlotsWithStatus();
+  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
 
   const selectedSlotsMap: Record<number, number[]> = {};
   for (const equipment of equipmentsRaw) {
@@ -93,6 +96,7 @@ export async function loader() {
     workshops,
     equipments: equipmentsRaw,
     selectedSlotsMap,
+    equipmentVisibilityDays,
   };
 }
 
@@ -349,15 +353,20 @@ export async function action({ request }: { request: Request }) {
 
 export default function AddWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
-  const { workshops: availableWorkshops, equipments: availableEquipments } =
-    useLoaderData() as {
-      workshops: { id: number; name: string; type: string }[];
-      equipments: {
-        id: number;
-        name: string;
-        slotsByDay: SlotsByDay;
-      }[];
-    };
+  const {
+    workshops: availableWorkshops,
+    equipments: availableEquipments,
+    equipmentVisibilityDays,
+  } = useLoaderData() as {
+    workshops: { id: number; name: string; type: string }[];
+    equipments: {
+      id: number;
+      name: string;
+      slotsByDay: SlotsByDay;
+    }[];
+    selectedSlotsMap: Record<number, number[]>;
+    equipmentVisibilityDays: number;
+  };
 
   const form = useForm<WorkshopFormValues>({
     resolver: zodResolver(workshopFormSchema),
@@ -958,11 +967,12 @@ export default function AddWorkshop() {
               </h3>
 
               <Tabs
-                defaultValue={selectedEquipments[0].toString()}
+                defaultValue={[...selectedEquipments]
+                  .sort((a, b) => a - b)[0]
+                  .toString()}
                 className="w-full"
               >
                 <TabsList className="mb-4">
-                  {/* Sort selectedEquipments by ID before mapping */}
                   {[...selectedEquipments]
                     .sort((a, b) => a - b)
                     .map((equipmentId) => {
@@ -981,7 +991,6 @@ export default function AddWorkshop() {
                     })}
                 </TabsList>
 
-                {/* Also sort selectedEquipments in the TabsContent section */}
                 {[...selectedEquipments]
                   .sort((a, b) => a - b)
                   .map((equipmentId) => {
@@ -1036,6 +1045,8 @@ export default function AddWorkshop() {
                             );
                           }}
                           disabled={false}
+                          // Use the dynamically fetched visibility days
+                          visibleDays={equipmentVisibilityDays}
                         />
                       </TabsContent>
                     );
