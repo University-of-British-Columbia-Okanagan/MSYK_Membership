@@ -233,6 +233,36 @@ export default function EquipmentBookingGrid({
     });
   };
 
+  const isSlotInPast = (day: string, time: string): boolean => {
+    const now = new Date();
+
+    // Extract day parts
+    const dayParts = day.split(" ");
+    const dayName = dayParts[0]; // e.g., "Thu"
+    const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
+
+    // Extract time parts
+    const [hour, minute] = time.split(":").map(Number);
+
+    // Create a date for the slot
+    const slotDate = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      dayNumber,
+      hour,
+      minute
+    );
+
+    // If the day is less than today's date and we're near the end of the month,
+    // it probably means we're booking for the next month
+    if (dayNumber < now.getDate() && now.getDate() > 20) {
+      slotDate.setMonth(now.getMonth() + 1);
+    }
+
+    // Check if the slot is in the past
+    return slotDate < now;
+  };
+
   // Generate day labels for all visible days
   const allDays = generateDateLabels(visibleDays);
 
@@ -261,6 +291,11 @@ export default function EquipmentBookingGrid({
 
   const handleSlotToggle = (day: string, time: string) => {
     if (disabled || readOnly) return;
+
+    if (isSlotInPast(day, time)) {
+      setErrorMessage("Cannot book slots in the past.");
+      return;
+    }
 
     const slot = slotsByDay?.[day]?.[time];
     if (!slot?.isAvailable || slot?.isBooked) {
@@ -521,6 +556,8 @@ export default function EquipmentBookingGrid({
                         })
                       : false;
 
+                  const isPastSlot = isSlotInPast(day, time);
+
                   const colorClass = isCurrentWorkshopSlot
                     ? "bg-green-500 cursor-not-allowed" // Green for current workshop slots
                     : isWorkshopSlot || slot?.reservedForWorkshop
@@ -546,13 +583,15 @@ export default function EquipmentBookingGrid({
                       onClick={() =>
                         !isAnyRestriction &&
                         !isPlannedClosure &&
-                        !readOnly && // Add this check
+                        !isPastSlot && // Add check for past slots
+                        !readOnly &&
                         handleSlotToggle(day, time)
                       }
                       onMouseEnter={() =>
                         !isAnyRestriction &&
                         !isPlannedClosure &&
-                        !readOnly && // Add this check
+                        !isPastSlot && // Add check for past slots
+                        !readOnly &&
                         isDragging.current &&
                         handleSlotToggle(day, time)
                       }
@@ -570,6 +609,11 @@ export default function EquipmentBookingGrid({
                       {isCurrentWorkshopSlot && (
                         <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap">
                           Reserved for this workshop
+                        </div>
+                      )}
+                      {isPastSlot && (
+                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-gray-100 border border-gray-200 rounded text-gray-700 text-xs whitespace-nowrap">
+                          Time has passed
                         </div>
                       )}
                     </td>
@@ -696,6 +740,10 @@ export default function EquipmentBookingGrid({
             <div className="w-4 h-4 bg-white border border-gray-300" />
             <span>Unselected</span>
           </div>
+          {/* <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-gray-200 border border-gray-300" />
+            <span>Past Time</span>
+          </div> */}
         </div>
         <div className="flex items-center gap-4 justify-center text-sm">
           <div className="flex items-center gap-1">
