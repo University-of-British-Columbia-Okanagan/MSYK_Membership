@@ -596,7 +596,7 @@ export default function EquipmentBookingGrid({
                         handleSlotToggle(day, time)
                       }
                     >
-                      {isAnyRestriction && (
+                      {/* {isAnyRestriction && (
                         <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
                           Restricted by admin
                         </div>
@@ -615,7 +615,87 @@ export default function EquipmentBookingGrid({
                         <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-gray-100 border border-gray-200 rounded text-gray-700 text-xs whitespace-nowrap">
                           Time has passed
                         </div>
+                      )} */}
+
+                      {/* {isPastSlot && !isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-gray-700 text-xs whitespace-nowrap shadow-lg">
+                          Time has passed
+                        </div>
                       )}
+                      {isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
+                          Reserved for this workshop
+                        </div>
+                      )}
+                      {(isWorkshopSlot || slot?.reservedForWorkshop) && !isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && !isPastSlot && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-purple-100 border border-purple-200 rounded text-purple-700 text-xs whitespace-nowrap shadow-lg">
+                          Reserved for another workshop
+                        </div>
+                      )}
+                      {slot?.isBooked && !isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && !isPastSlot && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-700 text-xs whitespace-nowrap shadow-lg">
+                          {slot?.bookedByMe ? "Booked by you" : "Booked by others"}
+                        </div>
+                      )}
+                      {isPlannedClosure && !isAnyRestriction && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap shadow-lg">
+                          Planned closure
+                        </div>
+                      )}
+                      {isAnyRestriction && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
+                          Restricted by admin
+                        </div>
+                      )} */}
+                      
+                      { /* one tooltip shows at a time based on priority (admin restrictions > planned closures > 
+                      workshop reservations > past slots) */}
+                      {isAnyRestriction && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
+                          Restricted by admin
+                        </div>
+                      )}
+                      {isPlannedClosure && !isAnyRestriction && (
+                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap shadow-lg">
+                          Planned closure
+                        </div>
+                      )}
+                      {isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
+                            Reserved for this workshop
+                          </div>
+                        )}
+                      {(isWorkshopSlot || slot?.reservedForWorkshop) &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-purple-100 border border-purple-200 rounded text-purple-700 text-xs whitespace-nowrap shadow-lg">
+                            Reserved for another workshop
+                          </div>
+                        )}
+                      {slot?.isBooked &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure &&
+                        !(isWorkshopSlot || slot?.reservedForWorkshop) && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-700 text-xs whitespace-nowrap shadow-lg">
+                            {slot?.bookedByMe
+                              ? "Booked by you"
+                              : "Booked by others"}
+                          </div>
+                        )}
+                      {isPastSlot &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure &&
+                        !(isWorkshopSlot || slot?.reservedForWorkshop) &&
+                        !slot?.isBooked && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-gray-700 text-xs whitespace-nowrap shadow-lg">
+                            Time has passed
+                          </div>
+                        )}
                     </td>
                   );
                 })}
