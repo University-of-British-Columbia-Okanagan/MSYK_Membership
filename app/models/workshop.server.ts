@@ -1,5 +1,6 @@
 import { db } from "../utils/db.server";
 import { getUser } from "~/utils/session.server";
+import { createEquipmentSlotsForOccurrence } from "../models/equipment.server";
 
 interface WorkshopData {
   name: string;
@@ -54,6 +55,9 @@ export async function getWorkshops() {
     include: {
       occurrences: {
         orderBy: { startDate: "asc" },
+        include: {
+          userWorkshops: true, // Include user workshops to count registrations
+        },
       },
     },
   });
@@ -65,12 +69,30 @@ export async function getWorkshops() {
         ? workshop.occurrences[workshop.occurrences.length - 1].status
         : "expired"; // Default to expired if no occurrences exist
 
+    // Map occurrences to include registration count
+    const occurrencesWithCounts = workshop.occurrences.map(
+      (occurrence: any) => {
+        // Use type assertion (any) to bypass TypeScript checking
+        const registrationCount = occurrence.userWorkshops?.length || 0;
+
+        // Create a new object without the userWorkshops property
+        const { userWorkshops, ...occWithoutUserWorkshops } = occurrence;
+
+        // Return the occurrence with the registration count added
+        return {
+          ...occWithoutUserWorkshops,
+          registrationCount,
+        };
+      }
+    );
+
     // Keep all existing fields in 'workshop',
     // then add/override status, and ensure 'type' is included.
     return {
       ...workshop,
       status: latestStatus,
       type: workshop.type, // explicitly include workshop.type
+      occurrences: occurrencesWithCounts, // Replace occurrences with our version that includes counts
     };
   });
 }
@@ -78,8 +100,16 @@ export async function getWorkshops() {
 /**
  * Add a new workshop along with its occurrences and equipment.
  */
-export async function addWorkshop(data: WorkshopData) {
+export async function addWorkshop(data: WorkshopData, request?: Request) {
   try {
+    let userId = -1;
+    if (request) {
+      const user = await getUser(request);
+      if (user) {
+        userId = user.id;
+      }
+    }
+
     // Step 1: Create the workshop
     const newWorkshop = await db.workshop.create({
       data: {
@@ -132,41 +162,86 @@ export async function addWorkshop(data: WorkshopData) {
       for (const equipmentId of data.equipments) {
         const selectedSlotIds = data.selectedSlots?.[equipmentId] || [];
 
-        if (selectedSlotIds.length === 0) {
-          console.warn(`⚠️ No slots selected for Equipment ID ${equipmentId}`);
-          continue;
-        }
+        // Filter out negative IDs (these are our placeholder IDs for workshop dates)
+        const validSlotIds = selectedSlotIds.filter((id) => id > 0);
 
-        // Step 4a: Verify selected slots exist and are unbooked
-        const slots = await db.equipmentSlot.findMany({
-          where: {
-            id: { in: selectedSlotIds },
-            equipmentId,
-            isBooked: false,
-            workshopOccurrenceId: null,
-          },
-        });
-
-        if (slots.length !== selectedSlotIds.length) {
-          throw new Error(
-            `Some selected slots for Equipment ${equipmentId} are already booked or invalid.`
+        // If there are no valid slot IDs, just continue to the next equipment
+        if (validSlotIds.length === 0) {
+          console.log(
+            `No valid slots selected for Equipment ID ${equipmentId}. Only workshop date slots were found.`
           );
+          continue; // Skip to next equipment
         }
 
-        // Step 4b: Assign these slots evenly across workshop occurrences
+        try {
+          // Step 4a: Verify selected slots exist and are unbooked
+          const slots = await db.equipmentSlot.findMany({
+            where: {
+              id: { in: validSlotIds },
+              equipmentId,
+              isBooked: false,
+              workshopOccurrenceId: null,
+            },
+          });
 
-        const occ = occurrences[0];
+          if (slots.length !== validSlotIds.length) {
+            console.warn(
+              `Some selected slots for Equipment ${equipmentId} are already booked or invalid. Found ${slots.length} of ${validSlotIds.length}`
+            );
+          }
 
-        await db.equipmentSlot.updateMany({
-          where: { id: { in: selectedSlotIds } },
-          data: {
-            isBooked: true,
-            workshopOccurrenceId: occ.id,
-          },
-        });
+          // Only proceed if we have valid slots to book
+          if (slots.length > 0) {
+            const validIds = slots.map((slot) => slot.id);
+            const occ = occurrences[0];
 
-        console.log(
-          `✅ Assigned ${selectedSlotIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
+            await db.equipmentSlot.updateMany({
+              where: { id: { in: validIds } },
+              data: {
+                isBooked: true,
+                workshopOccurrenceId: occ.id,
+              },
+            });
+
+            // Create equipment booking records
+            for (const slotId of validIds) {
+              await db.equipmentBooking.create({
+                data: {
+                  userId: userId, // Use the current logged-in user's ID
+                  equipmentId,
+                  slotId,
+                  status: "pending", // Default status as pending
+                  bookedFor: "workshop", // Set the new bookedFor field
+                  workshopId: newWorkshop.id, // Connect directly to the workshop
+                },
+              });
+            }
+
+            console.log(
+              `✅ Assigned ${validIds.length} selected slot(s) to Equipment ${equipmentId} for Occurrence ${occ.id}`
+            );
+          }
+        } catch (error) {
+          console.error(
+            `Error processing slots for equipment ${equipmentId}:`,
+            error
+          );
+          // Continue with other equipment instead of failing the whole operation
+        }
+      }
+    }
+
+    // Step 5: Create equipment slots for workshop dates
+    // This will handle creating slots for all workshop occurrences and equipment
+    for (const occurrence of occurrences) {
+      for (const equipmentId of data.equipments) {
+        // Create equipment slots for this occurrence's time range
+        await createEquipmentSlotsForOccurrence(
+          occurrence.id,
+          equipmentId,
+          occurrence.startDate,
+          occurrence.endDate,
+          userId // Pass the current user ID
         );
       }
     }
@@ -181,7 +256,6 @@ export async function addWorkshop(data: WorkshopData) {
 /**
  * Fetch a single workshop by ID including its occurrences order by startDate ascending.
  */
-// here possible
 export async function getWorkshopById(workshopId: number) {
   try {
     const workshop = await db.workshop.findUnique({
@@ -273,10 +347,234 @@ export async function updateWorkshop(workshopId: number, data: WorkshopData) {
 /**
  * Update the workshop table, then remove all old occurrences and insert new ones.
  */
+// export async function updateWorkshopWithOccurrences(
+//   workshopId: number,
+//   data: UpdateWorkshopData
+// ) {
+//   await db.workshop.update({
+//     where: { id: workshopId },
+//     data: {
+//       name: data.name,
+//       description: data.description,
+//       price: data.price,
+//       location: data.location,
+//       capacity: data.capacity,
+//       type: data.type,
+//     },
+//   });
+
+//   if (data.prerequisites) {
+//     await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
+
+//     if (data.prerequisites.length > 0) {
+//       const sortedPrereqs = [...data.prerequisites].sort((a, b) => a - b);
+//       await db.workshopPrerequisite.createMany({
+//         data: sortedPrereqs.map((prereqId) => ({
+//           workshopId,
+//           prerequisiteId: prereqId,
+//         })),
+//       });
+//     }
+//   }
+
+//   // 3) Update occurrences
+//   const existingOccurrences = await db.workshopOccurrence.findMany({
+//     where: { workshopId },
+//   });
+//   const existingIds = existingOccurrences.map((occ) => occ.id);
+
+//   const updateOccurrences = data.occurrences.filter((o) => o.id);
+//   const createOccurrences = data.occurrences.filter((o) => !o.id);
+//   const updateIds = updateOccurrences.map((o) => o.id!);
+//   const deleteIds = existingIds.filter((id) => !updateIds.includes(id));
+
+//   // Store new occurrence IDs for later use with user registration
+//   let newOccurrenceIds: number[] = [];
+
+//   if (createOccurrences.length > 0) {
+//     const now = new Date();
+
+//     // Get the maximum existing offerId for this workshop
+//     const maxOfferIdResult = await db.workshopOccurrence.aggregate({
+//       where: { workshopId },
+//       _max: { offerId: true },
+//     });
+
+//     // Use the highest existing offerId (or default to 1 if none exists)
+//     const currentOfferId = (maxOfferIdResult._max.offerId as number) || 1;
+
+//     const createdOccurrences = await Promise.all(
+//       createOccurrences.map(async (occ) => {
+//         const status =
+//           occ.status === "cancelled"
+//             ? "cancelled"
+//             : occ.startDate >= now
+//             ? "active"
+//             : "past";
+
+//         // Create each occurrence individually to get its ID
+//         const createdOcc = await db.workshopOccurrence.create({
+//           data: {
+//             workshopId,
+//             startDate: occ.startDate,
+//             endDate: occ.endDate,
+//             startDatePST: occ.startDatePST,
+//             endDatePST: occ.endDatePST,
+//             status,
+//             offerId: currentOfferId, // Use the current highest offerId
+//           },
+//         });
+
+//         return createdOcc;
+//       })
+//     );
+
+//     // Store the IDs of newly created occurrences
+//     newOccurrenceIds = createdOccurrences.map((occ) => occ.id);
+//   }
+
+//   for (const occ of updateOccurrences) {
+//     const now = new Date();
+//     const status =
+//       occ.status === "cancelled"
+//         ? "cancelled"
+//         : occ.startDate >= now
+//         ? "active"
+//         : "past";
+
+//     await db.workshopOccurrence.update({
+//       where: { id: occ.id },
+//       data: {
+//         startDate: occ.startDate,
+//         endDate: occ.endDate,
+//         startDatePST: occ.startDatePST,
+//         endDatePST: occ.endDatePST,
+//         status,
+//       },
+//     });
+//   }
+
+//   if (deleteIds.length > 0) {
+//     await db.workshopOccurrence.deleteMany({
+//       where: { id: { in: deleteIds } },
+//     });
+//   }
+
+//   let isWorkshopContinuation = data.isWorkshopContinuation;
+//   let currentConnectId = null;
+
+//   if (typeof data.isWorkshopContinuation === "boolean") {
+//     if (data.isWorkshopContinuation) {
+//       // If user CHECKED the box, assign a new connectId for all occurrences
+//       // First check if there's already a connectId assigned to existing occurrences
+//       const existingConnectId = await db.workshopOccurrence.findFirst({
+//         where: { workshopId, connectId: { not: null } },
+//         select: { connectId: true },
+//       });
+
+//       if (existingConnectId && existingConnectId.connectId) {
+//         // Use existing connectId to maintain continuity
+//         currentConnectId = existingConnectId.connectId;
+//         await db.workshopOccurrence.updateMany({
+//           where: { workshopId },
+//           data: { connectId: currentConnectId },
+//         });
+//       } else {
+//         // Create a new connectId if none exists
+//         const maxResult = await db.workshopOccurrence.aggregate({
+//           _max: { connectId: true },
+//         });
+//         const currentMax = maxResult._max.connectId ?? 0;
+//         currentConnectId = currentMax + 1;
+//         await db.workshopOccurrence.updateMany({
+//           where: { workshopId },
+//           data: { connectId: currentConnectId },
+//         });
+//       }
+//     } else {
+//       // If user UNCHECKED the box, set connectId to null for all occurrences
+//       await db.workshopOccurrence.updateMany({
+//         where: { workshopId },
+//         data: { connectId: null },
+//       });
+//     }
+//   } else {
+//     // Check if this is a workshop continuation by looking at existing occurrences
+//     const existingConnectId = await db.workshopOccurrence.findFirst({
+//       where: { workshopId, connectId: { not: null } },
+//       select: { connectId: true },
+//     });
+
+//     if (existingConnectId && existingConnectId.connectId) {
+//       isWorkshopContinuation = true;
+//       currentConnectId = existingConnectId.connectId;
+//     }
+//   }
+
+//   // Handle auto-registration of existing users to new occurrences for workshop continuations
+//   if (isWorkshopContinuation && newOccurrenceIds.length > 0) {
+//     // Only proceed if there are new occurrences and this is a workshop continuation
+
+//     // 1. Find all unique users who are registered to any occurrence of this workshop
+//     const existingRegistrations = await db.userWorkshop.findMany({
+//       where: {
+//         workshopId,
+//         occurrence: {
+//           status: "active",
+//         },
+//       },
+//       select: {
+//         userId: true,
+//       },
+//       distinct: ["userId"],
+//     });
+
+//     const uniqueUserIds = existingRegistrations.map((reg) => reg.userId);
+
+//     // 2. If there are existing users, register them to all new occurrences
+//     if (uniqueUserIds.length > 0) {
+//       for (const occurrenceId of newOccurrenceIds) {
+//         // Check if the occurrence is active before registering users
+//         const occurrenceStatus = await db.workshopOccurrence.findUnique({
+//           where: { id: occurrenceId },
+//           select: { status: true },
+//         });
+
+//         if (occurrenceStatus && occurrenceStatus.status === "active") {
+//           // Register each user to this new occurrence
+//           for (const userId of uniqueUserIds) {
+//             try {
+//               await db.userWorkshop.create({
+//                 data: {
+//                   userId,
+//                   workshopId,
+//                   occurrenceId,
+//                   result: "passed", // Default value
+//                 },
+//               });
+//             } catch (error) {
+//               // Handle potential unique constraint violations
+//               console.log(
+//                 `Could not register user ${userId} to occurrence ${occurrenceId}: ${error}`
+//               );
+//             }
+//           }
+//         }
+//       }
+//     }
+//   }
+
+//   // 4) Return updated workshop
+//   return db.workshop.findUnique({ where: { id: workshopId } });
+// }
 export async function updateWorkshopWithOccurrences(
   workshopId: number,
-  data: UpdateWorkshopData
+  data: UpdateWorkshopData & {
+    selectedSlots?: Record<number, number[]>;
+    userId?: number;
+  }
 ) {
+  // Update workshop basic info
   await db.workshop.update({
     where: { id: workshopId },
     data: {
@@ -485,6 +783,107 @@ export async function updateWorkshopWithOccurrences(
               );
             }
           }
+        }
+      }
+    }
+  }
+
+  // ADDED: Process equipment bookings if provided
+  if (data.equipments && data.equipments.length > 0) {
+    // First, remove existing equipment associations that are no longer needed
+    const currentEquipmentIds = data.equipments;
+
+    // Process selected equipment slots if provided
+    if (data.selectedSlots && data.userId) {
+      const userId = data.userId;
+      const allSelectedSlotIds = Object.values(data.selectedSlots)
+        .flat()
+        .map(Number);
+      const validSlotIds = allSelectedSlotIds.filter((id) => id > 0);
+
+      if (validSlotIds.length > 0) {
+        try {
+          // Find slots that are available
+          const availableSlots = await db.equipmentSlot.findMany({
+            where: {
+              id: { in: validSlotIds },
+              OR: [
+                { isBooked: false },
+                {
+                  workshopOccurrenceId: {
+                    in: existingIds, // Allow slots already assigned to this workshop
+                  },
+                },
+              ],
+            },
+          });
+
+          if (availableSlots.length > 0) {
+            // Get IDs of slots we can use
+            const slotIds = availableSlots.map((slot) => slot.id);
+
+            // Update equipment slots to be associated with this workshop
+            for (const occ of [...updateOccurrences, ...createOccurrences]) {
+              const occurrenceId =
+                occ.id || newOccurrenceIds[createOccurrences.indexOf(occ)];
+
+              if (occurrenceId) {
+                // Associate equipment slots with this occurrence
+                await db.equipmentSlot.updateMany({
+                  where: {
+                    id: { in: slotIds },
+                    equipmentId: { in: currentEquipmentIds },
+                  },
+                  data: {
+                    isBooked: true,
+                    workshopOccurrenceId: occurrenceId,
+                  },
+                });
+
+                // Create or update equipment bookings
+                for (const slotId of slotIds) {
+                  // Check if booking already exists
+                  const existingBooking = await db.equipmentBooking.findFirst({
+                    where: { slotId },
+                  });
+
+                  if (!existingBooking) {
+                    // Get equipment ID for this slot
+                    const slot = await db.equipmentSlot.findUnique({
+                      where: { id: slotId },
+                      select: { equipmentId: true },
+                    });
+
+                    if (slot) {
+                      // Create new booking
+                      await db.equipmentBooking.create({
+                        data: {
+                          userId,
+                          equipmentId: slot.equipmentId,
+                          slotId,
+                          status: "pending",
+                          bookedFor: "workshop",
+                          workshopId,
+                        },
+                      });
+                    }
+                  } else {
+                    // Update existing booking if needed
+                    await db.equipmentBooking.update({
+                      where: { id: existingBooking.id },
+                      data: {
+                        workshopId,
+                        bookedFor: "workshop",
+                      },
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Error processing equipment bookings:", error);
+          // Continue even if equipment booking fails
         }
       }
     }

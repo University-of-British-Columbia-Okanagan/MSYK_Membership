@@ -7,7 +7,6 @@ import {
 import { json, redirect } from "@remix-run/node";
 import {
   getEquipmentSlotsWithStatus,
-  bookEquipment,
   getEquipmentById,
   getLevel3ScheduleRestrictions,
   getLevel4UnavailableHours,
@@ -16,8 +15,9 @@ import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
 import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { useState } from "react";
-import { getAdminSetting } from "../../models/admin.server";
+import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
+import { checkSlotAvailability } from "../../models/equipment.server";
 
 // Loader
 // export async function loader({ request }: { request: Request }) {
@@ -29,14 +29,22 @@ import { createCheckoutSession } from "../../models/payment.server";
 
 //   return json({ equipment: equipmentWithSlots, roleLevel });
 // }
-export async function loader({ request }: { request: Request }) {
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id?: string };
+}) {
   const user = await getUser(request);
   const userId = user?.id ?? null;
   const roleLevel = user?.roleLevel ?? 1;
+  const equipmentId = params.id ? parseInt(params.id) : null;
 
   // Get the equipment_visible_registrable_days setting
   const equipmentWithSlots = await getEquipmentSlotsWithStatus(
-    userId ?? undefined
+    userId ?? undefined,
+    true
   );
   const visibleDays = await getAdminSetting(
     "equipment_visible_registrable_days",
@@ -49,12 +57,16 @@ export async function loader({ request }: { request: Request }) {
   const level4Restrictions =
     roleLevel === 4 ? await getLevel4UnavailableHours() : null;
 
+  const plannedClosures = roleLevel === 3 ? await getPlannedClosures() : [];
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
     visibleDays: parseInt(visibleDays, 10),
     level3Restrictions,
     level4Restrictions,
+    equipmentId,
+    plannedClosures,
   });
 }
 
@@ -91,16 +103,48 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  try {
-    for (const entry of slots) {
-      const [startTime, endTime] = entry.split("|");
-      await bookEquipment(request, equipmentId, startTime, endTime);
+  const equipment = await getEquipmentById(equipmentId);
+  if (!equipment) {
+    throw new Response("Equipment Not Found", { status: 404 });
+  }
+  if (!equipment.availability) {
+    throw new Response("Equipment Not Available", { status: 419 });
+  }
+
+  // REMOVED: The booking happens after payment now, not before
+  // for (const entry of slots) {
+  //   const [startTime, endTime] = entry.split("|");
+  //   await bookEquipment(request, equipmentId, startTime, endTime);
+  // }
+
+  // Check if the selected slots are still available
+  for (const entry of slots) {
+    const [startTime, endTime] = entry.split("|");
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+
+    // Check if the slot is already booked by someone else
+    const isAvailable = await checkSlotAvailability(
+      equipmentId,
+      startDate,
+      endDate
+    );
+    if (!isAvailable) {
+      return json(
+        {
+          errors: {
+            message:
+              "One or more selected slots are no longer available. Please try again with different slots.",
+          },
+        },
+        { status: 400 }
+      );
     }
+  }
 
-    const equipment = await getEquipmentById(equipmentId);
+  // Create Stripe checkout session
+  try {
     const totalPrice = equipment?.price * slots.length;
-
-    // ✅ Direct call to your Stripe session creator
     const fakeRequest = new Request("http://localhost", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,11 +190,13 @@ export default function EquipmentBookingForm() {
     visibleDays,
     level3Restrictions,
     level4Restrictions,
+    equipmentId,
+    plannedClosures,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
-    null
+    equipmentId
   );
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 
@@ -228,14 +274,15 @@ export default function EquipmentBookingForm() {
               visibleTimeRange={
                 roleLevel === 3 ? { startHour: 9, endHour: 17 } : undefined
               }
-              visibleDays={visibleDays} // Pass the number of visible days
+              visibleDays={visibleDays}
               level3Restrictions={
                 roleLevel === 3 ? level3Restrictions : undefined
               }
               level4Restrictions={
                 roleLevel === 4 ? level4Restrictions : undefined
               }
-              userRoleLevel={roleLevel} 
+              plannedClosures={roleLevel === 3 ? plannedClosures : undefined} // Add this prop
+              userRoleLevel={roleLevel}
             />
 
             {totalPrice && (

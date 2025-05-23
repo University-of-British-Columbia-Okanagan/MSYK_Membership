@@ -27,6 +27,8 @@ import {
   getWorkshopVisibilityDays,
   updateWorkshopCutoff,
   getEquipmentVisibilityDays,
+  getPlannedClosures,
+  updatePlannedClosures,
 } from "~/models/admin.server";
 import {
   getLevel3ScheduleRestrictions,
@@ -62,6 +64,15 @@ import {
 } from "~/models/user.server";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -73,6 +84,7 @@ export async function loader({ request }: { request: Request }) {
   // Load current settings
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
+  const plannedClosures = await getPlannedClosures();
 
   const workshopsRaw = await getWorkshops();
   // Process workshops to determine which have active occurrences
@@ -103,6 +115,7 @@ export async function loader({ request }: { request: Request }) {
       equipmentVisibilityDays,
       level3Schedule,
       level4UnavailableHours,
+      plannedClosures,
     },
     workshops,
     users,
@@ -241,6 +254,25 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updatePlannedClosures") {
+    try {
+      const closuresData = formData.get("closures");
+      if (closuresData) {
+        await updatePlannedClosures(JSON.parse(closuresData.toString()));
+      }
+      return {
+        success: true,
+        message: "Planned closures updated successfully",
+      };
+    } catch (error) {
+      console.error("Error updating planned closures:", error);
+      return {
+        success: false,
+        message: "Failed to update planned closures",
+      };
+    }
+  }
+
   return null;
 }
 
@@ -308,6 +340,11 @@ export default function AdminSettings() {
         start: number;
         end: number;
       };
+      plannedClosures: Array<{
+        id: number;
+        startDate: string;
+        endDate: string;
+      }>;
     };
     workshops: Array<{
       id: number;
@@ -391,6 +428,37 @@ export default function AdminSettings() {
   const sortedFilteredUsers = useMemo(() => {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
   }, [filteredUsers]);
+
+  const [plannedClosures, setPlannedClosures] = useState(
+    settings.plannedClosures.map((closure) => ({
+      id: closure.id,
+      startDate: new Date(closure.startDate),
+      endDate: new Date(closure.endDate),
+    }))
+  );
+
+  const [newClosure, setNewClosure] = useState(() => {
+    // Initialize with today's date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to midnight
+
+    return {
+      startDate: today,
+      startTime: "09:00",
+      endDate: today, // Same day as start date, not tomorrow
+      endTime: "17:00",
+    };
+  });
+
+  const [validationError, setValidationError] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+  }>({
+    show: false,
+    title: "",
+    message: "",
+  });
 
   // Define columns for the ShadTable
   type UserRow = (typeof users)[number];
@@ -512,6 +580,143 @@ export default function AdminSettings() {
     return { minHour, maxHour };
   };
 
+  // Function to add a new planned closure
+  // Function to add a new planned closure
+  const handleAddClosure = () => {
+    // Create dates from user input, preserving the selected day
+    const startDateInput = newClosure.startDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+    const endDateInput = newClosure.endDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
+
+    // Parse the dates using the date string directly to avoid timezone issues
+    const [startYear, startMonth, startDay] = startDateInput
+      .split("-")
+      .map(Number);
+    const [startHours, startMinutes] = newClosure.startTime
+      .split(":")
+      .map(Number);
+
+    const [endYear, endMonth, endDay] = endDateInput.split("-").map(Number);
+    const [endHours, endMinutes] = newClosure.endTime.split(":").map(Number);
+
+    // Create Date objects with the correct day, ensuring we use local timezone
+    const start = new Date(
+      startYear,
+      startMonth - 1,
+      startDay,
+      startHours,
+      startMinutes,
+      0
+    );
+    const end = new Date(
+      endYear,
+      endMonth - 1,
+      endDay,
+      endHours,
+      endMinutes,
+      0
+    );
+
+    // Validate dates
+    if (end <= start) {
+      setValidationError({
+        show: true,
+        title: "Invalid Time Period",
+        message: "End date and time must be after start date and time.",
+      });
+      return;
+    }
+
+    // Check for overlapping closures
+    const hasOverlap = plannedClosures.some((closure) => {
+      const closureStart = new Date(closure.startDate);
+      const closureEnd = new Date(closure.endDate);
+
+      // Check if the new closure overlaps with an existing one
+      return (
+        (start <= closureEnd && end >= closureStart) ||
+        (closureStart <= end && closureEnd >= start)
+      );
+    });
+
+    if (hasOverlap) {
+      setValidationError({
+        show: true,
+        title: "Overlapping Closure",
+        message:
+          "This closure period overlaps with an existing planned closure. Please choose a different time period.",
+      });
+      return;
+    }
+
+    const newId =
+      plannedClosures.length > 0
+        ? Math.max(...plannedClosures.map((c) => c.id)) + 1
+        : 1;
+
+    const updated = [
+      ...plannedClosures,
+      { id: newId, startDate: start, endDate: end },
+    ];
+
+    setPlannedClosures(updated);
+
+    // Save to database
+    const formData = new FormData();
+    formData.append("actionType", "updatePlannedClosures");
+    formData.append(
+      "closures",
+      JSON.stringify(
+        updated.map((c) => ({
+          id: c.id,
+          startDate: c.startDate.toISOString(),
+          endDate: c.endDate.toISOString(),
+        }))
+      )
+    );
+    submit(formData, { method: "post" });
+
+    // Reset form with today's date
+    const today = new Date();
+
+    setNewClosure({
+      startDate: today,
+      startTime: "09:00",
+      endDate: today, // Same date as start
+      endTime: "17:00",
+    });
+  };
+
+  // Function to delete a planned closure
+  const handleDeleteClosure = (id: number) => {
+    const updated = plannedClosures.filter((c) => c.id !== id);
+    setPlannedClosures(updated);
+
+    // Save to database
+    const formData = new FormData();
+    formData.append("actionType", "updatePlannedClosures");
+    formData.append(
+      "closures",
+      JSON.stringify(
+        updated.map((c) => ({
+          id: c.id,
+          startDate: c.startDate.toISOString(),
+          endDate: c.endDate.toISOString(),
+        }))
+      )
+    );
+    submit(formData, { method: "post" });
+  };
+
+  // Generate time options in 30-minute increments
+  const timeOptions = useMemo(() => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      options.push(`${hour.toString().padStart(2, "0")}:00`);
+      options.push(`${hour.toString().padStart(2, "0")}:30`);
+    }
+    return options;
+  }, []);
+
   const level3TimeRange = calculateLevel3TimeRange();
 
   return (
@@ -545,6 +750,9 @@ export default function AdminSettings() {
                 <TabsTrigger value="workshops">Workshop Settings</TabsTrigger>
                 <TabsTrigger value="users">User Settings</TabsTrigger>
                 <TabsTrigger value="equipment">Equipment Settings</TabsTrigger>
+                <TabsTrigger value="plannedClosures">
+                  Planned Closures
+                </TabsTrigger>
                 <TabsTrigger value="placeholder">Other Settings</TabsTrigger>
                 {/* Add more tabs here in the future */}
               </TabsList>
@@ -603,7 +811,6 @@ export default function AdminSettings() {
                   </Card>
                 </Form>
 
-                {/* Workshop Registration Cutoffs Section */}
                 {/* Workshop Registration Cutoffs Section */}
                 <Card>
                   <CardHeader>
@@ -1307,6 +1514,246 @@ export default function AdminSettings() {
                             </p>
                           )}
                         </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="plannedClosures">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Planned Closures for Level 3 Users</CardTitle>
+                    <CardDescription>
+                      Set specific time periods when level 3 users cannot book
+                      equipment. Level 4 users will still be able to book during
+                      these times.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      <div className="bg-blue-50 p-4 rounded-md border border-blue-100 mb-6">
+                        <h3 className="text-blue-800 font-medium mb-1">
+                          About Planned Closures
+                        </h3>
+                        <p className="text-blue-700 text-sm">
+                          Use this feature to block equipment bookings for level
+                          3 users during special events, holidays, or
+                          maintenance periods. Level 4 users will still be able
+                          to make bookings during these times.
+                        </p>
+                      </div>
+
+                      {/* Add new closure form */}
+                      <div className="border p-4 rounded-md bg-gray-50">
+                        <h3 className="font-medium mb-3">
+                          Add New Planned Closure
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="start-date">Start Date</Label>
+                            <Input
+                              id="start-date"
+                              type="date"
+                              value={
+                                newClosure.startDate.toISOString().split("T")[0]
+                              }
+                              onChange={(e) => {
+                                const date = new Date(e.target.value);
+                                setNewClosure((prev) => ({
+                                  ...prev,
+                                  startDate: date,
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="start-time">Start Time</Label>
+                            <select
+                              id="start-time"
+                              className="w-full rounded-md border border-gray-300 p-2"
+                              value={newClosure.startTime}
+                              onChange={(e) =>
+                                setNewClosure((prev) => ({
+                                  ...prev,
+                                  startTime: e.target.value,
+                                }))
+                              }
+                            >
+                              {timeOptions.map((time) => (
+                                <option key={`start-${time}`} value={time}>
+                                  {time}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="end-date">End Date</Label>
+                            <Input
+                              id="end-date"
+                              type="date"
+                              value={
+                                newClosure.endDate.toISOString().split("T")[0]
+                              }
+                              onChange={(e) => {
+                                const date = new Date(e.target.value);
+                                setNewClosure((prev) => ({
+                                  ...prev,
+                                  endDate: date,
+                                }));
+                              }}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="end-time">End Time</Label>
+                            <select
+                              id="end-time"
+                              className="w-full rounded-md border border-gray-300 p-2"
+                              value={newClosure.endTime}
+                              onChange={(e) =>
+                                setNewClosure((prev) => ({
+                                  ...prev,
+                                  endTime: e.target.value,
+                                }))
+                              }
+                            >
+                              {timeOptions.map((time) => (
+                                <option key={`end-${time}`} value={time}>
+                                  {time}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <Button
+                          onClick={handleAddClosure}
+                          className="mt-4 bg-yellow-500 hover:bg-yellow-600 text-white"
+                        >
+                          Add Closure Period
+                        </Button>
+
+                        {/* Validation Error Dialog */}
+                        <AlertDialog
+                          open={validationError.show}
+                          onOpenChange={(open) =>
+                            setValidationError((prev) => ({
+                              ...prev,
+                              show: open,
+                            }))
+                          }
+                        >
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                {validationError.title}
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                {validationError.message}
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogAction
+                                onClick={() =>
+                                  setValidationError({
+                                    ...validationError,
+                                    show: false,
+                                  })
+                                }
+                              >
+                                OK
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+
+                      {/* List of existing closures */}
+                      <div className="mt-6">
+                        <h3 className="font-medium mb-3">
+                          Current Planned Closures
+                        </h3>
+                        {plannedClosures.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-md border border-gray-200">
+                            No planned closures set. Add one using the form
+                            above.
+                          </div>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>ID</TableHead>
+                                <TableHead>Start Date & Time</TableHead>
+                                <TableHead>End Date & Time</TableHead>
+                                <TableHead>Duration</TableHead>
+                                <TableHead className="text-right">
+                                  Actions
+                                </TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {plannedClosures.map((closure) => {
+                                const start = new Date(closure.startDate);
+                                const end = new Date(closure.endDate);
+                                const durationMs =
+                                  end.getTime() - start.getTime();
+                                const durationDays = Math.floor(
+                                  durationMs / (1000 * 60 * 60 * 24)
+                                );
+                                const durationHours = Math.floor(
+                                  (durationMs % (1000 * 60 * 60 * 24)) /
+                                    (1000 * 60 * 60)
+                                );
+
+                                return (
+                                  <TableRow key={closure.id}>
+                                    <TableCell className="font-medium">
+                                      {closure.id}
+                                    </TableCell>
+                                    <TableCell>
+                                      {start.toLocaleDateString()}{" "}
+                                      {start.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </TableCell>
+                                    <TableCell>
+                                      {end.toLocaleDateString()}{" "}
+                                      {end.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </TableCell>
+                                    <TableCell>
+                                      {durationDays > 0
+                                        ? `${durationDays} day${
+                                            durationDays !== 1 ? "s" : ""
+                                          }`
+                                        : ""}
+                                      {durationHours > 0
+                                        ? `${
+                                            durationDays > 0 ? ", " : ""
+                                          }${durationHours} hour${
+                                            durationHours !== 1 ? "s" : ""
+                                          }`
+                                        : ""}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <ConfirmButton
+                                        confirmTitle="Confirm Delete"
+                                        confirmDescription="Are you sure you want to delete this planned closure? This action cannot be undone."
+                                        onConfirm={() =>
+                                          handleDeleteClosure(closure.id)
+                                        }
+                                        buttonLabel="Delete"
+                                        buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+                                      />
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        )}
                       </div>
                     </div>
                   </CardContent>
