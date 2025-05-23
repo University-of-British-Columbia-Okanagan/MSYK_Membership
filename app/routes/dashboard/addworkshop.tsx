@@ -65,15 +65,18 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-// Add this import at the top of your file with the other imports
 import { getEquipmentVisibilityDays } from "../../models/admin.server";
+import { getUser } from "../../utils/session.server";
 
 /**
  * Loader to fetch available workshops for prerequisites.
  */
-export async function loader() {
+export async function loader({ request }: { request: Request }) {
   const workshops = await getWorkshops();
-  const equipmentsRaw = await getEquipmentSlotsWithStatus();
+  const user = await getUser(request);
+  const userId = user?.id || undefined;
+
+  const equipmentsRaw = await getEquipmentSlotsWithStatus(userId);
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
 
   const selectedSlotsMap: Record<number, number[]> = {};
