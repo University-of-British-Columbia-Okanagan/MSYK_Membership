@@ -82,5 +82,6 @@ export default [
   route("/user/profile/paymentinformation", "routes/dashboard/paymentinformation.tsx"),
   route("/dashboard/admin/settings", "routes/dashboard/adminsettings.tsx"),
   route("/dashboard/admin/reports", "routes/dashboard/adminreports.tsx"),
+  route("/report", "routes/dashboard/issue.tsx"),
 
 ] satisfies RouteConfig;

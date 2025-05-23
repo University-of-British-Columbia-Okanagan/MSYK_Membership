@@ -51,6 +51,7 @@ model User {
   userMemberships UserMembership[] 
   userMembershipPayments UserMembershipPayment[]
   paymentInformation  UserPaymentInformation?
+  issuesReported Issue[]
 }
 
 model RoleUser {
@@ -266,4 +267,31 @@ model AdminSettings {
   description            String?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+}
+
+model Issue {
+  id          Int       @id @default(autoincrement())
+  createdAt   DateTime  @default(now())
+
+  title       String
+  description String
+  status      String    @default("open") // "open", "in_progress", "resolved"
+  priority    String    @default("medium") // 1 to 5
+
+  reportedById Int
+  reportedBy   User     @relation(fields: [reportedById], references: [id], onDelete: Cascade)
+
+  screenshots IssueScreenshot[]
+
+  @@index([reportedById])
+}
+
+model IssueScreenshot {
+  id       Int    @id @default(autoincrement())
+  issueId  Int
+  url      String
+
+  issue    Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
 }
