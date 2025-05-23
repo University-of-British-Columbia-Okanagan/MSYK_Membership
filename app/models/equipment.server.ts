@@ -31,6 +31,7 @@ export async function getEquipmentById(equipmentId: number) {
 export async function getAvailableEquipment() {
   return await db.equipment
     .findMany({
+      where: { availability: true },
       include: {
         slots: {
           select: { id: true, isBooked: true },
@@ -274,6 +275,7 @@ export async function getEquipmentByName(name: string) {
 
 export async function getAvailableEquipmentForAdmin() {
   const equipment = await db.equipment.findMany({
+    where: { availability: true },
     include: {
       slots: {
         where: {

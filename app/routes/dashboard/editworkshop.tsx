@@ -115,7 +115,7 @@ export async function loader({
   const userId = user?.id || undefined;
 
   // Get equipment slots and visibility days
-  const equipmentsWithSlots = await getEquipmentSlotsWithStatus(userId);
+  const equipmentsWithSlots = await getEquipmentSlotsWithStatus(userId, true);
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
 
   // Create a mapping of selected equipment slots
