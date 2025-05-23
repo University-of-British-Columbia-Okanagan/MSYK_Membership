@@ -170,9 +170,10 @@ function getUserSession(request: Request) {
 export async function getUserId(request: Request) {
   const session = await getUserSession(request);
   const userId = session.get("userId");
-  const userPassword = session.get("password");
+  const userPassword = session.get("userPassword");
   if (!userId || typeof userId !== "string" || !userPassword) {
-    throw await logout(request);
+    await logout(request);
+    return null;
   }
 
   const user = await db.user.findUnique({
@@ -184,12 +185,14 @@ export async function getUserId(request: Request) {
   });
 
   if (!user) {
-    throw await logout(request);
+    await logout(request);
+    return null;
   }
 
   const isPasswordValid = await bcrypt.compare(userPassword, user.password);
   if (!isPasswordValid) {
-    throw await logout(request);
+    await logout(request);
+    return null;
   }
 
   return userId;
