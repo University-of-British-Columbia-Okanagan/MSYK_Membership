@@ -7,7 +7,6 @@ import {
 import { json, redirect } from "@remix-run/node";
 import {
   getEquipmentSlotsWithStatus,
-  bookEquipment,
   getEquipmentById,
   getLevel3ScheduleRestrictions,
   getLevel4UnavailableHours,
@@ -18,6 +17,7 @@ import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbooking
 import { useState } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
+import { checkSlotAvailability } from "../../models/equipment.server";
 
 // Loader
 // export async function loader({ request }: { request: Request }) {
@@ -29,7 +29,13 @@ import { createCheckoutSession } from "../../models/payment.server";
 
 //   return json({ equipment: equipmentWithSlots, roleLevel });
 // }
-export async function loader({ request, params }: { request: Request; params: { id?: string } }) {
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id?: string };
+}) {
   const user = await getUser(request);
   const userId = user?.id ?? null;
   const roleLevel = user?.roleLevel ?? 1;
@@ -37,7 +43,8 @@ export async function loader({ request, params }: { request: Request; params: { 
 
   // Get the equipment_visible_registrable_days setting
   const equipmentWithSlots = await getEquipmentSlotsWithStatus(
-    userId ?? undefined, true
+    userId ?? undefined,
+    true
   );
   const visibleDays = await getAdminSetting(
     "equipment_visible_registrable_days",
@@ -98,18 +105,44 @@ export async function action({ request }: { request: Request }) {
 
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
-    throw new Response("Equpiment Not Found", { status: 404 });
+    throw new Response("Equipment Not Found", { status: 404 });
   }
   if (!equipment.availability) {
-    throw new Response("Equpiment Not Available", { status: 419 });
+    throw new Response("Equipment Not Available", { status: 419 });
   }
 
+  // REMOVED: The booking happens after payment now, not before
+  // for (const entry of slots) {
+  //   const [startTime, endTime] = entry.split("|");
+  //   await bookEquipment(request, equipmentId, startTime, endTime);
+  // }
+
+  // Check if the selected slots are still available
   for (const entry of slots) {
     const [startTime, endTime] = entry.split("|");
-    await bookEquipment(request, equipmentId, startTime, endTime);
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+
+    // Check if the slot is already booked by someone else
+    const isAvailable = await checkSlotAvailability(
+      equipmentId,
+      startDate,
+      endDate
+    );
+    if (!isAvailable) {
+      return json(
+        {
+          errors: {
+            message:
+              "One or more selected slots are no longer available. Please try again with different slots.",
+          },
+        },
+        { status: 400 }
+      );
+    }
   }
 
-  // ✅ Direct call to your Stripe session creator
+  // Create Stripe checkout session
   try {
     const totalPrice = equipment?.price * slots.length;
     const fakeRequest = new Request("http://localhost", {

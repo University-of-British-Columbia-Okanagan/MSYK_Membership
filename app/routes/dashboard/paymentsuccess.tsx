@@ -6,6 +6,7 @@ import {
 } from "../../models/workshop.server";
 import { registerMembershipSubscription } from "../../models/membership.server";
 import { saveUserMembershipPayment } from "../../models/user.server";
+import { bookEquipment } from "../../models/equipment.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -57,14 +58,51 @@ export async function loader({ request }: { request: Request }) {
     slots,
   } = metadata;
 
-  // Equipment booking branch (redirect immediately to dashboard)
   if (equipmentId && userId && slots) {
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: "/dashboard/user",
-      },
-    });
+    try {
+      // Parse the slots JSON string
+      const slotArray = JSON.parse(slots);
+
+      // Process each slot booking
+      for (const entry of slotArray) {
+        const [startTime, endTime] = entry.split("|");
+
+        // Create a fake request to pass to bookEquipment
+        const fakeRequest = new Request("http://localhost", {
+          headers: {
+            Cookie: request.headers.get("Cookie") || "", // Pass the session cookie
+          },
+        });
+
+        // Now book the equipment
+        await bookEquipment(
+          fakeRequest,
+          parseInt(equipmentId),
+          startTime,
+          endTime
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          isEquipment: true,
+          message:
+            "🎉 Equipment booking successful! You can now use the equipment during your booked time slots.",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    } catch (error: any) {
+      console.error("Equipment booking error:", error);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          isEquipment: true,
+          message: "Equipment booking failed: " + error.message,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
   }
 
   // Membership branch
@@ -129,7 +167,7 @@ export async function loader({ request }: { request: Request }) {
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        currentMembershipId,
+        currentMembershipId
       );
 
       return new Response(
@@ -220,6 +258,7 @@ export default function PaymentSuccess() {
   const data = useLoaderData() as {
     success: boolean;
     isMembership?: boolean;
+    isEquipment?: boolean;
     message: string;
   };
   const navigate = useNavigate();
@@ -232,11 +271,21 @@ export default function PaymentSuccess() {
       <p>{data.message}</p>
       <button
         className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
-        onClick={() =>
-          navigate(data.isMembership ? "/dashboard/memberships" : "/dashboard/workshops")
-        }
+        onClick={() => {
+          if (data.isEquipment) {
+            navigate("/dashboard/equipments");
+          } else if (data.isMembership) {
+            navigate("/dashboard/memberships");
+          } else {
+            navigate("/dashboard/workshops");
+          }
+        }}
       >
-        {data.isMembership ? "Back to Memberships" : "Back to Workshops"}
+        {data.isEquipment
+          ? "Back to Equipment"
+          : data.isMembership
+          ? "Back to Memberships"
+          : "Back to Workshops"}
       </button>
     </div>
   );

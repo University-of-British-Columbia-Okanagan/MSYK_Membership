@@ -1519,7 +1519,7 @@ export default function AdminSettings() {
               <TabsContent value="plannedClosures">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Planned Closures</CardTitle>
+                    <CardTitle>Planned Closures for Level 3 Users</CardTitle>
                     <CardDescription>
                       Set specific time periods when level 3 users cannot book
                       equipment. Level 4 users will still be able to book during
