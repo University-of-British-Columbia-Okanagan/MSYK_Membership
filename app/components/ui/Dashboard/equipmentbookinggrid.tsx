@@ -73,6 +73,7 @@ interface EquipmentBookingGridProps {
     endDate: string | Date;
   }>;
   userRoleLevel?: number;
+  workshopSlots?: { [day: string]: string[] };
 }
 
 // export default function EquipmentBookingGrid({
@@ -99,6 +100,7 @@ export default function EquipmentBookingGrid({
   level4Restrictions,
   plannedClosures = [],
   userRoleLevel,
+  workshopSlots,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -482,6 +484,12 @@ export default function EquipmentBookingGrid({
 
                   const isPlannedClosure =
                     userRoleLevel === 3 && isInPlannedClosure(day, time);
+
+                  const isWorkshopSlot =
+                    workshopSlots &&
+                    workshopSlots[day] &&
+                    workshopSlots[day].includes(time);
+
                   const colorClass = slot?.reservedForWorkshop
                     ? "bg-purple-400 cursor-not-allowed" // Reserved by workshop
                     : slot?.isBooked

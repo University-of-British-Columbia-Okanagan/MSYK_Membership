@@ -85,7 +85,9 @@ export async function bookEquipment(
   if (user.roleLevel === 3) {
     // Level 3 can't book on Monday (1) or Tuesday (2)
     if (day === 1 || day === 2) {
-      throw new Error("Level 3 members cannot book equipment on Monday or Tuesday.");
+      throw new Error(
+        "Level 3 members cannot book equipment on Monday or Tuesday."
+      );
     }
 
     // Optional: Add specific hour restrictions if needed for DROP-IN HOURS
@@ -130,7 +132,6 @@ export async function bookEquipment(
     },
   });
 }
-
 
 /**
  * Cancel a booking
@@ -292,8 +293,7 @@ export async function getAvailableEquipmentForAdmin() {
   return equipment;
 }
 
-
-  // equipment.server.ts
+// equipment.server.ts
 
 // export async function getEquipmentSlotsWithStatus(userId?: number) {
 //   const equipment = await db.equipment.findMany({
@@ -371,7 +371,10 @@ export async function getAvailableEquipmentForAdmin() {
 //     };
 //   });
 // }
-export async function getEquipmentSlotsWithStatus(userId?: number, onlyAvailable: boolean = false) {
+export async function getEquipmentSlotsWithStatus(
+  userId?: number,
+  onlyAvailable: boolean = false
+) {
   const equipment = await db.equipment.findMany({
     where: onlyAvailable ? { availability: true } : undefined,
     include: {
@@ -390,29 +393,32 @@ export async function getEquipmentSlotsWithStatus(userId?: number, onlyAvailable
       },
     },
   });
-  
+
   // Helper function to generate all possible slots for the calendar
   const generate24_7Slots = async () => {
     // Get the equipment_visible_registrable_days setting
-    const visibleDaysStr = await getAdminSetting("equipment_visible_registrable_days", "7");
+    const visibleDaysStr = await getAdminSetting(
+      "equipment_visible_registrable_days",
+      "7"
+    );
     const visibleDays = parseInt(visibleDaysStr, 10);
-    
+
     const times = Array.from({ length: 48 }, (_, i) => {
       const hours = Math.floor(i / 2);
       const minutes = i % 2 === 0 ? "00" : "30";
       return `${hours.toString().padStart(2, "0")}:${minutes}`;
     });
-    
+
     const fullSlots: { [day: string]: { [time: string]: any } } = {};
     const today = new Date();
-    
+
     for (let i = 0; i < visibleDays; i++) {
       const date = new Date();
       date.setDate(today.getDate() + i);
       const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
       const dayNumber = date.getDate();
       const dayKey = `${dayName} ${dayNumber}`;
-      
+
       fullSlots[dayKey] = {};
       for (const time of times) {
         fullSlots[dayKey][time] = {
@@ -428,46 +434,46 @@ export async function getEquipmentSlotsWithStatus(userId?: number, onlyAvailable
   };
 
   // Map each equipment to add slot status information
-  return Promise.all(equipment.map(async (eq) => {
-    const fullSlots = await generate24_7Slots();
-    
-    eq.slots.forEach((slot) => {
-      const date = new Date(slot.startTime);
-      const hours = String(date.getHours()).padStart(2, "0");
-      const minutes = String(date.getMinutes()).padStart(2, "0");
-      const time = `${hours}:${minutes}`;
-      
-      // Format the day key to match our new format: "Day #"
-      const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-      const dayNumber = date.getDate();
-      const dayKey = `${dayName} ${dayNumber}`;
-        
-      const bookedByMe = userId
-        ? slot.bookings?.some((booking) => booking.userId === userId)
-        : false;
-        
-      if (fullSlots[dayKey] && fullSlots[dayKey][time]) {
-        fullSlots[dayKey][time] = {
-          id: slot.id,
-          isBooked: slot.isBooked,
-          isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
-          bookedByMe,
-          workshopName: slot.workshopOccurrence?.workshop?.name || null,
-          reservedForWorkshop: !!slot.workshopOccurrenceId,
-        };
-      }
-    });
+  return Promise.all(
+    equipment.map(async (eq) => {
+      const fullSlots = await generate24_7Slots();
 
-    return {
-      id: eq.id,
-      name: eq.name,
-      price: eq.price,
-      slotsByDay: fullSlots,
-    };
-  }));
+      eq.slots.forEach((slot) => {
+        const date = new Date(slot.startTime);
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        const time = `${hours}:${minutes}`;
+
+        // Format the day key to match our new format: "Day #"
+        const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
+        const dayNumber = date.getDate();
+        const dayKey = `${dayName} ${dayNumber}`;
+
+        const bookedByMe = userId
+          ? slot.bookings?.some((booking) => booking.userId === userId)
+          : false;
+
+        if (fullSlots[dayKey] && fullSlots[dayKey][time]) {
+          fullSlots[dayKey][time] = {
+            id: slot.id,
+            isBooked: slot.isBooked,
+            isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
+            bookedByMe,
+            workshopName: slot.workshopOccurrence?.workshop?.name || null,
+            reservedForWorkshop: !!slot.workshopOccurrenceId,
+          };
+        }
+      });
+
+      return {
+        id: eq.id,
+        name: eq.name,
+        price: eq.price,
+        slotsByDay: fullSlots,
+      };
+    })
+  );
 }
-
-
 
 /**
  * Update existing equipment (Admin only)
@@ -678,7 +684,10 @@ export async function getAllEquipmentWithBookings() {
 }
 
 // Toggle availability
-export async function toggleEquipmentAvailability(equipmentId: number, availability: boolean) {
+export async function toggleEquipmentAvailability(
+  equipmentId: number,
+  availability: boolean
+) {
   return await db.equipment.update({
     where: { id: equipmentId },
     data: { availability },
@@ -697,10 +706,10 @@ export async function getLevel3ScheduleRestrictions() {
         Wednesday: { start: 9, end: 17 },
         Thursday: { start: 9, end: 17 },
         Friday: { start: 9, end: 17 },
-        Saturday: { start: 9, end: 17 }
+        Saturday: { start: 9, end: 17 },
       };
     }
-    
+
     return JSON.parse(settingStr);
   } catch (error) {
     console.error("Error fetching level 3 schedule restrictions:", error);
@@ -712,7 +721,7 @@ export async function getLevel3ScheduleRestrictions() {
       Wednesday: { start: 9, end: 17 },
       Thursday: { start: 9, end: 17 },
       Friday: { start: 9, end: 17 },
-      Saturday: { start: 9, end: 17 }
+      Saturday: { start: 9, end: 17 },
     };
   }
 }
@@ -722,22 +731,116 @@ export async function getLevel4UnavailableHours() {
     const setting = await db.adminSettings.findUnique({
       where: { key: "level4_unavaliable_hours" },
     });
-    
+
     if (!setting) {
       // Return default - no restrictions
       return {
         start: 0,
-        end: 0
+        end: 0,
       };
     }
-    
+
     return JSON.parse(setting.value);
   } catch (error) {
     console.error("Error fetching level 4 unavailable hours:", error);
     // Return default on error
     return {
       start: 0,
-      end: 0
+      end: 0,
     };
+  }
+}
+
+/**
+ * Create equipment slots for workshop occurrences
+ * This ensures that equipment is reserved during workshop times
+ */
+export async function createEquipmentSlotsForWorkshop(
+  workshopOccurrenceId: number,
+  equipmentIds: number[],
+  occurrences: { startDate: Date; endDate: Date }[]
+) {
+  try {
+    console.log("Creating equipment slots for workshop", {
+      workshopOccurrenceId,
+      equipmentIds,
+      occurrences: occurrences.length,
+    });
+
+    // Process each equipment and occurrence
+    for (const equipmentId of equipmentIds) {
+      for (const occurrence of occurrences) {
+        // Skip invalid dates
+        if (
+          isNaN(occurrence.startDate.getTime()) ||
+          isNaN(occurrence.endDate.getTime())
+        ) {
+          console.warn("Skipping invalid date in occurrence", occurrence);
+          continue;
+        }
+
+        const startTime = new Date(occurrence.startDate);
+        const endTime = new Date(occurrence.endDate);
+
+        // Create 30-minute slots for the workshop duration
+        const currentTime = new Date(startTime);
+        while (currentTime < endTime) {
+          try {
+            // Check if slot already exists
+            const existingSlot = await db.equipmentSlot.findFirst({
+              where: {
+                equipmentId,
+                startTime: new Date(currentTime),
+              },
+            });
+
+            if (existingSlot) {
+              // Update existing slot if not already booked for another workshop
+              if (
+                !existingSlot.workshopOccurrenceId ||
+                existingSlot.workshopOccurrenceId === workshopOccurrenceId
+              ) {
+                await db.equipmentSlot.update({
+                  where: { id: existingSlot.id },
+                  data: {
+                    isBooked: true,
+                    workshopOccurrenceId,
+                  },
+                });
+              } else {
+                console.warn(
+                  `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`
+                );
+              }
+            } else {
+              // Create new slot
+              await db.equipmentSlot.create({
+                data: {
+                  equipmentId,
+                  startTime: new Date(currentTime),
+                  endTime: new Date(currentTime.getTime() + 30 * 60000),
+                  isBooked: true,
+                  workshopOccurrenceId,
+                },
+              });
+            }
+          } catch (error) {
+            console.error("Error creating/updating equipment slot:", error, {
+              equipmentId,
+              startTime: currentTime,
+            });
+            // Continue to next slot even if this one fails
+          }
+
+          // Move to next 30-minute slot
+          currentTime.setTime(currentTime.getTime() + 30 * 60000);
+        }
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Failed to create equipment slots for workshop:", error);
+    throw new Error("Failed to create equipment slots for workshop");
   }
 }

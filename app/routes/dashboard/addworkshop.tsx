@@ -48,7 +48,10 @@ import {
 } from "lucide-react";
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
 import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
-import { bulkBookEquipment } from "../../models/equipment.server";
+import {
+  bulkBookEquipment,
+  createEquipmentSlotsForWorkshop,
+} from "../../models/equipment.server";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -176,6 +179,50 @@ function hasOccurrencesInPast(
       !isNaN(occ.startDate.getTime()) &&
       !isNaN(occ.endDate.getTime())
   );
+}
+
+// Add this function after your other helper functions
+function getEquipmentSlotsForOccurrences(
+  occurrences: { startDate: Date; endDate: Date }[]
+): { [day: string]: string[] } {
+  const slotsForOccurrences: { [day: string]: string[] } = {};
+
+  occurrences.forEach((occ) => {
+    if (isNaN(occ.startDate.getTime()) || isNaN(occ.endDate.getTime())) {
+      return; // Skip invalid dates
+    }
+
+    // Calculate all 30-minute time slots between start and end
+    const currentTime = new Date(occ.startDate);
+    while (currentTime < occ.endDate) {
+      // Format day as "Sat 24" (using the actual day name and number)
+      const dayName = currentTime.toLocaleDateString("en-US", {
+        weekday: "short",
+      });
+      const dayNumber = currentTime.getDate();
+      const dayKey = `${dayName} ${dayNumber}`;
+
+      // Format time as "05:00"
+      const hours = String(currentTime.getHours()).padStart(2, "0");
+      const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+      const timeKey = `${hours}:${minutes}`;
+
+      // Add to slots map
+      if (!slotsForOccurrences[dayKey]) {
+        slotsForOccurrences[dayKey] = [];
+      }
+
+      // Only add if not already in the array
+      if (!slotsForOccurrences[dayKey].includes(timeKey)) {
+        slotsForOccurrences[dayKey].push(timeKey);
+      }
+
+      // Move to next 30-minute slot
+      currentTime.setTime(currentTime.getTime() + 30 * 60 * 1000);
+    }
+  });
+
+  return slotsForOccurrences;
 }
 
 export async function action({ request }: { request: Request }) {
@@ -337,8 +384,31 @@ export async function action({ request }: { request: Request }) {
 
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
 
+    // try {
+    //   await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
+    //   return redirect("/dashboard/admin");
+    // } catch (error) {
+    //   console.error("Failed to reserve equipment slots:", error);
+    //   return {
+    //     errors: {
+    //       slots: ["Failed to reserve equipment slots. Please try again."],
+    //     },
+    //   };
+    // }
+    // Process workshop time slots for equipment
     try {
-      await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
+      // First book the explicitly selected slots
+      if (allSelectedSlotIds.length > 0) {
+        await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
+      }
+
+      // Now create slots for all workshop occurrences
+      await createEquipmentSlotsForWorkshop(
+        savedWorkshop.id,
+        equipments,
+        occurrences
+      );
+
       return redirect("/dashboard/admin");
     } catch (error) {
       console.error("Failed to reserve equipment slots:", error);
@@ -963,6 +1033,7 @@ export default function AddWorkshop() {
           />
 
           {/* Equipment Slot Pickers */}
+          {/* Equipment Slot Pickers */}
           {selectedEquipments.length > 0 && (
             <div className="mt-6">
               <h3 className="font-semibold mb-2">
@@ -1000,6 +1071,15 @@ export default function AddWorkshop() {
                     const equipment = availableEquipments.find(
                       (eq) => eq.id === equipmentId
                     );
+
+                    // Get workshop slots for highlighting - filter for valid dates only
+                    const validOccurrences = occurrences.filter(
+                      (occ) =>
+                        !isNaN(occ.startDate.getTime()) &&
+                        !isNaN(occ.endDate.getTime())
+                    );
+                    const workshopSlots =
+                      getEquipmentSlotsForOccurrences(validOccurrences);
 
                     return (
                       <TabsContent
@@ -1040,7 +1120,7 @@ export default function AddWorkshop() {
 
                             // Update state
                             setSelectedSlotsMap(newSlotsMap);
-
+                            
                             console.log(
                               `Slots ${numericSlots.join(
                                 ", "
@@ -1050,6 +1130,8 @@ export default function AddWorkshop() {
                           disabled={false}
                           // Use the dynamically fetched visibility days
                           visibleDays={equipmentVisibilityDays}
+                          // Highlight workshop occurrence slots
+                          workshopSlots={workshopSlots}
                         />
                       </TabsContent>
                     );
@@ -1101,6 +1183,7 @@ export default function AddWorkshop() {
             name="equipments"
             value={JSON.stringify(selectedEquipments)}
           />
+           {/* Hidden input for selected slots */}
           <input
             type="hidden"
             name="selectedSlots"
@@ -1112,13 +1195,7 @@ export default function AddWorkshop() {
             name="isWorkshopContinuation"
             value={isWorkshopContinuation ? "true" : "false"}
           />
-
-          {/* Hidden input for selected slots */}
-          <input
-            type="hidden"
-            name="selectedSlots"
-            value={JSON.stringify(selectedSlotsMap)}
-          />
+  
 
           {/* Submit Button */}
           <AlertDialog
