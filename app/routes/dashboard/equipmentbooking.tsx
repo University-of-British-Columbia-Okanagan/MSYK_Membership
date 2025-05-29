@@ -17,18 +17,8 @@ import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbooking
 import { useState } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
-import { checkSlotAvailability } from "../../models/equipment.server";
+// import { checkSlotAvailability } from "../../models/equipment.server";
 
-// Loader
-// export async function loader({ request }: { request: Request }) {
-//   const user = await getUser(request);
-//   const userId = user?.id ?? null;
-//   const roleLevel = user?.roleLevel ?? 1;
-
-//   const equipmentWithSlots = await getEquipmentSlotsWithStatus(userId ?? undefined);
-
-//   return json({ equipment: equipmentWithSlots, roleLevel });
-// }
 export async function loader({
   request,
   params,
@@ -59,6 +49,11 @@ export async function loader({
 
   const plannedClosures = roleLevel === 3 ? await getPlannedClosures() : [];
 
+  const maxSlotsPerDay = await getAdminSetting(
+    "max_number_equipment_slots_per_day",
+    "4"
+  );
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
@@ -67,6 +62,7 @@ export async function loader({
     level4Restrictions,
     equipmentId,
     plannedClosures,
+    maxSlotsPerDay: parseInt(maxSlotsPerDay, 10),
   });
 }
 
@@ -84,21 +80,12 @@ export async function action({ request }: { request: Request }) {
   }
 
   const equipmentId = Number(formData.get("equipmentId"));
-  const slotsRaw = formData.get("slots");
+  const slotCount = Number(formData.get("slotCount"));
+  const slotsDataKey = formData.get("slotsData");
 
-  if (!equipmentId || !slotsRaw) {
+  if (!equipmentId || !slotCount || !slotsDataKey) {
     return json(
-      { errors: { message: "Missing equipment or slots." } },
-      { status: 400 }
-    );
-  }
-
-  let slots;
-  try {
-    slots = JSON.parse(slotsRaw.toString());
-  } catch (err) {
-    return json(
-      { errors: { message: "Invalid slots format." } },
+      { errors: { message: "Missing equipment or slot data." } },
       { status: 400 }
     );
   }
@@ -111,40 +98,10 @@ export async function action({ request }: { request: Request }) {
     throw new Response("Equipment Not Available", { status: 419 });
   }
 
-  // REMOVED: The booking happens after payment now, not before
-  // for (const entry of slots) {
-  //   const [startTime, endTime] = entry.split("|");
-  //   await bookEquipment(request, equipmentId, startTime, endTime);
-  // }
-
-  // Check if the selected slots are still available
-  for (const entry of slots) {
-    const [startTime, endTime] = entry.split("|");
-    const startDate = new Date(startTime);
-    const endDate = new Date(endTime);
-
-    // Check if the slot is already booked by someone else
-    const isAvailable = await checkSlotAvailability(
-      equipmentId,
-      startDate,
-      endDate
-    );
-    if (!isAvailable) {
-      return json(
-        {
-          errors: {
-            message:
-              "One or more selected slots are no longer available. Please try again with different slots.",
-          },
-        },
-        { status: 400 }
-      );
-    }
-  }
-
   // Create Stripe checkout session
   try {
-    const totalPrice = equipment?.price * slots.length;
+    // const totalPrice = equipment?.price * slots.length;
+    const totalPrice = equipment?.price * slotCount;
     const fakeRequest = new Request("http://localhost", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -153,8 +110,8 @@ export async function action({ request }: { request: Request }) {
         userId: user.id,
         userEmail: user.email,
         price: totalPrice,
-        slotCount: slots.length,
-        slots,
+        slotCount: slotCount,
+        slotsDataKey: slotsDataKey.toString(),
       }),
     });
 
@@ -192,6 +149,7 @@ export default function EquipmentBookingForm() {
     level4Restrictions,
     equipmentId,
     plannedClosures,
+    maxSlotsPerDay,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -283,6 +241,7 @@ export default function EquipmentBookingForm() {
               }
               plannedClosures={roleLevel === 3 ? plannedClosures : undefined} // Add this prop
               userRoleLevel={roleLevel}
+              maxSlotsPerDay={maxSlotsPerDay}
             />
 
             {totalPrice && (
@@ -298,12 +257,19 @@ export default function EquipmentBookingForm() {
           name="equipmentId"
           value={selectedEquipment ?? ""}
         />
+        <input type="hidden" name="slotCount" value={selectedSlots.length} />
         <input
           type="hidden"
-          name="slots"
-          value={JSON.stringify(selectedSlots)}
+          name="slotsData"
+          value={(() => {
+            // Store slots in sessionStorage with a unique key
+            const storageKey = `equipment_slots_${Date.now()}_${Math.random()}`;
+            if (typeof window !== "undefined") {
+              sessionStorage.setItem(storageKey, JSON.stringify(selectedSlots));
+            }
+            return storageKey;
+          })()}
         />
-
         <Button
           type="submit"
           className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md"

@@ -59,7 +59,7 @@ interface EquipmentBookingGridProps {
   readOnly?: boolean;
   visibleTimeRange?: { startHour: number; endHour: number };
   preselectedSlotIds?: number[];
-  visibleDays?: number; // NEW: Number of days to display
+  visibleDays?: number;
   level3Restrictions?: {
     [day: string]: { start: number; end: number; closed: boolean };
   };
@@ -76,6 +76,7 @@ interface EquipmentBookingGridProps {
   userRoleLevel?: number;
   workshopSlots?: { [day: string]: string[] };
   currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
+  maxSlotsPerDay?: number;
 }
 
 export default function EquipmentBookingGrid({
@@ -91,6 +92,7 @@ export default function EquipmentBookingGrid({
   userRoleLevel,
   workshopSlots,
   currentWorkshopOccurrences,
+  maxSlotsPerDay = 4,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -359,17 +361,64 @@ export default function EquipmentBookingGrid({
       : currentDayCount + 1;
     const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1;
 
-    if (!isAlreadySelected && newDayCount > 4) {
-      setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
+    // if (!isAlreadySelected && newDayCount > 4) {
+    //   setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
+    //   return;
+    // }
+    const maxSlotsAllowed = Math.floor(maxSlotsPerDay / 30);
+    if (!isAlreadySelected && newDayCount > maxSlotsAllowed) {
+      const hours = maxSlotsPerDay / 60; // Convert minutes to hours for display
+      setErrorMessage(
+        `You can only select up to ${hours} hours (${maxSlotsAllowed} slots) per day.`
+      );
       return;
     }
 
-    // Check week limit based on the first day of selection
-    // Get the first day of the selection period
-    let firstDate: Date | null = null;
+    // Maximum slots allowed per 7-day period is always 14
+    const maxSlotsPerWeek = 14;
 
+    // Check week limit based on the first day of selection
+    // Get the first day of the selection period, including already booked slots
+    let firstDate: Date | null = null;
+    let totalBookedSlots = 0;
+
+    // First, check existing booked slots by the user to find the earliest booking
+    const allDays = Object.keys(slotsByDay);
+    for (const day of allDays) {
+      const daySlots = slotsByDay[day];
+      for (const time of Object.keys(daySlots)) {
+        const slot = daySlots[time];
+        if (slot?.bookedByMe) {
+          // Extract day parts and create a date for this booked slot
+          const dayParts = day.split(" ");
+          const dayNumber = parseInt(dayParts[1], 10);
+          const [hour, minute] = time.split(":").map(Number);
+
+          // Create date for this booked slot
+          const now = new Date();
+          const bookedSlotDate = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            dayNumber,
+            hour,
+            minute
+          );
+
+          // Adjust month if day is in next month
+          if (dayNumber < now.getDate() && now.getDate() > 20) {
+            bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+          }
+
+          if (!firstDate || bookedSlotDate < firstDate) {
+            firstDate = bookedSlotDate;
+          }
+        }
+      }
+    }
+
+    // Then check current session selections
     if (selectedSlots.length > 0) {
-      // Get the earliest date from existing selections
+      // Get the earliest date from current selections
       for (const s of selectedSlots) {
         const [start] = s.split("|");
         const date = new Date(start);
@@ -385,18 +434,111 @@ export default function EquipmentBookingGrid({
     }
 
     // Check if the current selection is within 7 days of the first selection
-    const sevenDaysLater = new Date(firstDate);
+    const sevenDaysLater = new Date(firstDate.getTime());
     sevenDaysLater.setDate(firstDate.getDate() + 7);
 
-    if (startTime > sevenDaysLater) {
-      setErrorMessage(
-        "All bookings must be within a 7-day period from your first selection."
-      );
-      return;
+    if (startTime >= sevenDaysLater) {
+      // Starting a new 7-day period - need to find the earliest selection in the new period
+      // Check if there are any current selections and find the earliest one
+      let earliestNewSelection = startTime;
+
+      for (const s of selectedSlots) {
+        const [start] = s.split("|");
+        const date = new Date(start);
+        if (date < earliestNewSelection) {
+          earliestNewSelection = date;
+        }
+      }
+
+      // Set firstDate to the earliest selection (either existing selections or current slot)
+      firstDate = earliestNewSelection;
+
+      // Recalculate the 7-day window from the new starting point
+      sevenDaysLater.setTime(firstDate.getTime());
+      sevenDaysLater.setDate(firstDate.getDate() + 7);
+
+      // Reset totalBookedSlots to 0 since we're starting a new period
+      totalBookedSlots = 0;
     }
 
-    if (!isAlreadySelected && newWeekCount > 14) {
-      setErrorMessage("You can only select up to 7 hours (14 slots) per week.");
+    // Count all slots within the 7-day period (both booked and selected)
+    // Reset totalBookedSlots and count again for the current period
+    totalBookedSlots = 0;
+
+    if (firstDate) {
+      const sevenDaysFromFirst = new Date(firstDate.getTime());
+      sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
+
+      // Count existing booked slots within the 7-day period
+      for (const day of allDays) {
+        const daySlots = slotsByDay[day];
+        for (const time of Object.keys(daySlots)) {
+          const slot = daySlots[time];
+          if (slot?.bookedByMe) {
+            // Create date for this booked slot
+            const dayParts = day.split(" ");
+            const dayNumber = parseInt(dayParts[1], 10);
+            const [hour, minute] = time.split(":").map(Number);
+
+            const now = new Date();
+            const bookedSlotDate = new Date(
+              now.getFullYear(),
+              now.getMonth(),
+              dayNumber,
+              hour,
+              minute
+            );
+
+            // Adjust month if day is in next month
+            if (dayNumber < now.getDate() && now.getDate() > 20) {
+              bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+            }
+
+            // Check if this booked slot is within the 7-day period
+            if (
+              bookedSlotDate >= firstDate &&
+              bookedSlotDate < sevenDaysFromFirst
+            ) {
+              totalBookedSlots++;
+            }
+          }
+        }
+      }
+    }
+
+    // Check if adding this slot would exceed the weekly limit
+    const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
+
+    if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
+      const firstDateStr = firstDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const endDateStr = new Date(
+        sevenDaysLater.getTime() - 1
+      ).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+
+      // Count selected slots that are actually within this 7-day period
+      let selectedSlotsInPeriod = 0;
+      for (const s of selectedSlots) {
+        const [start] = s.split("|");
+        const slotDate = new Date(start);
+        const sevenDaysFromFirst = new Date(firstDate.getTime());
+        sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
+
+        if (slotDate >= firstDate && slotDate < sevenDaysFromFirst) {
+          selectedSlotsInPeriod++;
+        }
+      }
+
+      setErrorMessage(
+        `You can only select up to 7 hours (14 slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlotsInPeriod} selected slots in this period.`
+      );
       return;
     }
 
@@ -647,8 +789,8 @@ export default function EquipmentBookingGrid({
                           Restricted by admin
                         </div>
                       )} */}
-                      
-                      { /* one tooltip shows at a time based on priority (admin restrictions > planned closures > 
+
+                      {/* one tooltip shows at a time based on priority (admin restrictions > planned closures > 
                       workshop reservations > past slots) */}
                       {isAnyRestriction && (
                         <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
@@ -710,6 +852,7 @@ export default function EquipmentBookingGrid({
   // Render all week tabs
   const renderWeekTabs = () => {
     // Generate tab labels like "May 22-28"
+    // Generate tab labels like "May 22-28" or "May 28 - June 3"
     const getTabLabel = (weekIndex: number, days: string[]) => {
       if (days.length === 0) return `Week ${weekIndex + 1}`;
 
@@ -727,13 +870,31 @@ export default function EquipmentBookingGrid({
         firstDayMonth = (currentMonth + 1) % 12;
       }
 
+      // Find the month for the last day
+      let lastDayMonth = firstDayMonth;
+      if (parseInt(lastDay) < parseInt(firstDay)) {
+        // Last day is in the next month
+        lastDayMonth = (firstDayMonth + 1) % 12;
+      }
+
       const firstMonthName = new Date(
         currentYear,
         firstDayMonth,
         1
       ).toLocaleString("default", { month: "short" });
 
-      return `${firstMonthName} ${firstDay}-${lastDay}`;
+      const lastMonthName = new Date(
+        currentYear,
+        lastDayMonth,
+        1
+      ).toLocaleString("default", { month: "short" });
+
+      // Check if both days are in the same month
+      if (firstDayMonth === lastDayMonth) {
+        return `${firstMonthName} ${firstDay}-${lastDay}`;
+      } else {
+        return `${firstMonthName} ${firstDay} - ${lastMonthName} ${lastDay}`;
+      }
     };
 
     return (
