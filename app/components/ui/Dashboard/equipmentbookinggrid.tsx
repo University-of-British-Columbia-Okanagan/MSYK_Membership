@@ -407,13 +407,49 @@ export default function EquipmentBookingGrid({
 
     // Calculate maximum slots allowed per 7-day period
     const maxSlotsPerWeek = Math.floor((maxSlotsPerDay * 7) / 30); // 7 days worth of daily limits
-    
-    // Check week limit based on the first day of selection
-    // Get the first day of the selection period
-    let firstDate: Date | null = null;
 
+    // Check week limit based on the first day of selection
+    // Get the first day of the selection period, including already booked slots
+    let firstDate: Date | null = null;
+    let totalBookedSlots = 0;
+
+    // First, check existing booked slots by the user to find the earliest booking
+    const allDays = Object.keys(slotsByDay);
+    for (const day of allDays) {
+      const daySlots = slotsByDay[day];
+      for (const time of Object.keys(daySlots)) {
+        const slot = daySlots[time];
+        if (slot?.bookedByMe) {
+          // Extract day parts and create a date for this booked slot
+          const dayParts = day.split(" ");
+          const dayNumber = parseInt(dayParts[1], 10);
+          const [hour, minute] = time.split(":").map(Number);
+
+          // Create date for this booked slot
+          const now = new Date();
+          const bookedSlotDate = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            dayNumber,
+            hour,
+            minute
+          );
+
+          // Adjust month if day is in next month
+          if (dayNumber < now.getDate() && now.getDate() > 20) {
+            bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+          }
+
+          if (!firstDate || bookedSlotDate < firstDate) {
+            firstDate = bookedSlotDate;
+          }
+        }
+      }
+    }
+
+    // Then check current session selections
     if (selectedSlots.length > 0) {
-      // Get the earliest date from existing selections
+      // Get the earliest date from current selections
       for (const s of selectedSlots) {
         const [start] = s.split("|");
         const date = new Date(start);
@@ -442,44 +478,94 @@ export default function EquipmentBookingGrid({
         minute: "2-digit",
         hour12: true,
       });
-      const endDateStr = new Date(sevenDaysLater.getTime() - 1).toLocaleDateString("en-US", {
+      const endDateStr = new Date(
+        sevenDaysLater.getTime() - 1
+      ).toLocaleDateString("en-US", {
         month: "short",
-        day: "numeric", 
+        day: "numeric",
         year: "numeric",
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
       });
-      
-      const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60;
+
+      const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60; // Convert total minutes to hours
 
       setErrorMessage(
-        `All bookings must be within a 7-day period from your first selection (${firstDateStr} - ${endDateStr}). You can book up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within this period.
-        To book on ${startTime.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}, please clear your current selections and start a new booking period.`
+        `All bookings must be within a 7-day period from your first selection (${firstDateStr} - ${endDateStr}). You can book up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within this period. To book on ${startTime.toLocaleDateString(
+          "en-US",
+          {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }
+        )}, please clear your current selections and start a new booking period.`
       );
       return;
     }
 
+    // Count all slots within the 7-day period (both booked and selected)
+    if (firstDate) {
+      const sevenDaysFromFirst = new Date(firstDate.getTime());
+      sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
+
+      // Count existing booked slots within the 7-day period
+      for (const day of allDays) {
+        const daySlots = slotsByDay[day];
+        for (const time of Object.keys(daySlots)) {
+          const slot = daySlots[time];
+          if (slot?.bookedByMe) {
+            // Create date for this booked slot
+            const dayParts = day.split(" ");
+            const dayNumber = parseInt(dayParts[1], 10);
+            const [hour, minute] = time.split(":").map(Number);
+
+            const now = new Date();
+            const bookedSlotDate = new Date(
+              now.getFullYear(),
+              now.getMonth(),
+              dayNumber,
+              hour,
+              minute
+            );
+
+            // Adjust month if day is in next month
+            if (dayNumber < now.getDate() && now.getDate() > 20) {
+              bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+            }
+
+            // Check if this booked slot is within the 7-day period
+            if (
+              bookedSlotDate >= firstDate &&
+              bookedSlotDate < sevenDaysFromFirst
+            ) {
+              totalBookedSlots++;
+            }
+          }
+        }
+      }
+    }
+
     // Check if adding this slot would exceed the weekly limit
-    if (!isAlreadySelected && newWeekCount > maxSlotsPerWeek) {
+    const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
+
+    if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
       const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60; // Convert total minutes to hours
       const firstDateStr = firstDate.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
       });
-      const endDateStr = new Date(sevenDaysLater.getTime() - 1).toLocaleDateString("en-US", {
+      const endDateStr = new Date(
+        sevenDaysLater.getTime() - 1
+      ).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
       });
-      
+
       setErrorMessage(
-        `You can only select up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within a 7-day period (${firstDateStr} - ${endDateStr}).`
+        `You can only select up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlots.length} selected slots in this period.`
       );
       return;
     }
