@@ -376,6 +376,40 @@ export default function EquipmentBookingGrid({
 
     // Check week limit based on the first day of selection
     // Get the first day of the selection period
+    // let firstDate: Date | null = null;
+    // if (selectedSlots.length > 0) {
+    //   // Get the earliest date from existing selections
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const date = new Date(start);
+    //     if (!firstDate || date < firstDate) {
+    //       firstDate = date;
+    //     }
+    //   }
+    // }
+    // // If this is the first selection, use this slot's date
+    // if (!firstDate) {
+    //   firstDate = startTime;
+    // }
+    // // Check if the current selection is within 7 days of the first selection
+    // const sevenDaysLater = new Date(firstDate);
+    // sevenDaysLater.setDate(firstDate.getDate() + 7);
+    // if (startTime > sevenDaysLater) {
+    //   setErrorMessage(
+    //     "All bookings must be within a 7-day period from your first selection."
+    //   );
+    //   return;
+    // }
+    // if (!isAlreadySelected && newWeekCount > 14) {
+    //   setErrorMessage("You can only select up to 7 hours (14 slots) per week.");
+    //   return;
+    // }
+
+    // Calculate maximum slots allowed per 7-day period
+    const maxSlotsPerWeek = Math.floor((maxSlotsPerDay * 7) / 30); // 7 days worth of daily limits
+    
+    // Check week limit based on the first day of selection
+    // Get the first day of the selection period
     let firstDate: Date | null = null;
 
     if (selectedSlots.length > 0) {
@@ -395,18 +429,58 @@ export default function EquipmentBookingGrid({
     }
 
     // Check if the current selection is within 7 days of the first selection
-    const sevenDaysLater = new Date(firstDate);
+    const sevenDaysLater = new Date(firstDate.getTime());
     sevenDaysLater.setDate(firstDate.getDate() + 7);
 
-    if (startTime > sevenDaysLater) {
+    if (startTime >= sevenDaysLater) {
+      // Format dates for user-friendly display
+      const firstDateStr = firstDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      const endDateStr = new Date(sevenDaysLater.getTime() - 1).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric", 
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      
+      const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60;
+
       setErrorMessage(
-        "All bookings must be within a 7-day period from your first selection."
+        `All bookings must be within a 7-day period from your first selection (${firstDateStr} - ${endDateStr}). You can book up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within this period.
+        To book on ${startTime.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })}, please clear your current selections and start a new booking period.`
       );
       return;
     }
 
-    if (!isAlreadySelected && newWeekCount > 14) {
-      setErrorMessage("You can only select up to 7 hours (14 slots) per week.");
+    // Check if adding this slot would exceed the weekly limit
+    if (!isAlreadySelected && newWeekCount > maxSlotsPerWeek) {
+      const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60; // Convert total minutes to hours
+      const firstDateStr = firstDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const endDateStr = new Date(sevenDaysLater.getTime() - 1).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      
+      setErrorMessage(
+        `You can only select up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within a 7-day period (${firstDateStr} - ${endDateStr}).`
+      );
       return;
     }
 
