@@ -29,6 +29,7 @@ import {
   getEquipmentVisibilityDays,
   getPlannedClosures,
   updatePlannedClosures,
+  getAdminSetting,
 } from "~/models/admin.server";
 import {
   getLevel3ScheduleRestrictions,
@@ -85,6 +86,10 @@ export async function loader({ request }: { request: Request }) {
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
   const plannedClosures = await getPlannedClosures();
+  const maxEquipmentSlotsPerDay = await getAdminSetting(
+    "max_number_equipment_slots_per_day",
+    "120"
+  );
 
   const workshopsRaw = await getWorkshops();
   // Process workshops to determine which have active occurrences
@@ -116,6 +121,7 @@ export async function loader({ request }: { request: Request }) {
       level3Schedule,
       level4UnavailableHours,
       plannedClosures,
+      maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
     },
     workshops,
     users,
@@ -173,6 +179,17 @@ export async function action({ request }: { request: Request }) {
             "level4_unavaliable_hours",
             unavailableData.toString(),
             "Hours when level 4 users cannot book equipment. If start > end, it represents a period that crosses midnight."
+          );
+        }
+      }
+
+      if (settingType === "maxEquipmentSlotsPerDay") {
+        const maxSlotsData = formData.get("maxEquipmentSlotsPerDay");
+        if (maxSlotsData) {
+          await updateAdminSetting(
+            "max_number_equipment_slots_per_day",
+            maxSlotsData.toString(),
+            "Maximum number of minutes a user can book equipment per day"
           );
         }
       }
@@ -345,6 +362,7 @@ export default function AdminSettings() {
         startDate: string;
         endDate: string;
       }>;
+      maxEquipmentSlotsPerDay: number;
     };
     workshops: Array<{
       id: number;
@@ -378,6 +396,11 @@ export default function AdminSettings() {
   const [equipmentVisibilityDays, setEquipmentVisibilityDays] = useState(
     settings.equipmentVisibilityDays.toString()
   );
+
+  const [maxEquipmentSlotsPerDay, setMaxEquipmentSlotsPerDay] = useState({
+    value: Math.floor(settings.maxEquipmentSlotsPerDay / 60), // Convert minutes to hours for display
+    unit: "hours",
+  });
 
   const [level3Schedule, setLevel3Schedule] = useState(() => {
     const days = [
@@ -1171,6 +1194,7 @@ export default function AdminSettings() {
               </TabsContent>
 
               <TabsContent value="equipment">
+                {/* Equipment Visibility Days Form */}
                 <Form method="post" className="space-y-6 mb-8">
                   <input
                     type="hidden"
@@ -1180,7 +1204,7 @@ export default function AdminSettings() {
                   <input type="hidden" name="settingType" value="equipment" />
                   <Card>
                     <CardHeader>
-                      <CardTitle>Equipment Booking Settings</CardTitle>
+                      <CardTitle>Equipment Booking Visibility</CardTitle>
                       <CardDescription>
                         Configure how far ahead users can book equipment
                       </CardDescription>
@@ -1208,7 +1232,6 @@ export default function AdminSettings() {
                           book equipment.
                         </p>
                       </div>
-                      {/* Additional equipment settings can be added here */}
                     </CardContent>
                     <CardFooter>
                       <Button
@@ -1216,7 +1239,142 @@ export default function AdminSettings() {
                         className="bg-yellow-500 hover:bg-yellow-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
-                        Save Equipment Settings
+                        Save Visibility Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+
+                {/* Max Equipment Slots Per Day Form */}
+                <Form method="post" className="space-y-6 mb-8">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="maxEquipmentSlotsPerDay"
+                  />
+                  <input
+                    type="hidden"
+                    name="maxEquipmentSlotsPerDay"
+                    value={
+                      maxEquipmentSlotsPerDay.unit === "hours"
+                        ? maxEquipmentSlotsPerDay.value * 60
+                        : maxEquipmentSlotsPerDay.value
+                    }
+                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Daily Equipment Booking Limits</CardTitle>
+                      <CardDescription>
+                        Set the maximum amount of time a user can book equipment
+                        per day
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="maxEquipmentSlotsPerDay">
+                          Maximum Equipment Booking Time Per Day
+                        </Label>
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            id="maxEquipmentSlotsPerDay"
+                            type="number"
+                            value={maxEquipmentSlotsPerDay.value}
+                            onChange={(e) => {
+                              const inputValue = parseInt(e.target.value) || 30;
+                              let validValue = inputValue;
+
+                              if (maxEquipmentSlotsPerDay.unit === "hours") {
+                                // For hours: minimum 1, maximum 24
+                                validValue = Math.max(
+                                  1,
+                                  Math.min(24, inputValue)
+                                );
+                              } else {
+                                // For minutes: must be multiples of 30, minimum 30, maximum 1440
+                                validValue = Math.max(
+                                  30,
+                                  Math.min(
+                                    1440,
+                                    Math.round(inputValue / 30) * 30
+                                  )
+                                );
+                              }
+
+                              setMaxEquipmentSlotsPerDay((prev) => ({
+                                ...prev,
+                                value: validValue,
+                              }));
+                            }}
+                            min={
+                              maxEquipmentSlotsPerDay.unit === "hours"
+                                ? "1"
+                                : "30"
+                            }
+                            max={
+                              maxEquipmentSlotsPerDay.unit === "hours"
+                                ? "24"
+                                : "1440"
+                            }
+                            step={
+                              maxEquipmentSlotsPerDay.unit === "hours"
+                                ? "1"
+                                : "30"
+                            }
+                            className="w-24"
+                          />
+                          <select
+                            value={maxEquipmentSlotsPerDay.unit}
+                            onChange={(e) => {
+                              const newUnit = e.target.value;
+                              const currentMinutes =
+                                maxEquipmentSlotsPerDay.unit === "hours"
+                                  ? maxEquipmentSlotsPerDay.value * 60
+                                  : maxEquipmentSlotsPerDay.value;
+
+                              setMaxEquipmentSlotsPerDay({
+                                unit: newUnit,
+                                value:
+                                  newUnit === "hours"
+                                    ? Math.max(
+                                        1,
+                                        Math.floor(currentMinutes / 60)
+                                      )
+                                    : Math.max(
+                                        30,
+                                        Math.round(currentMinutes / 30) * 30
+                                      ),
+                              });
+                            }}
+                            className="border rounded px-2 py-1 text-sm w-20"
+                          >
+                            <option value="hours">Hours</option>
+                            <option value="minutes">Minutes</option>
+                          </select>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          Maximum amount of time a user can book equipment per
+                          day. Hours: 1-24 hours in 1-hour increments. Minutes:
+                          30-1440 minutes in 30-minute increments. Current
+                          setting:{" "}
+                          {maxEquipmentSlotsPerDay.unit === "hours"
+                            ? maxEquipmentSlotsPerDay.value * 60
+                            : maxEquipmentSlotsPerDay.value}{" "}
+                          minutes
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Booking Limits
                       </Button>
                     </CardFooter>
                   </Card>

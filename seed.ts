@@ -312,6 +312,16 @@ async function main() {
     },
   });
 
+  await prisma.adminSettings.upsert({
+    where: { key: "max_number_equipment_slots_per_day" },
+    update: { value: "120" },
+    create: {
+      key: "max_number_equipment_slots_per_day",
+      value: "120",
+      description: "Maximum number of minutes a user can book equipment per day (stored in minutes, 120 = 2 hours)",
+    },
+  })
+
   console.log("Database seeded successfully!");
 }
 
