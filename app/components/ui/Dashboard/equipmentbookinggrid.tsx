@@ -59,7 +59,7 @@ interface EquipmentBookingGridProps {
   readOnly?: boolean;
   visibleTimeRange?: { startHour: number; endHour: number };
   preselectedSlotIds?: number[];
-  visibleDays?: number; // NEW: Number of days to display
+  visibleDays?: number;
   level3Restrictions?: {
     [day: string]: { start: number; end: number; closed: boolean };
   };
@@ -76,6 +76,7 @@ interface EquipmentBookingGridProps {
   userRoleLevel?: number;
   workshopSlots?: { [day: string]: string[] };
   currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
+  maxSlotsPerDay?: number;
 }
 
 export default function EquipmentBookingGrid({
@@ -91,6 +92,7 @@ export default function EquipmentBookingGrid({
   userRoleLevel,
   workshopSlots,
   currentWorkshopOccurrences,
+  maxSlotsPerDay = 4,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -359,8 +361,16 @@ export default function EquipmentBookingGrid({
       : currentDayCount + 1;
     const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1;
 
-    if (!isAlreadySelected && newDayCount > 4) {
-      setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
+    // if (!isAlreadySelected && newDayCount > 4) {
+    //   setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
+    //   return;
+    // }
+    const maxSlotsAllowed = Math.floor(maxSlotsPerDay / 30);
+    if (!isAlreadySelected && newDayCount > maxSlotsAllowed) {
+      const hours = maxSlotsPerDay / 60; // Convert minutes to hours for display
+      setErrorMessage(
+        `You can only select up to ${hours} hours (${maxSlotsAllowed} slots) per day.`
+      );
       return;
     }
 

@@ -59,6 +59,11 @@ export async function loader({
 
   const plannedClosures = roleLevel === 3 ? await getPlannedClosures() : [];
 
+  const maxSlotsPerDay = await getAdminSetting(
+    "max_number_equipment_slots_per_day",
+    "4"
+  );
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
@@ -67,6 +72,7 @@ export async function loader({
     level4Restrictions,
     equipmentId,
     plannedClosures,
+    maxSlotsPerDay: parseInt(maxSlotsPerDay, 10),
   });
 }
 
@@ -192,6 +198,7 @@ export default function EquipmentBookingForm() {
     level4Restrictions,
     equipmentId,
     plannedClosures,
+    maxSlotsPerDay,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -283,6 +290,7 @@ export default function EquipmentBookingForm() {
               }
               plannedClosures={roleLevel === 3 ? plannedClosures : undefined} // Add this prop
               userRoleLevel={roleLevel}
+              maxSlotsPerDay={maxSlotsPerDay}
             />
 
             {totalPrice && (
