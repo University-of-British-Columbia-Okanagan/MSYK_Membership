@@ -6,7 +6,7 @@ import {
 } from "../../models/workshop.server";
 import { registerMembershipSubscription } from "../../models/membership.server";
 import { saveUserMembershipPayment } from "../../models/user.server";
-import { bookEquipment } from "../../models/equipment.server";
+import { useState, useEffect } from "react";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -55,54 +55,23 @@ export async function loader({ request }: { request: Request }) {
     connectId,
     compensationPrice,
     equipmentId,
-    slots,
+    slotCount,
+    slotsDataKey,
+    isEquipmentBooking,
   } = metadata;
 
-  if (equipmentId && userId && slots) {
-    try {
-      // Parse the slots JSON string
-      const slotArray = JSON.parse(slots);
-
-      // Process each slot booking
-      for (const entry of slotArray) {
-        const [startTime, endTime] = entry.split("|");
-
-        // Create a fake request to pass to bookEquipment
-        const fakeRequest = new Request("http://localhost", {
-          headers: {
-            Cookie: request.headers.get("Cookie") || "", // Pass the session cookie
-          },
-        });
-
-        // Now book the equipment
-        await bookEquipment(
-          fakeRequest,
-          parseInt(equipmentId),
-          startTime,
-          endTime
-        );
-      }
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          isEquipment: true,
-          message:
-            "🎉 Equipment booking successful! You can now use the equipment during your booked time slots.",
-        }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    } catch (error: any) {
-      console.error("Equipment booking error:", error);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          isEquipment: true,
-          message: "Equipment booking failed: " + error.message,
-        }),
-        { headers: { "Content-Type": "application/json" } }
-      );
-    }
+  if (equipmentId && userId && isEquipmentBooking === "true") {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isEquipment: true,
+        slotsDataKey: slotsDataKey,
+        equipmentId: parseInt(equipmentId),
+        message:
+          "🎉 Equipment payment successful! Your booking slots will be processed.",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
   }
 
   // Membership branch
@@ -260,8 +229,61 @@ export default function PaymentSuccess() {
     isMembership?: boolean;
     isEquipment?: boolean;
     message: string;
+    slotsDataKey?: string;
+    equipmentId?: number;
   };
   const navigate = useNavigate();
+  const [bookingStatus, setBookingStatus] = useState<string>("");
+
+  // Handle equipment booking after payment success
+  useEffect(() => {
+    if (data.isEquipment && data.slotsDataKey && data.equipmentId) {
+      const processEquipmentBooking = async () => {
+        try {
+          setBookingStatus("Processing your equipment booking...");
+          
+          // Get slots from sessionStorage
+          const slotsData = sessionStorage.getItem(data.slotsDataKey!);
+          if (!slotsData) {
+            setBookingStatus("Booking data not found. Please contact support.");
+            return;
+          }
+
+          const slots = JSON.parse(slotsData);
+          
+          // Book each slot by making individual requests to the equipment booking endpoint
+          for (const slotString of slots) {
+            const [startTime, endTime] = slotString.split("|");
+            
+            // Make a request to book each slot
+            const response = await fetch('/dashboard/equipments/book-slot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                equipmentId: data.equipmentId,
+                startTime,
+                endTime
+              })
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to book slot: ${startTime}`);
+            }
+          }
+
+          // Clean up sessionStorage
+          sessionStorage.removeItem(data.slotsDataKey!);
+          setBookingStatus("✅ All equipment slots booked successfully!");
+          
+        } catch (error: any) {
+          console.error("Equipment booking error:", error);
+          setBookingStatus(`❌ Booking failed: ${error.message}. Please contact support.`);
+        }
+      };
+
+      processEquipmentBooking();
+    }
+  }, [data.isEquipment, data.slotsDataKey, data.equipmentId]);
 
   return (
     <div className="max-w-lg mx-auto p-6">
@@ -269,6 +291,13 @@ export default function PaymentSuccess() {
         {data.success ? "Payment Successful!" : "Payment Failed"}
       </h2>
       <p>{data.message}</p>
+
+      {data.isEquipment && bookingStatus && (
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+          <p className="text-blue-700">{bookingStatus}</p>
+        </div>
+      )}
+
       <button
         className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
         onClick={() => {

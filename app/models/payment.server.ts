@@ -174,8 +174,8 @@ export async function createCheckoutSession(request: Request) {
     });
   }
   // Equipment Booking Payment (NEW BRANCH)
-  else if (body.equipmentId && body.slotCount && body.price && body.userId && body.slots) {
-    const { equipmentId, slotCount, price, userId, slots, userEmail } = body;
+  else if (body.equipmentId && body.slotCount && body.price && body.userId && body.slotsDataKey) {
+    const { equipmentId, slotCount, price, userId, slots, userEmail, slotsDataKey } = body;
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -198,7 +198,9 @@ export async function createCheckoutSession(request: Request) {
       metadata: {
         equipmentId: equipmentId.toString(),
         userId: userId.toString(),
-        slots: JSON.stringify(slots),
+        slotCount: slotCount.toString(),
+        slotsDataKey: slotsDataKey,
+        isEquipmentBooking: "true",
       },
     });
 
