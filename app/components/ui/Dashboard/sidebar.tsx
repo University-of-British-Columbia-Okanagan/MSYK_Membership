@@ -14,6 +14,7 @@ import {
   ClipboardList,
   Package,
   BookOpen,
+  BugIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -84,6 +85,13 @@ export function AppSidebar() {
           >
             <Home className="w-5 h-5" />
             Membership Plans
+          </Link>
+          <Link
+            to="/report"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <BugIcon className="w-5 h-5" />
+            Report Issue
           </Link>
         </SidebarGroup>
       </SidebarContent>
