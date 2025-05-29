@@ -405,8 +405,8 @@ export default function EquipmentBookingGrid({
     //   return;
     // }
 
-    // Calculate maximum slots allowed per 7-day period
-    const maxSlotsPerWeek = Math.floor((maxSlotsPerDay * 7) / 30); // 7 days worth of daily limits
+    // Maximum slots allowed per 7-day period is always 14
+    const maxSlotsPerWeek = 14;
 
     // Check week limit based on the first day of selection
     // Get the first day of the selection period, including already booked slots
@@ -469,39 +469,56 @@ export default function EquipmentBookingGrid({
     sevenDaysLater.setDate(firstDate.getDate() + 7);
 
     if (startTime >= sevenDaysLater) {
-      // Format dates for user-friendly display
-      const firstDateStr = firstDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-      const endDateStr = new Date(
-        sevenDaysLater.getTime() - 1
-      ).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
+      // Allow booking if it's starting a new 7-day period (more than 7 days from existing bookings)
+      // This means we start fresh from this new date
+      firstDate = startTime;
 
-      const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60; // Convert total minutes to hours
+      // Recalculate the 7-day window from the new starting point
+      const newSevenDaysLater = new Date(firstDate.getTime());
+      newSevenDaysLater.setDate(firstDate.getDate() + 7);
 
-      setErrorMessage(
-        `All bookings must be within a 7-day period from your first selection (${firstDateStr} - ${endDateStr}). You can book up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within this period. To book on ${startTime.toLocaleDateString(
-          "en-US",
-          {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
+      // Reset totalBookedSlots to 0 since we're starting a new period
+      // Only count slots in the new 7-day period
+      totalBookedSlots = 0;
+
+      // Recount booked slots within the new 7-day period
+      for (const day of allDays) {
+        const daySlots = slotsByDay[day];
+        for (const time of Object.keys(daySlots)) {
+          const slot = daySlots[time];
+          if (slot?.bookedByMe) {
+            // Create date for this booked slot
+            const dayParts = day.split(" ");
+            const dayNumber = parseInt(dayParts[1], 10);
+            const [hour, minute] = time.split(":").map(Number);
+
+            const now = new Date();
+            const bookedSlotDate = new Date(
+              now.getFullYear(),
+              now.getMonth(),
+              dayNumber,
+              hour,
+              minute
+            );
+
+            // Adjust month if day is in next month
+            if (dayNumber < now.getDate() && now.getDate() > 20) {
+              bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+            }
+
+            // Check if this booked slot is within the NEW 7-day period
+            if (
+              bookedSlotDate >= firstDate &&
+              bookedSlotDate < newSevenDaysLater
+            ) {
+              totalBookedSlots++;
+            }
           }
-        )}, please clear your current selections and start a new booking period.`
-      );
-      return;
+        }
+      }
+
+      // Update sevenDaysLater to the new period
+      sevenDaysLater.setTime(newSevenDaysLater.getTime());
     }
 
     // Count all slots within the 7-day period (both booked and selected)
@@ -550,7 +567,6 @@ export default function EquipmentBookingGrid({
     const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
 
     if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
-      const maxHoursPerWeek = (maxSlotsPerDay * 7) / 60; // Convert total minutes to hours
       const firstDateStr = firstDate.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
@@ -565,7 +581,7 @@ export default function EquipmentBookingGrid({
       });
 
       setErrorMessage(
-        `You can only select up to ${maxHoursPerWeek} hours (${maxSlotsPerWeek} slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlots.length} selected slots in this period.`
+        `You can only select up to 7 hours (14 slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlots.length} selected slots in this period.`
       );
       return;
     }

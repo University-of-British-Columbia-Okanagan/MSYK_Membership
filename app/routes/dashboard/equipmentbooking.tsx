@@ -108,7 +108,7 @@ export async function action({ request }: { request: Request }) {
       { status: 400 }
     );
   }
-
+  
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
     throw new Response("Equipment Not Found", { status: 404 });
@@ -311,7 +311,6 @@ export default function EquipmentBookingForm() {
           name="slots"
           value={JSON.stringify(selectedSlots)}
         />
-
         <Button
           type="submit"
           className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md"
