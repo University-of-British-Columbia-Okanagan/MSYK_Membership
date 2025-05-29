@@ -3,19 +3,13 @@ import EquipmentList from "@/components/ui/Dashboard/equipmentlist";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import { getAvailableEquipment } from "~/models/equipment.server";
 import { getRoleUser } from "~/utils/session.server"; 
 import { Button } from "@/components/ui/button";
-import { deleteEquipment, duplicateEquipment, updateEquipment } from "~/models/equipment.server";
+import { deleteEquipment, duplicateEquipment, updateEquipment, getAllEquipment } from "~/models/equipment.server";
 import EquipmentCard from "@/components/ui/Dashboard/equipmentcard"; // Adjust the import path as necessary
 
 export async function loader({ request }: { request: Request }) {
-  // Define default start and end time (or fetch dynamically if required)
-  const startTime = new Date(); // Current time
-  const endTime = new Date(); 
-  endTime.setHours(endTime.getHours() + 24); 
-
-  const equipments = await getAvailableEquipment(startTime, endTime);
+  const equipments = await getAllEquipment();
   const roleUser = await getRoleUser(request);
 
   return { equipments, roleUser };

@@ -8,7 +8,13 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useFetcher } from "react-router-dom";
-import { MoreVertical, Edit, Trash, Copy, Image as ImageIcon } from "lucide-react";
+import {
+  MoreVertical,
+  Edit,
+  Trash,
+  Copy,
+  Image as ImageIcon,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -22,7 +28,7 @@ interface EquipmentProps {
   description: string;
   availability: boolean;
   imageUrl?: string;
-  status: "available" | "booked";
+  status: "available" | "booked" | "unavailable";
   bookingId?: number; // Only needed for booked equipment
 }
 
@@ -46,10 +52,7 @@ export default function EquipmentCard({
       `Are you sure you want to delete "${name}"?`
     );
     if (confirmDelete) {
-      fetcher.submit(
-        { equipmentId: id, action: "delete" },
-        { method: "post" }
-      );
+      fetcher.submit({ equipmentId: id, action: "delete" }, { method: "post" });
     }
   };
 
@@ -61,26 +64,45 @@ export default function EquipmentCard({
     );
   };
   const handleCancel = async () => {
-    const confirmCancel = window.confirm(`Are you sure you want to cancel booking for "${name}"?`);
+    const confirmCancel = window.confirm(
+      `Are you sure you want to cancel booking for "${name}"?`
+    );
     if (confirmCancel && bookingId) {
-      fetcher.submit(
-        { bookingId, action: "cancel" },
-        { method: "post" }
-      );
+      fetcher.submit({ bookingId, action: "cancel" }, { method: "post" });
     }
   };
   return (
-    <Card className="w-full md:w-80 rounded-lg shadow-md flex flex-col overflow-hidden relative">
+    <Card
+      className={`w-full md:w-80 rounded-lg shadow-md flex flex-col overflow-hidden relative ${
+        status === "unavailable" ? "opacity-50" : ""
+      }`}
+    >
+      {/* Unavailable Badge */}
+      {status === "unavailable" && (
+        <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded z-10">
+          Unavailable
+        </div>
+      )}
+
       {/* Three Dots Menu */}
       <DropdownMenu>
-        <DropdownMenuTrigger className="absolute top-3 right-3">
-          <MoreVertical size={20} className="text-gray-500 hover:text-gray-700" />
+        <DropdownMenuTrigger className="absolute top-3 right-3 z-10">
+          <MoreVertical
+            size={20}
+            className="text-gray-500 hover:text-gray-700"
+          />
         </DropdownMenuTrigger>
+
         <DropdownMenuContent align="end" className="w-36">
-          <DropdownMenuItem onClick={() => navigate(`/dashboard/equipments/edit/${id}`)}>
+          <DropdownMenuItem
+            onClick={() => navigate(`/dashboard/equipments/edit/${id}`)}
+          >
             <Edit className="w-4 h-4 mr-2" /> Edit
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-red-500 hover:bg-red-100" onSelect={handleDelete}>
+          <DropdownMenuItem
+            className="text-red-500 hover:bg-red-100"
+            onSelect={handleDelete}
+          >
             <Trash className="w-4 h-4 mr-2" /> Delete
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={handleDuplicate}>
@@ -100,16 +122,27 @@ export default function EquipmentCard({
 
       <CardHeader className="p-4">
         <CardTitle className="text-lg font-semibold">{name}</CardTitle>
-        <CardDescription className="line-clamp-2 text-sm">{description}</CardDescription>
+        <CardDescription className="line-clamp-2 text-sm">
+          {description}
+        </CardDescription>
       </CardHeader>
 
       <CardContent className="p-4 flex flex-col gap-4">
-        {/* Availability Badge */}
-       {/* Status Badge - Green for Booked, Gray for Available */}
-       <span className={`text-sm font-medium px-3 py-1 rounded-lg w-fit ${
-          status === "available" ? "bg-gray-100 text-gray-700" : "bg-green-100 text-green-700"
-        }`}>
-          {status === "available" ? "Available" : "Booked"}
+        {/* Status Badge */}
+        <span
+          className={`text-sm font-medium px-3 py-1 rounded-lg w-fit ${
+            status === "available"
+              ? "bg-gray-100 text-gray-700"
+              : status === "booked"
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {status === "available"
+            ? "Available"
+            : status === "booked"
+            ? "Booked"
+            : "Unavailable"}
         </span>
         {/* Cancel Booking Button - Only shown if booked */}
         {status === "booked" && (
@@ -122,10 +155,21 @@ export default function EquipmentCard({
         )}
 
         <Button
-          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
-          onClick={() => navigate(`/dashboard/equipments/${id}`)}
+          className={`w-full text-white ${
+            status === "unavailable"
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-yellow-500 hover:bg-yellow-600"
+          }`}
+          onClick={() => {
+            if (status !== "unavailable") {
+              navigate(`/dashboard/equipments/${id}`);
+            }
+          }}
+          disabled={status === "unavailable"}
         >
-          View Equipment
+          {status === "unavailable"
+            ? "Equipment Unavailable"
+            : "View Equipment"}
         </Button>
       </CardContent>
     </Card>

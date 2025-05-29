@@ -660,10 +660,14 @@ export async function getUserBookedEquipments(userId: number) {
 //   return { count: bookings.length };
 // }
 
-export async function bulkBookEquipment(workshopId: number, slots: number[], userId: number) {
+export async function bulkBookEquipment(
+  workshopId: number,
+  slots: number[],
+  userId: number
+) {
   // Filter out negative IDs (these are the temporary IDs for workshop dates)
-  const validSlots = slots.filter(id => id > 0);
-  
+  const validSlots = slots.filter((id) => id > 0);
+
   // If no valid slots, just return success instead of proceeding
   if (validSlots.length === 0) {
     console.log("No valid slots to book - skipping bulkBookEquipment");
@@ -680,9 +684,11 @@ export async function bulkBookEquipment(workshopId: number, slots: number[], use
 
   // Just log a warning and continue with available slots
   if (availableSlots.length !== validSlots.length) {
-    console.warn(`Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`);
+    console.warn(
+      `Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`
+    );
   }
-  
+
   // If no slots are available at all, return early
   if (availableSlots.length === 0) {
     console.log("No available slots found among the requested IDs - skipping");
@@ -690,7 +696,7 @@ export async function bulkBookEquipment(workshopId: number, slots: number[], use
   }
 
   // Get the IDs of the slots that are actually available
-  const availableSlotIds = availableSlots.map(slot => slot.id);
+  const availableSlotIds = availableSlots.map((slot) => slot.id);
 
   // Update only the available slots
   await db.equipmentSlot.updateMany({
@@ -703,7 +709,7 @@ export async function bulkBookEquipment(workshopId: number, slots: number[], use
 
   // Create equipment booking records only for available slots
   const bookings = await Promise.all(
-    availableSlots.map(slot => 
+    availableSlots.map((slot) =>
       db.equipmentBooking.create({
         data: {
           userId: userId,
@@ -1128,6 +1134,32 @@ export async function checkSlotAvailability(
       isBooked: true,
     },
   });
-  
+
   return !conflictingSlot; // Return true if no conflicting slot found
+}
+
+/**
+ * Fetch all equipment regardless of availability status
+ */
+export async function getAllEquipment() {
+  return await db.equipment
+    .findMany({
+      include: {
+        slots: {
+          select: { id: true, isBooked: true },
+        },
+      },
+    })
+    .then((equipments) =>
+      equipments.map((eq) => ({
+        id: eq.id,
+        name: eq.name,
+        description: eq.description,
+        imageUrl: eq.imageUrl,
+        availability: eq.availability, // Include availability status
+        totalSlots: eq.slots.length,
+        bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
+        status: eq.availability ? "available" : "unavailable", // Only based on availability field
+      }))
+    );
 }
