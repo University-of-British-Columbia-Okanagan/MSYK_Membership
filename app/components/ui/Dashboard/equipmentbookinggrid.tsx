@@ -647,8 +647,8 @@ export default function EquipmentBookingGrid({
                           Restricted by admin
                         </div>
                       )} */}
-                      
-                      { /* one tooltip shows at a time based on priority (admin restrictions > planned closures > 
+
+                      {/* one tooltip shows at a time based on priority (admin restrictions > planned closures > 
                       workshop reservations > past slots) */}
                       {isAnyRestriction && (
                         <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
@@ -710,6 +710,7 @@ export default function EquipmentBookingGrid({
   // Render all week tabs
   const renderWeekTabs = () => {
     // Generate tab labels like "May 22-28"
+    // Generate tab labels like "May 22-28" or "May 28 - June 3"
     const getTabLabel = (weekIndex: number, days: string[]) => {
       if (days.length === 0) return `Week ${weekIndex + 1}`;
 
@@ -727,13 +728,31 @@ export default function EquipmentBookingGrid({
         firstDayMonth = (currentMonth + 1) % 12;
       }
 
+      // Find the month for the last day
+      let lastDayMonth = firstDayMonth;
+      if (parseInt(lastDay) < parseInt(firstDay)) {
+        // Last day is in the next month
+        lastDayMonth = (firstDayMonth + 1) % 12;
+      }
+
       const firstMonthName = new Date(
         currentYear,
         firstDayMonth,
         1
       ).toLocaleString("default", { month: "short" });
 
-      return `${firstMonthName} ${firstDay}-${lastDay}`;
+      const lastMonthName = new Date(
+        currentYear,
+        lastDayMonth,
+        1
+      ).toLocaleString("default", { month: "short" });
+
+      // Check if both days are in the same month
+      if (firstDayMonth === lastDayMonth) {
+        return `${firstMonthName} ${firstDay}-${lastDay}`;
+      } else {
+        return `${firstMonthName} ${firstDay} - ${lastMonthName} ${lastDay}`;
+      }
     };
 
     return (
