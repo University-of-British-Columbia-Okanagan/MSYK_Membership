@@ -3,6 +3,7 @@ import { getAllEquipmentWithBookings, toggleEquipmentAvailability } from "~/mode
 import { Button } from "@/components/ui/button";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { format } from "date-fns";
+import { getRoleUser } from "~/utils/session.server";
 
 // Loader
 export async function loader() {
@@ -12,6 +13,10 @@ export async function loader() {
 
 // Action to disable equipment
 export async function action({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
   const formData = await request.formData();
   const equipmentId = Number(formData.get("equipmentId"));
   const newAvailability = formData.get("availability") === "true";

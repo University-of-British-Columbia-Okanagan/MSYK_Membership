@@ -74,7 +74,7 @@ import {
   createEquipmentSlotsForOccurrence,
 } from "~/models/equipment.server";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
-import { getUser } from "~/utils/session.server";
+import { getUser, getRoleUser } from "~/utils/session.server";
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
 import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
 
@@ -168,6 +168,10 @@ export async function action({
 }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
 
   // Check if this submission is a cancellation request.
   if (rawValues.cancelOccurrenceId) {

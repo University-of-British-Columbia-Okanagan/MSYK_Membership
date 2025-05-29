@@ -223,6 +223,10 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (actionType === "duplicate") {
+    const roleUser = await getRoleUser(request);
+    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+      throw new Response("Not Authorized", { status: 419 });
+    }
     const workshopId = formData.get("workshopId");
     const user = await getUser(request);
     if (!user) {

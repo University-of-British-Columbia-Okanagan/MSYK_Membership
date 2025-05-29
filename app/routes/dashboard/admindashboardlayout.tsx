@@ -53,6 +53,10 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const action = formData.get("action");
   const workshopId = formData.get("workshopId");
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    throw new Response("Not Authorized", { status: 419 });
+  }
 
   if (action === "edit") {
     return redirect(`/editworkshop/${workshopId}`);
