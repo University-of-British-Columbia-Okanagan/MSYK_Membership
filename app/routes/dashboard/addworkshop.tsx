@@ -910,10 +910,15 @@ export default function AddWorkshop() {
           form.setValue("prerequisites", workshopData.prerequisites);
         }
 
-        // Set equipments
+        // Replace the equipment setting logic with this properly type-cast deduplicated version
+        // Set equipments with deduplication and proper type casting
         if (workshopData.equipments && workshopData.equipments.length > 0) {
-          setSelectedEquipments(workshopData.equipments);
-          form.setValue("equipments", workshopData.equipments);
+          // Ensure we deduplicate the equipment IDs and convert to numbers with proper type casting
+          const uniqueEquipments: number[] = [
+            ...new Set((workshopData.equipments as number[]).map(Number)),
+          ];
+          setSelectedEquipments(uniqueEquipments);
+          form.setValue("equipments", uniqueEquipments);
         }
 
         // Set continuation flag
