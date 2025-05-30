@@ -698,11 +698,16 @@ export default function EquipmentBookingGrid({
                         })
                       : false;
 
+                  // COPY PASTE: Enhanced check for other workshop reservations
+                  const isOtherWorkshopSlot =
+                    (isWorkshopSlot || slot?.reservedForWorkshop) &&
+                    !isCurrentWorkshopSlot;
+
                   const isPastSlot = isSlotInPast(day, time);
 
                   const colorClass = isCurrentWorkshopSlot
                     ? "bg-green-500 cursor-not-allowed" // Green for current workshop slots
-                    : isWorkshopSlot || slot?.reservedForWorkshop
+                    : isOtherWorkshopSlot
                     ? "bg-purple-400 cursor-not-allowed" // Reserved by another workshop
                     : slot?.isBooked
                     ? slot?.bookedByMe
@@ -802,7 +807,7 @@ export default function EquipmentBookingGrid({
                           Planned closure
                         </div>
                       )}
-                      {isCurrentWorkshopSlot &&
+                      {/* {isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
                         !isPlannedClosure && (
                           <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
@@ -810,6 +815,21 @@ export default function EquipmentBookingGrid({
                           </div>
                         )}
                       {(isWorkshopSlot || slot?.reservedForWorkshop) &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-purple-100 border border-purple-200 rounded text-purple-700 text-xs whitespace-nowrap shadow-lg">
+                            Reserved for another workshop
+                          </div>
+                        )} */}
+                      {isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
+                            Reserved for this workshop
+                          </div>
+                        )}
+                      {isOtherWorkshopSlot &&
                         !isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
                         !isPlannedClosure && (
