@@ -539,8 +539,6 @@ function getEquipmentSlotsForOccurrences(occurrences: Occurrence[]): {
   return slotsForOccurrences;
 }
 
-// Find the checkForEquipmentOverlaps function (around line 430) and replace it with this enhanced version:
-
 /**
  * Check for equipment booking overlaps
  */
@@ -706,6 +704,8 @@ export default function EditWorkshop() {
   // const workshop = useLoaderData<typeof loader>();
   const { workshop, availableWorkshops, availableEquipments, userCounts } =
     useLoaderData<Awaited<ReturnType<typeof loader>>>();
+
+  const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
 
   // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
   const initialOccurrences =
@@ -1100,32 +1100,6 @@ export default function EditWorkshop() {
     return slotStrings;
   }
 
-  // const handleFormSubmit = (e: React.FormEvent) => {
-  //   e.preventDefault();
-
-  //   // Check for active occurrences that have past dates
-  //   const pastActiveOccurrences = occurrences.filter(
-  //     (occ) =>
-  //       occ.status === "active" &&
-  //       (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
-  //       !isNaN(occ.startDate.getTime()) &&
-  //       !isNaN(occ.endDate.getTime())
-  //   );
-
-  //   if (pastActiveOccurrences.length > 0) {
-  //     // We found active occurrences with past dates, show confirmation dialog
-  //     setIsConfirmDialogOpen(true);
-  //     console.log("Found past dates, showing confirmation dialog");
-  //     return; // Important: prevent form submission until user confirms
-  //   } else {
-  //     // No past dates in active occurrences, proceed with submission
-  //     console.log("No past dates found, submitting form");
-  //     setFormSubmitting(true);
-  //     const formElement = e.currentTarget as HTMLFormElement;
-  //     formElement.submit();
-  //   }
-  // };
-  // Replace the existing handleFormSubmit function
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submit triggered");
@@ -1135,7 +1109,7 @@ export default function EditWorkshop() {
       const overlaps = checkForEquipmentOverlaps(
         occurrences,
         selectedEquipments,
-        useLoaderData<typeof loader>().equipments,
+        equipmentsWithSlots, // FIXED: Use the equipmentsWithSlots variable
         workshop.name
       );
 
@@ -2180,21 +2154,6 @@ export default function EditWorkshop() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Go Back & Edit</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    // Set flag to proceed despite overlaps
-                    setProceedDespiteOverlaps(true);
-                    setShowOverlapConfirm(false);
-
-                    // Submit the form after a brief delay to ensure state updates
-                    setTimeout(() => {
-                      console.log("Proceeding despite overlaps");
-                      document.forms[0].submit();
-                    }, 50);
-                  }}
-                >
-                  Proceed Anyway
-                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
