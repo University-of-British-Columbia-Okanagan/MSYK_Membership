@@ -77,6 +77,7 @@ import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
 import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
+import { db } from "~/utils/db.server";
 
 interface Occurrence {
   id?: number;
@@ -125,13 +126,21 @@ export async function loader({
     for (const day in equipment.slotsByDay) {
       for (const time in equipment.slotsByDay[day]) {
         const slot = equipment.slotsByDay[day][time];
-        // Check if this slot is reserved for this specific workshop
+        // Enhanced check - only include slots that are specifically reserved for THIS workshop
         if (
           slot?.reservedForWorkshop &&
           slot?.id &&
-          slot.workshopName === workshop.name
+          slot.workshopName === workshop.name &&
+          slot.workshopOccurrenceId // Make sure it's actually tied to a workshop occurrence
         ) {
-          selectedSlotIds.push(slot.id);
+          // Additional check: verify the slot belongs to one of this workshop's occurrences
+          const belongsToThisWorkshop = workshop.occurrences?.some(
+            (occ: any) => occ.id === slot.workshopOccurrenceId
+          );
+
+          if (belongsToThisWorkshop) {
+            selectedSlotIds.push(slot.id);
+          }
         }
       }
     }
@@ -290,25 +299,64 @@ export async function action({
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  // try {
-  //   await updateWorkshopWithOccurrences(Number(params.workshopId), {
-  //     name: parsed.data.name,
-  //     description: parsed.data.description,
-  //     price: parsed.data.price,
-  //     location: parsed.data.location,
-  //     capacity: parsed.data.capacity,
-  //     type: parsed.data.type,
-  //     occurrences: parsed.data.occurrences,
-  //     prerequisites: parsed.data.prerequisites,
-  //     equipments: parsed.data.equipments,
-  //     isWorkshopContinuation: parsed.data.isWorkshopContinuation,
-  //   });
-  // } catch (error) {
-  //   console.error("Error updating workshop:", error);
-  //   return { errors: { database: ["Failed to update workshop"] } };
-  // }
-  // return redirect("/dashboard/admin");
   try {
+    // Get the current workshop data to compare with changes
+    const currentWorkshop = await getWorkshopById(Number(params.workshopId));
+    const currentOccurrences = currentWorkshop.occurrences || [];
+
+    // Get the current user ID
+    const user = await getUser(request);
+    const userId = user?.id || 1;
+
+    // Enhanced cleanup - also clean up orphaned slots
+    if (parsed.data.equipments && parsed.data.equipments.length > 0) {
+      // Find equipment slots that belong to this workshop's occurrences
+      for (const occurrence of currentOccurrences) {
+        if (occurrence.id) {
+          try {
+            // Delete old equipment bookings for this occurrence
+            await db.equipmentBooking.deleteMany({
+              where: {
+                workshopId: Number(params.workshopId),
+                slot: {
+                  workshopOccurrenceId: occurrence.id,
+                },
+              },
+            });
+
+            // Reset equipment slots that were assigned to this occurrence
+            await db.equipmentSlot.updateMany({
+              where: {
+                workshopOccurrenceId: occurrence.id,
+              },
+              data: {
+                isBooked: false,
+                workshopOccurrenceId: null,
+              },
+            });
+          } catch (error) {
+            console.error(
+              `Error cleaning up old slots for occurrence ${occurrence.id}:`,
+              error
+            );
+            // Continue with other occurrences
+          }
+        }
+      }
+
+      // COPY PASTE: Additional cleanup - remove any orphaned bookings for this workshop
+      try {
+        await db.equipmentBooking.deleteMany({
+          where: {
+            workshopId: Number(params.workshopId),
+            bookedFor: "workshop",
+          },
+        });
+      } catch (error) {
+        console.error("Error cleaning up orphaned workshop bookings:", error);
+      }
+    }
+
     // Update the workshop
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
       name: parsed.data.name,
@@ -322,56 +370,55 @@ export async function action({
       equipments: parsed.data.equipments,
       isWorkshopContinuation: parsed.data.isWorkshopContinuation,
       selectedSlots, // Pass the selected slots
+      userId, // Pass the user ID
     });
 
-    // Process equipment bookings
+    // COPY PASTE: Process equipment bookings for the NEW occurrences
+    if (parsed.data.equipments && parsed.data.equipments.length > 0) {
+      // Get the updated workshop with new occurrence IDs
+      const updatedWorkshop = await getWorkshopById(Number(params.workshopId));
+
+      for (const occurrence of updatedWorkshop.occurrences) {
+        if (occurrence.id) {
+          for (const equipmentId of parsed.data.equipments) {
+            try {
+              await createEquipmentSlotsForOccurrence(
+                occurrence.id,
+                equipmentId,
+                occurrence.startDate,
+                occurrence.endDate,
+                userId
+              );
+            } catch (error) {
+              console.error(
+                `Error creating slots for equipment ${equipmentId} in occurrence ${occurrence.id}:`,
+                error
+              );
+              // Continue with other equipment instead of failing completely
+            }
+          }
+        }
+      }
+    }
+
+    // Process manually selected equipment slots (from the grid)
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
+    const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
 
-    // Get the current user ID
-    const user = await getUser(request);
-    const userId = user?.id || 1; // Default to 1 if no user found
-
-    try {
-      // Get valid slot IDs (positive numbers only)
-      const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
-
-      if (validSelectedSlotIds.length > 0) {
-        // Update equipment bookings
+    if (validSelectedSlotIds.length > 0) {
+      try {
         await bulkBookEquipment(
           Number(params.workshopId),
           validSelectedSlotIds,
           userId
         );
+      } catch (error) {
+        console.error(
+          "Error updating manually selected equipment bookings:",
+          error
+        );
+        // Continue even if this fails
       }
-
-      // Update equipment slots for all occurrences
-      // Process equipment bookings
-      if (parsed.data.occurrences) {
-        for (const occurrence of parsed.data.occurrences) {
-          if (occurrence.id && parsed.data.equipments) {
-            for (const equipmentId of parsed.data.equipments) {
-              try {
-                await createEquipmentSlotsForOccurrence(
-                  occurrence.id,
-                  equipmentId,
-                  occurrence.startDate,
-                  occurrence.endDate,
-                  userId
-                );
-              } catch (error) {
-                console.error(
-                  `Error creating slots for equipment ${equipmentId}:`,
-                  error
-                );
-                // Continue with other equipment instead of failing completely
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error updating equipment bookings:", error);
-      // Continue with redirect even if equipment booking fails
     }
   } catch (error) {
     console.error("Error updating workshop:", error);
@@ -508,7 +555,11 @@ function checkForEquipmentOverlaps(
   const overlaps: {
     equipmentId: number;
     name: string;
-    overlappingTimes: string[];
+    overlappingTimes: {
+      time: string;
+      conflictType: "workshop" | "user" | "unknown";
+      conflictName: string;
+    }[];
   }[] = [];
 
   // Filter for valid dates only
@@ -527,7 +578,11 @@ function checkForEquipmentOverlaps(
     );
     if (!equipment) return;
 
-    const overlappingTimes: string[] = [];
+    const overlappingTimes: {
+      time: string;
+      conflictType: "workshop" | "user" | "unknown";
+      conflictName: string;
+    }[] = [];
 
     // For each workshop occurrence, check for overlaps in equipment slots
     validOccurrences.forEach((occ) => {
@@ -547,19 +602,60 @@ function checkForEquipmentOverlaps(
         const timeKey = `${hours}:${minutes}`;
 
         // Check if this slot exists in the equipment's slots and is booked or unavailable
+        const slot = equipment.slotsByDay[dayKey]?.[timeKey];
         if (
-          equipment.slotsByDay[dayKey] &&
-          equipment.slotsByDay[dayKey][timeKey] &&
-          (equipment.slotsByDay[dayKey][timeKey].isBooked ||
-            equipment.slotsByDay[dayKey][timeKey].reservedForWorkshop) &&
+          slot &&
+          (slot.isBooked || slot.reservedForWorkshop) &&
           // Skip slots reserved for this workshop
-          !equipment.slotsByDay[dayKey][timeKey].workshopName?.includes(
-            workshopName
-          )
+          !(slot as any).workshopName?.includes(workshopName)
         ) {
-          const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes}`;
-          if (!overlappingTimes.includes(formattedTime)) {
-            overlappingTimes.push(formattedTime);
+          // Calculate end time (30 minutes later)
+          const endTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
+          const endHours = String(endTime.getHours()).padStart(2, "0");
+          const endMinutes = String(endTime.getMinutes()).padStart(2, "0");
+
+          const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes} - ${endHours}:${endMinutes}`;
+
+          // COPY PASTE: Enhanced conflict detection logic
+          // Determine conflict type and name using available properties
+          let conflictType: "workshop" | "user" | "unknown" = "unknown";
+          let conflictName = "Unknown booking";
+
+          // Check if it's reserved for a workshop
+          if (slot.reservedForWorkshop && (slot as any).workshopName) {
+            conflictType = "workshop";
+            conflictName = (slot as any).workshopName;
+          }
+          // Check if it's booked by a user
+          else if (
+            slot.isBooked &&
+            (slot as any).userFirstName &&
+            (slot as any).userLastName
+          ) {
+            conflictType = "user";
+            conflictName = `${(slot as any).userFirstName} ${
+              (slot as any).userLastName
+            }`;
+          }
+          // Fallback cases
+          else if (slot.reservedForWorkshop) {
+            conflictType = "workshop";
+            conflictName = "Workshop booking";
+          } else if (slot.isBooked) {
+            conflictType = "user";
+            conflictName = "User booking";
+          }
+
+          // Check if this time conflict is already recorded
+          const existingConflict = overlappingTimes.find(
+            (ot) => ot.time === formattedTime
+          );
+          if (!existingConflict) {
+            overlappingTimes.push({
+              time: formattedTime,
+              conflictType,
+              conflictName,
+            });
           }
         }
 
@@ -608,6 +704,8 @@ export default function EditWorkshop() {
   // const workshop = useLoaderData<typeof loader>();
   const { workshop, availableWorkshops, availableEquipments, userCounts } =
     useLoaderData<Awaited<ReturnType<typeof loader>>>();
+
+  const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
 
   // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
   const initialOccurrences =
@@ -696,7 +794,11 @@ export default function EditWorkshop() {
     {
       equipmentId: number;
       name: string;
-      overlappingTimes: string[];
+      overlappingTimes: {
+        time: string;
+        conflictType: "workshop" | "user" | "unknown";
+        conflictName: string;
+      }[];
     }[]
   >([]);
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
@@ -797,6 +899,10 @@ export default function EditWorkshop() {
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
 
+    // Store the old dates before updating for equipment slot cleanup
+    const oldStartDate = updatedOccurrences[index].startDate;
+    const oldEndDate = updatedOccurrences[index].endDate;
+
     // Update the chosen field
     updatedOccurrences[index][field] = localDate;
 
@@ -806,6 +912,43 @@ export default function EditWorkshop() {
       if (!isNaN(start.getTime())) {
         updatedOccurrences[index].status = start >= now ? "active" : "past";
       }
+    }
+
+    // Clear old equipment slots from selectedSlotsMap when dates change
+    if (
+      selectedEquipments.length > 0 &&
+      !isNaN(oldStartDate.getTime()) &&
+      !isNaN(oldEndDate.getTime())
+    ) {
+      const newSlotsMap = { ...selectedSlotsMap };
+
+      selectedEquipments.forEach((equipmentId) => {
+        if (newSlotsMap[equipmentId]) {
+          // Get the old slot strings that should be removed
+          const oldSlotStrings = getSlotStringsForOccurrences(equipmentId, [
+            {
+              startDate: oldStartDate,
+              endDate: oldEndDate,
+            },
+          ]);
+
+          // Filter out old negative slot IDs (workshop date slots)
+          const oldSlotCount = oldSlotStrings.length;
+
+          // Remove the old negative slot IDs from the beginning of the array
+          // (they were added as -1, -2, -3, etc.)
+          const updatedSlots = newSlotsMap[equipmentId].filter((slotId) => {
+            if (slotId > 0) return true; // Keep real slot IDs
+            // Remove old negative IDs by checking if they fall within the old slot count range
+            const negativeIndex = Math.abs(slotId);
+            return negativeIndex > oldSlotCount;
+          });
+
+          newSlotsMap[equipmentId] = updatedSlots;
+        }
+      });
+
+      setSelectedSlotsMap(newSlotsMap);
     }
 
     // **Now sort** by startDate
@@ -818,7 +961,39 @@ export default function EditWorkshop() {
   }
 
   // Remove a row
+  // Remove a row
   const removeOccurrence = (index: number) => {
+    // COPY PASTE: Clean up equipment slots for the removed occurrence
+    const occurrenceToRemove = occurrences[index];
+    if (
+      selectedEquipments.length > 0 &&
+      !isNaN(occurrenceToRemove.startDate.getTime()) &&
+      !isNaN(occurrenceToRemove.endDate.getTime())
+    ) {
+      const newSlotsMap = { ...selectedSlotsMap };
+
+      selectedEquipments.forEach((equipmentId) => {
+        if (newSlotsMap[equipmentId]) {
+          // Get the slot strings for the occurrence being removed
+          const removedSlotStrings = getSlotStringsForOccurrences(equipmentId, [
+            occurrenceToRemove,
+          ]);
+          const removedSlotCount = removedSlotStrings.length;
+
+          // Remove corresponding negative slot IDs
+          const updatedSlots = newSlotsMap[equipmentId].filter((slotId) => {
+            if (slotId > 0) return true; // Keep real slot IDs
+            // Remove negative IDs corresponding to this occurrence
+            return false; // For simplicity, we'll regenerate all negative IDs
+          });
+
+          newSlotsMap[equipmentId] = updatedSlots;
+        }
+      });
+
+      setSelectedSlotsMap(newSlotsMap);
+    }
+
     const updated = occurrences.filter((_, i) => i !== index);
     setOccurrences(updated);
     form.setValue("occurrences", updated);
@@ -863,13 +1038,6 @@ export default function EditWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
-  // const handleEquipmentSelect = (id: number) => {
-  //   const updated = selectedEquipments.includes(id)
-  //     ? selectedEquipments.filter((e) => e !== id)
-  //     : [...selectedEquipments, id];
-  //   setSelectedEquipments(updated);
-  //   form.setValue("equipments", updated);
-  // };
   const handleEquipmentSelect = (id: number) => {
     // If already included, remove it; otherwise add it (but prevent duplicates)
     const updated = selectedEquipments.includes(id)
@@ -882,16 +1050,16 @@ export default function EditWorkshop() {
     form.setValue("equipments", uniqueUpdated);
   };
 
-  // const removeEquipment = (id: number) => {
-  //   const updated = selectedEquipments.filter((e) => e !== id);
-  //   setSelectedEquipments(updated);
-  //   form.setValue("equipments", updated);
-  // };
   const removeEquipment = (id: number) => {
     // Filter out the equipment and ensure the result is unique
     const updated = [...new Set(selectedEquipments.filter((e) => e !== id))];
     setSelectedEquipments(updated);
     form.setValue("equipments", updated);
+
+    // COPY PASTE: Also remove this equipment from selectedSlotsMap
+    const newSlotsMap = { ...selectedSlotsMap };
+    delete newSlotsMap[id];
+    setSelectedSlotsMap(newSlotsMap);
   };
 
   const getTotalUsersForContinuation = () => {
@@ -932,32 +1100,6 @@ export default function EditWorkshop() {
     return slotStrings;
   }
 
-  // const handleFormSubmit = (e: React.FormEvent) => {
-  //   e.preventDefault();
-
-  //   // Check for active occurrences that have past dates
-  //   const pastActiveOccurrences = occurrences.filter(
-  //     (occ) =>
-  //       occ.status === "active" &&
-  //       (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
-  //       !isNaN(occ.startDate.getTime()) &&
-  //       !isNaN(occ.endDate.getTime())
-  //   );
-
-  //   if (pastActiveOccurrences.length > 0) {
-  //     // We found active occurrences with past dates, show confirmation dialog
-  //     setIsConfirmDialogOpen(true);
-  //     console.log("Found past dates, showing confirmation dialog");
-  //     return; // Important: prevent form submission until user confirms
-  //   } else {
-  //     // No past dates in active occurrences, proceed with submission
-  //     console.log("No past dates found, submitting form");
-  //     setFormSubmitting(true);
-  //     const formElement = e.currentTarget as HTMLFormElement;
-  //     formElement.submit();
-  //   }
-  // };
-  // Replace the existing handleFormSubmit function
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submit triggered");
@@ -967,7 +1109,7 @@ export default function EditWorkshop() {
       const overlaps = checkForEquipmentOverlaps(
         occurrences,
         selectedEquipments,
-        useLoaderData<typeof loader>().equipments,
+        equipmentsWithSlots, // FIXED: Use the equipmentsWithSlots variable
         workshop.name
       );
 
@@ -1020,13 +1162,15 @@ export default function EditWorkshop() {
     );
 
     if (validOccurrences.length > 0 && selectedEquipments.length > 0) {
-      // Create a new map to store the selected slots
-      const newSlotsMap: Record<number, number[]> = { ...selectedSlotsMap };
+      // COPY PASTE: Completely regenerate the slots map to ensure accuracy
+      const newSlotsMap: Record<number, number[]> = {};
 
       // For each equipment, add the slots from the occurrences
       selectedEquipments.forEach((equipmentId) => {
-        // Get existing selected slots for this equipment
-        const existingSlots = selectedSlotsMap[equipmentId] || [];
+        // Get existing real slot IDs (positive numbers) for this equipment
+        const existingRealSlots = (selectedSlotsMap[equipmentId] || []).filter(
+          (id) => id > 0
+        );
 
         // For workshop dates, we'll use dummy slot IDs (negative numbers)
         // These will be replaced with real slot IDs when saved to the database
@@ -1041,14 +1185,17 @@ export default function EditWorkshop() {
           (_, i) => -(i + 1)
         );
 
-        // Combine existing selected slots with new workshop slots
-        newSlotsMap[equipmentId] = [...existingSlots, ...newSlotIds];
+        // Combine existing real slots with new workshop slots
+        newSlotsMap[equipmentId] = [...existingRealSlots, ...newSlotIds];
       });
 
       // Update the selected slots map
       setSelectedSlotsMap(newSlotsMap);
+    } else if (selectedEquipments.length === 0) {
+      // COPY PASTE: Clear all slots if no equipment is selected
+      setSelectedSlotsMap({});
     }
-  }, [occurrences, selectedEquipments]);
+  }, [occurrences, selectedEquipments]); // Remove selectedSlotsMap from dependencies to prevent infinite loop
 
   return (
     <div className="max-w-4xl mx-auto p-8">
@@ -1892,6 +2039,8 @@ export default function EditWorkshop() {
                             validOccurrences
                           )}
                           currentWorkshopOccurrences={validOccurrences}
+                          currentWorkshopId={workshop.id}
+                          currentWorkshopName={workshop.name}
                         />
                       </TabsContent>
                     );
@@ -1958,7 +2107,7 @@ export default function EditWorkshop() {
                 </AlertDialogTitle>
                 <AlertDialogDescription className="space-y-4">
                   <p>
-                    Your workshop dates overlap with existing bookings for the
+                    Your workshop dates conflict with existing bookings for the
                     following equipment:
                   </p>
                   <div className="mt-2 space-y-2">
@@ -1968,19 +2117,31 @@ export default function EditWorkshop() {
                         className="border-l-4 border-red-500 pl-3 py-2 bg-red-50"
                       >
                         <p className="font-medium">{overlap.name}</p>
-                        <ul className="text-sm mt-1 list-disc pl-5">
+                        {/* COPY PASTE: Replace the existing list with this enhanced version */}
+                        <div className="text-sm mt-1 space-y-1">
                           {overlap.overlappingTimes
                             .slice(0, 3)
-                            .map((time, idx) => (
-                              <li key={idx}>{time}</li>
+                            .map((conflict, idx) => (
+                              <div key={idx} className="flex flex-col">
+                                <span className="font-medium">
+                                  {conflict.time}
+                                </span>
+                                <span className="text-gray-600 ml-2">
+                                  {conflict.conflictType === "user"
+                                    ? `Conflicted by user: ${conflict.conflictName}`
+                                    : conflict.conflictType === "workshop"
+                                    ? `Conflicted by workshop: ${conflict.conflictName}`
+                                    : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
+                                </span>
+                              </div>
                             ))}
                           {overlap.overlappingTimes.length > 3 && (
-                            <li>
+                            <div className="text-gray-600">
                               ...and {overlap.overlappingTimes.length - 3} more
-                              times
-                            </li>
+                              conflicts
+                            </div>
                           )}
-                        </ul>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1993,21 +2154,6 @@ export default function EditWorkshop() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Go Back & Edit</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    // Set flag to proceed despite overlaps
-                    setProceedDespiteOverlaps(true);
-                    setShowOverlapConfirm(false);
-
-                    // Submit the form after a brief delay to ensure state updates
-                    setTimeout(() => {
-                      console.log("Proceeding despite overlaps");
-                      document.forms[0].submit();
-                    }, 50);
-                  }}
-                >
-                  Proceed Anyway
-                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

@@ -193,7 +193,11 @@ function checkForEquipmentOverlaps(
   const overlaps: {
     equipmentId: number;
     name: string;
-    overlappingTimes: string[];
+    overlappingTimes: {
+      time: string;
+      conflictType: "workshop" | "user" | "unknown";
+      conflictName: string;
+    }[];
   }[] = [];
 
   // Filter for valid dates only
@@ -212,7 +216,11 @@ function checkForEquipmentOverlaps(
     );
     if (!equipment) return;
 
-    const overlappingTimes: string[] = [];
+    const overlappingTimes: {
+      time: string;
+      conflictType: "workshop" | "user" | "unknown";
+      conflictName: string;
+    }[] = [];
 
     // For each workshop occurrence, check for overlaps in equipment slots
     validOccurrences.forEach((occ) => {
@@ -232,15 +240,54 @@ function checkForEquipmentOverlaps(
         const timeKey = `${hours}:${minutes}`;
 
         // Check if this slot exists in the equipment's slots and is booked or unavailable
-        if (
-          equipment.slotsByDay[dayKey] &&
-          equipment.slotsByDay[dayKey][timeKey] &&
-          (equipment.slotsByDay[dayKey][timeKey].isBooked ||
-            equipment.slotsByDay[dayKey][timeKey].reservedForWorkshop)
-        ) {
-          const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes}`;
-          if (!overlappingTimes.includes(formattedTime)) {
-            overlappingTimes.push(formattedTime);
+        const slot = equipment.slotsByDay[dayKey]?.[timeKey];
+        if (slot && (slot.isBooked || slot.reservedForWorkshop)) {
+          // Calculate end time (30 minutes later)
+          const endTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
+          const endHours = String(endTime.getHours()).padStart(2, "0");
+          const endMinutes = String(endTime.getMinutes()).padStart(2, "0");
+
+          const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes} - ${endHours}:${endMinutes}`;
+
+          // Determine conflict type and name using available properties
+          let conflictType: "workshop" | "user" | "unknown" = "unknown";
+          let conflictName = "Unknown booking";
+
+          // Check if it's reserved for a workshop
+          if (slot.reservedForWorkshop && (slot as any).workshopName) {
+            conflictType = "workshop";
+            conflictName = (slot as any).workshopName;
+          }
+          // Check if it's booked by a user
+          else if (
+            slot.isBooked &&
+            (slot as any).userFirstName &&
+            (slot as any).userLastName
+          ) {
+            conflictType = "user";
+            conflictName = `${(slot as any).userFirstName} ${
+              (slot as any).userLastName
+            }`;
+          }
+          // Fallback cases
+          else if (slot.reservedForWorkshop) {
+            conflictType = "workshop";
+            conflictName = "Workshop booking";
+          } else if (slot.isBooked) {
+            conflictType = "user";
+            conflictName = "User booking";
+          }
+
+          // Check if this time conflict is already recorded
+          const existingConflict = overlappingTimes.find(
+            (ot) => ot.time === formattedTime
+          );
+          if (!existingConflict) {
+            overlappingTimes.push({
+              time: formattedTime,
+              conflictType,
+              conflictName,
+            });
           }
         }
 
@@ -699,7 +746,11 @@ export default function AddWorkshop() {
     {
       equipmentId: number;
       name: string;
-      overlappingTimes: string[];
+      overlappingTimes: {
+        time: string;
+        conflictType: "workshop" | "user" | "unknown";
+        conflictName: string;
+      }[];
     }[]
   >([]);
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
@@ -859,10 +910,15 @@ export default function AddWorkshop() {
           form.setValue("prerequisites", workshopData.prerequisites);
         }
 
-        // Set equipments
+        // Replace the equipment setting logic with this properly type-cast deduplicated version
+        // Set equipments with deduplication and proper type casting
         if (workshopData.equipments && workshopData.equipments.length > 0) {
-          setSelectedEquipments(workshopData.equipments);
-          form.setValue("equipments", workshopData.equipments);
+          // Ensure we deduplicate the equipment IDs and convert to numbers with proper type casting
+          const uniqueEquipments: number[] = [
+            ...new Set((workshopData.equipments as number[]).map(Number)),
+          ];
+          setSelectedEquipments(uniqueEquipments);
+          form.setValue("equipments", uniqueEquipments);
         }
 
         // Set continuation flag
@@ -1462,7 +1518,7 @@ export default function AddWorkshop() {
                 </AlertDialogTitle>
                 <AlertDialogDescription className="space-y-4">
                   <p>
-                    Your workshop dates overlap with existing bookings for the
+                    Your workshop dates conflict with existing bookings for the
                     following equipment:
                   </p>
                   <div className="mt-2 space-y-2">
@@ -1472,19 +1528,31 @@ export default function AddWorkshop() {
                         className="border-l-4 border-red-500 pl-3 py-2 bg-red-50"
                       >
                         <p className="font-medium">{overlap.name}</p>
-                        <ul className="text-sm mt-1 list-disc pl-5">
+                        <div className="text-sm mt-1 space-y-1">
+                          {/* COPY PASTE: Replace the existing list with this updated version */}
                           {overlap.overlappingTimes
                             .slice(0, 3)
-                            .map((time, idx) => (
-                              <li key={idx}>{time}</li>
+                            .map((conflict, idx) => (
+                              <div key={idx} className="flex flex-col">
+                                <span className="font-medium">
+                                  {conflict.time}
+                                </span>
+                                <span className="text-gray-600 ml-2">
+                                  {conflict.conflictType === "user"
+                                    ? `Conflicted by user: ${conflict.conflictName}`
+                                    : conflict.conflictType === "workshop"
+                                    ? `Conflicted by workshop: ${conflict.conflictName}`
+                                    : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
+                                </span>
+                              </div>
                             ))}
                           {overlap.overlappingTimes.length > 3 && (
-                            <li>
+                            <div className="text-gray-600">
                               ...and {overlap.overlappingTimes.length - 3} more
-                              times
-                            </li>
+                              conflicts
+                            </div>
                           )}
-                        </ul>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -77,6 +77,8 @@ interface EquipmentBookingGridProps {
   workshopSlots?: { [day: string]: string[] };
   currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
   maxSlotsPerDay?: number;
+  currentWorkshopId?: number;
+  currentWorkshopName?: string;
 }
 
 export default function EquipmentBookingGrid({
@@ -93,6 +95,8 @@ export default function EquipmentBookingGrid({
   workshopSlots,
   currentWorkshopOccurrences,
   maxSlotsPerDay = 4,
+  currentWorkshopId,
+  currentWorkshopName,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -698,11 +702,28 @@ export default function EquipmentBookingGrid({
                         })
                       : false;
 
+                  // Check if this slot is reserved for the current workshop being edited
+                  const isCurrentWorkshopEditingSlot =
+                    currentWorkshopId &&
+                    slot?.reservedForWorkshop &&
+                    // Check by workshop name
+                    ((currentWorkshopName &&
+                      slot.workshopName === currentWorkshopName) ||
+                      // Check by occurrence ID if available
+                      (slot as any).workshopOccurrenceId);
+
+                  const isOtherWorkshopSlot =
+                    (isWorkshopSlot || slot?.reservedForWorkshop) &&
+                    !isCurrentWorkshopSlot &&
+                    !isCurrentWorkshopEditingSlot;
+
                   const isPastSlot = isSlotInPast(day, time);
 
                   const colorClass = isCurrentWorkshopSlot
                     ? "bg-green-500 cursor-not-allowed" // Green for current workshop slots
-                    : isWorkshopSlot || slot?.reservedForWorkshop
+                    : isCurrentWorkshopEditingSlot
+                    ? "bg-yellow-400 cursor-not-allowed" // Yellow for slots being edited
+                    : isOtherWorkshopSlot
                     ? "bg-purple-400 cursor-not-allowed" // Reserved by another workshop
                     : slot?.isBooked
                     ? slot?.bookedByMe
@@ -802,7 +823,7 @@ export default function EquipmentBookingGrid({
                           Planned closure
                         </div>
                       )}
-                      {isCurrentWorkshopSlot &&
+                      {/* {isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
                         !isPlannedClosure && (
                           <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
@@ -810,6 +831,29 @@ export default function EquipmentBookingGrid({
                           </div>
                         )}
                       {(isWorkshopSlot || slot?.reservedForWorkshop) &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-purple-100 border border-purple-200 rounded text-purple-700 text-xs whitespace-nowrap shadow-lg">
+                            Reserved for another workshop
+                          </div>
+                        )} */}
+                      {isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
+                            Reserved for this workshop
+                          </div>
+                        )}
+                      {isCurrentWorkshopEditingSlot &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-yellow-100 border border-yellow-200 rounded text-yellow-700 text-xs whitespace-nowrap shadow-lg">
+                            Currently editing this workshop date
+                          </div>
+                        )}
+                      {isOtherWorkshopSlot &&
                         !isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
                         !isPlannedClosure && (
@@ -986,7 +1030,7 @@ export default function EquipmentBookingGrid({
             <span>Past Time</span>
           </div> */}
         </div>
-        <div className="flex items-center gap-4 justify-center text-sm">
+        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
           <div className="flex items-center gap-1">
             <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
             <span>Booked by You</span>
@@ -999,12 +1043,19 @@ export default function EquipmentBookingGrid({
             <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
           </div>
+
           {(level3Restrictions || level4Restrictions) && (
             <div className="flex items-center gap-1">
               <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
               <span>Admin Restricted</span>
             </div>
           )}
+        </div>
+        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-yellow-400 border border-gray-300" />
+            <span>Being Edited</span>
+          </div>
         </div>
 
         {/* <p className="text-md font-medium mt-2">Click and Drag to Toggle</p> */}

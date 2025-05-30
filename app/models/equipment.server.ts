@@ -295,14 +295,27 @@ export async function getAvailableEquipmentForAdmin() {
   return equipment;
 }
 
-// equipment.server.ts
-
-// export async function getEquipmentSlotsWithStatus(userId?: number) {
+// export async function getEquipmentSlotsWithStatus(
+//   userId?: number,
+//   onlyAvailable: boolean = false
+// ) {
 //   const equipment = await db.equipment.findMany({
+//     where: onlyAvailable ? { availability: true } : undefined,
 //     include: {
 //       slots: {
 //         include: {
-//           bookings: true,
+//           // bookings: true,
+//           bookings: {
+//             // COPY PASTE: Add user data to the bookings include
+//             include: {
+//               user: {
+//                 select: {
+//                   firstName: true,
+//                   lastName: true,
+//                 },
+//               },
+//             },
+//           },
 //           workshopOccurrence: {
 //             select: {
 //               workshop: {
@@ -316,8 +329,15 @@ export async function getAvailableEquipmentForAdmin() {
 //     },
 //   });
 
-//   const generate24_7Slots = () => {
-//     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+//   // Helper function to generate all possible slots for the calendar
+//   const generate24_7Slots = async () => {
+//     // Get the equipment_visible_registrable_days setting
+//     const visibleDaysStr = await getAdminSetting(
+//       "equipment_visible_registrable_days",
+//       "7"
+//     );
+//     const visibleDays = parseInt(visibleDaysStr, 10);
+
 //     const times = Array.from({ length: 48 }, (_, i) => {
 //       const hours = Math.floor(i / 2);
 //       const minutes = i % 2 === 0 ? "00" : "30";
@@ -325,10 +345,18 @@ export async function getAvailableEquipmentForAdmin() {
 //     });
 
 //     const fullSlots: { [day: string]: { [time: string]: any } } = {};
-//     for (const day of days) {
-//       fullSlots[day] = {};
+//     const today = new Date();
+
+//     for (let i = 0; i < visibleDays; i++) {
+//       const date = new Date();
+//       date.setDate(today.getDate() + i);
+//       const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
+//       const dayNumber = date.getDate();
+//       const dayKey = `${dayName} ${dayNumber}`;
+
+//       fullSlots[dayKey] = {};
 //       for (const time of times) {
-//         fullSlots[day][time] = {
+//         fullSlots[dayKey][time] = {
 //           id: null,
 //           isBooked: false,
 //           isAvailable: true,
@@ -340,39 +368,49 @@ export async function getAvailableEquipmentForAdmin() {
 //     return fullSlots;
 //   };
 
-//   return equipment.map((eq) => {
-//     const fullSlots = generate24_7Slots();
+//   // Map each equipment to add slot status information
+//   return Promise.all(
+//     equipment.map(async (eq) => {
+//       const fullSlots = await generate24_7Slots();
 
-//     eq.slots.forEach((slot) => {
-//       const date = new Date(slot.startTime);
-//       const hours = String(date.getHours()).padStart(2, "0");
-//       const minutes = String(date.getMinutes()).padStart(2, "0");
-//       const time = `${hours}:${minutes}`;
-//       const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
+//       eq.slots.forEach((slot) => {
+//         const date = new Date(slot.startTime);
+//         const hours = String(date.getHours()).padStart(2, "0");
+//         const minutes = String(date.getMinutes()).padStart(2, "0");
+//         const time = `${hours}:${minutes}`;
 
-//       const bookedByMe = userId
-//         ? slot.bookings?.some((booking) => booking.userId === userId)
-//         : false;
+//         // Format the day key to match our new format: "Day #"
+//         const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
+//         const dayNumber = date.getDate();
+//         const dayKey = `${dayName} ${dayNumber}`;
 
-//       fullSlots[day][time] = {
-//         id: slot.id,
-//         isBooked: slot.isBooked,
-//         isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
-//         bookedByMe,
-//         workshopName: slot.workshopOccurrence?.workshop?.name || null,
-//         reservedForWorkshop: !!slot.workshopOccurrenceId,
+//         const bookedByMe = userId
+//           ? slot.bookings?.some((booking) => booking.userId === userId)
+//           : false;
 
+//         if (fullSlots[dayKey] && fullSlots[dayKey][time]) {
+//           fullSlots[dayKey][time] = {
+//             id: slot.id,
+//             isBooked: slot.isBooked,
+//             isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
+//             bookedByMe,
+//             workshopName: slot.workshopOccurrence?.workshop?.name || null,
+//             reservedForWorkshop: !!slot.workshopOccurrenceId,
+//           };
+//         }
+//       });
+
+//       return {
+//         id: eq.id,
+//         name: eq.name,
+//         price: eq.price,
+//         slotsByDay: fullSlots,
 //       };
-//     });
-
-//     return {
-//       id: eq.id,
-//       name: eq.name,
-//       price: eq.price,
-//       slotsByDay: fullSlots,
-//     };
-//   });
+//     })
+//   );
 // }
+// Find the getEquipmentSlotsWithStatus function (around line 270) and replace the equipment query:
+
 export async function getEquipmentSlotsWithStatus(
   userId?: number,
   onlyAvailable: boolean = false
@@ -382,7 +420,17 @@ export async function getEquipmentSlotsWithStatus(
     include: {
       slots: {
         include: {
-          bookings: true,
+          bookings: {
+            // COPY PASTE: Enhanced bookings include with user data
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
           workshopOccurrence: {
             select: {
               workshop: {
@@ -429,6 +477,8 @@ export async function getEquipmentSlotsWithStatus(
           isAvailable: true,
           bookedByMe: false,
           workshopName: null,
+          userFirstName: null,
+          userLastName: null,
         };
       }
     }
@@ -455,6 +505,15 @@ export async function getEquipmentSlotsWithStatus(
           ? slot.bookings?.some((booking) => booking.userId === userId)
           : false;
 
+        // COPY PASTE: Enhanced user data extraction from bookings
+        // Get user data from the first booking for this slot (if any)
+        const userBooking = slot.bookings?.find(
+          (booking) =>
+            booking.bookedFor === "user" || booking.bookedFor === undefined
+        );
+        const userFirstName = userBooking?.user?.firstName || null;
+        const userLastName = userBooking?.user?.lastName || null;
+
         if (fullSlots[dayKey] && fullSlots[dayKey][time]) {
           fullSlots[dayKey][time] = {
             id: slot.id,
@@ -463,6 +522,8 @@ export async function getEquipmentSlotsWithStatus(
             bookedByMe,
             workshopName: slot.workshopOccurrence?.workshop?.name || null,
             reservedForWorkshop: !!slot.workshopOccurrenceId,
+            userFirstName,
+            userLastName,
           };
         }
       });
@@ -660,10 +721,14 @@ export async function getUserBookedEquipments(userId: number) {
 //   return { count: bookings.length };
 // }
 
-export async function bulkBookEquipment(workshopId: number, slots: number[], userId: number) {
+export async function bulkBookEquipment(
+  workshopId: number,
+  slots: number[],
+  userId: number
+) {
   // Filter out negative IDs (these are the temporary IDs for workshop dates)
-  const validSlots = slots.filter(id => id > 0);
-  
+  const validSlots = slots.filter((id) => id > 0);
+
   // If no valid slots, just return success instead of proceeding
   if (validSlots.length === 0) {
     console.log("No valid slots to book - skipping bulkBookEquipment");
@@ -680,9 +745,11 @@ export async function bulkBookEquipment(workshopId: number, slots: number[], use
 
   // Just log a warning and continue with available slots
   if (availableSlots.length !== validSlots.length) {
-    console.warn(`Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`);
+    console.warn(
+      `Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`
+    );
   }
-  
+
   // If no slots are available at all, return early
   if (availableSlots.length === 0) {
     console.log("No available slots found among the requested IDs - skipping");
@@ -690,7 +757,7 @@ export async function bulkBookEquipment(workshopId: number, slots: number[], use
   }
 
   // Get the IDs of the slots that are actually available
-  const availableSlotIds = availableSlots.map(slot => slot.id);
+  const availableSlotIds = availableSlots.map((slot) => slot.id);
 
   // Update only the available slots
   await db.equipmentSlot.updateMany({
@@ -703,7 +770,7 @@ export async function bulkBookEquipment(workshopId: number, slots: number[], use
 
   // Create equipment booking records only for available slots
   const bookings = await Promise.all(
-    availableSlots.map(slot => 
+    availableSlots.map((slot) =>
       db.equipmentBooking.create({
         data: {
           userId: userId,
@@ -1128,6 +1195,32 @@ export async function checkSlotAvailability(
       isBooked: true,
     },
   });
-  
+
   return !conflictingSlot; // Return true if no conflicting slot found
+}
+
+/**
+ * Fetch all equipment regardless of availability status
+ */
+export async function getAllEquipment() {
+  return await db.equipment
+    .findMany({
+      include: {
+        slots: {
+          select: { id: true, isBooked: true },
+        },
+      },
+    })
+    .then((equipments) =>
+      equipments.map((eq) => ({
+        id: eq.id,
+        name: eq.name,
+        description: eq.description,
+        imageUrl: eq.imageUrl,
+        availability: eq.availability, // Include availability status
+        totalSlots: eq.slots.length,
+        bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
+        status: eq.availability ? "available" : "unavailable", // Only based on availability field
+      }))
+    );
 }
