@@ -845,6 +845,14 @@ export default function EquipmentBookingGrid({
                             Reserved for this workshop
                           </div>
                         )}
+                      {isCurrentWorkshopEditingSlot &&
+                        !isCurrentWorkshopSlot &&
+                        !isAnyRestriction &&
+                        !isPlannedClosure && (
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-yellow-100 border border-yellow-200 rounded text-yellow-700 text-xs whitespace-nowrap shadow-lg">
+                            Currently editing this workshop date
+                          </div>
+                        )}
                       {isOtherWorkshopSlot &&
                         !isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
