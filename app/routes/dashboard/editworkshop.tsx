@@ -2065,6 +2065,8 @@ export default function EditWorkshop() {
                             validOccurrences
                           )}
                           currentWorkshopOccurrences={validOccurrences}
+                          currentWorkshopId={workshop.id}
+                          currentWorkshopName={workshop.name}
                         />
                       </TabsContent>
                     );

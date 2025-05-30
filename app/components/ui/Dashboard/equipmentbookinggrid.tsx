@@ -77,6 +77,8 @@ interface EquipmentBookingGridProps {
   workshopSlots?: { [day: string]: string[] };
   currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
   maxSlotsPerDay?: number;
+  currentWorkshopId?: number;
+  currentWorkshopName?: string;
 }
 
 export default function EquipmentBookingGrid({
@@ -93,6 +95,8 @@ export default function EquipmentBookingGrid({
   workshopSlots,
   currentWorkshopOccurrences,
   maxSlotsPerDay = 4,
+  currentWorkshopId,
+  currentWorkshopName,
 }: EquipmentBookingGridProps) {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -698,15 +702,27 @@ export default function EquipmentBookingGrid({
                         })
                       : false;
 
-                  // COPY PASTE: Enhanced check for other workshop reservations
+                  // Check if this slot is reserved for the current workshop being edited
+                  const isCurrentWorkshopEditingSlot =
+                    currentWorkshopId &&
+                    slot?.reservedForWorkshop &&
+                    // Check by workshop name
+                    ((currentWorkshopName &&
+                      slot.workshopName === currentWorkshopName) ||
+                      // Check by occurrence ID if available
+                      (slot as any).workshopOccurrenceId);
+
                   const isOtherWorkshopSlot =
                     (isWorkshopSlot || slot?.reservedForWorkshop) &&
-                    !isCurrentWorkshopSlot;
+                    !isCurrentWorkshopSlot &&
+                    !isCurrentWorkshopEditingSlot;
 
                   const isPastSlot = isSlotInPast(day, time);
 
                   const colorClass = isCurrentWorkshopSlot
                     ? "bg-green-500 cursor-not-allowed" // Green for current workshop slots
+                    : isCurrentWorkshopEditingSlot
+                    ? "bg-yellow-400 cursor-not-allowed" // Yellow for slots being edited
                     : isOtherWorkshopSlot
                     ? "bg-purple-400 cursor-not-allowed" // Reserved by another workshop
                     : slot?.isBooked
@@ -1018,6 +1034,10 @@ export default function EquipmentBookingGrid({
           <div className="flex items-center gap-1">
             <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-yellow-400 border border-gray-300" />
+            <span>Being Edited</span>
           </div>
           {(level3Restrictions || level4Restrictions) && (
             <div className="flex items-center gap-1">
