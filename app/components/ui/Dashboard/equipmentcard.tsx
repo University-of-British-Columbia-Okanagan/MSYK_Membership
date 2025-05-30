@@ -157,18 +157,17 @@ export default function EquipmentCard({
         <Button
           className={`w-full text-white ${
             status === "unavailable"
-              ? "bg-gray-400 cursor-not-allowed"
+              ? "bg-gray-400 hover:bg-gray-500" // Changed from cursor-not-allowed to hover effect
               : "bg-yellow-500 hover:bg-yellow-600"
           }`}
           onClick={() => {
-            if (status !== "unavailable") {
-              navigate(`/dashboard/equipments/${id}`);
-            }
+            // Removed the status check - now always navigates
+            navigate(`/dashboard/equipments/${id}`);
           }}
-          disabled={status === "unavailable"}
+          // Removed the disabled prop entirely
         >
           {status === "unavailable"
-            ? "Equipment Unavailable"
+            ? "View Equipment (Unavailable)" // Changed button text to indicate it's clickable
             : "View Equipment"}
         </Button>
       </CardContent>
