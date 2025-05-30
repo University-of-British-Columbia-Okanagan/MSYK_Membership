@@ -1022,7 +1022,7 @@ export default function EquipmentBookingGrid({
             <span>Past Time</span>
           </div> */}
         </div>
-        <div className="flex items-center gap-4 justify-center text-sm">
+        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
           <div className="flex items-center gap-1">
             <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
             <span>Booked by You</span>
@@ -1035,16 +1035,19 @@ export default function EquipmentBookingGrid({
             <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-yellow-400 border border-gray-300" />
-            <span>Being Edited</span>
-          </div>
+
           {(level3Restrictions || level4Restrictions) && (
             <div className="flex items-center gap-1">
               <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
               <span>Admin Restricted</span>
             </div>
           )}
+        </div>
+        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 bg-yellow-400 border border-gray-300" />
+            <span>Being Edited</span>
+          </div>
         </div>
 
         {/* <p className="text-md font-medium mt-2">Click and Drag to Toggle</p> */}
