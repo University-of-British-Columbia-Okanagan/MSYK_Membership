@@ -20,6 +20,7 @@ import {
   Settings,
   BarChart3,
   BugIcon,
+  FileTextIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -97,6 +98,13 @@ export function AdminAppSidebar() {
           >
             <BugIcon className="w-5 h-5" />
             Report Issue
+          </Link>
+          <Link
+            to="/logs"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <FileTextIcon className="w-5 h-5" />
+            Server Logs
           </Link>
         </SidebarGroup>
       </SidebarContent>

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import  { getEquipmentById, getAvailableSlots } from "../../models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request, params }: { request: Request; params: { id: string } }) {
   const currentUserRole = await getRoleUser(request);
@@ -20,8 +21,10 @@ export async function loader({ request, params }: { request: Request; params: { 
   const slots = await getAvailableSlots(equipmentId)
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
+    logger.warn("Equipments loaded for unknown eqipment", { url: request.url });
     throw new Response("Equipment not found", { status: 404 });
   }
+  logger.info("Equipments loaded successfully", { url: request.url });
   return { equipment, slots, currentUserRole };
 }
 
