@@ -606,16 +606,26 @@ export default function EquipmentBookingGrid({
                 ? "12:00 PM"
                 : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
               : "";
+            // const showTime = time.endsWith("00") && Number(time.split(":")[0]) % 2 === 0; // Show every 2 hours
+            // const [hour] = time.split(":");
+            // const displayHour = Number(hour);
+            // const formattedTime = showTime
+            //   ? displayHour === 0
+            //     ? "12 AM"
+            //     : displayHour === 12
+            //     ? "12 PM"
+            //     : `${displayHour % 12} ${displayHour < 12 ? "AM" : "PM"}`
+            //   : "";
 
             return (
               <tr key={time}>
-                {/* Time label column */}
+                {/* Time label column most important for height */}
                 <td
                   className={`text-right pr-1 border border-gray-300 bg-white text-xs h-4 ${
                     showTime ? "font-medium" : ""
                   }`}
                 >
-                  <div className="h-4 flex items-center justify-end">
+                  <div className="h-4 flex items-center justify-end text-xs">
                     {formattedTime}
                   </div>
                 </td>
@@ -946,7 +956,7 @@ export default function EquipmentBookingGrid({
     return (
       <div className="w-full">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="border-b mb-4">
+          <div className="border-b mb-2">
             <TabsList className="bg-transparent h-auto p-0 mb-0 flex w-full justify-start overflow-x-auto">
               {weekDays.map((days, index) => (
                 <TabsTrigger
@@ -1007,13 +1017,13 @@ export default function EquipmentBookingGrid({
     <div className="w-full max-w-screen-xl mx-auto">
       {/* Error Message */}
       {errorMessage && (
-        <div className="mb-4 text-red-500 bg-red-100 p-3 rounded border border-red-400 text-sm text-center">
+        <div className="mb-2 text-red-500 bg-red-100 p-2 rounded border border-red-400 text-xs text-center">
           {errorMessage}
         </div>
       )}
 
       {/* Legend */}
-      <div className="flex flex-col items-center mb-2">
+      <div className="flex flex-col items-center mb-1">
         <div className="flex items-center gap-1 justify-center flex-wrap text-xs">
           <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-pink-100 border border-gray-300" />
