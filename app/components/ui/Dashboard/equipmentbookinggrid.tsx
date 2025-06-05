@@ -561,11 +561,11 @@ export default function EquipmentBookingGrid({
   // Render a single week grid
   const renderWeekGrid = (days: string[]) => {
     return (
-      <table className="border-collapse border border-gray-300 text-xs w-full">
+      <table className="border-collapse border border-gray-300 text-xs w-full table-fixed">
         <thead>
           <tr>
             {/* Empty header cell for time column */}
-            <th className="border border-gray-300 bg-white w-16"></th>
+            <th className="border border-gray-300 bg-white w-20"></th>
 
             {/* Day headers for this week */}
             {days.map((day) => {
@@ -582,7 +582,7 @@ export default function EquipmentBookingGrid({
               return (
                 <th
                   key={day}
-                  className={`border border-gray-300 px-1 py-0.5 text-center ${
+                  className={`border border-gray-300 px-1 py-0.5 text-center w-24 ${
                     isToday ? "bg-yellow-100 font-bold" : "bg-white"
                   }`}
                 >
@@ -621,11 +621,11 @@ export default function EquipmentBookingGrid({
               <tr key={time}>
                 {/* Time label column most important for height */}
                 <td
-                  className={`text-right pr-1 border border-gray-300 bg-white text-xs h-4 ${
+                  className={`text-center border border-gray-300 bg-white text-xs h-4 ${
                     showTime ? "font-medium" : ""
                   }`}
                 >
-                  <div className="h-4 flex items-center justify-end text-xs">
+                  <div className="h-4 flex items-center justify-center text-xs">
                     {formattedTime}
                   </div>
                 </td>
@@ -1014,7 +1014,7 @@ export default function EquipmentBookingGrid({
   }
 
   return (
-    <div className="w-full max-w-screen-xl mx-auto">
+    <div className="w-full mx-auto px-4">
       {/* Error Message */}
       {errorMessage && (
         <div className="mb-2 text-red-500 bg-red-100 p-2 rounded border border-red-400 text-xs text-center">
