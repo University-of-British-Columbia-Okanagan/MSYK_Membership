@@ -59,7 +59,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (action === "edit") {
-    return redirect(`/editworkshop/${workshopId}`);
+    return redirect(`/dashboard/editworkshop/${workshopId}`);
   }
 
   if (action === "delete") {
