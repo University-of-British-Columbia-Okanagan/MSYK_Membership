@@ -1691,18 +1691,18 @@ export default function AddWorkshop() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
 
-                 <div className="flex justify-center mt-6">
-              <Button
-                type="submit"
-                className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
-                onClick={() => {
-                  console.log("Final Form Data:", form.getValues());
-                }}
-                disabled={formSubmitting}
-              >
-                Add Workshop
-              </Button>
-            </div>
+                  <div className="flex justify-center mt-6">
+                    <Button
+                      type="submit"
+                      className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                      onClick={() => {
+                        console.log("Final Form Data:", form.getValues());
+                      }}
+                      disabled={formSubmitting}
+                    >
+                      Add Workshop
+                    </Button>
+                  </div>
                 </AlertDialog>
               </form>
             </Form>
