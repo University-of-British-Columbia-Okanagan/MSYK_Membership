@@ -565,7 +565,7 @@ export default function EquipmentBookingGrid({
         <thead>
           <tr>
             {/* Empty header cell for time column */}
-            <th className="border border-gray-300 bg-white w-20"></th>
+            <th className="border border-gray-300 bg-white w-16"></th>
 
             {/* Day headers for this week */}
             {days.map((day) => {
@@ -582,12 +582,12 @@ export default function EquipmentBookingGrid({
               return (
                 <th
                   key={day}
-                  className={`border border-gray-300 p-2 text-center ${
+                  className={`border border-gray-300 px-1 py-0.5 text-center ${
                     isToday ? "bg-yellow-100 font-bold" : "bg-white"
                   }`}
                 >
-                  <div className="text-sm">{dayName}</div>
-                  <div className="text-xs">{dayNumber}</div>
+                  <div className="text-xs leading-tight">{dayName}</div>
+                  <div className="text-xs leading-tight">{dayNumber}</div>
                 </th>
               );
             })}
@@ -611,11 +611,13 @@ export default function EquipmentBookingGrid({
               <tr key={time}>
                 {/* Time label column */}
                 <td
-                  className={`text-right pr-2 py-1 border border-gray-300 bg-white ${
+                  className={`text-right pr-1 border border-gray-300 bg-white text-xs h-4 ${
                     showTime ? "font-medium" : ""
                   }`}
                 >
-                  {formattedTime}
+                  <div className="h-4 flex items-center justify-end">
+                    {formattedTime}
+                  </div>
                 </td>
 
                 {/* Slot cells for this row of days */}
@@ -742,7 +744,7 @@ export default function EquipmentBookingGrid({
                   return (
                     <td
                       key={`${day}-${time}`}
-                      className={`border border-gray-300 h-6 relative group ${colorClass}`}
+                      className={`border border-gray-300 h-3 relative group ${colorClass}`}
                       onClick={() =>
                         !isAnyRestriction &&
                         !isPlannedClosure &&
@@ -1011,55 +1013,46 @@ export default function EquipmentBookingGrid({
       )}
 
       {/* Legend */}
-      <div className="flex flex-col items-center mb-6">
-        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-pink-100 border border-gray-300" />
+      <div className="flex flex-col items-center mb-2">
+        <div className="flex items-center gap-1 justify-center flex-wrap text-xs">
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-pink-100 border border-gray-300" />
             <span>Unavailable</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-green-500 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-green-500 border border-gray-300" />
             <span>Available</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-white border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-white border border-gray-300" />
             <span>Unselected</span>
           </div>
-          {/* <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-gray-200 border border-gray-300" />
-            <span>Past Time</span>
-          </div> */}
-        </div>
-        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-blue-400 border border-gray-300" />
             <span>Booked by You</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-red-400 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-red-400 border border-gray-300" />
             <span>Booked by Others</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
           </div>
-
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-yellow-400 border border-gray-300" />
+            <span>Being Edited</span>
+          </div>
           {(level3Restrictions || level4Restrictions) && (
-            <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
+            <div className="flex items-center gap-0.5">
+              <div className="w-3 h-3 bg-gray-300 border border-gray-300" />
               <span>Admin Restricted</span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-yellow-400 border border-gray-300" />
-            <span>Being Edited</span>
-          </div>
-        </div>
 
         {/* <p className="text-md font-medium mt-2">Click and Drag to Toggle</p> */}
-        <p className="text-md font-medium mt-2">
+        <p className="text-sm font-medium mt-1">
           {readOnly
             ? "Equipment availability view"
             : "Click and Drag to Toggle"}
