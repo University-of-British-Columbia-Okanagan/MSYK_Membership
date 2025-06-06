@@ -89,33 +89,33 @@ export async function loader({ request }: { request: Request }) {
   }
 
   try {
-  // Load current settings
-  const workshopVisibilityDays = await getWorkshopVisibilityDays();
-  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
-  const plannedClosures = await getPlannedClosures();
-  const maxEquipmentSlotsPerDay = await getAdminSetting(
-    "max_number_equipment_slots_per_day",
-    "120"
-  );
-  const maxEquipmentSlotsPerWeek = await getAdminSetting(
-    "max_number_equipment_slots_per_week",
-    "14"
-  );
-
-  const workshopsRaw = await getWorkshops();
-  // Process workshops to determine which have active occurrences
-  const now = new Date();
-  const workshops = workshopsRaw.map((workshop) => {
-    // A workshop is considered active if it has at least one occurrence in the future
-    const hasActiveOccurrences = workshop.occurrences.some(
-      (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
+    // Load current settings
+    const workshopVisibilityDays = await getWorkshopVisibilityDays();
+    const equipmentVisibilityDays = await getEquipmentVisibilityDays();
+    const plannedClosures = await getPlannedClosures();
+    const maxEquipmentSlotsPerDay = await getAdminSetting(
+      "max_number_equipment_slots_per_day",
+      "120"
+    );
+    const maxEquipmentSlotsPerWeek = await getAdminSetting(
+      "max_number_equipment_slots_per_week",
+      "14"
     );
 
-      return {
-        ...workshop,
-        hasActiveOccurrences,
-      };
-  });
+    const workshopsRaw = await getWorkshops();
+    // Process workshops to determine which have active occurrences
+    const now = new Date();
+    const workshops = workshopsRaw.map((workshop) => {
+      // A workshop is considered active if it has at least one occurrence in the future
+      const hasActiveOccurrences = workshop.occurrences.some(
+        (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
+      );
+
+        return {
+          ...workshop,
+          hasActiveOccurrences,
+        };
+    });
 
     // Fetch all users for the user management tab
     const users = await getAllUsers();
