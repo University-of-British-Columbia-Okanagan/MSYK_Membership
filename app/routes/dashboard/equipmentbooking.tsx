@@ -61,6 +61,11 @@ export async function loader({
     "4"
   );
 
+  const maxSlotsPerWeek = await getAdminSetting(
+    "max_number_equipment_slots_per_week",
+    "14"
+  );
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
@@ -70,6 +75,7 @@ export async function loader({
     equipmentId,
     plannedClosures,
     maxSlotsPerDay: parseInt(maxSlotsPerDay, 10),
+    maxSlotsPerWeek: parseInt(maxSlotsPerWeek, 10),
     roleUser,
   });
 }
@@ -158,6 +164,7 @@ export default function EquipmentBookingForm() {
     equipmentId,
     plannedClosures,
     maxSlotsPerDay,
+    maxSlotsPerWeek,
     roleUser,
   } = useLoaderData();
   const actionData = useActionData();
@@ -190,12 +197,12 @@ export default function EquipmentBookingForm() {
               <Button
                 variant="outline"
                 onClick={() =>
-                  navigate(isAdmin ? "/dashboard/admin" : "/dashboard/user")
+                  navigate(isAdmin ? "/dashboard/equipments" : "/dashboard/equipments")
                 }
                 className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
               >
                 <ArrowLeft className="h-4 w-4" />
-                {isAdmin ? "Back to Admin Dashboard" : "Back to User Dashboard"}
+                {isAdmin ? "Back to Equipments" : "Back to Equipments"}
               </Button>
             </div>
             <h1 className="text-2xl font-bold mb-6 text-center">
@@ -277,6 +284,7 @@ export default function EquipmentBookingForm() {
                     } // Add this prop
                     userRoleLevel={roleLevel}
                     maxSlotsPerDay={maxSlotsPerDay}
+                    maxSlotsPerWeek={maxSlotsPerWeek}
                   />
 
                   {totalPrice && (

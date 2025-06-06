@@ -68,7 +68,6 @@ interface EquipmentBookingGridProps {
     end: number;
   };
   plannedClosures?: Array<{
-    // Add this new prop
     id: number;
     startDate: string | Date;
     endDate: string | Date;
@@ -77,6 +76,7 @@ interface EquipmentBookingGridProps {
   workshopSlots?: { [day: string]: string[] };
   currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
   maxSlotsPerDay?: number;
+  maxSlotsPerWeek?: number;
   currentWorkshopId?: number;
   currentWorkshopName?: string;
 }
@@ -94,7 +94,8 @@ export default function EquipmentBookingGrid({
   userRoleLevel,
   workshopSlots,
   currentWorkshopOccurrences,
-  maxSlotsPerDay = 4,
+  maxSlotsPerDay = 4, // we convert this from slots to minutes later
+  maxSlotsPerWeek = 14,
   currentWorkshopId,
   currentWorkshopName,
 }: EquipmentBookingGridProps) {
@@ -365,10 +366,6 @@ export default function EquipmentBookingGrid({
       : currentDayCount + 1;
     const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1;
 
-    // if (!isAlreadySelected && newDayCount > 4) {
-    //   setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
-    //   return;
-    // }
     const maxSlotsAllowed = Math.floor(maxSlotsPerDay / 30);
     if (!isAlreadySelected && newDayCount > maxSlotsAllowed) {
       const hours = maxSlotsPerDay / 60; // Convert minutes to hours for display
@@ -378,172 +375,328 @@ export default function EquipmentBookingGrid({
       return;
     }
 
+    {
+      /* OLD 7-day period from first booking */
+    }
     // Maximum slots allowed per 7-day period is always 14
-    const maxSlotsPerWeek = 14;
+    // const maxSlotsPerWeek = 14;
+    // // Check week limit based on the first day of selection
+    // // Get the first day of the selection period, including already booked slots
+    // let firstDate: Date | null = null;
+    // let totalBookedSlots = 0;
+    // // First, check existing booked slots by the user to find the earliest booking
+    // const allDays = Object.keys(slotsByDay);
+    // for (const day of allDays) {
+    //   const daySlots = slotsByDay[day];
+    //   for (const time of Object.keys(daySlots)) {
+    //     const slot = daySlots[time];
+    //     if (slot?.bookedByMe) {
+    //       // Extract day parts and create a date for this booked slot
+    //       const dayParts = day.split(" ");
+    //       const dayNumber = parseInt(dayParts[1], 10);
+    //       const [hour, minute] = time.split(":").map(Number);
+    //       // Create date for this booked slot
+    //       const now = new Date();
+    //       const bookedSlotDate = new Date(
+    //         now.getFullYear(),
+    //         now.getMonth(),
+    //         dayNumber,
+    //         hour,
+    //         minute
+    //       );
 
-    // Check week limit based on the first day of selection
-    // Get the first day of the selection period, including already booked slots
-    let firstDate: Date | null = null;
-    let totalBookedSlots = 0;
+    //       // Adjust month if day is in next month
+    //       if (dayNumber < now.getDate() && now.getDate() > 20) {
+    //         bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+    //       }
 
-    // First, check existing booked slots by the user to find the earliest booking
-    const allDays = Object.keys(slotsByDay);
-    for (const day of allDays) {
-      const daySlots = slotsByDay[day];
-      for (const time of Object.keys(daySlots)) {
-        const slot = daySlots[time];
-        if (slot?.bookedByMe) {
-          // Extract day parts and create a date for this booked slot
-          const dayParts = day.split(" ");
-          const dayNumber = parseInt(dayParts[1], 10);
-          const [hour, minute] = time.split(":").map(Number);
+    //       if (!firstDate || bookedSlotDate < firstDate) {
+    //         firstDate = bookedSlotDate;
+    //       }
+    //     }
+    //   }
+    // }
+    // // Then check current session selections
+    // if (selectedSlots.length > 0) {
+    //   // Get the earliest date from current selections
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const date = new Date(start);
+    //     if (!firstDate || date < firstDate) {
+    //       firstDate = date;
+    //     }
+    //   }
+    // }
+    // // If this is the first selection, use this slot's date
+    // if (!firstDate) {
+    //   firstDate = startTime;
+    // }
+    // // Check if the current selection is within 7 days of the first selection
+    // const sevenDaysLater = new Date(firstDate.getTime());
+    // sevenDaysLater.setDate(firstDate.getDate() + 7);
+    // if (startTime >= sevenDaysLater) {
+    //   // Starting a new 7-day period - need to find the earliest selection in the new period
+    //   // Check if there are any current selections and find the earliest one
+    //   let earliestNewSelection = startTime;
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const date = new Date(start);
+    //     if (date < earliestNewSelection) {
+    //       earliestNewSelection = date;
+    //     }
+    //   }
+    //   // Set firstDate to the earliest selection (either existing selections or current slot)
+    //   firstDate = earliestNewSelection;
+    //   // Recalculate the 7-day window from the new starting point
+    //   sevenDaysLater.setTime(firstDate.getTime());
+    //   sevenDaysLater.setDate(firstDate.getDate() + 7);
+    //   // Reset totalBookedSlots to 0 since we're starting a new period
+    //   totalBookedSlots = 0;
+    // }
+    // // Count all slots within the 7-day period (both booked and selected)
+    // // Reset totalBookedSlots and count again for the current period
+    // totalBookedSlots = 0;
+    // if (firstDate) {
+    //   const sevenDaysFromFirst = new Date(firstDate.getTime());
+    //   sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
 
-          // Create date for this booked slot
-          const now = new Date();
-          const bookedSlotDate = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            dayNumber,
-            hour,
-            minute
-          );
+    //   // Count existing booked slots within the 7-day period
+    //   for (const day of allDays) {
+    //     const daySlots = slotsByDay[day];
+    //     for (const time of Object.keys(daySlots)) {
+    //       const slot = daySlots[time];
+    //       if (slot?.bookedByMe) {
+    //         // Create date for this booked slot
+    //         const dayParts = day.split(" ");
+    //         const dayNumber = parseInt(dayParts[1], 10);
+    //         const [hour, minute] = time.split(":").map(Number);
+    //         const now = new Date();
+    //         const bookedSlotDate = new Date(
+    //           now.getFullYear(),
+    //           now.getMonth(),
+    //           dayNumber,
+    //           hour,
+    //           minute
+    //         );
+    //         // Adjust month if day is in next month
+    //         if (dayNumber < now.getDate() && now.getDate() > 20) {
+    //           bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+    //         }
+    //         // Check if this booked slot is within the 7-day period
+    //         if (
+    //           bookedSlotDate >= firstDate &&
+    //           bookedSlotDate < sevenDaysFromFirst
+    //         ) {
+    //           totalBookedSlots++;
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
+    // // Check if adding this slot would exceed the weekly limit
+    // const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
+    // if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
+    //   const firstDateStr = firstDate.toLocaleDateString("en-US", {
+    //     month: "short",
+    //     day: "numeric",
+    //     year: "numeric",
+    //   });
+    //   const endDateStr = new Date(
+    //     sevenDaysLater.getTime() - 1
+    //   ).toLocaleDateString("en-US", {
+    //     month: "short",
+    //     day: "numeric",
+    //     year: "numeric",
+    //   });
+    //   // Count selected slots that are actually within this 7-day period
+    //   let selectedSlotsInPeriod = 0;
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const slotDate = new Date(start);
+    //     const sevenDaysFromFirst = new Date(firstDate.getTime());
+    //     sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
 
-          // Adjust month if day is in next month
-          if (dayNumber < now.getDate() && now.getDate() > 20) {
-            bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
-          }
+    //     if (slotDate >= firstDate && slotDate < sevenDaysFromFirst) {
+    //       selectedSlotsInPeriod++;
+    //     }
+    //   }
+    //   setErrorMessage(
+    //     `You can only select up to 7 hours (14 slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlotsInPeriod} selected slots in this period.`
+    //   );
+    //   return;
+    // }
 
-          if (!firstDate || bookedSlotDate < firstDate) {
-            firstDate = bookedSlotDate;
-          }
+    {
+      /* Sliding 7-day periods approach */
+    }
+    // Check sliding 7-day period limits - each day creates a new 7-day period
+    if (!isAlreadySelected) {
+      // Helper function to create date from day and time
+      const createDateFromDayTime = (day: string, time: string): Date => {
+        const dayParts = day.split(" ");
+        const dayNumber = parseInt(dayParts[1], 10);
+        const [hour, minute] = time.split(":").map(Number);
+
+        const now = new Date();
+        const date = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          dayNumber,
+          hour,
+          minute
+        );
+
+        // Adjust month if day is in next month
+        if (dayNumber < now.getDate() && now.getDate() > 20) {
+          date.setMonth(date.getMonth() + 1);
         }
-      }
-    }
 
-    // Then check current session selections
-    if (selectedSlots.length > 0) {
-      // Get the earliest date from current selections
-      for (const s of selectedSlots) {
-        const [start] = s.split("|");
-        const date = new Date(start);
-        if (!firstDate || date < firstDate) {
-          firstDate = date;
+        return date;
+      };
+
+      // Get all unique dates from the grid
+      const allDays = Object.keys(slotsByDay);
+      const allGridDates: Date[] = [];
+
+      for (const day of allDays) {
+        const dayParts = day.split(" ");
+        const dayNumber = parseInt(dayParts[1], 10);
+        const now = new Date();
+        const date = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          dayNumber,
+          0,
+          0,
+          0,
+          0
+        );
+
+        // Adjust month if day is in next month
+        if (dayNumber < now.getDate() && now.getDate() > 20) {
+          date.setMonth(date.getMonth() + 1);
         }
-      }
-    }
 
-    // If this is the first selection, use this slot's date
-    if (!firstDate) {
-      firstDate = startTime;
-    }
-
-    // Check if the current selection is within 7 days of the first selection
-    const sevenDaysLater = new Date(firstDate.getTime());
-    sevenDaysLater.setDate(firstDate.getDate() + 7);
-
-    if (startTime >= sevenDaysLater) {
-      // Starting a new 7-day period - need to find the earliest selection in the new period
-      // Check if there are any current selections and find the earliest one
-      let earliestNewSelection = startTime;
-
-      for (const s of selectedSlots) {
-        const [start] = s.split("|");
-        const date = new Date(start);
-        if (date < earliestNewSelection) {
-          earliestNewSelection = date;
-        }
+        allGridDates.push(date);
       }
 
-      // Set firstDate to the earliest selection (either existing selections or current slot)
-      firstDate = earliestNewSelection;
+      // Sort dates and remove duplicates
+      const uniqueDates = Array.from(
+        new Set(allGridDates.map((d) => d.toDateString()))
+      )
+        .map((dateStr) => new Date(dateStr))
+        .sort((a, b) => a.getTime() - b.getTime());
 
-      // Recalculate the 7-day window from the new starting point
-      sevenDaysLater.setTime(firstDate.getTime());
-      sevenDaysLater.setDate(firstDate.getDate() + 7);
+      // Check ALL possible 7-day periods that could contain this slot
+      // Each day can be the start of a 7-day period
+      // Get all dates that have actual bookings or selections
+      const datesWithBookings = new Set<string>();
 
-      // Reset totalBookedSlots to 0 since we're starting a new period
-      totalBookedSlots = 0;
-    }
-
-    // Count all slots within the 7-day period (both booked and selected)
-    // Reset totalBookedSlots and count again for the current period
-    totalBookedSlots = 0;
-
-    if (firstDate) {
-      const sevenDaysFromFirst = new Date(firstDate.getTime());
-      sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
-
-      // Count existing booked slots within the 7-day period
+      // Add dates from existing bookings
       for (const day of allDays) {
         const daySlots = slotsByDay[day];
         for (const time of Object.keys(daySlots)) {
           const slot = daySlots[time];
-          if (slot?.bookedByMe) {
-            // Create date for this booked slot
-            const dayParts = day.split(" ");
-            const dayNumber = parseInt(dayParts[1], 10);
-            const [hour, minute] = time.split(":").map(Number);
-
-            const now = new Date();
-            const bookedSlotDate = new Date(
-              now.getFullYear(),
-              now.getMonth(),
-              dayNumber,
-              hour,
-              minute
-            );
-
-            // Adjust month if day is in next month
-            if (dayNumber < now.getDate() && now.getDate() > 20) {
-              bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
-            }
-
-            // Check if this booked slot is within the 7-day period
-            if (
-              bookedSlotDate >= firstDate &&
-              bookedSlotDate < sevenDaysFromFirst
-            ) {
-              totalBookedSlots++;
-            }
+          if (slot?.bookedByMe) { // This checks ALL bookings by you even in the past
+            const slotDate = createDateFromDayTime(day, time);
+            const dateOnly = new Date(slotDate);
+            dateOnly.setHours(0, 0, 0, 0);
+            datesWithBookings.add(dateOnly.toDateString());
           }
         }
       }
-    }
 
-    // Check if adding this slot would exceed the weekly limit
-    const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
-
-    if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
-      const firstDateStr = firstDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const endDateStr = new Date(
-        sevenDaysLater.getTime() - 1
-      ).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-
-      // Count selected slots that are actually within this 7-day period
-      let selectedSlotsInPeriod = 0;
+      // Add dates from current selections
       for (const s of selectedSlots) {
         const [start] = s.split("|");
         const slotDate = new Date(start);
-        const sevenDaysFromFirst = new Date(firstDate.getTime());
-        sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
-
-        if (slotDate >= firstDate && slotDate < sevenDaysFromFirst) {
-          selectedSlotsInPeriod++;
-        }
+        const dateOnly = new Date(slotDate);
+        dateOnly.setHours(0, 0, 0, 0);
+        datesWithBookings.add(dateOnly.toDateString());
       }
 
-      setErrorMessage(
-        `You can only select up to 7 hours (14 slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlotsInPeriod} selected slots in this period.`
-      );
-      return;
+      // Add the current slot date
+      const currentSlotDateOnly = new Date(startTime);
+      currentSlotDateOnly.setHours(0, 0, 0, 0);
+      datesWithBookings.add(currentSlotDateOnly.toDateString());
+
+      // Convert back to Date objects and sort
+      const relevantDates = Array.from(datesWithBookings)
+        .map((dateStr) => new Date(dateStr))
+        .sort((a, b) => a.getTime() - b.getTime());
+
+      // Check periods that start from any date that has bookings/selections
+      // and could contain the current slot
+      for (const periodStartDate of relevantDates) {
+        const periodStart = new Date(periodStartDate);
+        periodStart.setHours(0, 0, 0, 0);
+
+        const periodEnd = new Date(periodStart);
+        periodEnd.setDate(periodStart.getDate() + 7);
+        periodEnd.setHours(0, 0, 0, 0);
+
+        // Check if the current slot falls within this 7-day period
+        if (
+          currentSlotDateOnly >= periodStart &&
+          currentSlotDateOnly < periodEnd
+        ) {
+          let totalSlotsInPeriod = 0;
+
+          // Count existing booked slots in this 7-day period
+          for (const day of allDays) {
+            const daySlots = slotsByDay[day];
+            for (const time of Object.keys(daySlots)) {
+              const slot = daySlots[time];
+              if (slot?.bookedByMe) { // This checks ALL bookings by you even in the past
+                const slotDate = createDateFromDayTime(day, time);
+                const slotDateOnly = new Date(slotDate);
+                slotDateOnly.setHours(0, 0, 0, 0);
+
+                if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
+                  totalSlotsInPeriod++;
+                }
+              }
+            }
+          }
+
+          // Count current session selections in this 7-day period
+          for (const s of selectedSlots) {
+            const [start] = s.split("|");
+            const slotDate = new Date(start);
+            const slotDateOnly = new Date(slotDate);
+            slotDateOnly.setHours(0, 0, 0, 0);
+
+            if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
+              totalSlotsInPeriod++;
+            }
+          }
+
+          // Check if adding this slot would exceed the limit for THIS period
+          if (totalSlotsInPeriod + 1 > maxSlotsPerWeek) {
+            const periodStartStr = periodStart.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+            const periodEndDate = new Date(
+              periodEnd.getTime() - 24 * 60 * 60 * 1000
+            ); // Get the last day of the period
+            const periodEndStr = periodEndDate.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+
+            const hoursLimit = (maxSlotsPerWeek * 30) / 60; // Convert slots to hours
+            setErrorMessage(
+              `You can only select up to ${hoursLimit} hours (${maxSlotsPerWeek} slots) within any 7-day period. Period ${periodStartStr} - ${periodEndStr} would have ${
+                totalSlotsInPeriod + 1
+              } slots if you add this selection.`
+            );
+            return;
+          }
+        }
+      }
     }
 
     setErrorMessage(null);
