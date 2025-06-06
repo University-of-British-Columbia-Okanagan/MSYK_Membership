@@ -89,13 +89,26 @@ export async function loader({ request }: { request: Request }) {
   }
 
   try {
-    // Load current settings
-    const workshopVisibilityDays = await getWorkshopVisibilityDays();
-    const equipmentVisibilityDays = await getEquipmentVisibilityDays();
-    const plannedClosures = await getPlannedClosures();
-    const maxEquipmentSlotsPerDay = await getAdminSetting(
-      "max_number_equipment_slots_per_day",
-      "120"
+  // Load current settings
+  const workshopVisibilityDays = await getWorkshopVisibilityDays();
+  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
+  const plannedClosures = await getPlannedClosures();
+  const maxEquipmentSlotsPerDay = await getAdminSetting(
+    "max_number_equipment_slots_per_day",
+    "120"
+  );
+  const maxEquipmentSlotsPerWeek = await getAdminSetting(
+    "max_number_equipment_slots_per_week",
+    "14"
+  );
+
+  const workshopsRaw = await getWorkshops();
+  // Process workshops to determine which have active occurrences
+  const now = new Date();
+  const workshops = workshopsRaw.map((workshop) => {
+    // A workshop is considered active if it has at least one occurrence in the future
+    const hasActiveOccurrences = workshop.occurrences.some(
+      (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
     );
 
     const workshopsRaw = await getWorkshops();
@@ -138,6 +151,7 @@ export async function loader({ request }: { request: Request }) {
         level4UnavailableHours,
         plannedClosures,
         maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
+        maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
       },
       workshops,
       users,
@@ -223,10 +237,16 @@ export async function action({ request }: { request: Request }) {
         }
       }
 
-      logger.info(`[User: ${roleUser.userId}] Updated admin setting: ${settingType}`, {
-        url: request.url,
-        actionType,
-      });
+      if (settingType === "maxEquipmentSlotsPerWeek") {
+        const maxSlotsWeekData = formData.get("maxEquipmentSlotsPerWeek");
+        if (maxSlotsWeekData) {
+          await updateAdminSetting(
+            "max_number_equipment_slots_per_week",
+            maxSlotsWeekData.toString(),
+            "Maximum number of 30-minute slots a user can book equipment per week"
+          );
+        }
+      }
 
       return {
         success: true,
@@ -437,6 +457,7 @@ export default function AdminSettings() {
         endDate: string;
       }>;
       maxEquipmentSlotsPerDay: number;
+      maxEquipmentSlotsPerWeek: number;
     };
     workshops: Array<{
       id: number;
@@ -474,6 +495,11 @@ export default function AdminSettings() {
   const [maxEquipmentSlotsPerDay, setMaxEquipmentSlotsPerDay] = useState({
     value: Math.floor(settings.maxEquipmentSlotsPerDay / 60), // Convert minutes to hours for display
     unit: "hours",
+  });
+
+  const [maxEquipmentSlotsPerWeek, setMaxEquipmentSlotsPerWeek] = useState({
+    value: settings.maxEquipmentSlotsPerWeek, // Weekly slots are stored as slot count
+    unit: "slots",
   });
 
   const [level3Schedule, setLevel3Schedule] = useState(() => {
@@ -1449,6 +1475,129 @@ export default function AdminSettings() {
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Booking Limits
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+
+                 {/* Max Equipment Slots Per Week Form */}
+                <Form method="post" className="space-y-6 mb-8">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="maxEquipmentSlotsPerWeek"
+                  />
+                  <input
+                    type="hidden"
+                    name="maxEquipmentSlotsPerWeek"
+                    value={
+                      maxEquipmentSlotsPerWeek.unit === "hours"
+                        ? maxEquipmentSlotsPerWeek.value * 2 // Convert hours to 30-min slots
+                        : maxEquipmentSlotsPerWeek.value
+                    }
+                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Weekly Equipment Booking Limits</CardTitle>
+                      <CardDescription>
+                        Set the maximum number of slots a user can book equipment per week (7-day period)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="maxEquipmentSlotsPerWeek">
+                          Maximum Equipment Booking Slots Per Week
+                        </Label>
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            id="maxEquipmentSlotsPerWeek"
+                            type="number"
+                            value={maxEquipmentSlotsPerWeek.value}
+                            onChange={(e) => {
+                              const inputValue = parseInt(e.target.value) || 1;
+                              let validValue = inputValue;
+
+                              if (maxEquipmentSlotsPerWeek.unit === "hours") {
+                                // For hours: minimum 0.5, maximum 84 (3.5 days)
+                                validValue = Math.max(
+                                  0.5,
+                                  Math.min(84, inputValue)
+                                );
+                              } else {
+                                // For slots: minimum 1, maximum 168 (7 days * 24 hours * 2 slots per hour)
+                                validValue = Math.max(
+                                  1,
+                                  Math.min(168, inputValue)
+                                );
+                              }
+
+                              setMaxEquipmentSlotsPerWeek((prev) => ({
+                                ...prev,
+                                value: validValue,
+                              }));
+                            }}
+                            min={
+                              maxEquipmentSlotsPerWeek.unit === "hours"
+                                ? "0.5"
+                                : "1"
+                            }
+                            max={
+                              maxEquipmentSlotsPerWeek.unit === "hours"
+                                ? "84"
+                                : "168"
+                            }
+                            step={
+                              maxEquipmentSlotsPerWeek.unit === "hours"
+                                ? "0.5"
+                                : "1"
+                            }
+                            className="w-24"
+                          />
+                          <select
+                            value={maxEquipmentSlotsPerWeek.unit}
+                            onChange={(e) => {
+                              const newUnit = e.target.value;
+                              const currentSlots = maxEquipmentSlotsPerWeek.value;
+
+                              setMaxEquipmentSlotsPerWeek({
+                                unit: newUnit,
+                                value:
+                                  newUnit === "hours"
+                                    ? Math.max(0.5, currentSlots / 2) // Convert slots to hours
+                                    : Math.max(1, currentSlots * 2), // Convert hours to slots
+                              });
+                            }}
+                            className="border rounded px-2 py-1 text-sm w-20"
+                          >
+                            <option value="slots">Slots</option>
+                            <option value="hours">Hours</option>
+                          </select>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          Maximum number of 30-minute slots a user can book per 7-day period. 
+                          Slots: 1-168 slots (each slot = 30 minutes). Hours: 0.5-84 hours. 
+                          Current setting:{" "}
+                          {maxEquipmentSlotsPerWeek.unit === "hours"
+                            ? maxEquipmentSlotsPerWeek.value * 2
+                            : maxEquipmentSlotsPerWeek.value}{" "}
+                          slots ({maxEquipmentSlotsPerWeek.unit === "hours"
+                            ? maxEquipmentSlotsPerWeek.value
+                            : maxEquipmentSlotsPerWeek.value / 2} hours)
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Weekly Limits
                       </Button>
                     </CardFooter>
                   </Card>

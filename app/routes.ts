@@ -38,8 +38,8 @@ export default [
     "/editmembershipplan/:planId",
     "routes/getinvolved/editmembershipplan.tsx"
   ),
-  route("/addworkshop", "routes/dashboard/addworkshop.tsx"),
-  route("/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
+  route("/dashboard/addworkshop", "routes/dashboard/addworkshop.tsx"),
+  route("/dashboard/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
   route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
   route(
     "/dashboard/workshops/offer/:id",

@@ -322,6 +322,16 @@ async function main() {
     },
   })
 
+  await prisma.adminSettings.upsert({
+    where: { key: "max_number_equipment_slots_per_week" },
+    update: { value: "14" },
+    create: {
+      key: "max_number_equipment_slots_per_week",
+      value: "14",
+      description: "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
+    },
+  })
+
   console.log("Database seeded successfully!");
 }
 

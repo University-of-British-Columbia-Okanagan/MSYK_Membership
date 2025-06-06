@@ -71,7 +71,7 @@ export default function WorkshopCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => navigate(`/editworkshop/${id}`)}>
+                <DropdownMenuItem onSelect={() => navigate(`/dashboard/editworkshop/${id}`)}>
                   Edit
                 </DropdownMenuItem>
                 <DropdownMenuItem
