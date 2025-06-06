@@ -59,7 +59,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (action === "edit") {
-    return redirect(`/editworkshop/${workshopId}`);
+    return redirect(`/dashboard/editworkshop/${workshopId}`);
   }
 
   if (action === "delete") {
@@ -175,7 +175,7 @@ export default function AdminDashboard() {
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="flex justify-end mb-6 pr-4">
-            <Link to="/addworkshop">
+            <Link to="/dashboard/addworkshop">
               <button className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
                 <FiPlus size={18} /> Add Workshop
               </button>

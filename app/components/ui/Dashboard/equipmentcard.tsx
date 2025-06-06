@@ -29,7 +29,8 @@ interface EquipmentProps {
   availability: boolean;
   imageUrl?: string;
   status: "available" | "booked" | "unavailable";
-  bookingId?: number; // Only needed for booked equipment
+  bookingId?: number;
+  isAdmin?: boolean;
 }
 
 const SAMPLE_IMAGE = "/images/Fabricationservicesimg.avif";
@@ -42,6 +43,7 @@ export default function EquipmentCard({
   status,
   imageUrl,
   bookingId,
+  isAdmin = false,
 }: EquipmentProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -85,31 +87,33 @@ export default function EquipmentCard({
       )}
 
       {/* Three Dots Menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger className="absolute top-3 right-3 z-10">
-          <MoreVertical
-            size={20}
-            className="text-gray-500 hover:text-gray-700"
-          />
-        </DropdownMenuTrigger>
+      {isAdmin && (
+        <DropdownMenu>
+          <DropdownMenuTrigger className="absolute top-3 right-3 z-10">
+            <MoreVertical
+              size={20}
+              className="text-gray-500 hover:text-gray-700"
+            />
+          </DropdownMenuTrigger>
 
-        <DropdownMenuContent align="end" className="w-36">
-          <DropdownMenuItem
-            onClick={() => navigate(`/dashboard/equipments/edit/${id}`)}
-          >
-            <Edit className="w-4 h-4 mr-2" /> Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-red-500 hover:bg-red-100"
-            onSelect={handleDelete}
-          >
-            <Trash className="w-4 h-4 mr-2" /> Delete
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={handleDuplicate}>
-            <Copy className="w-4 h-4 mr-2" /> Duplicate
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuItem
+              onClick={() => navigate(`/dashboard/equipments/edit/${id}`)}
+            >
+              <Edit className="w-4 h-4 mr-2" /> Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-red-500 hover:bg-red-100"
+              onSelect={handleDelete}
+            >
+              <Trash className="w-4 h-4 mr-2" /> Delete
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={handleDuplicate}>
+              <Copy className="w-4 h-4 mr-2" /> Duplicate
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       {/* Image Section */}
       <div className="h-40 w-full bg-gray-100 flex items-center justify-center overflow-hidden">
@@ -156,18 +160,24 @@ export default function EquipmentCard({
 
         <Button
           className={`w-full text-white ${
-            status === "unavailable"
-              ? "bg-gray-400 hover:bg-gray-500" // Changed from cursor-not-allowed to hover effect
+            status === "unavailable" && !isAdmin
+              ? "bg-gray-400 cursor-not-allowed"
+              : status === "unavailable" && isAdmin
+              ? "bg-gray-500 hover:bg-gray-600"
               : "bg-yellow-500 hover:bg-yellow-600"
           }`}
           onClick={() => {
-            // Removed the status check - now always navigates
-            navigate(`/dashboard/equipments/${id}`);
+            // Only navigate if equipment is available OR user is admin
+            if (status !== "unavailable" || isAdmin) {
+              navigate(`/dashboard/equipments/${id}`);
+            }
           }}
-          // Removed the disabled prop entirely
+          disabled={status === "unavailable" && !isAdmin}
         >
           {status === "unavailable"
-            ? "View Equipment (Unavailable)" // Changed button text to indicate it's clickable
+            ? isAdmin
+              ? "View Equipment (Admin)"
+              : "View Equipment"
             : "View Equipment"}
         </Button>
       </CardContent>

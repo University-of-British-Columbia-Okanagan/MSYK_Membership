@@ -51,6 +51,7 @@ export default function Equipments() {
                   description={equipment.description ?? ""}
                   imageUrl={equipment.imageUrl ?? ""}
                   status={equipment.status} 
+                  isAdmin={isAdmin}
                 />
               ))}
             </div>
