@@ -1,3 +1,4 @@
+import { logger } from "~/logging/logger";
 import { registerMembershipSubscription } from "../../models/membership.server";
 import { getUser } from "~/utils/session.server";
 
@@ -22,18 +23,19 @@ export async function action({ request }: { request: Request }) {
         false, // Not a downgrade
         true // Flag this as a resubscription
       );
+      logger.info(`Membership Subscription Registered successfully for user ${userId}`, {url: request.url,})
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
-      console.error("Resubscription error:", error);
+      logger.error(`Resubscription error: ${error}`, {url: request.url,});
       return new Response(JSON.stringify({ success: false }), {
         headers: { "Content-Type": "application/json" },
       });
     }
   } catch (error) {
-    console.error("Downgrade action error:", error);
+    logger.error(`Downgrade action error: ${error}`, {url: request.url,});
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

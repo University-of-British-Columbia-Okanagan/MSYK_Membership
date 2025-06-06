@@ -83,6 +83,7 @@ export default [
   route("/dashboard/admin/settings", "routes/dashboard/adminsettings.tsx"),
   route("/dashboard/admin/reports", "routes/dashboard/adminreports.tsx"),
   route("/report", "routes/dashboard/issue.tsx"),
+  route("/logs", "routes/dashboard/serverlogs.tsx"),
   route("/dashboard/equipments/book-slot", "routes/dashboard/bookequipmentslot.tsx"),
 
 ] satisfies RouteConfig;

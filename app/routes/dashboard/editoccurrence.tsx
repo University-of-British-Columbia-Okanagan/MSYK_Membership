@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { redirect } from "react-router";
 import GenericFormField from "@/components/ui/GenericFormField";
 import { getRoleUser } from "~/utils/session.server";
+import { logger } from "~/logging/logger";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  1) Helper: format a Date as "YYYY-MM-DDTHH:mm" for datetime-local
@@ -52,10 +53,28 @@ export async function loader({
   const workshopId = Number(params.id);
   const occurrenceId = Number(params.occurrenceId);
 
+  logger.info("Loading workshop occurrence", {
+    context: "workshop-occurrence-loader",
+    workshopId,
+    occurrenceId,
+  });
+
   const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
   if (!occurrence) {
+    logger.warn("Workshop occurrence not found", {
+      context: "workshop-occurrence-loader",
+      workshopId,
+      occurrenceId,
+    });
     throw new Response("Occurrence not found", { status: 404 });
   }
+
+  logger.info("Workshop occurrence loaded successfully", {
+    context: "workshop-occurrence-loader",
+    workshopId,
+    occurrenceId,
+  });
+
   return { workshopId, occurrenceId, occurrence };
 }
 
@@ -71,14 +90,14 @@ export async function action({
 }) {
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn("Unauthorized duplicateOccurrence action", {
+      url: request.url,
+    });
     throw new Response("Not Authorized", { status: 419 });
   }
   
   const formData = await request.formData();
-  const rawValues = Object.fromEntries(formData.entries()) as Record<
-    string,
-    string
-  >;
+  const rawValues = Object.fromEntries(formData.entries()) as Record<string, string>;
 
   // Convert the string to a Date
   const parsedStart = parseDateTimeAsLocal(rawValues.startDate);
@@ -107,6 +126,10 @@ export async function action({
     endDate: parsedEnd,
     startDatePST,
     endDatePST,
+  });
+
+  logger.info("Successfully duplicated occurrence", {
+    url: request.url,
   });
 
   return redirect(`/dashboard/workshops/${workshopId}`);
