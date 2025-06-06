@@ -111,21 +111,11 @@ export async function loader({ request }: { request: Request }) {
       (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
     );
 
-    const workshopsRaw = await getWorkshops();
-
-    // Process workshops to determine which have active occurrences
-    const now = new Date();
-    const workshops = workshopsRaw.map((workshop) => {
-      // A workshop is considered active if it has at least one occurrence in the future
-      const hasActiveOccurrences = workshop.occurrences.some(
-        (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
-      );
-
       return {
         ...workshop,
         hasActiveOccurrences,
       };
-    });
+  });
 
     // Fetch all users for the user management tab
     const users = await getAllUsers();
