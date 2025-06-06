@@ -110,7 +110,6 @@ export async function loader({ request }: { request: Request }) {
       stripeCustomerId = newCust.id;
     }
     // Now you have a Customer ID no matter what:
-    console.log("Using Stripe Customer:", stripeCustomerId);
 
     // 4) Persist the hashed card + billing details and Stripe IDs
     await saveUserMembershipPayment({

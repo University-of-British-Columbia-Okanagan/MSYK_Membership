@@ -4,11 +4,24 @@ import { Button } from "@/components/ui/button";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { format } from "date-fns";
 import { getRoleUser } from "~/utils/session.server";
+import { logger } from "~/logging/logger";
 
 // Loader
 export async function loader() {
-  const equipment = await getAllEquipmentWithBookings();
-  return { equipment };
+  try {
+    const equipment = await getAllEquipmentWithBookings();
+
+    logger.info("Loaded all equipment with bookings", {
+      context: "equipment-admin-loader",
+    });
+
+    return { equipment };
+  } catch (error) {
+    logger.error(`Failed to load equipment with bookings: ${error}`, {
+      context: "equipment-admin-loader",
+    });
+    throw new Response("Failed to load equipment data", { status: 500 });
+  }
 }
 
 // Action to disable equipment
@@ -17,12 +30,28 @@ export async function action({ request }: { request: Request }) {
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
     throw new Response("Not Authorized", { status: 419 });
   }
+
   const formData = await request.formData();
   const equipmentId = Number(formData.get("equipmentId"));
   const newAvailability = formData.get("availability") === "true";
-  await toggleEquipmentAvailability(equipmentId, newAvailability);
-  return null;
+
+  try {
+    await toggleEquipmentAvailability(equipmentId, newAvailability);
+
+    logger.info(`[User: ${roleUser.userId}] toggled equipment ${equipmentId} to ${newAvailability ? "enabled" : "disabled"}`, {
+      url: request.url,
+    });
+
+    return null;
+  } catch (error) {
+    logger.error(`Error toggling equipment ${equipmentId}: ${error}`, {
+      url: request.url,
+    });
+
+    throw new Response("Failed to update equipment availability", { status: 500 });
+  }
 }
+
 export default function AllEquipmentBookings() {
     const { equipment } = useLoaderData<typeof loader>();
   

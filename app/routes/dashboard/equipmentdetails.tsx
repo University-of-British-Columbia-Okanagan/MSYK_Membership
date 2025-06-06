@@ -21,10 +21,10 @@ export async function loader({ request, params }: { request: Request; params: { 
   const slots = await getAvailableSlots(equipmentId)
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
-    logger.warn("Equipments loaded for unknown eqipment", { url: request.url });
+    logger.warn(`[User: ${currentUserRole?.userId}] Requested equipment not found`, { url: request.url });
     throw new Response("Equipment not found", { status: 404 });
   }
-  logger.info("Equipments loaded successfully", { url: request.url });
+  logger.info(`[User: ${currentUserRole?.userId}] Requested equipment details fetched`, { url: request.url });
   return { equipment, slots, currentUserRole };
 }
 
@@ -68,7 +68,7 @@ export default function EquipmentDetails() {
           setShowPopup(true);
         }
       } catch (error) {
-        console.error("Failed to delete equipment:", error);
+        logger.error("Failed to delete equipment:", error);
         setPopupMessage("An error occurred while deleting the equipment.");
         setShowPopup(true);
       }

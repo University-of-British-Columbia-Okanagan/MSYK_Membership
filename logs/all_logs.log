@@ -1,4 +1,0 @@
-{"level":"info","message":"Equipments loaded successfully","timestamp":"2025-05-30T17:18:47.387Z","url":"http://localhost:5173/dashboard/equipments/1"}
-{"level":"warn","message":"Equipments loaded for unknown eqipment","timestamp":"2025-05-30T17:18:59.973Z","url":"http://localhost:5173/dashboard/equipments/0"}
-{"level":"warn","message":"Equipments loaded for unknown eqipment","timestamp":"2025-05-30T17:19:01.480Z","url":"http://localhost:5173/dashboard/equipments/0"}
-{"level":"info","message":"Equipments loaded successfully","timestamp":"2025-05-30T17:26:34.536Z","url":"http://localhost:5173/dashboard/equipments/1"}

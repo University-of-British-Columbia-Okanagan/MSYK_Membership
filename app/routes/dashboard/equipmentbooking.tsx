@@ -17,8 +17,8 @@ import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbooking
 import { useState } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
+import { logger } from "~/logging/logger";
 // import { checkSlotAvailability } from "../../models/equipment.server";
-
 export async function loader({
   request,
   params,
@@ -31,39 +31,57 @@ export async function loader({
   const roleLevel = user?.roleLevel ?? 1;
   const equipmentId = params.id ? parseInt(params.id) : null;
 
-  // Get the equipment_visible_registrable_days setting
-  const equipmentWithSlots = await getEquipmentSlotsWithStatus(
-    userId ?? undefined,
-    true
-  );
-  const visibleDays = await getAdminSetting(
-    "equipment_visible_registrable_days",
-    "7"
+  logger.info(
+    `[User: ${userId ?? "guest"}] Loading equipment scheduler (equipmentId: ${equipmentId})`,
+    { url: request.url }
   );
 
-  // Get level-specific restrictions
-  const level3Restrictions =
-    roleLevel === 3 ? await getLevel3ScheduleRestrictions() : null;
-  const level4Restrictions =
-    roleLevel === 4 ? await getLevel4UnavailableHours() : null;
+  try {
+    // Get the equipment_visible_registrable_days setting
+    const equipmentWithSlots = await getEquipmentSlotsWithStatus(
+      userId ?? undefined,
+      true
+    );
+    const visibleDays = await getAdminSetting(
+      "equipment_visible_registrable_days",
+      "7"
+    );
 
-  const plannedClosures = roleLevel === 3 ? await getPlannedClosures() : [];
+    // Get level-specific restrictions
+    const level3Restrictions =
+      roleLevel === 3 ? await getLevel3ScheduleRestrictions() : null;
+    const level4Restrictions =
+      roleLevel === 4 ? await getLevel4UnavailableHours() : null;
 
-  const maxSlotsPerDay = await getAdminSetting(
-    "max_number_equipment_slots_per_day",
-    "4"
-  );
+    const plannedClosures = roleLevel === 3 ? await getPlannedClosures() : [];
 
-  return json({
-    equipment: equipmentWithSlots,
-    roleLevel,
-    visibleDays: parseInt(visibleDays, 10),
-    level3Restrictions,
-    level4Restrictions,
-    equipmentId,
-    plannedClosures,
-    maxSlotsPerDay: parseInt(maxSlotsPerDay, 10),
-  });
+    const maxSlotsPerDay = await getAdminSetting(
+      "max_number_equipment_slots_per_day",
+      "4"
+    );
+
+    logger.info(
+      `[User: ${userId}] Loaded scheduler data (roleLevel: ${roleLevel})`,
+      { url: request.url }
+    );
+
+    return json({
+      equipment: equipmentWithSlots,
+      roleLevel,
+      visibleDays: parseInt(visibleDays, 10),
+      level3Restrictions,
+      level4Restrictions,
+      equipmentId,
+      plannedClosures,
+      maxSlotsPerDay: parseInt(maxSlotsPerDay, 10),
+    });
+  } catch (error: any) {
+    logger.error(
+      `[User: ${userId}] Failed to load scheduler data - ${error.message}`,
+      { url: request.url }
+    );
+    throw new Response("Failed to load scheduler data", { status: 500 });
+  }
 }
 
 // Action
@@ -73,6 +91,9 @@ export async function action({ request }: { request: Request }) {
   const roleLevel = user?.roleLevel ?? 1;
 
   if (!user) {
+    logger.warn(`[Guest] Attempt to book equipment without authentication`, {
+      url: request.url,
+    });
     return json(
       { errors: { message: "User not authenticated." } },
       { status: 401 }
@@ -84,6 +105,9 @@ export async function action({ request }: { request: Request }) {
   const slotsDataKey = formData.get("slotsData");
 
   if (!equipmentId || !slotCount || !slotsDataKey) {
+    logger.warn(`[User: ${user.id}] Missing equipment or slot data`, {
+      url: request.url,
+    });
     return json(
       { errors: { message: "Missing equipment or slot data." } },
       { status: 400 }
@@ -92,9 +116,17 @@ export async function action({ request }: { request: Request }) {
 
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
+    logger.warn(`[User: ${user.id}] Equipment ID ${equipmentId} not found`, {
+      url: request.url,
+    });
     throw new Response("Equipment Not Found", { status: 404 });
   }
+
   if (!equipment.availability) {
+    logger.warn(
+      `[User: ${user.id}] Equipment ID ${equipmentId} is not available`,
+      { url: request.url }
+    );
     throw new Response("Equipment Not Available", { status: 419 });
   }
 
@@ -102,6 +134,12 @@ export async function action({ request }: { request: Request }) {
   try {
     // const totalPrice = equipment?.price * slots.length;
     const totalPrice = equipment?.price * slotCount;
+
+    logger.info(
+      `[User: ${user.id}] Initiating checkout session for equipment ID ${equipmentId} with ${slotCount} slots`,
+      { url: request.url }
+    );
+
     const fakeRequest = new Request("http://localhost", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -119,17 +157,30 @@ export async function action({ request }: { request: Request }) {
     const sessionRes = await response.json();
 
     if (sessionRes?.url) {
+      logger.info(
+        `[User: ${user.id}] Checkout session created successfully`,
+        { url: request.url }
+      );
       return redirect(sessionRes.url);
     } else {
+      logger.error(
+        `[User: ${user.id}] Failed to create checkout session - missing URL`,
+        { url: request.url }
+      );
       return json(
         { errors: { message: "Payment session failed." } },
         { status: 500 }
       );
     }
   } catch (error: any) {
+    logger.error(
+      `[User: ${user.id}] Error creating checkout session: ${error.message}`,
+      { url: request.url }
+    );
     return json({ errors: { message: error.message } }, { status: 400 });
   }
 }
+
 
 // Component
 // export default function EquipmentBookingForm() {
