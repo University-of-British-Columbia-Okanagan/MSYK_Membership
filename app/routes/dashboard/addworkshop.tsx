@@ -801,6 +801,13 @@ export default function AddWorkshop() {
   ) {
     const localDate = parseDateTimeAsLocal(value);
     const updatedOccurrences = [...occurrences];
+
+    // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
+    if (field === "startDate" && !isNaN(localDate.getTime())) {
+      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      updatedOccurrences[index].endDate = endDate;
+    }
+
     updatedOccurrences[index][field] = localDate;
     // Re-sort the list after updating.
     updatedOccurrences.sort(

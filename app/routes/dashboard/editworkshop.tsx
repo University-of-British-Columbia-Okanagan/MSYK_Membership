@@ -920,6 +920,12 @@ export default function EditWorkshop() {
     // Update the chosen field
     updatedOccurrences[index][field] = localDate;
 
+    // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
+    if (field === "startDate" && !isNaN(localDate.getTime())) {
+      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      updatedOccurrences[index].endDate = endDate;
+    }
+
     // If it's not already cancelled, compute a new status based on the start date.
     if (updatedOccurrences[index].status !== "cancelled") {
       const start = updatedOccurrences[index].startDate;
