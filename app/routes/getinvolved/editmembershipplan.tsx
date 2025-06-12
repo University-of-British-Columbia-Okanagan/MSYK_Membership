@@ -31,10 +31,11 @@ import {
 } from "~/models/membership.server";
 import { useLoaderData } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
+import { logger } from "~/logging/logger";
 
 export async function loader({ params }: { params: { planId: string } }) {
   const membershipPlan = await getMembershipPlan(Number(params.planId));
-  //   console.log(membershipPlan);
+  //   logger.log(membershipPlan);
 
   if (!membershipPlan) {
     throw new Response("Not Found", { status: 404 });
@@ -79,7 +80,6 @@ export async function action({
   if (!parsed.success) {
     // If validation fails, return errors
     const errors = parsed.error.flatten();
-    console.log(errors);
     return { errors: errors.fieldErrors };
   }
 
@@ -95,8 +95,10 @@ export async function action({
       price: rawValues.price,
       features: featuresJson,
     });
+    logger.info(`Membership plan ${rawValues.title} updated successfully`, {url: request.url,});
+
   } catch (error) {
-    console.error(error);
+    logger.error(`Failed to edit membership plan: ${error}`, {url: request.url,});
     return { errors: { database: ["Failed to update membership plan"] } };
   }
 

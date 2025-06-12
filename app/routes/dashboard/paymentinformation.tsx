@@ -20,6 +20,7 @@ import {
   Calendar,
   MapPin,
 } from "lucide-react";
+import { logger } from "~/logging/logger";
 
 // Loader - Get user information and any existing payment method
 export const loader: LoaderFunction = async ({ request }) => {
@@ -101,11 +102,12 @@ export const action: ActionFunction = async ({ request }) => {
       email,
       isDefault: saveCard, // Make this the default payment method
     });
+    logger.info(`Payment method saved successfully for ${userId}`, {url: request.url,});
 
     // Redirect to profile page with success message
     return { success: true };
   } catch (error: any) {
-    console.error("Failed to save payment method:", error);
+    logger.error(`Failed to save payment method: ${error}`, {url: request.url,});
     return {
       errors: {
         form:

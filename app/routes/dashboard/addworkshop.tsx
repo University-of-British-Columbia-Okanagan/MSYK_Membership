@@ -70,6 +70,7 @@ import {
 } from "@/components/ui/tooltip";
 import { getEquipmentVisibilityDays } from "../../models/admin.server";
 import { getUser, getRoleUser } from "../../utils/session.server";
+import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
@@ -104,6 +105,8 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
+  logger.info(`[User: ${userId}] Fetched add workshop page`, { url: request.url });
+  
   return {
     workshops,
     equipments: equipmentsRaw,
@@ -124,7 +127,7 @@ function parseDateTimeAsLocal(value: string): Date {
     const timestamp = Date.parse(value);
 
     if (isNaN(timestamp)) {
-      console.error("Failed to parse date:", value);
+      logger.error("Failed to parse date:", value);
       return new Date("");
     }
 
@@ -132,13 +135,13 @@ function parseDateTimeAsLocal(value: string): Date {
 
     // Ensure the date is valid
     if (isNaN(date.getTime())) {
-      console.error("Invalid date after parsing:", value);
+      logger.error("Invalid date after parsing:", value);
       return new Date("");
     }
 
     return date;
   } catch (error) {
-    console.error("Error parsing date:", error);
+    logger.error("Error parsing date:", error);
     return new Date("");
   }
 }
@@ -398,7 +401,7 @@ export async function action({ request }: { request: Request }) {
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
   } catch (error) {
-    console.error("Error parsing selected slots:", error);
+    logger.error(`[Add workshop] Error parsing selected slots: ${error}`, { url: request.url });
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
@@ -411,7 +414,7 @@ export async function action({ request }: { request: Request }) {
   try {
     prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
   } catch (error) {
-    console.error("Error parsing prerequisites:", error);
+    logger.error(`[Add workshop] Error parsing prerequisites: ${error}`, { url: request.url });
     return { errors: { prerequisites: ["Invalid prerequisites format"] } };
   }
 
@@ -420,7 +423,7 @@ export async function action({ request }: { request: Request }) {
   try {
     equipments = JSON.parse(rawValues.equipments as string).map(Number);
   } catch (error) {
-    console.error("Error parsing equipments:", error);
+    logger.error(`[Add workshop] Error parsing equipments: ${error}`, { url: request.url });
     return { errors: { equipments: ["Invalid equipments format"] } };
   }
 
@@ -439,6 +442,7 @@ export async function action({ request }: { request: Request }) {
 
         // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
+          logger.error(`[Add workshop] End date must be later than start date`, { url: request.url });
           throw new Error("End date must be later than start date");
         }
 
@@ -456,7 +460,7 @@ export async function action({ request }: { request: Request }) {
       }
     );
   } catch (error) {
-    console.error("Error parsing occurrences:", error);
+    logger.error(`[Add workshop] Error parsing occurrences: ${error}`, { url: request.url });
     return {
       errors: {
         occurrences: [
@@ -471,6 +475,7 @@ export async function action({ request }: { request: Request }) {
 
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add workshop`, { url: request.url });
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -483,6 +488,7 @@ export async function action({ request }: { request: Request }) {
     (id) => !availableEquipmentIds.has(id)
   );
   if (unavailableEquipments.length > 0) {
+    logger.warn(`[Add workshop] One or more selected equipment are no longer available`, { url: request.url });
     return {
       errors: {
         equipments: ["One or more selected equipment are no longer available."],
@@ -506,6 +512,7 @@ export async function action({ request }: { request: Request }) {
         );
 
         if (conflict) {
+          logger.warn(`[Add workshop] The equipment ${conflictingEquipment.name} is booked during your workshop time.`, { url: request.url });
           return {
             errors: {
               equipments: [
@@ -547,7 +554,7 @@ export async function action({ request }: { request: Request }) {
                 hour12: true,
               }
             );
-
+            logger.warn(`[Add workshop] The equipment "${conflictingEquipment.name}" is already booked at ${formattedTime}. Please choose different dates or equipment.`, { url: request.url });
             return {
               errors: {
                 equipments: [
@@ -578,7 +585,7 @@ export async function action({ request }: { request: Request }) {
   });
 
   if (!parsed.success) {
-    console.log("Validation Errors:", parsed.error.flatten().fieldErrors);
+    logger.error(`[Add workshop] Validation Errors: ${parsed.error.flatten().fieldErrors}`, { url: request.url });
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
@@ -601,13 +608,14 @@ export async function action({ request }: { request: Request }) {
       request
     );
 
+    logger.info(`[User: ${roleUser?.userId}] Created workshop ${parsed.data.name} successfully.`, { url: request.url });
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
 
     // try {
     //   await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
     //   return redirect("/dashboard/admin");
     // } catch (error) {
-    //   console.error("Failed to reserve equipment slots:", error);
+    //   logger.error("Failed to reserve equipment slots:", error);
     //   return {
     //     errors: {
     //       slots: ["Failed to reserve equipment slots. Please try again."],
@@ -634,13 +642,11 @@ export async function action({ request }: { request: Request }) {
             userId
           );
         } catch (error) {
-          console.error("Error in bulkBookEquipment:", error);
+          logger.error(`[Add workshop] Error in bulkBookEquipment: ${error}`, { url: request.url });
           // Continue with the rest of the process instead of failing
         }
       } else {
-        console.log(
-          "No valid equipment slots selected, skipping bulkBookEquipment"
-        );
+        logger.warn(`[Add workshop] No valid equipment slots selected, skipping bulkBookEquipment`, { url: request.url });
       }
 
       // Create slots for all workshop occurrences
@@ -655,10 +661,7 @@ export async function action({ request }: { request: Request }) {
               userId
             );
           } catch (error) {
-            console.error(
-              `Error creating slots for equipment ${equipmentId}:`,
-              error
-            );
+            logger.error(`[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`, { url: request.url });
             // Continue with other equipment instead of failing the whole operation
           }
         }
@@ -666,7 +669,7 @@ export async function action({ request }: { request: Request }) {
 
       return redirect("/dashboard/admin");
     } catch (error) {
-      console.error("Failed to reserve equipment slots:", error);
+      logger.error(`[Add workshop] Failed to reserve equipment slots: ${error}`, { url: request.url });
       return {
         errors: {
           slots: ["Failed to reserve equipment slots. Please try again."],
@@ -674,7 +677,7 @@ export async function action({ request }: { request: Request }) {
       };
     }
   } catch (error) {
-    console.error("Error adding workshop:", error);
+    logger.error(`[Add workshop] Failed to add workshops: ${error}`, { url: request.url });
     return { errors: { database: ["Failed to add workshop"] } };
   }
 }

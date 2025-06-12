@@ -9,14 +9,25 @@ import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { FiSearch } from "react-icons/fi";
 import { Input } from "@/components/ui/input";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
+
   // Only admins can access this page.
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to admin users page`, {
+      url: request.url,
+    });
     return redirect("/dashboard/user");
   }
+
   const users = await getAllUsers();
+
+  logger.info(`Admin [User: ${roleUser.userId}] accessed the users management page`, {
+    url: request.url,
+  });
+
   return { roleUser, users };
 }
 
@@ -24,7 +35,11 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const actionType = formData.get("action");
   const roleUser = await getRoleUser(request);
+
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn("Unauthorized attempt to modify users", {
+      url: request.url,
+    });
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -33,9 +48,14 @@ export async function action({ request }: { request: Request }) {
     const newRoleId = formData.get("newRoleId");
     try {
       await updateUserRole(Number(userId), String(newRoleId));
+      logger.info(`Admin [User: ${roleUser.userId}] updated role for User [${userId}] to Role [${newRoleId}]`, {
+        url: request.url,
+      });
       return redirect("/dashboard/admin/users");
     } catch (error) {
-      console.error("Error updating user role:", error);
+      logger.error("Failed to update user role", {
+       url: request.url,
+      });
       return { error: "Failed to update user role" };
     }
   }
@@ -45,9 +65,14 @@ export async function action({ request }: { request: Request }) {
     const allowLevel4 = formData.get("allowLevel4");
     try {
       await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
+      logger.info(`Admin [User: ${roleUser.userId}] set allowLevel4=${allowLevel4} for User [${userId}]`, {
+        url: request.url,
+      });
       return redirect("/dashboard/admin/users");
     } catch (error) {
-      console.error("Error updating allowLevel4:", error);
+      logger.error("Failed to update allowLevel4", {
+        url: request.url,
+      });
       return { error: "Failed to update allowLevel4" };
     }
   }
