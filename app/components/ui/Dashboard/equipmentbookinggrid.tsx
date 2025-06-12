@@ -1201,7 +1201,8 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure && (
                           <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
-                            Reserved for this workshop
+                            {/* Reserved for this workshop */}
+                            Current Workshop Time
                           </div>
                         )}
                       {isCurrentWorkshopEditingSlot &&
@@ -1209,7 +1210,8 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure && (
                           <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-yellow-100 border border-yellow-200 rounded text-yellow-700 text-xs whitespace-nowrap shadow-lg">
-                            Currently editing this workshop date
+                            {/* Currently editing this workshop date */}
+                            Old Workshop Time
                           </div>
                         )}
                       {isOtherWorkshopSlot &&
@@ -1225,7 +1227,11 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure &&
                         !(isWorkshopSlot || slot?.reservedForWorkshop) && (
-                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-700 text-xs whitespace-nowrap shadow-lg">
+                          <div className={`hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 rounded text-xs whitespace-nowrap shadow-lg ${
+                            slot?.bookedByMe 
+                              ? "bg-blue-100 border border-blue-200 text-blue-700"
+                              : "bg-red-100 border border-red-200 text-red-700"
+                          }`}>
                             {slot?.bookedByMe
                               ? "Booked by you"
                               : "Booked by others"}
@@ -1377,12 +1383,16 @@ export default function EquipmentBookingGrid({
             <span>Unavailable</span>
           </div>
           <div className="flex items-center gap-0.5">
-            <div className="w-3 h-3 bg-green-500 border border-gray-300" />
-            <span>Available</span>
-          </div>
-          <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-white border border-gray-300" />
             <span>Unselected</span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-green-500 border border-gray-300" />
+            <span>{currentWorkshopOccurrences && currentWorkshopOccurrences.length > 0 ? "Current Workshop Time(s)" : "Available"}</span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-yellow-400 border border-gray-300" />
+             <span>{currentWorkshopOccurrences && currentWorkshopOccurrences.length > 0 ? "Previous Workshop Time(s)" : "Being Edited"}</span>
           </div>
           <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-blue-400 border border-gray-300" />
@@ -1395,10 +1405,6 @@ export default function EquipmentBookingGrid({
           <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
-          </div>
-          <div className="flex items-center gap-0.5">
-            <div className="w-3 h-3 bg-yellow-400 border border-gray-300" />
-            <span>Being Edited</span>
           </div>
           {(level3Restrictions || level4Restrictions) && (
             <div className="flex items-center gap-0.5">
