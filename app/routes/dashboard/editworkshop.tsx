@@ -1166,7 +1166,10 @@ export default function EditWorkshop() {
       setFormSubmitting(true);
 
       // Use DOM to submit the form
-      document.forms[0].submit();
+      // document.forms[0].submit();
+
+      const formElement = e.currentTarget as HTMLFormElement;
+      formElement.submit();
     } catch (error) {
       console.error("Error in form submission:", error);
       // Ensure form submits even if there's an error in our checks
@@ -2291,16 +2294,19 @@ export default function EditWorkshop() {
                             "User confirmed to proceed with past dates"
                           );
                           setFormSubmitting(true);
-                          // Use setTimeout to ensure React state updates before form submission
+                          setIsConfirmDialogOpen(false);
+                          // FIXED: Use setTimeout to ensure dialog closes and then submit
                           setTimeout(() => {
                             const formElement = document.querySelector(
                               "form"
                             ) as HTMLFormElement;
                             if (formElement) {
                               console.log("Submitting form after confirmation");
-                              formElement.submit();
+                              // Create and dispatch a submit event to trigger the action
+                              const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                              formElement.dispatchEvent(submitEvent);
                             }
-                          }, 50);
+                          }, 100);
                         }}
                       >
                         Proceed Anyway
