@@ -733,7 +733,9 @@ export default function EditWorkshop() {
         connectId: occ.connectId,
         offerId: occ.offerId, // Add this line
       };
-    }) || [];
+    })
+    // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
+    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
 
   const defaultContinuation =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
