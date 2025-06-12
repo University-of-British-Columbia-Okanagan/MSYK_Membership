@@ -183,8 +183,8 @@ async function main() {
     },
     {
       workshopId: 2, // Pottery
-      startDate: new Date("2025-06-10T14:00:00Z"),
-      endDate: new Date("2025-06-10T16:00:00Z"),
+      startDate: new Date("2025-07-10T14:00:00Z"),
+      endDate: new Date("2025-07-10T16:00:00Z"),
     },
     {
       workshopId: 3, // Knitting

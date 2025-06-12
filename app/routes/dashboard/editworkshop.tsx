@@ -733,7 +733,9 @@ export default function EditWorkshop() {
         connectId: occ.connectId,
         offerId: occ.offerId, // Add this line
       };
-    }) || [];
+    })
+    // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
+    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
 
   const defaultContinuation =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
@@ -919,6 +921,12 @@ export default function EditWorkshop() {
 
     // Update the chosen field
     updatedOccurrences[index][field] = localDate;
+
+    // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
+    if (field === "startDate" && !isNaN(localDate.getTime())) {
+      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      updatedOccurrences[index].endDate = endDate;
+    }
 
     // If it's not already cancelled, compute a new status based on the start date.
     if (updatedOccurrences[index].status !== "cancelled") {
@@ -1160,7 +1168,10 @@ export default function EditWorkshop() {
       setFormSubmitting(true);
 
       // Use DOM to submit the form
-      document.forms[0].submit();
+      // document.forms[0].submit();
+
+      const formElement = e.currentTarget as HTMLFormElement;
+      formElement.submit();
     } catch (error) {
       console.error("Error in form submission:", error);
       // Ensure form submits even if there's an error in our checks
@@ -2285,16 +2296,19 @@ export default function EditWorkshop() {
                             "User confirmed to proceed with past dates"
                           );
                           setFormSubmitting(true);
-                          // Use setTimeout to ensure React state updates before form submission
+                          setIsConfirmDialogOpen(false);
+                          // FIXED: Use setTimeout to ensure dialog closes and then submit
                           setTimeout(() => {
                             const formElement = document.querySelector(
                               "form"
                             ) as HTMLFormElement;
                             if (formElement) {
                               console.log("Submitting form after confirmation");
-                              formElement.submit();
+                              // Create and dispatch a submit event to trigger the action
+                              const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                              formElement.dispatchEvent(submitEvent);
                             }
-                          }, 50);
+                          }, 100);
                         }}
                       >
                         Proceed Anyway

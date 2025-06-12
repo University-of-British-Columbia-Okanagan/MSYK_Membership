@@ -505,6 +505,13 @@ export default function AdminSettings() {
     message: "",
   });
 
+  const [weeklyLimitError, setWeeklyLimitError] = useState<string>("");
+
+  const [dailyFormBeingEdited, setDailyFormBeingEdited] =
+    useState<boolean>(false);
+  const [weeklyFormBeingEdited, setWeeklyFormBeingEdited] =
+    useState<boolean>(false);
+
   // Define columns for the ShadTable
   type UserRow = (typeof users)[number];
   const columns: ColumnDefinition<UserRow>[] = [
@@ -761,6 +768,45 @@ export default function AdminSettings() {
     }
     return options;
   }, []);
+
+  const validateLimits = (): boolean => {
+    // Convert daily limit to slots (30-minute slots)
+    const dailyInMinutes =
+      maxEquipmentSlotsPerDay.unit === "hours"
+        ? maxEquipmentSlotsPerDay.value * 60
+        : maxEquipmentSlotsPerDay.value;
+    const dailyInSlots = dailyInMinutes / 30;
+
+    // Weekly is always in slots
+    const weeklyInSlots = maxEquipmentSlotsPerWeek.value;
+
+    // CHANGE BACK TO JUST < (weekly can equal daily, but not be less)
+    if (weeklyInSlots < dailyInSlots) {
+      setWeeklyLimitError(
+        `Weekly limit (${weeklyInSlots} slots) cannot be less than daily limit (${dailyInSlots} slots)`
+      );
+      return false;
+    }
+
+    setWeeklyLimitError("");
+    return true;
+  };
+
+  // Keep the old function name for compatibility but call the new one
+  const validateWeeklyLimit = (
+    weeklyValue: number,
+    weeklyUnit: string
+  ): boolean => {
+    return validateLimits();
+  };
+
+  React.useEffect(() => {
+    validateLimits();
+  }, [
+    maxEquipmentSlotsPerDay.value,
+    maxEquipmentSlotsPerDay.unit,
+    maxEquipmentSlotsPerWeek.value,
+  ]);
 
   const level3TimeRange = calculateLevel3TimeRange();
 
@@ -1297,6 +1343,28 @@ export default function AdminSettings() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {/* ADD BLOCKING UI WHEN WEEKLY IS BEING EDITED */}
+                      {weeklyFormBeingEdited && (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            Cannot edit daily limits while weekly limits are
+                            being modified. Please save or cancel your weekly
+                            changes first.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      {/* ADD ERROR DISPLAY FOR DAILY FORM TOO */}
+                      {weeklyLimitError && (
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            {weeklyLimitError}
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
                       <div className="space-y-2">
                         <Label htmlFor="maxEquipmentSlotsPerDay">
                           Maximum Equipment Booking Time Per Day
@@ -1306,6 +1374,9 @@ export default function AdminSettings() {
                             id="maxEquipmentSlotsPerDay"
                             type="number"
                             value={maxEquipmentSlotsPerDay.value}
+                            disabled={weeklyFormBeingEdited}
+                            onFocus={() => setDailyFormBeingEdited(true)}
+                            onBlur={() => setDailyFormBeingEdited(false)}
                             onChange={(e) => {
                               const inputValue = parseInt(e.target.value) || 30;
                               let validValue = inputValue;
@@ -1327,10 +1398,28 @@ export default function AdminSettings() {
                                 );
                               }
 
-                              setMaxEquipmentSlotsPerDay((prev) => ({
-                                ...prev,
+                              const newDailyState = {
+                                ...maxEquipmentSlotsPerDay,
                                 value: validValue,
-                              }));
+                              };
+                              setMaxEquipmentSlotsPerDay(newDailyState);
+
+                              // Validate with the new values immediately
+                              const dailyInMinutes =
+                                newDailyState.unit === "hours"
+                                  ? newDailyState.value * 60
+                                  : newDailyState.value;
+                              const dailyInSlots = dailyInMinutes / 30;
+                              const weeklyInSlots =
+                                maxEquipmentSlotsPerWeek.value;
+
+                              if (weeklyInSlots < dailyInSlots) {
+                                setWeeklyLimitError(
+                                  `Weekly limit (${weeklyInSlots} slots) cannot be less than daily limit (${dailyInSlots} slots)`
+                                );
+                              } else {
+                                setWeeklyLimitError("");
+                              }
                             }}
                             min={
                               maxEquipmentSlotsPerDay.unit === "hours"
@@ -1347,10 +1436,15 @@ export default function AdminSettings() {
                                 ? "1"
                                 : "30"
                             }
-                            className="w-24"
+                            className={`w-24 ${
+                              weeklyLimitError ? "border-red-500" : ""
+                            } ${weeklyFormBeingEdited ? "opacity-50" : ""}`}
                           />
                           <select
                             value={maxEquipmentSlotsPerDay.unit}
+                            disabled={weeklyFormBeingEdited}
+                            onFocus={() => setDailyFormBeingEdited(true)}
+                            onBlur={() => setDailyFormBeingEdited(false)}
                             onChange={(e) => {
                               const newUnit = e.target.value;
                               const currentMinutes =
@@ -1358,21 +1452,40 @@ export default function AdminSettings() {
                                   ? maxEquipmentSlotsPerDay.value * 60
                                   : maxEquipmentSlotsPerDay.value;
 
-                              setMaxEquipmentSlotsPerDay({
+                              const newValue =
+                                newUnit === "hours"
+                                  ? Math.max(1, Math.floor(currentMinutes / 60))
+                                  : Math.max(
+                                      30,
+                                      Math.round(currentMinutes / 30) * 30
+                                    );
+
+                              const newDailyState = {
                                 unit: newUnit,
-                                value:
-                                  newUnit === "hours"
-                                    ? Math.max(
-                                        1,
-                                        Math.floor(currentMinutes / 60)
-                                      )
-                                    : Math.max(
-                                        30,
-                                        Math.round(currentMinutes / 30) * 30
-                                      ),
-                              });
+                                value: newValue,
+                              };
+                              setMaxEquipmentSlotsPerDay(newDailyState);
+
+                              // Validate with the new values immediately
+                              const dailyInMinutes =
+                                newDailyState.unit === "hours"
+                                  ? newDailyState.value * 60
+                                  : newDailyState.value;
+                              const dailyInSlots = dailyInMinutes / 30;
+                              const weeklyInSlots =
+                                maxEquipmentSlotsPerWeek.value;
+
+                              if (weeklyInSlots < dailyInSlots) {
+                                setWeeklyLimitError(
+                                  `Weekly limit (${weeklyInSlots} slots) cannot be less than daily limit (${dailyInSlots} slots)`
+                                );
+                              } else {
+                                setWeeklyLimitError("");
+                              }
                             }}
-                            className="border rounded px-2 py-1 text-sm w-20"
+                            className={`border rounded px-2 py-1 text-sm w-20 ${
+                              weeklyFormBeingEdited ? "opacity-50" : ""
+                            }`}
                           >
                             <option value="hours">Hours</option>
                             <option value="minutes">Minutes</option>
@@ -1393,16 +1506,17 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        disabled={weeklyFormBeingEdited || !!weeklyLimitError}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Save className="h-4 w-4 mr-2" />
-                        Save Booking Limits
+                        Save Daily Limits
                       </Button>
                     </CardFooter>
                   </Card>
                 </Form>
 
-                 {/* Max Equipment Slots Per Week Form */}
+                {/* Max Equipment Slots Per Week Form */}
                 <Form method="post" className="space-y-6 mb-8">
                   <input
                     type="hidden"
@@ -1417,20 +1531,43 @@ export default function AdminSettings() {
                   <input
                     type="hidden"
                     name="maxEquipmentSlotsPerWeek"
-                    value={
-                      maxEquipmentSlotsPerWeek.unit === "hours"
-                        ? maxEquipmentSlotsPerWeek.value * 2 // Convert hours to 30-min slots
-                        : maxEquipmentSlotsPerWeek.value
-                    }
+                    // value={
+                    //   maxEquipmentSlotsPerWeek.unit === "hours"
+                    //     ? maxEquipmentSlotsPerWeek.value * 2 // Convert hours to 30-min slots
+                    //     : maxEquipmentSlotsPerWeek.value
+                    // }
+                    value={maxEquipmentSlotsPerWeek.value}
                   />
                   <Card>
                     <CardHeader>
                       <CardTitle>Weekly Equipment Booking Limits</CardTitle>
                       <CardDescription>
-                        Set the maximum number of slots a user can book equipment per week (7-day period)
+                        Set the maximum number of slots a user can book
+                        equipment per week (7-day period)
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {/* ADD BLOCKING UI WHEN DAILY IS BEING EDITED */}
+                      {dailyFormBeingEdited && (
+                        <Alert>
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            Cannot edit weekly limits while daily limits are
+                            being modified. Please save or cancel your daily
+                            changes first.
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
+                      {weeklyLimitError && (
+                        <Alert variant="destructive">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertDescription>
+                            {weeklyLimitError}
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
                       <div className="space-y-2">
                         <Label htmlFor="maxEquipmentSlotsPerWeek">
                           Maximum Equipment Booking Slots Per Week
@@ -1440,83 +1577,73 @@ export default function AdminSettings() {
                             id="maxEquipmentSlotsPerWeek"
                             type="number"
                             value={maxEquipmentSlotsPerWeek.value}
+                            disabled={dailyFormBeingEdited}
+                            onFocus={() => setWeeklyFormBeingEdited(true)}
+                            onBlur={() => setWeeklyFormBeingEdited(false)}
                             onChange={(e) => {
                               const inputValue = parseInt(e.target.value) || 1;
-                              let validValue = inputValue;
-
-                              if (maxEquipmentSlotsPerWeek.unit === "hours") {
-                                // For hours: minimum 0.5, maximum 84 (3.5 days)
-                                validValue = Math.max(
-                                  0.5,
-                                  Math.min(84, inputValue)
-                                );
-                              } else {
-                                // For slots: minimum 1, maximum 168 (7 days * 24 hours * 2 slots per hour)
-                                validValue = Math.max(
-                                  1,
-                                  Math.min(168, inputValue)
-                                );
-                              }
+                              // For slots: minimum 1, maximum 168 (7 days * 24 hours * 2 slots per hour)
+                              const validValue = Math.max(
+                                1,
+                                Math.min(168, inputValue)
+                              );
 
                               setMaxEquipmentSlotsPerWeek((prev) => ({
                                 ...prev,
                                 value: validValue,
                               }));
-                            }}
-                            min={
-                              maxEquipmentSlotsPerWeek.unit === "hours"
-                                ? "0.5"
-                                : "1"
-                            }
-                            max={
-                              maxEquipmentSlotsPerWeek.unit === "hours"
-                                ? "84"
-                                : "168"
-                            }
-                            step={
-                              maxEquipmentSlotsPerWeek.unit === "hours"
-                                ? "0.5"
-                                : "1"
-                            }
-                            className="w-24"
-                          />
-                          <select
-                            value={maxEquipmentSlotsPerWeek.unit}
-                            onChange={(e) => {
-                              const newUnit = e.target.value;
-                              const currentSlots = maxEquipmentSlotsPerWeek.value;
 
-                              setMaxEquipmentSlotsPerWeek({
-                                unit: newUnit,
-                                value:
-                                  newUnit === "hours"
-                                    ? Math.max(0.5, currentSlots / 2) // Convert slots to hours
-                                    : Math.max(1, currentSlots * 2), // Convert hours to slots
-                              });
+                              // Validate with the new weekly value immediately
+                              const dailyInMinutes =
+                                maxEquipmentSlotsPerDay.unit === "hours"
+                                  ? maxEquipmentSlotsPerDay.value * 60
+                                  : maxEquipmentSlotsPerDay.value;
+                              const dailyInSlots = dailyInMinutes / 30;
+
+                              if (validValue < dailyInSlots) {
+                                setWeeklyLimitError(
+                                  `Weekly limit (${validValue} slots) cannot be less than daily limit (${dailyInSlots} slots)`
+                                );
+                              } else {
+                                setWeeklyLimitError("");
+                              }
                             }}
-                            className="border rounded px-2 py-1 text-sm w-20"
+                            min="1"
+                            max="168"
+                            step="1"
+                            className={`w-24 ${
+                              weeklyLimitError ? "border-red-500" : ""
+                            } ${dailyFormBeingEdited ? "opacity-50" : ""}`}
+                          />
+                          <span
+                            className={`text-sm text-gray-600 w-16 ${
+                              dailyFormBeingEdited ? "opacity-50" : ""
+                            }`}
                           >
-                            <option value="slots">Slots</option>
-                            <option value="hours">Hours</option>
-                          </select>
+                            Slots
+                          </span>
                         </div>
                         <p className="text-sm text-gray-500">
-                          Maximum number of 30-minute slots a user can book per 7-day period. 
-                          Slots: 1-168 slots (each slot = 30 minutes). Hours: 0.5-84 hours. 
-                          Current setting:{" "}
-                          {maxEquipmentSlotsPerWeek.unit === "hours"
-                            ? maxEquipmentSlotsPerWeek.value * 2
-                            : maxEquipmentSlotsPerWeek.value}{" "}
-                          slots ({maxEquipmentSlotsPerWeek.unit === "hours"
-                            ? maxEquipmentSlotsPerWeek.value
-                            : maxEquipmentSlotsPerWeek.value / 2} hours)
+                          Maximum number of 30-minute slots a user can book per
+                          7-day period. Range: 1-168 slots (each slot = 30
+                          minutes). Current setting:{" "}
+                          {maxEquipmentSlotsPerWeek.value} slots (
+                          {maxEquipmentSlotsPerWeek.value / 2} hours). Must be
+                          at least{" "}
+                          {Math.ceil(
+                            (maxEquipmentSlotsPerDay.unit === "hours"
+                              ? maxEquipmentSlotsPerDay.value * 60
+                              : maxEquipmentSlotsPerDay.value) / 30
+                          )}{" "}
+                          slots (daily limit).
                         </p>
                       </div>
                     </CardContent>
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        disabled={dailyFormBeingEdited || !!weeklyLimitError}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Weekly Limits
