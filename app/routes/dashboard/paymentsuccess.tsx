@@ -5,7 +5,6 @@ import {
   registerUserForAllOccurrences,
 } from "../../models/workshop.server";
 import { registerMembershipSubscription } from "../../models/membership.server";
-import { saveUserMembershipPayment } from "../../models/user.server";
 import { useState, useEffect } from "react";
 
 export async function loader({ request }: { request: Request }) {
@@ -113,58 +112,6 @@ export async function loader({ request }: { request: Request }) {
 
   // Membership branch
   if (membershipPlanId) {
-    // 1) Retrieve the Checkout Session and expand into its PaymentIntent & PaymentMethod
-    const sessionWithPM = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["payment_intent.payment_method"],
-    });
-    const pi = sessionWithPM.payment_intent as Stripe.PaymentIntent;
-    if (!pi || typeof pi.payment_method === "string") {
-      throw new Error("Missing expanded payment method");
-    }
-    const pm = pi.payment_method as Stripe.PaymentMethod;
-
-    // Attempt to get the Customer ID Stripe created for us.
-    // If it’s null, we build one ourselves from the session’s customer_details.
-    let stripeCustomerId: string;
-    if (typeof session.customer === "string" && session.customer) {
-      stripeCustomerId = session.customer;
-    } else {
-      // session.customer_details is guaranteed by Checkout when you pass customer_email
-      const details = session.customer_details!;
-      const newCust = await stripe.customers.create({
-        email: details.email || undefined,
-        name: details.name || undefined,
-        address: details.address
-          ? {
-              line1: details.address.line1 || undefined,
-              line2: details.address.line2 || undefined,
-              city: details.address.city || undefined,
-              postal_code: details.address.postal_code || undefined,
-              country: details.address.country || undefined,
-            }
-          : undefined,
-      });
-      stripeCustomerId = newCust.id;
-    }
-    // Now you have a Customer ID no matter what:
-    console.log("Using Stripe Customer:", stripeCustomerId);
-
-    // 4) Persist the hashed card + billing details and Stripe IDs
-    await saveUserMembershipPayment({
-      userId: parseInt(metadata.userId!),
-      membershipPlanId: parseInt(metadata.membershipPlanId!),
-      email: pm.billing_details.email || "",
-      cardNumber: `****${pm.card?.last4}`, // only last4
-      expMonth: pm.card?.exp_month || 0,
-      expYear: pm.card?.exp_year || 0,
-      cvc: "", // never returned
-      cardholderName: pm.billing_details.name || "",
-      region: pm.billing_details.address?.country || "",
-      postalCode: pm.billing_details.address?.postal_code || "",
-      stripeCustomerId, // saved above
-      stripePaymentMethodId: pm.id,
-    });
-
     try {
       const currentMembershipId = metadata.currentMembershipId
         ? parseInt(metadata.currentMembershipId)
