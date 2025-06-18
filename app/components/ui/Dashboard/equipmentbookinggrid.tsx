@@ -94,7 +94,7 @@ export default function EquipmentBookingGrid({
   userRoleLevel,
   workshopSlots,
   currentWorkshopOccurrences,
-  maxSlotsPerDay = 4, // we convert this from slots to minutes later
+  maxSlotsPerDay = 4, // in slots (each slot = 30 minutes)
   maxSlotsPerWeek = 14,
   currentWorkshopId,
   currentWorkshopName,
@@ -366,9 +366,10 @@ export default function EquipmentBookingGrid({
       : currentDayCount + 1;
     const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1;
 
-    const maxSlotsAllowed = Math.floor(maxSlotsPerDay / 30);
+    // maxSlotsPerDay is already in slots, no conversion needed
+    const maxSlotsAllowed = maxSlotsPerDay;
     if (!isAlreadySelected && newDayCount > maxSlotsAllowed) {
-      const hours = maxSlotsPerDay / 60; // Convert minutes to hours for display
+      const hours = (maxSlotsPerDay * 30) / 60; // Convert slots to hours for display
       setErrorMessage(
         `You can only select up to ${hours} hours (${maxSlotsAllowed} slots) per day.`
       );
@@ -1227,11 +1228,13 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure &&
                         !(isWorkshopSlot || slot?.reservedForWorkshop) && (
-                          <div className={`hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 rounded text-xs whitespace-nowrap shadow-lg ${
-                            slot?.bookedByMe 
-                              ? "bg-blue-100 border border-blue-200 text-blue-700"
-                              : "bg-red-100 border border-red-200 text-red-700"
-                          }`}>
+                          <div
+                            className={`hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 rounded text-xs whitespace-nowrap shadow-lg ${
+                              slot?.bookedByMe
+                                ? "bg-blue-100 border border-blue-200 text-blue-700"
+                                : "bg-red-100 border border-red-200 text-red-700"
+                            }`}
+                          >
                             {slot?.bookedByMe
                               ? "Booked by you"
                               : "Booked by others"}
@@ -1388,11 +1391,21 @@ export default function EquipmentBookingGrid({
           </div>
           <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-green-500 border border-gray-300" />
-            <span>{currentWorkshopOccurrences && currentWorkshopOccurrences.length > 0 ? "Current Workshop Time(s)" : "Available"}</span>
+            <span>
+              {currentWorkshopOccurrences &&
+              currentWorkshopOccurrences.length > 0
+                ? "Current Workshop Time(s)"
+                : "Available"}
+            </span>
           </div>
           <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-yellow-400 border border-gray-300" />
-             <span>{currentWorkshopOccurrences && currentWorkshopOccurrences.length > 0 ? "Previous Workshop Time(s)" : "Being Edited"}</span>
+            <span>
+              {currentWorkshopOccurrences &&
+              currentWorkshopOccurrences.length > 0
+                ? "Previous Workshop Time(s)"
+                : "Being Edited"}
+            </span>
           </div>
           <div className="flex items-center gap-0.5">
             <div className="w-3 h-3 bg-blue-400 border border-gray-300" />

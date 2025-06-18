@@ -5,13 +5,69 @@ import {
   registerUserForAllOccurrences,
 } from "../../models/workshop.server";
 import { registerMembershipSubscription } from "../../models/membership.server";
-import { saveUserMembershipPayment } from "../../models/user.server";
 import { useState, useEffect } from "react";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const isDowngrade = url.searchParams.get("downgrade") === "true";
   const isResubscribe = url.searchParams.get("resubscribe") === "true";
+  const isQuickCheckout = url.searchParams.get("quick_checkout") === "true";
+  const checkoutType = url.searchParams.get("type");
+
+  if (isQuickCheckout && checkoutType) {
+    let message = "🎉 Payment successful!";
+    let redirectPath = "/dashboard";
+
+    switch (checkoutType) {
+      case "workshop":
+        message =
+          "🎉 Workshop registration successful! A confirmation email has been sent.";
+        redirectPath = "/dashboard/workshops";
+        break;
+      case "equipment":
+        message =
+          "🎉 Equipment payment successful! Your booking slots will be processed.";
+        redirectPath = "/dashboard/equipments";
+
+        // For equipment quick checkout, we need to handle the booking
+        const equipmentId = url.searchParams.get("equipment_id");
+        const slotsDataKey = url.searchParams.get("slots_data_key");
+
+        if (equipmentId && slotsDataKey) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              isQuickCheckout: true,
+              isEquipment: true,
+              checkoutType,
+              redirectPath,
+              message,
+              equipmentId: parseInt(equipmentId),
+              slotsDataKey: slotsDataKey,
+            }),
+            { headers: { "Content-Type": "application/json" } }
+          );
+        }
+        break;
+      case "membership":
+        message =
+          "🎉 Membership subscription successful! A confirmation email has been sent.";
+        redirectPath = "/dashboard/memberships";
+        break;
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isQuickCheckout: true,
+        checkoutType,
+        redirectPath,
+        message,
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   if (isDowngrade) {
     return new Response(
       JSON.stringify({
@@ -76,58 +132,6 @@ export async function loader({ request }: { request: Request }) {
 
   // Membership branch
   if (membershipPlanId) {
-    // 1) Retrieve the Checkout Session and expand into its PaymentIntent & PaymentMethod
-    const sessionWithPM = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["payment_intent.payment_method"],
-    });
-    const pi = sessionWithPM.payment_intent as Stripe.PaymentIntent;
-    if (!pi || typeof pi.payment_method === "string") {
-      throw new Error("Missing expanded payment method");
-    }
-    const pm = pi.payment_method as Stripe.PaymentMethod;
-
-    // Attempt to get the Customer ID Stripe created for us.
-    // If it’s null, we build one ourselves from the session’s customer_details.
-    let stripeCustomerId: string;
-    if (typeof session.customer === "string" && session.customer) {
-      stripeCustomerId = session.customer;
-    } else {
-      // session.customer_details is guaranteed by Checkout when you pass customer_email
-      const details = session.customer_details!;
-      const newCust = await stripe.customers.create({
-        email: details.email || undefined,
-        name: details.name || undefined,
-        address: details.address
-          ? {
-              line1: details.address.line1 || undefined,
-              line2: details.address.line2 || undefined,
-              city: details.address.city || undefined,
-              postal_code: details.address.postal_code || undefined,
-              country: details.address.country || undefined,
-            }
-          : undefined,
-      });
-      stripeCustomerId = newCust.id;
-    }
-    // Now you have a Customer ID no matter what:
-    console.log("Using Stripe Customer:", stripeCustomerId);
-
-    // 4) Persist the hashed card + billing details and Stripe IDs
-    await saveUserMembershipPayment({
-      userId: parseInt(metadata.userId!),
-      membershipPlanId: parseInt(metadata.membershipPlanId!),
-      email: pm.billing_details.email || "",
-      cardNumber: `****${pm.card?.last4}`, // only last4
-      expMonth: pm.card?.exp_month || 0,
-      expYear: pm.card?.exp_year || 0,
-      cvc: "", // never returned
-      cardholderName: pm.billing_details.name || "",
-      region: pm.billing_details.address?.country || "",
-      postalCode: pm.billing_details.address?.postal_code || "",
-      stripeCustomerId, // saved above
-      stripePaymentMethodId: pm.id,
-    });
-
     try {
       const currentMembershipId = metadata.currentMembershipId
         ? parseInt(metadata.currentMembershipId)
@@ -228,6 +232,9 @@ export default function PaymentSuccess() {
     success: boolean;
     isMembership?: boolean;
     isEquipment?: boolean;
+    isQuickCheckout?: boolean;
+    checkoutType?: string;
+    redirectPath?: string;
     message: string;
     slotsDataKey?: string;
     equipmentId?: number;
@@ -241,7 +248,7 @@ export default function PaymentSuccess() {
       const processEquipmentBooking = async () => {
         try {
           setBookingStatus("Processing your equipment booking...");
-          
+
           // Get slots from sessionStorage
           const slotsData = sessionStorage.getItem(data.slotsDataKey!);
           if (!slotsData) {
@@ -250,22 +257,22 @@ export default function PaymentSuccess() {
           }
 
           const slots = JSON.parse(slotsData);
-          
+
           // Book each slot by making individual requests to the equipment booking endpoint
           for (const slotString of slots) {
             const [startTime, endTime] = slotString.split("|");
-            
+
             // Make a request to book each slot
-            const response = await fetch('/dashboard/equipments/book-slot', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+            const response = await fetch("/dashboard/equipments/book-slot", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 equipmentId: data.equipmentId,
                 startTime,
-                endTime
-              })
+                endTime,
+              }),
             });
-            
+
             if (!response.ok) {
               throw new Error(`Failed to book slot: ${startTime}`);
             }
@@ -274,10 +281,11 @@ export default function PaymentSuccess() {
           // Clean up sessionStorage
           sessionStorage.removeItem(data.slotsDataKey!);
           setBookingStatus("✅ All equipment slots booked successfully!");
-          
         } catch (error: any) {
           console.error("Equipment booking error:", error);
-          setBookingStatus(`❌ Booking failed: ${error.message}. Please contact support.`);
+          setBookingStatus(
+            `❌ Booking failed: ${error.message}. Please contact support.`
+          );
         }
       };
 
@@ -301,7 +309,9 @@ export default function PaymentSuccess() {
       <button
         className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
         onClick={() => {
-          if (data.isEquipment) {
+          if (data.isQuickCheckout && data.redirectPath) {
+            navigate(data.redirectPath);
+          } else if (data.isEquipment) {
             navigate("/dashboard/equipments");
           } else if (data.isMembership) {
             navigate("/dashboard/memberships");
@@ -310,7 +320,9 @@ export default function PaymentSuccess() {
           }
         }}
       >
-        {data.isEquipment
+        {data.isQuickCheckout
+          ? `Back to ${data.checkoutType}s`
+          : data.isEquipment
           ? "Back to Equipment"
           : data.isMembership
           ? "Back to Memberships"

@@ -314,11 +314,11 @@ async function main() {
 
   await prisma.adminSettings.upsert({
     where: { key: "max_number_equipment_slots_per_day" },
-    update: { value: "120" },
+    update: { value: "4" },
     create: {
       key: "max_number_equipment_slots_per_day",
-      value: "120",
-      description: "Maximum number of minutes a user can book equipment per day (stored in minutes, 120 = 2 hours)",
+      value: "4",
+      description: "Maximum number of 30-minute slots a user can book equipment per day (stored as slot count, 4 = 2 hours)",
     },
   })
 

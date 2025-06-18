@@ -24,6 +24,8 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { getRoleUser } from "../../utils/session.server";
 // import { checkSlotAvailability } from "../../models/equipment.server";
+import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
+import { getSavedPaymentMethod } from "../../models/user.server";
 
 export async function loader({
   request,
@@ -66,6 +68,8 @@ export async function loader({
     "14"
   );
 
+  const savedPaymentMethod = user ? await getSavedPaymentMethod(user.id) : null;
+
   return json({
     equipment: equipmentWithSlots,
     roleLevel,
@@ -77,6 +81,7 @@ export async function loader({
     maxSlotsPerDay: parseInt(maxSlotsPerDay, 10),
     maxSlotsPerWeek: parseInt(maxSlotsPerWeek, 10),
     roleUser,
+    savedPaymentMethod,
   });
 }
 
@@ -145,15 +150,6 @@ export async function action({ request }: { request: Request }) {
   }
 }
 
-// Component
-// export default function EquipmentBookingForm() {
-//   const { equipment, roleLevel } = useLoaderData();
-//   const actionData = useActionData();
-//   const navigation = useNavigation();
-//   const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
-//     null
-//   );
-//   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
 export default function EquipmentBookingForm() {
   const {
     equipment,
@@ -166,6 +162,7 @@ export default function EquipmentBookingForm() {
     maxSlotsPerDay,
     maxSlotsPerWeek,
     roleUser,
+    savedPaymentMethod,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -197,7 +194,9 @@ export default function EquipmentBookingForm() {
               <Button
                 variant="outline"
                 onClick={() =>
-                  navigate(isAdmin ? "/dashboard/equipments" : "/dashboard/equipments")
+                  navigate(
+                    isAdmin ? "/dashboard/equipments" : "/dashboard/equipments"
+                  )
                 }
                 className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
               >
@@ -320,6 +319,55 @@ export default function EquipmentBookingForm() {
                   return storageKey;
                 })()}
               />
+
+              {/* Quick Checkout Section */}
+              {selectedSlots.length > 0 &&
+                savedPaymentMethod &&
+                selectedEquipment &&
+                totalPrice && (
+                  <div className="mt-6">
+                    <QuickCheckout
+                      userId={roleUser?.userId || 0}
+                      checkoutData={{
+                        type: "equipment",
+                        equipmentId: selectedEquipment,
+                        slotCount: selectedSlots.length,
+                        price: parseFloat(totalPrice),
+                        slotsDataKey: (() => {
+                          // Store slots in sessionStorage with a unique key for quick checkout
+                          const storageKey = `equipment_slots_quick_${Date.now()}_${Math.random()}`;
+                          if (typeof window !== "undefined") {
+                            sessionStorage.setItem(
+                              storageKey,
+                              JSON.stringify(selectedSlots)
+                            );
+                          }
+                          return storageKey;
+                        })(),
+                      }}
+                      itemName={`${selectedEquip?.name} Booking`}
+                      itemPrice={parseFloat(totalPrice)}
+                      savedCard={{
+                        cardLast4: savedPaymentMethod.cardLast4,
+                        cardExpiry: savedPaymentMethod.cardExpiry,
+                      }}
+                      onSuccess={() => {
+                        console.log("Equipment payment successful!");
+                      }}
+                      onError={(error) => {
+                        console.error("Equipment payment failed:", error);
+                      }}
+                    />
+
+                    {/* Divider */}
+                    <div className="my-6 flex items-center">
+                      <div className="flex-1 border-t border-gray-300"></div>
+                      <div className="mx-4 text-gray-500 text-sm">OR</div>
+                      <div className="flex-1 border-t border-gray-300"></div>
+                    </div>
+                  </div>
+                )}
+
               <div className="flex justify-center mt-4">
                 <Button
                   type="submit"
