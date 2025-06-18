@@ -494,9 +494,9 @@ export default function PaymentInformationPage() {
                               {actionData.errors.cardNumber}
                             </p>
                           )}
-                          <p className="mt-1 text-xs text-gray-500">
+                          {/* <p className="mt-1 text-xs text-gray-500">
                             For testing, use: 4242 4242 4242 4242
-                          </p>
+                          </p> */}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">

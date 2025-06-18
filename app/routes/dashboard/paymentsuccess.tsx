@@ -12,6 +12,43 @@ export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const isDowngrade = url.searchParams.get("downgrade") === "true";
   const isResubscribe = url.searchParams.get("resubscribe") === "true";
+  const isQuickCheckout = url.searchParams.get("quick_checkout") === "true";
+  const checkoutType = url.searchParams.get("type");
+
+  if (isQuickCheckout && checkoutType) {
+    let message = "🎉 Payment successful!";
+    let redirectPath = "/dashboard";
+
+    switch (checkoutType) {
+      case "workshop":
+        message =
+          "🎉 Workshop registration successful! A confirmation email has been sent.";
+        redirectPath = "/dashboard/workshops";
+        break;
+      case "equipment":
+        message =
+          "🎉 Equipment booking successful! Your slots have been reserved.";
+        redirectPath = "/dashboard/equipments";
+        break;
+      case "membership":
+        message =
+          "🎉 Membership subscription successful! A confirmation email has been sent.";
+        redirectPath = "/dashboard/memberships";
+        break;
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        isQuickCheckout: true,
+        checkoutType,
+        redirectPath,
+        message,
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   if (isDowngrade) {
     return new Response(
       JSON.stringify({
@@ -228,6 +265,9 @@ export default function PaymentSuccess() {
     success: boolean;
     isMembership?: boolean;
     isEquipment?: boolean;
+    isQuickCheckout?: boolean;
+    checkoutType?: string;
+    redirectPath?: string;
     message: string;
     slotsDataKey?: string;
     equipmentId?: number;
@@ -241,7 +281,7 @@ export default function PaymentSuccess() {
       const processEquipmentBooking = async () => {
         try {
           setBookingStatus("Processing your equipment booking...");
-          
+
           // Get slots from sessionStorage
           const slotsData = sessionStorage.getItem(data.slotsDataKey!);
           if (!slotsData) {
@@ -250,22 +290,22 @@ export default function PaymentSuccess() {
           }
 
           const slots = JSON.parse(slotsData);
-          
+
           // Book each slot by making individual requests to the equipment booking endpoint
           for (const slotString of slots) {
             const [startTime, endTime] = slotString.split("|");
-            
+
             // Make a request to book each slot
-            const response = await fetch('/dashboard/equipments/book-slot', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+            const response = await fetch("/dashboard/equipments/book-slot", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 equipmentId: data.equipmentId,
                 startTime,
-                endTime
-              })
+                endTime,
+              }),
             });
-            
+
             if (!response.ok) {
               throw new Error(`Failed to book slot: ${startTime}`);
             }
@@ -274,10 +314,11 @@ export default function PaymentSuccess() {
           // Clean up sessionStorage
           sessionStorage.removeItem(data.slotsDataKey!);
           setBookingStatus("✅ All equipment slots booked successfully!");
-          
         } catch (error: any) {
           console.error("Equipment booking error:", error);
-          setBookingStatus(`❌ Booking failed: ${error.message}. Please contact support.`);
+          setBookingStatus(
+            `❌ Booking failed: ${error.message}. Please contact support.`
+          );
         }
       };
 
@@ -301,7 +342,9 @@ export default function PaymentSuccess() {
       <button
         className="mt-4 bg-blue-500 text-white px-4 py-2 rounded"
         onClick={() => {
-          if (data.isEquipment) {
+          if (data.isQuickCheckout && data.redirectPath) {
+            navigate(data.redirectPath);
+          } else if (data.isEquipment) {
             navigate("/dashboard/equipments");
           } else if (data.isMembership) {
             navigate("/dashboard/memberships");
@@ -310,7 +353,9 @@ export default function PaymentSuccess() {
           }
         }}
       >
-        {data.isEquipment
+        {data.isQuickCheckout
+          ? `Back to ${data.checkoutType}s`
+          : data.isEquipment
           ? "Back to Equipment"
           : data.isMembership
           ? "Back to Memberships"

@@ -3,6 +3,8 @@ import {
   getWorkshopById,
   getWorkshopOccurrence,
   getWorkshopOccurrencesByConnectId,
+  registerForWorkshop,
+  registerUserForAllOccurrences,
 } from "./workshop.server";
 import { getMembershipPlanById } from "./membership.server";
 import { getSavedPaymentMethod } from "./user.server";
@@ -45,12 +47,19 @@ export async function createPaymentIntentWithSavedCard(
   return paymentIntent;
 }
 
-// Function to handle quick checkout for workshops
-export async function quickCheckoutWorkshop(
+export async function quickCheckout(
   userId: number,
-  workshopId: number,
-  occurrenceId?: number,
-  connectId?: number
+  checkoutData: {
+    type: "workshop" | "equipment" | "membership";
+    workshopId?: number;
+    occurrenceId?: number;
+    connectId?: number;
+    equipmentId?: number;
+    slotCount?: number;
+    slots?: string[];
+    membershipPlanId?: number;
+    price?: number;
+  }
 ) {
   const user = await db.user.findUnique({
     where: { id: userId },
@@ -59,43 +68,120 @@ export async function quickCheckoutWorkshop(
 
   if (!user) throw new Error("User not found");
 
-  const workshop = await getWorkshopById(workshopId);
-  if (!workshop) throw new Error("Workshop not found");
-
-  let description = workshop.name;
+  let description = "";
+  let price = 0;
   let metadata: Record<string, string> = {
     userId: userId.toString(),
-    workshopId: workshopId.toString(),
   };
 
-  if (occurrenceId) {
-    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
-    if (!occurrence) throw new Error("Occurrence not found");
-    description += ` - ${new Date(occurrence.startDate).toLocaleString()}`;
-    metadata.occurrenceId = occurrenceId.toString();
-  } else if (connectId) {
-    const occurrences = await getWorkshopOccurrencesByConnectId(
-      workshopId,
-      connectId
-    );
-    if (!occurrences || occurrences.length === 0)
-      throw new Error("Occurrences not found");
-    description += ` - ${occurrences.length} sessions`;
-    metadata.connectId = connectId.toString();
+  switch (checkoutData.type) {
+    case "workshop":
+      if (!checkoutData.workshopId) throw new Error("Workshop ID required");
+
+      const workshop = await getWorkshopById(checkoutData.workshopId);
+      if (!workshop) throw new Error("Workshop not found");
+
+      description = workshop.name;
+      price = workshop.price;
+      metadata.workshopId = checkoutData.workshopId.toString();
+
+      if (checkoutData.occurrenceId) {
+        const occurrence = await getWorkshopOccurrence(
+          checkoutData.workshopId,
+          checkoutData.occurrenceId
+        );
+        if (!occurrence) throw new Error("Occurrence not found");
+        description += ` - ${new Date(occurrence.startDate).toLocaleString()}`;
+        metadata.occurrenceId = checkoutData.occurrenceId.toString();
+      } else if (checkoutData.connectId) {
+        const occurrences = await getWorkshopOccurrencesByConnectId(
+          checkoutData.workshopId,
+          checkoutData.connectId
+        );
+        if (!occurrences || occurrences.length === 0)
+          throw new Error("Occurrences not found");
+        description += ` - ${occurrences.length} sessions`;
+        metadata.connectId = checkoutData.connectId.toString();
+      }
+      break;
+
+    case "equipment":
+      if (
+        !checkoutData.equipmentId ||
+        !checkoutData.slotCount ||
+        !checkoutData.price
+      ) {
+        throw new Error("Equipment ID, slot count, and price required");
+      }
+      description = `Equipment Booking (ID: ${checkoutData.equipmentId}) - ${checkoutData.slotCount} slots`;
+      price = checkoutData.price;
+      metadata.equipmentId = checkoutData.equipmentId.toString();
+      metadata.slotCount = checkoutData.slotCount.toString();
+      metadata.isEquipmentBooking = "true";
+      break;
+
+    case "membership":
+      if (!checkoutData.membershipPlanId)
+        throw new Error("Membership plan ID required");
+
+      const membershipPlan = await getMembershipPlanById(
+        checkoutData.membershipPlanId
+      );
+      if (!membershipPlan) throw new Error("Membership plan not found");
+
+      description = membershipPlan.title;
+      price = checkoutData.price || membershipPlan.price;
+      metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
+      break;
+
+    default:
+      throw new Error("Invalid checkout type");
   }
 
   try {
     const paymentIntent = await createPaymentIntentWithSavedCard(
       userId,
-      workshop.price,
+      price,
       description,
       metadata
     );
 
+    // If payment is successful and it's a workshop, register the user
+    if (
+      checkoutData.type === "workshop" &&
+      paymentIntent.status === "succeeded"
+    ) {
+      try {
+        if (checkoutData.connectId) {
+          // Multi-day workshop registration
+          await registerUserForAllOccurrences(
+            checkoutData.workshopId!,
+            checkoutData.connectId,
+            userId
+          );
+        } else if (checkoutData.occurrenceId) {
+          // Single occurrence registration
+          await registerForWorkshop(
+            checkoutData.workshopId!,
+            checkoutData.occurrenceId,
+            userId
+          );
+        }
+      } catch (registrationError) {
+        console.error(
+          "Auto-registration failed after payment:",
+          registrationError
+        );
+        // Don't fail the payment, but log the error
+        // The user can still be manually registered if needed
+      }
+    }
+
     return {
       success: true,
       paymentIntentId: paymentIntent.id,
-      amount: workshop.price,
+      amount: price,
+      type: checkoutData.type,
     };
   } catch (error: any) {
     // If payment requires authentication, return the client secret
@@ -105,6 +191,7 @@ export async function quickCheckoutWorkshop(
         requiresAction: true,
         clientSecret: error.raw.payment_intent.client_secret,
         paymentIntentId: error.raw.payment_intent.id,
+        type: checkoutData.type,
       };
     }
     throw error;
@@ -264,13 +351,34 @@ export async function createCheckoutSession(request: Request) {
 
   // Check if user wants to use saved card
   if (body.useSavedCard && body.userId) {
+    // Determine checkout type and prepare data
+    let checkoutData: any = { userId: body.userId };
+
     if (body.workshopId) {
-      return quickCheckoutWorkshop(
-        body.userId,
-        body.workshopId,
-        body.occurrenceId,
-        body.connectId
-      );
+      checkoutData = {
+        type: "workshop",
+        workshopId: body.workshopId,
+        occurrenceId: body.occurrenceId,
+        connectId: body.connectId,
+      };
+    } else if (body.equipmentId) {
+      checkoutData = {
+        type: "equipment",
+        equipmentId: body.equipmentId,
+        slotCount: body.slotCount,
+        price: body.price,
+        slots: body.slots,
+      };
+    } else if (body.membershipPlanId) {
+      checkoutData = {
+        type: "membership",
+        membershipPlanId: body.membershipPlanId,
+        price: body.price,
+      };
+    }
+
+    if (checkoutData.type) {
+      return quickCheckout(body.userId, checkoutData);
     }
   }
 
