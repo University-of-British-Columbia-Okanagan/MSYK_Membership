@@ -57,6 +57,7 @@ export async function quickCheckout(
     equipmentId?: number;
     slotCount?: number;
     slots?: string[];
+    slotsDataKey?: string;
     membershipPlanId?: number;
     price?: number;
     currentMembershipId?: number;
@@ -111,15 +112,19 @@ export async function quickCheckout(
       if (
         !checkoutData.equipmentId ||
         !checkoutData.slotCount ||
-        !checkoutData.price
+        !checkoutData.price ||
+        !checkoutData.slotsDataKey
       ) {
-        throw new Error("Equipment ID, slot count, and price required");
+        throw new Error(
+          "Equipment ID, slot count, price, and slots data required"
+        );
       }
       description = `Equipment Booking (ID: ${checkoutData.equipmentId}) - ${checkoutData.slotCount} slots`;
       price = checkoutData.price;
       metadata.equipmentId = checkoutData.equipmentId.toString();
       metadata.slotCount = checkoutData.slotCount.toString();
       metadata.isEquipmentBooking = "true";
+      metadata.slotsDataKey = checkoutData.slotsDataKey;
       break;
 
     case "membership":
@@ -187,6 +192,12 @@ export async function quickCheckout(
             userId,
             checkoutData.membershipPlanId!,
             currentMembershipId
+          );
+        } else if (checkoutData.type === "equipment") {
+          // Equipment booking will be handled by the frontend after success
+          // Just mark it as successful here - the actual booking happens in the frontend
+          console.log(
+            `Equipment payment successful for user ${userId}, equipment ${checkoutData.equipmentId}`
           );
         }
       } catch (registrationError) {
@@ -390,6 +401,7 @@ export async function createCheckoutSession(request: Request) {
         slotCount: body.slotCount,
         price: body.price,
         slots: body.slots,
+        slotsDataKey: body.slotsDataKey,
       };
     } else if (body.membershipPlanId) {
       checkoutData = {

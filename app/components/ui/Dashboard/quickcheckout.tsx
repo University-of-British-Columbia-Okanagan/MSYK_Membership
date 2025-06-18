@@ -18,6 +18,7 @@ interface QuickCheckoutProps {
     equipmentId?: number;
     slotCount?: number;
     slots?: string[];
+    slotsDataKey?: string;
     membershipPlanId?: number;
     price?: number;
     currentMembershipId?: number;
@@ -69,7 +70,13 @@ export default function QuickCheckout({
 
         // Redirect to success page after a brief delay
         setTimeout(() => {
-          window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}`;
+          if (checkoutData.type === "equipment") {
+            // For equipment, include equipment_id and slots_data_key in the URL
+            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}&equipment_id=${checkoutData.equipmentId}&slots_data_key=${checkoutData.slotsDataKey}`;
+          } else {
+            // For other types (workshop, membership), use the regular redirect
+            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}`;
+          }
         }, 2000);
       } else if (result.requiresAction) {
         setErrorMessage(

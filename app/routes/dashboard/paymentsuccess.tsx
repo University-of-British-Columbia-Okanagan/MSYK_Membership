@@ -26,8 +26,28 @@ export async function loader({ request }: { request: Request }) {
         break;
       case "equipment":
         message =
-          "🎉 Equipment booking successful! Your slots have been reserved.";
+          "🎉 Equipment payment successful! Your booking slots will be processed.";
         redirectPath = "/dashboard/equipments";
+
+        // For equipment quick checkout, we need to handle the booking
+        const equipmentId = url.searchParams.get("equipment_id");
+        const slotsDataKey = url.searchParams.get("slots_data_key");
+
+        if (equipmentId && slotsDataKey) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              isQuickCheckout: true,
+              isEquipment: true,
+              checkoutType,
+              redirectPath,
+              message,
+              equipmentId: parseInt(equipmentId),
+              slotsDataKey: slotsDataKey,
+            }),
+            { headers: { "Content-Type": "application/json" } }
+          );
+        }
         break;
       case "membership":
         message =
