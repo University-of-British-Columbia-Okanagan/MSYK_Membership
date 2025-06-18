@@ -20,6 +20,8 @@ interface QuickCheckoutProps {
     slots?: string[];
     membershipPlanId?: number;
     price?: number;
+    currentMembershipId?: number;
+    upgradeFee?: number;
   };
   itemName: string;
   itemPrice: number;

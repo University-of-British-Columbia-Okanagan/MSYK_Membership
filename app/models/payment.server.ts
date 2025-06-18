@@ -59,6 +59,8 @@ export async function quickCheckout(
     slots?: string[];
     membershipPlanId?: number;
     price?: number;
+    currentMembershipId?: number;
+    upgradeFee?: number;
   }
 ) {
   const user = await db.user.findUnique({
@@ -132,6 +134,15 @@ export async function quickCheckout(
       description = membershipPlan.title;
       price = checkoutData.price || membershipPlan.price;
       metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
+
+      // Include additional metadata for membership upgrades
+      if (checkoutData.currentMembershipId) {
+        metadata.currentMembershipId =
+          checkoutData.currentMembershipId.toString();
+      }
+      if (checkoutData.upgradeFee !== undefined) {
+        metadata.upgradeFee = checkoutData.upgradeFee.toString();
+      }
       break;
 
     default:
@@ -147,24 +158,35 @@ export async function quickCheckout(
     );
 
     // If payment is successful and it's a workshop, register the user
-    if (
-      checkoutData.type === "workshop" &&
-      paymentIntent.status === "succeeded"
-    ) {
+    if (paymentIntent.status === "succeeded") {
       try {
-        if (checkoutData.connectId) {
-          // Multi-day workshop registration
-          await registerUserForAllOccurrences(
-            checkoutData.workshopId!,
-            checkoutData.connectId,
-            userId
+        if (checkoutData.type === "workshop") {
+          if (checkoutData.connectId) {
+            // Multi-day workshop registration
+            await registerUserForAllOccurrences(
+              checkoutData.workshopId!,
+              checkoutData.connectId,
+              userId
+            );
+          } else if (checkoutData.occurrenceId) {
+            // Single occurrence registration
+            await registerForWorkshop(
+              checkoutData.workshopId!,
+              checkoutData.occurrenceId,
+              userId
+            );
+          }
+        } else if (checkoutData.type === "membership") {
+          // Handle membership subscription
+          const { registerMembershipSubscription } = await import(
+            "./membership.server"
           );
-        } else if (checkoutData.occurrenceId) {
-          // Single occurrence registration
-          await registerForWorkshop(
-            checkoutData.workshopId!,
-            checkoutData.occurrenceId,
-            userId
+
+          const currentMembershipId = checkoutData.currentMembershipId || null;
+          await registerMembershipSubscription(
+            userId,
+            checkoutData.membershipPlanId!,
+            currentMembershipId
           );
         }
       } catch (registrationError) {
@@ -374,6 +396,8 @@ export async function createCheckoutSession(request: Request) {
         type: "membership",
         membershipPlanId: body.membershipPlanId,
         price: body.price,
+        currentMembershipId: body.currentMembershipId,
+        upgradeFee: body.upgradeFee,
       };
     }
 

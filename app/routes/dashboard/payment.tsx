@@ -544,6 +544,50 @@ export default function Payment() {
         </div>
       )}
 
+      {/* Quick Checkout Section for Memberships */}
+      {data.membershipPlan &&
+        data.savedPaymentMethod &&
+        !data.isResubscription &&
+        !data.isDowngrade && (
+          <div className="mb-6">
+            <QuickCheckout
+              userId={data.user.id}
+              checkoutData={{
+                type: "membership",
+                membershipPlanId: data.membershipPlan.id,
+                price: data.userActiveMembership
+                  ? data.upgradeFee
+                  : data.membershipPlan.price,
+                currentMembershipId: data.userActiveMembership?.id,
+                upgradeFee: data.upgradeFee,
+              }}
+              itemName={data.membershipPlan.title}
+              itemPrice={
+                data.userActiveMembership
+                  ? data.upgradeFee
+                  : data.membershipPlan.price
+              }
+              savedCard={{
+                cardLast4: data.savedPaymentMethod.cardLast4,
+                cardExpiry: data.savedPaymentMethod.cardExpiry,
+              }}
+              onSuccess={() => {
+                console.log("Membership payment successful!");
+              }}
+              onError={(error) => {
+                console.error("Membership payment failed:", error);
+              }}
+            />
+
+            {/* Divider */}
+            <div className="my-6 flex items-center">
+              <div className="flex-1 border-t border-gray-300"></div>
+              <div className="mx-4 text-gray-500 text-sm">OR</div>
+              <div className="flex-1 border-t border-gray-300"></div>
+            </div>
+          </div>
+        )}
+
       {data.membershipPlan ? (
         <>
           {/* Adjusted title based on isResubscription or isDowngrade */}
