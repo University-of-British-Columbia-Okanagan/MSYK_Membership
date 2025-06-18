@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import  { getEquipmentById, getAvailableSlots } from "../../models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
-import { logger } from "~/logging/logger";
 
 export async function loader({ request, params }: { request: Request; params: { id: string } }) {
   const currentUserRole = await getRoleUser(request);
@@ -21,10 +20,8 @@ export async function loader({ request, params }: { request: Request; params: { 
   const slots = await getAvailableSlots(equipmentId)
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
-    logger.warn(`[User: ${currentUserRole?.userId}] Requested equipment not found`, { url: request.url });
     throw new Response("Equipment not found", { status: 404 });
   }
-  logger.info(`[User: ${currentUserRole?.userId}] Requested equipment details fetched`, { url: request.url });
   return { equipment, slots, currentUserRole };
 }
 
@@ -68,7 +65,7 @@ export default function EquipmentDetails() {
           setShowPopup(true);
         }
       } catch (error) {
-        logger.error("Failed to delete equipment:", error);
+        console.error("Failed to delete equipment:", error);
         setPopupMessage("An error occurred while deleting the equipment.");
         setShowPopup(true);
       }

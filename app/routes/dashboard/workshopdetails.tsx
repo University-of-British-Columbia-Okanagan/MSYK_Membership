@@ -41,7 +41,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { duplicateWorkshop } from "~/models/workshop.server";
-import { logger } from "~/logging/logger";
 
 interface Occurrence {
   id: number;
@@ -216,10 +215,9 @@ export async function action({ request }: { request: Request }) {
         occurrenceId: Number(occurrenceId),
         userId: user.id,
       });
-      logger.info(`User ${user.id}'s workshop registration cancelled successfully.`, {url: request.url,})
       return { success: true, cancelled: true };
     } catch (error) {
-      logger.error(`Error cancelling registration: ${error}`, {url: request.url,});
+      console.error("Error cancelling registration:", error);
       return { error: "Failed to cancel registration" };
     }
   }
@@ -244,7 +242,7 @@ export async function action({ request }: { request: Request }) {
       // Redirect to admin dashboard after duplication
       return redirect("/dashboard/admin");
     } catch (error) {
-      logger.error("Error duplicating workshop:", error);
+      console.error("Error duplicating workshop:", error);
       return { error: "Failed to duplicate workshop" };
     }
   }

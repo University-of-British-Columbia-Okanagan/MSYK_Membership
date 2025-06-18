@@ -13,7 +13,6 @@ import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
-import { logger } from "~/logging/logger";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -129,7 +128,6 @@ export async function action({ request }: { request: Request }) {
     if (!roleUser?.userId) return null;
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
-      logger.info(`[User: ${roleUser?.userId ?? "unknown"}] Membership for plan ${planId} cancelled successfully.`, {url: request.url,});
     }
     return redirect("/dashboard/memberships");
   }
@@ -142,7 +140,7 @@ export async function action({ request }: { request: Request }) {
       }
       const result = await deleteMembershipPlan(Number(planId));
       if (confirmationDelete !== "confirmed") {
-        logger.warn(`Deletion of membership plan was not confirmed. Plan id ${planId}`, {url: request.url,});
+        console.warn("Deletion was not confirmed.");
         return null;
       }
 
@@ -150,7 +148,7 @@ export async function action({ request }: { request: Request }) {
         return redirect("/dashboard/memberships");
       }
     } catch (error) {
-      logger.error(`Error deleting membership plan: ${error}`, {url: request.url,});
+      console.error("Error deleting membership plan:", error);
     }
   }
 

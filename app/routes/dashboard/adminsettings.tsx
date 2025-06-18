@@ -74,98 +74,70 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`Unauthorized access attempt to admin settings page`, {
-      userId: roleUser?.userId ?? "unknown",
-      role: roleUser?.roleName ?? "none",
-      url: request.url,
-    });
     return redirect("/dashboard/user");
   }
 
-  try {
-    // Load current settings
-    const workshopVisibilityDays = await getWorkshopVisibilityDays();
-    const equipmentVisibilityDays = await getEquipmentVisibilityDays();
-    const plannedClosures = await getPlannedClosures();
-    const maxEquipmentSlotsPerDay = await getAdminSetting(
-      "max_number_equipment_slots_per_day",
-      "120"
+  // Load current settings
+  const workshopVisibilityDays = await getWorkshopVisibilityDays();
+  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
+  const plannedClosures = await getPlannedClosures();
+  const maxEquipmentSlotsPerDay = await getAdminSetting(
+    "max_number_equipment_slots_per_day",
+    "120"
+  );
+  const maxEquipmentSlotsPerWeek = await getAdminSetting(
+    "max_number_equipment_slots_per_week",
+    "14"
+  );
+
+  const workshopsRaw = await getWorkshops();
+  // Process workshops to determine which have active occurrences
+  const now = new Date();
+  const workshops = workshopsRaw.map((workshop) => {
+    // A workshop is considered active if it has at least one occurrence in the future
+    const hasActiveOccurrences = workshop.occurrences.some(
+      (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
     );
-    const maxEquipmentSlotsPerWeek = await getAdminSetting(
-      "max_number_equipment_slots_per_week",
-      "14"
-    );
 
-    const workshopsRaw = await getWorkshops();
-    // Process workshops to determine which have active occurrences
-    const now = new Date();
-    const workshops = workshopsRaw.map((workshop) => {
-      // A workshop is considered active if it has at least one occurrence in the future
-      const hasActiveOccurrences = workshop.occurrences.some(
-        (occ: any) => new Date(occ.startDate) > now && occ.status === "active"
-      );
-
-        return {
-          ...workshop,
-          hasActiveOccurrences,
-        };
-    });
-
-    // Fetch all users for the user management tab
-    const users = await getAllUsers();
-
-    const level3Schedule = await getLevel3ScheduleRestrictions();
-    const level4UnavailableHours = await getLevel4UnavailableHours();
-
-    // Log successful load
-    logger.info(`[User: ${roleUser.userId}] Admin settings page loaded successfully`, {
-      url: request.url,
-      workshopCount: workshops.length,
-      userCount: users.length,
-      plannedClosuresCount: plannedClosures.length,
-    });
-
-    // Return settings to the component
     return {
-      roleUser,
-      settings: {
-        workshopVisibilityDays,
-        equipmentVisibilityDays,
-        level3Schedule,
-        level4UnavailableHours,
-        plannedClosures,
-        maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
-        maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
-      },
-      workshops,
-      users,
+      ...workshop,
+      hasActiveOccurrences,
     };
-  } catch (error) {
-    logger.error(`Error loading admin settings page: ${error}`, {
-      userId: roleUser?.userId ?? "unknown",
-      url: request.url,
-    });
-    throw new Response("Failed to load admin settings", { status: 500 });
-  }
+  });
+
+  // Fetch all users for the user management tab
+  const users = await getAllUsers();
+
+  const level3Schedule = await getLevel3ScheduleRestrictions();
+  const level4UnavailableHours = await getLevel4UnavailableHours();
+
+  // Return settings to the component
+  return {
+    roleUser,
+    settings: {
+      workshopVisibilityDays,
+      equipmentVisibilityDays,
+      level3Schedule,
+      level4UnavailableHours,
+      plannedClosures,
+      maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
+      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
+    },
+    workshops,
+    users,
+  };
 }
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const actionType = formData.get("actionType");
   const roleUser = await getRoleUser(request);
-
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn("Unauthorized settings action attempt", {
-      userId: roleUser?.userId ?? "unknown",
-      url: request.url,
-      actionType,
-    });
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -243,11 +215,7 @@ export async function action({ request }: { request: Request }) {
         message: "Settings updated successfully",
       };
     } catch (error) {
-      logger.error(`Error updating settings: ${error}`, {
-        userId: roleUser.userId,
-        url: request.url,
-        actionType,
-      });
+      console.error("Error updating settings:", error);
       return {
         success: false,
         message: "Failed to update settings",
@@ -269,21 +237,13 @@ export async function action({ request }: { request: Request }) {
 
       await updateWorkshopCutoff(workshopId, cutoffMinutes);
 
-      logger.info(`[User: ${roleUser.userId}] Updated cutoff for workshop ${workshopId}`, {
-        url: request.url,
-        cutoffMinutes,
-      });
-
       return {
         success: true,
         message: "Workshop registration cutoff updated successfully",
         workshopId,
       };
     } catch (error) {
-      logger.error(`Error updating workshop cutoff: ${error}`, {
-        userId: roleUser.userId,
-        url: request.url,
-      });
+      console.error("Error updating workshop cutoff:", error);
       return {
         success: false,
         message: "Failed to update workshop cutoff",
@@ -296,20 +256,12 @@ export async function action({ request }: { request: Request }) {
     const newRoleId = formData.get("newRoleId");
     try {
       await updateUserRole(Number(userId), String(newRoleId));
-
-      logger.info(`[User: ${roleUser.userId}] Updated role for user ${userId} to ${newRoleId}`, {
-        url: request.url,
-      });
-
       return {
         success: true,
         message: "User role updated successfully",
       };
     } catch (error) {
-      logger.error(`Error updating user role: ${error}`, {
-        userId: roleUser.userId,
-        url: request.url,
-      });
+      console.error("Error updating user role:", error);
       return {
         success: false,
         message: "Failed to update user role",
@@ -322,20 +274,12 @@ export async function action({ request }: { request: Request }) {
     const allowLevel4 = formData.get("allowLevel4");
     try {
       await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
-
-      logger.info(`[User: ${roleUser.userId}] Updated level 4 access for user ${userId} to ${allowLevel4}`, {
-        url: request.url,
-      });
-
       return {
         success: true,
         message: "User permissions updated successfully",
       };
     } catch (error) {
-      logger.error(`Error updating allowLevel4: ${error}`, {
-        userId: roleUser.userId,
-        url: request.url,
-      });
+      console.error("Error updating allowLevel4:", error);
       return {
         success: false,
         message: "Failed to update user permissions",
@@ -349,30 +293,18 @@ export async function action({ request }: { request: Request }) {
       if (closuresData) {
         await updatePlannedClosures(JSON.parse(closuresData.toString()));
       }
-
-      logger.info(`[User: ${roleUser.userId}] Updated planned closures`, {
-        url: request.url,
-      });
-
       return {
         success: true,
         message: "Planned closures updated successfully",
       };
     } catch (error) {
-      logger.error(`Error updating planned closures: ${error}`, {
-        userId: roleUser.userId,
-        url: request.url,
-      });
+      console.error("Error updating planned closures:", error);
       return {
         success: false,
         message: "Failed to update planned closures",
       };
     }
   }
-
-  logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
-    url: request.url,
-  });
 
   return null;
 }

@@ -13,7 +13,6 @@ import {
 import { getUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
-import { logger } from "~/logging/logger";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -97,6 +96,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isResubscription = true;
     }
 
+    console.log("Upgrade Fee:", upgradeFee);
 
     return {
       membershipPlan,
@@ -343,7 +343,7 @@ export async function action({ request }: { request: Request }) {
       });
     }
   } catch (error) {
-    logger.error(`Stripe Checkout Error: ${error}`, {url: request.url,});
+    console.error("Stripe Checkout Error:", error);
     return new Response(
       JSON.stringify({ error: "Failed to create checkout session" }),
       {

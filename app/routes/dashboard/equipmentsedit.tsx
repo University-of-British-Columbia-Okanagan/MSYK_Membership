@@ -8,12 +8,10 @@ import { useState, useEffect } from "react";
 
 import  { updateEquipment, getEquipmentById } from "../../models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
-import { logger } from "~/logging/logger";
 
 export async function action({ request }: { request: Request }) {
     const roleUser = await getRoleUser(request);
     if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to edit equipment`, {url: request.url});
       throw new Response("Not Authorized", { status: 419 });
     }
 
@@ -31,15 +29,10 @@ export async function action({ request }: { request: Request }) {
         availability,
         price,
       });
-      logger.info(`[User: ${roleUser?.userId ?? "unknown"}] Equipment ${id} updated successfully`, {
-            url: request.url,
-            });
   
       return { success: true };
     } catch (error) {
-      logger.error(`Failed to update equipment: ${error}`, {
-            url: request.url,
-            });
+      console.error("Failed to update equipment:", error);
       return { success: false, error: "Failed to update equipment." };
     }
 }
@@ -48,11 +41,9 @@ export async function loader({ request, params }: { request: Request; params: { 
   const currentUserRole = await getRoleUser(request);
   const equipment = await getEquipmentById(parseInt(params.id));
   if (currentUserRole?.roleName !== "Admin") {
-    logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to edit equipment`, {url: request.url});
     throw new Response("Access Denied", { status: 409 });
   }
   if (!equipment) {
-    logger.warn(`Equipment ${parseInt(params.id)} not found and was tried to be updated.`, {url: request.url});
     throw new Response("Equipment not found", { status: 404 });
   }
   return { equipment, currentUserRole };

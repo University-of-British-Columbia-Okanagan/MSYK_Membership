@@ -1,4 +1,3 @@
-import { logger } from "~/logging/logger";
 import { bookEquipment } from "~/models/equipment.server";
 
 export async function action({ request }: { request: Request }) {
@@ -13,23 +12,13 @@ export async function action({ request }: { request: Request }) {
       });
     }
 
-    logger.info("Attempting to book equipment slot", {
-      url: request.url,
-    });
-
     await bookEquipment(request, equipmentId, startTime, endTime);
-
-    logger.info("Equipment booked successfully", {
-      url: request.url,
-    });
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error: any) {
-    logger.error(`Equipment booking failed ${error}`, {
-      url: request.url,
-    });
+    console.error("Equipment slot booking error:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

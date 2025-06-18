@@ -27,7 +27,6 @@ import { membershipPlanFormSchema } from "../../schemas/membershipPlanFormSchema
 import type { MembershipPlanFormValues } from "../../schemas/membershipPlanFormSchema";
 import { addMembershipPlan } from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
-import { logger } from "~/logging/logger";
 
 export async function action({ request }: Route.ActionArgs) {
   const roleUser = await getRoleUser(request);
@@ -49,6 +48,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!parsed.success) {
     // If validation fails, return errors
     const errors = parsed.error.flatten();
+    console.log(errors);
     return { errors: errors.fieldErrors };
   }
 
@@ -59,9 +59,8 @@ export async function action({ request }: Route.ActionArgs) {
       price: parsed.data.price,
       features: parsed.data.features, // Array of features
     });
-    logger.info(`Membership plan ${parsed.data.title} added successfully`, {url: request.url,});
   } catch (error) {
-    logger.error(`Failed to add membership plan: ${error}`, {url: request.url,});
+    console.error(error);
     return { errors: { database: ["Failed to add membership plan"] } };
   }
 

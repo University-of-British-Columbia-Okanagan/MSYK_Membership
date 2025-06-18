@@ -8,6 +8,3 @@
 .env
 docker-compose.yml
 Dockerfile
-
-/logs/*
-!/logs/__dir__
