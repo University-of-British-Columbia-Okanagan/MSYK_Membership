@@ -36,7 +36,6 @@ import { getIssues, updateIssueStatus } from "~/models/issue.server";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "~/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectValue } from "~/components/ui/select";
 import { SelectTrigger } from "@radix-ui/react-select";
-import { logger } from "~/logging/logger";
 
 /**
  * Convert workshop occurrence data to CSV string
@@ -106,39 +105,24 @@ function getStatusVariant(status: string) {
 }
 
 export async function loader({ request }: { request: Request }) {
+  // Check if user is admin
   const roleUser = await getRoleUser(request);
-
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`Unauthorized access attempt to admin loader`, {
-      userId: roleUser?.userId ?? "unknown",
-      role: roleUser?.roleName ?? "none",
-      url: request.url,
-    });
     return redirect("/dashboard/user");
   }
 
-  try {
-    const workshops = await getWorkshops();
-    const issues = await getIssues();
+  // Load all workshops with their occurrences
+  const workshops = await getWorkshops();
 
-    logger.info(`[User: ${roleUser.userId}] Admin dashboard data loaded`, {
-      url: request.url,
-      workshopCount: workshops.length,
-      issueCount: issues.length,
-    });
+  // Load all user issues
+  const issues = await getIssues();
 
-    return {
-      roleUser,
-      workshops,
-      issues,
-    };
-  } catch (error) {
-    logger.error(`Error loading admin dashboard data: ${error}`, {
-      userId: roleUser.userId,
-      url: request.url,
-    });
-    throw new Response("Failed to load data", { status: 500 });
-  }
+  // Return data to the component
+  return {
+    roleUser,
+    workshops,
+    issues
+  };
 }
 
 
@@ -151,7 +135,6 @@ export async function action({ request }: { request: Request }) {
   if (actionType === "change-issue-status") {
     const roleUser = await getRoleUser(request);
     if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      logger.warn(`Unauthorized attempt to change issue status`, { url: request.url });
       throw new Response("Not Authorized", { status: 419 });
     }
 
@@ -159,33 +142,17 @@ export async function action({ request }: { request: Request }) {
     const newStatus = rawValues.newStatus as string;
 
     if (!issueId || !newStatus) {
-      logger.error(`Missing fields for issue status update`, {
-        issueId,
-        newStatus,
-        url: request.url,
-      });
       throw new Response("Missing required fields", { status: 400 });
     }
 
     try {
       await updateIssueStatus(issueId, newStatus);
-      logger.info(`[User: ${roleUser.userId}] change-issue-status executed for issue ${issueId} -> ${newStatus}`, {
-        issueId,
-        newStatus,
-        url: request.url,
-      });
       return redirect("/dashboard/admin/reports");
     } catch (error) {
-      logger.error(`Error updating issue status for issue ${issueId}: ${error}`, {
-        issueId,
-        newStatus,
-        url: request.url,
-      });
+      console.error("Error changing issue status:", error);
       throw new Response("Failed to update issue status", { status: 500 });
     }
   }
-
-  logger.warn(`Unknown action attempted: ${actionType}`, { url: request.url });
   throw new Response("Unknown action", { status: 400 });
 }
 

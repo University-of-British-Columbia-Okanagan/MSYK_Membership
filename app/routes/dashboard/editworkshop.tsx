@@ -78,7 +78,6 @@ import { getUser, getRoleUser } from "~/utils/session.server";
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
 import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
 import { db } from "~/utils/db.server";
-import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
@@ -110,18 +109,12 @@ export async function loader({
   params: { workshopId: string };
   request: Request;
 }) {
-  const workshopId = Number(params.workshopId);
-  const workshop = await getWorkshopById(workshopId);
-  if (!workshop) {
-    logger.info("Workshop not found", {
-      url: request.url,
-    });
-    throw new Response("Workshop Not Found", { status: 404 });
-  }
-
+  const workshop = await getWorkshopById(Number(params.workshopId));
   const availableWorkshops = await getWorkshops();
   const availableEquipments = await getAvailableEquipment();
-  const userCounts = await getWorkshopContinuationUserCount(workshopId);
+  const userCounts = await getWorkshopContinuationUserCount(
+    Number(params.workshopId)
+  );
 
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
@@ -162,6 +155,10 @@ export async function loader({
     }
   }
 
+  if (!workshop) {
+    throw new Response("Workshop Not Found", { status: 404 });
+  }
+
   return {
     workshop,
     availableWorkshops,
@@ -188,11 +185,7 @@ export async function action({
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
   const roleUser = await getRoleUser(request);
-
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to update workshop`, {
-      url: request.url,
-    });
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -203,32 +196,22 @@ export async function action({
 
     try {
       if (isWorkshopContinuation) {
+        // Get all active occurrences for this workshop and cancel them
         const workshop = await getWorkshopById(Number(params.workshopId));
         const activeOccurrences = workshop.occurrences.filter(
           (occ: any) => occ.status === "active"
         );
 
+        // Cancel all active occurrences
         for (const occ of activeOccurrences) {
           await cancelWorkshopOccurrence(occ.id);
         }
-
-        logger.info(
-          `[User: ${roleUser.userId}] Cancelled all active occurrences for workshop ${params.workshopId} (continuation)`,
-          { url: request.url }
-        );
       } else {
+        // Cancel just the specified occurrence
         await cancelWorkshopOccurrence(occurrenceId);
-
-        logger.info(
-          `[User: ${roleUser.userId}] Cancelled occurrence ${occurrenceId} for workshop ${params.workshopId}`,
-          { url: request.url }
-        );
       }
-    } catch (error: any) {
-      logger.error(
-        `[User: ${roleUser.userId}] Error cancelling occurrence(s): ${error.message}`,
-        { url: request.url }
-      );
+    } catch (error) {
+      console.error("Error cancelling occurrence(s):", error);
       return { errors: { cancel: ["Failed to cancel occurrence(s)"] } };
     }
     return redirect("/dashboard/admin");
@@ -237,18 +220,17 @@ export async function action({
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
-  } catch (error: any) {
-    logger.error(
-      `[User: ${roleUser.userId}] Error parsing selected slots: ${error.message}`,
-      { url: request.url }
-    );
+  } catch (error) {
+    console.error("Error parsing selected slots:", error);
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
   // Convert price & capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
-  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
+  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
+    Number
+  );
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
 
   const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
@@ -274,6 +256,7 @@ export async function action({
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
 
+        // VALIDATION CHECK: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
           throw new Error("End date must be later than start date");
         }
@@ -294,11 +277,8 @@ export async function action({
         };
       }
     );
-  } catch (error: any) {
-    logger.error(
-      `[User: ${roleUser.userId}] Error parsing occurrences: ${error.message}`,
-      { url: request.url }
-    );
+  } catch (error) {
+    console.error("Error parsing occurrences:", error);
     return {
       errors: {
         occurrences: [
@@ -322,12 +302,7 @@ export async function action({
   });
 
   if (!parsed.success) {
-    logger.warn(
-      `[User: ${roleUser.userId}] Validation errors: ${JSON.stringify(
-        parsed.error.flatten().fieldErrors
-      )}`,
-      { url: request.url }
-    );
+    console.log(parsed.error.flatten().fieldErrors);
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
@@ -335,7 +310,7 @@ export async function action({
     // Get the current workshop data to compare with changes
     const currentWorkshop = await getWorkshopById(Number(params.workshopId));
     const currentOccurrences = currentWorkshop.occurrences || [];
-    
+
     // Get the current user ID
     const user = await getUser(request);
     const userId = user?.id || 1;
@@ -346,7 +321,7 @@ export async function action({
       for (const occurrence of currentOccurrences) {
         if (occurrence.id) {
           try {
-              // Delete old equipment bookings for this occurrence
+            // Delete old equipment bookings for this occurrence
             await db.equipmentBooking.deleteMany({
               where: {
                 workshopId: Number(params.workshopId),
@@ -366,11 +341,12 @@ export async function action({
                 workshopOccurrenceId: null,
               },
             });
-          } catch (error: any) {
-            logger.error(
-              `[User: ${roleUser.userId}] Error cleaning old slots for occurrence ${occurrence.id}: ${error.message}`,
-              { url: request.url }
+          } catch (error) {
+            console.error(
+              `Error cleaning up old slots for occurrence ${occurrence.id}:`,
+              error
             );
+            // Continue with other occurrences
           }
         }
       }
@@ -383,14 +359,12 @@ export async function action({
             bookedFor: "workshop",
           },
         });
-      } catch (error: any) {
-        logger.error(
-          `[User: ${roleUser.userId}] Error cleaning orphaned workshop bookings: ${error.message}`,
-          { url: request.url }
-        );
+      } catch (error) {
+        console.error("Error cleaning up orphaned workshop bookings:", error);
       }
     }
 
+    // Update the workshop
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
       name: parsed.data.name,
       description: parsed.data.description,
@@ -422,41 +396,41 @@ export async function action({
                 occurrence.endDate,
                 userId
               );
-            } catch (error: any) {
-              logger.error(
-                `[User: ${roleUser.userId}] Error creating slots for equipment ${equipmentId} in occurrence ${occurrence.id}: ${error.message}`,
-                { url: request.url }
+            } catch (error) {
+              console.error(
+                `Error creating slots for equipment ${equipmentId} in occurrence ${occurrence.id}:`,
+                error
               );
+              // Continue with other equipment instead of failing completely
             }
           }
         }
       }
     }
 
+    // Process manually selected equipment slots (from the grid)
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
     const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
 
     if (validSelectedSlotIds.length > 0) {
       try {
-        await bulkBookEquipment(Number(params.workshopId), validSelectedSlotIds, userId);
-      } catch (error: any) {
-        logger.error(
-          `[User: ${roleUser.userId}] Error updating manually selected equipment bookings: ${error.message}`,
-          { url: request.url }
+        await bulkBookEquipment(
+          Number(params.workshopId),
+          validSelectedSlotIds,
+          userId
         );
+      } catch (error) {
+        console.error(
+          "Error updating manually selected equipment bookings:",
+          error
+        );
+        // Continue even if this fails
       }
     }
-  } catch (error: any) {
-    logger.error(
-      `[User: ${roleUser.userId}] Error updating workshop: ${error.message}`,
-      { url: request.url }
-    );
+  } catch (error) {
+    console.error("Error updating workshop:", error);
     return { errors: { database: ["Failed to update workshop"] } };
   }
-
-  logger.info(`[User: ${roleUser.userId}] Successfully updated workshop ${params.workshopId}`, {
-    url: request.url,
-  });
 
   return redirect("/dashboard/admin");
 }
@@ -759,7 +733,9 @@ export default function EditWorkshop() {
         connectId: occ.connectId,
         offerId: occ.offerId, // Add this line
       };
-    }) || [];
+    })
+    // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
+    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
 
   const defaultContinuation =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
@@ -945,6 +921,12 @@ export default function EditWorkshop() {
 
     // Update the chosen field
     updatedOccurrences[index][field] = localDate;
+
+    // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
+    if (field === "startDate" && !isNaN(localDate.getTime())) {
+      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      updatedOccurrences[index].endDate = endDate;
+    }
 
     // If it's not already cancelled, compute a new status based on the start date.
     if (updatedOccurrences[index].status !== "cancelled") {
@@ -1186,7 +1168,10 @@ export default function EditWorkshop() {
       setFormSubmitting(true);
 
       // Use DOM to submit the form
-      document.forms[0].submit();
+      // document.forms[0].submit();
+
+      const formElement = e.currentTarget as HTMLFormElement;
+      formElement.submit();
     } catch (error) {
       console.error("Error in form submission:", error);
       // Ensure form submits even if there's an error in our checks
@@ -2311,16 +2296,19 @@ export default function EditWorkshop() {
                             "User confirmed to proceed with past dates"
                           );
                           setFormSubmitting(true);
-                          // Use setTimeout to ensure React state updates before form submission
+                          setIsConfirmDialogOpen(false);
+                          // FIXED: Use setTimeout to ensure dialog closes and then submit
                           setTimeout(() => {
                             const formElement = document.querySelector(
                               "form"
                             ) as HTMLFormElement;
                             if (formElement) {
                               console.log("Submitting form after confirmation");
-                              formElement.submit();
+                              // Create and dispatch a submit event to trigger the action
+                              const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                              formElement.dispatchEvent(submitEvent);
                             }
-                          }, 50);
+                          }, 100);
                         }}
                       >
                         Proceed Anyway

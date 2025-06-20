@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getRoleUser } from "~/utils/session.server";
-import { logger } from "~/logging/logger";
 
 // Schema for workshop offer form
 const workshopOfferSchema = z.object({
@@ -173,7 +172,7 @@ export async function action({
       }
     );
   } catch (error) {
-    logger.error(`Error parsing occurrences: ${error}`, {url: request.url,});
+    console.error("Error parsing occurrences:", error);
     return {
       errors: {
         occurrences: [

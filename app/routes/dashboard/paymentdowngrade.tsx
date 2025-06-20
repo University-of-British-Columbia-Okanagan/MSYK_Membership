@@ -1,4 +1,3 @@
-import { logger } from "~/logging/logger";
 import { registerMembershipSubscription } from "../../models/membership.server";
 import { getUser } from "~/utils/session.server";
 
@@ -6,7 +5,6 @@ export async function action({ request } : { request: Request }) {
   try {
     const user = await getUser(request);
     if (!user) {
-      logger.warn(`User Unauthorized`, {url: request.url,});
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -36,7 +34,7 @@ export async function action({ request } : { request: Request }) {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    logger.error(`Downgrade action error: ${error}`, {url: request.url,});
+    console.error("Downgrade action error:", error);
     return new Response(JSON.stringify({ error: "Internal server error"}), {
       status: 500,
       headers: { "Content-Type": "application/json" },

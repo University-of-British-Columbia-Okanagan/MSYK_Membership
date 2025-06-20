@@ -44,47 +44,6 @@ export async function getUserById(userId: number) {
   });
 }
 
-export async function saveUserMembershipPayment(data: {
-  userId: number;
-  membershipPlanId: number;
-  email: string;
-  cardNumber: string;
-  expMonth: number;
-  expYear: number;
-  cvc: string;
-  cardholderName: string;
-  region: string;
-  postalCode: string;
-  stripeCustomerId?: string;
-  stripePaymentMethodId?: string;
-}) {
-  const saltRounds = 10;
-  return db.userMembershipPayment.create({
-    data: {
-      userId: data.userId,
-      membershipPlanId: data.membershipPlanId,
-      date: new Date(),
-      email: bcrypt.hashSync(data.email, saltRounds),
-      cardNumber: bcrypt.hashSync(data.cardNumber, saltRounds),
-      expMonth: bcrypt.hashSync(String(data.expMonth), saltRounds),
-      expYear: bcrypt.hashSync(String(data.expYear), saltRounds),
-      cvc: bcrypt.hashSync(data.cvc, saltRounds),
-      cardholderName: bcrypt.hashSync(data.cardholderName, saltRounds),
-      region: bcrypt.hashSync(data.region, saltRounds),
-      postalCode: bcrypt.hashSync(data.postalCode, saltRounds),
-      stripeCustomerId: data.stripeCustomerId,
-      stripePaymentMethodId: data.stripePaymentMethodId,
-    },
-  });
-}
-
-export async function getLatestUserPaymentInfo(userId: number) {
-  return db.userMembershipPayment.findFirst({
-    where: { userId },
-    orderBy: { date: "desc" },
-  });
-}
-
 export type PaymentMethodData = {
   cardholderName: string;
   cardNumber: string; // Full card number (for processing only, we'll store just the last 4)

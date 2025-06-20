@@ -49,7 +49,6 @@ model User {
   userWorkshops     UserWorkshop[]
   equipmentbookings EquipmentBooking[]
   userMemberships UserMembership[] 
-  userMembershipPayments UserMembershipPayment[]
   paymentInformation  UserPaymentInformation?
   issuesReported Issue[]
 }
@@ -210,28 +209,6 @@ model UserMembership {
   membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
 
   // @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
-}
-
-model UserMembershipPayment {
-  id                  Int      @id @default(autoincrement())
-  userId              Int
-  membershipPlanId    Int
-  date                DateTime @default(now())
-  
-  email           String
-  cardNumber      String
-  expMonth        String
-  expYear         String
-  cvc            String
-  cardholderName  String
-  region         String
-  postalCode     String
-  stripeCustomerId     String?
-  stripePaymentMethodId String? 
-
-  user                User     @relation(fields: [userId], references: [id])
-
-  @@index([userId])
 }
 
 model UserPaymentInformation {

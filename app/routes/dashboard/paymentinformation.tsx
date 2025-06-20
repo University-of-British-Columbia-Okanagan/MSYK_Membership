@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useNavigate,
   useLoaderData,
@@ -10,7 +10,11 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { getUserId } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
-import { savePaymentMethod, getSavedPaymentMethod } from "~/models/user.server";
+import { getSavedPaymentMethod } from "~/models/user.server";
+import {
+  deletePaymentMethod,
+  createOrUpdatePaymentMethod,
+} from "~/models/payment.server";
 import {
   CreditCard,
   CheckCircle,
@@ -19,8 +23,8 @@ import {
   AlertCircle,
   Calendar,
   MapPin,
+  Trash2,
 } from "lucide-react";
-import { logger } from "~/logging/logger";
 
 // Loader - Get user information and any existing payment method
 export const loader: LoaderFunction = async ({ request }) => {
@@ -35,7 +39,8 @@ export const loader: LoaderFunction = async ({ request }) => {
   return { user, savedPaymentMethod };
 };
 
-// Action - Handle form submission
+// Action - Handle form submission and card deletion
+// Action - Handle form submission and card deletion
 export const action: ActionFunction = async ({ request }) => {
   const userId = await getUserId(request);
   if (!userId) {
@@ -43,6 +48,25 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   const formData = await request.formData();
+  const action = formData.get("_action");
+
+  // Handle card deletion
+  if (action === "delete") {
+    try {
+      await deletePaymentMethod(parseInt(userId));
+      return { success: true, deleted: true };
+    } catch (error: any) {
+      return {
+        errors: {
+          form:
+            error.message ||
+            "Failed to delete payment method. Please try again.",
+        },
+      };
+    }
+  }
+
+  // Handle card addition/update
   const cardholderName = formData.get("cardholderName") as string;
   const cardNumber = formData.get("cardNumber") as string;
   const expiryMonth = formData.get("expiryMonth") as string;
@@ -55,12 +79,11 @@ export const action: ActionFunction = async ({ request }) => {
   const billingState = formData.get("billingState") as string;
   const billingZip = formData.get("billingZip") as string;
   const billingCountry = formData.get("billingCountry") as string;
-  const saveCard = formData.get("saveCard") === "on";
+  const email = formData.get("email") as string;
 
   // Basic validation
   const errors: Record<string, string> = {};
-  const email = formData.get("email") as string;
-  // ADD: basic email validation
+
   if (!email) {
     errors.email = "Email is required";
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -85,13 +108,11 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   try {
-    // Format the expiry date
-    const expiry = `${expiryMonth}/${expiryYear.slice(-2)}`;
-
-    await savePaymentMethod(parseInt(userId), {
+    await createOrUpdatePaymentMethod(parseInt(userId), {
       cardholderName,
       cardNumber,
-      expiry,
+      expiryMonth,
+      expiryYear,
       cvc,
       billingAddressLine1,
       billingAddressLine2,
@@ -100,14 +121,10 @@ export const action: ActionFunction = async ({ request }) => {
       billingZip,
       billingCountry,
       email,
-      isDefault: saveCard, // Make this the default payment method
     });
-    logger.info(`Payment method saved successfully for ${userId}`, {url: request.url,});
 
-    // Redirect to profile page with success message
     return { success: true };
   } catch (error: any) {
-    logger.error(`Failed to save payment method: ${error}`, {url: request.url,});
     return {
       errors: {
         form:
@@ -128,18 +145,29 @@ export default function PaymentInformationPage() {
     errors?: Record<string, string>;
     values?: Record<string, any>;
     success?: boolean;
+    deleted?: boolean;
   }>();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const { user, savedPaymentMethod } = loaderData;
 
   // Handle success state
-  if (actionData?.success && !showSuccessMessage) {
-    setShowSuccessMessage(true);
-    // Redirect after showing success message
-    setTimeout(() => {
-      navigate("/dashboard/profile");
-    }, 3000);
-  }
+  useEffect(() => {
+    if (actionData?.success && !showSuccessMessage) {
+      setShowSuccessMessage(true);
+      if (actionData.deleted) {
+        // If deleted, refresh the page to show empty state
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      } else {
+        // If saved/updated, redirect to profile
+        setTimeout(() => {
+          navigate("/dashboard/profile");
+        }, 3000);
+      }
+    }
+  }, [actionData, showSuccessMessage, navigate]);
 
   // Credit card input formatting
   const formatCardNumber = (value: string) => {
@@ -190,12 +218,12 @@ export default function PaymentInformationPage() {
                 Back to Profile
               </button>
               <h1 className="text-3xl font-bold text-gray-900">
-                {isEditMode ? "Update Payment Method" : "Add Payment Method"}
+                {isEditMode ? "Payment Method" : "Add Payment Method"}
               </h1>
               <p className="text-gray-600">
                 {isEditMode
-                  ? "Update your payment information for automatic billing"
-                  : "Add a payment method for automatic billing"}
+                  ? "Manage your saved payment method"
+                  : "Add a payment method for quick checkout"}
               </p>
             </div>
 
@@ -205,10 +233,14 @@ export default function PaymentInformationPage() {
                 <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 mr-3 flex-shrink-0" />
                 <div>
                   <h3 className="text-green-800 font-medium">
-                    Payment method saved successfully!
+                    {actionData?.deleted
+                      ? "Payment method removed successfully!"
+                      : "Payment method saved successfully!"}
                   </h3>
                   <p className="text-green-700 text-sm">
-                    Redirecting you back to your profile...
+                    {actionData?.deleted
+                      ? "Refreshing page..."
+                      : "Redirecting you back to your profile..."}
                   </p>
                 </div>
               </div>
@@ -230,14 +262,24 @@ export default function PaymentInformationPage() {
             )}
 
             {/* Existing Card Info (if any) */}
-            {isEditMode && (
+            {isEditMode && savedPaymentMethod && (
               <div className="mb-6 bg-white rounded-xl shadow-sm overflow-hidden">
                 <div className="p-6 border-b border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-yellow-500" />
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Current Payment Method
-                    </h3>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5 text-yellow-500" />
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Current Payment Method
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="text-red-600 hover:text-red-700 flex items-center gap-1"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Remove
+                    </button>
                   </div>
                 </div>
                 <div className="p-6">
@@ -254,6 +296,14 @@ export default function PaymentInformationPage() {
                         {savedPaymentMethod.cardExpiry}
                       </span>
                     </div>
+                    {savedPaymentMethod.email && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Email</span>
+                        <span className="font-medium">
+                          {savedPaymentMethod.email}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-gray-600">Billing Address</span>
                       <span className="font-medium text-right">
@@ -274,474 +324,504 @@ export default function PaymentInformationPage() {
                     </div>
                   </div>
                   <p className="mt-4 text-sm text-gray-600">
-                    {isEditMode
-                      ? "Fill out the form below to update your payment method"
-                      : "You don't have a payment method on file. Add one below."}
+                    To update your payment method, remove the current one and
+                    add a new one.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Payment Form */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-yellow-500" />
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Card Information
-                  </h3>
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+              <div className="fixed inset-0 z-50 overflow-y-auto">
+                <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                  <div
+                    className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                    onClick={() => setShowDeleteConfirm(false)}
+                  />
+                  <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                    <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                      <div className="sm:flex sm:items-start">
+                        <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                          <AlertCircle className="h-6 w-6 text-red-600" />
+                        </div>
+                        <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                          <h3 className="text-lg font-medium leading-6 text-gray-900">
+                            Remove payment method
+                          </h3>
+                          <div className="mt-2">
+                            <p className="text-sm text-gray-500">
+                              Are you sure you want to remove this payment
+                              method? You'll need to enter payment details for
+                              future purchases.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                      <Form method="post" className="sm:ml-3">
+                        <input type="hidden" name="_action" value="delete" />
+                        <button
+                          type="submit"
+                          className="inline-flex w-full justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:w-auto sm:text-sm"
+                        >
+                          Remove
+                        </button>
+                      </Form>
+                      <button
+                        type="button"
+                        className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:mt-0 sm:w-auto sm:text-sm"
+                        onClick={() => setShowDeleteConfirm(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <div className="p-6">
-                <Form method="post" noValidate>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Card Details Section */}
-                    <div className="space-y-6 md:col-span-2">
-                      <div>
-                        <label
-                          htmlFor="cardholderName"
-                          className="block text-sm font-medium text-gray-700 mb-1"
-                        >
-                          Cardholder Name
-                        </label>
-                        <input
-                          type="text"
-                          id="cardholderName"
-                          name="cardholderName"
-                          className={`w-full px-3 py-2 border rounded-md ${
-                            actionData?.errors?.cardholderName
-                              ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                              : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                          }`}
-                          placeholder="Name as it appears on card"
-                          defaultValue={
-                            actionData?.values?.cardholderName ||
-                            savedPaymentMethod?.cardholderName ||
-                            ""
-                          }
-                        />
-                        {actionData?.errors?.cardholderName && (
-                          <p className="mt-1 text-sm text-red-600">
-                            {actionData.errors.cardholderName}
-                          </p>
-                        )}
-                      </div>
+            {/* Payment Form - Only show if no saved payment method */}
+            {!isEditMode && (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-yellow-500" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Card Information
+                    </h3>
+                  </div>
+                </div>
 
-                      <div>
-                        <label
-                          htmlFor="email"
-                          className="block text-sm font-medium text-gray-700 mb-1"
-                        >
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          id="email"
-                          name="email"
-                          className={`w-full px-3 py-2 border rounded-md ${
-                            actionData?.errors?.email
-                              ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                              : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                          }`}
-                          placeholder="you@example.com"
-                          defaultValue={
-                            actionData?.values?.email || user?.email || ""
-                          }
-                        />
-                        {actionData?.errors?.email && (
-                          <p className="mt-1 text-sm text-red-600">
-                            {actionData.errors.email}
-                          </p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label
-                          htmlFor="cardNumber"
-                          className="block text-sm font-medium text-gray-700 mb-1"
-                        >
-                          Card Number
-                        </label>
-                        <div className="relative">
+                <div className="p-6">
+                  <Form method="post" noValidate>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Card Details Section */}
+                      <div className="space-y-6 md:col-span-2">
+                        <div>
+                          <label
+                            htmlFor="cardholderName"
+                            className="block text-sm font-medium text-gray-700 mb-1"
+                          >
+                            Cardholder Name
+                          </label>
                           <input
                             type="text"
-                            id="cardNumber"
-                            name="cardNumber"
+                            id="cardholderName"
+                            name="cardholderName"
                             className={`w-full px-3 py-2 border rounded-md ${
-                              actionData?.errors?.cardNumber
+                              actionData?.errors?.cardholderName
                                 ? "border-red-300 focus:ring-red-500 focus:border-red-500"
                                 : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
                             }`}
-                            placeholder="1234 5678 9012 3456"
-                            maxLength={19}
-                            onChange={(e) => {
-                              e.target.value = formatCardNumber(e.target.value);
-                            }}
-                            defaultValue={actionData?.values?.cardNumber || ""}
+                            placeholder="Name as it appears on card"
+                            defaultValue={
+                              actionData?.values?.cardholderName ||
+                              savedPaymentMethod?.cardholderName ||
+                              ""
+                            }
                           />
-                          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                            <Lock className="h-4 w-4 text-gray-400" />
-                          </div>
-                        </div>
-                        {actionData?.errors?.cardNumber && (
-                          <p className="mt-1 text-sm text-red-600">
-                            {actionData.errors.cardNumber}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label
-                            htmlFor="expiryDate"
-                            className="block text-sm font-medium text-gray-700 mb-1"
-                          >
-                            Expiry Date
-                          </label>
-                          <div className="grid grid-cols-2 gap-2">
-                            <select
-                              id="expiryMonth"
-                              name="expiryMonth"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.expiry
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                              }`}
-                              defaultValue={
-                                actionData?.values?.expiryMonth ||
-                                (savedPaymentMethod?.cardExpiry || "").split(
-                                  "/"
-                                )[0] ||
-                                ""
-                              }
-                            >
-                              <option value="">MM</option>
-                              {Array.from({ length: 12 }, (_, i) => {
-                                const month = (i + 1)
-                                  .toString()
-                                  .padStart(2, "0");
-                                return (
-                                  <option key={month} value={month}>
-                                    {month}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <select
-                              id="expiryYear"
-                              name="expiryYear"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.expiry
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                              }`}
-                              defaultValue={
-                                actionData?.values?.expiryYear ||
-                                (savedPaymentMethod?.cardExpiry || "").split(
-                                  "/"
-                                )[1]
-                                  ? `20${
-                                      (
-                                        savedPaymentMethod?.cardExpiry || ""
-                                      ).split("/")[1]
-                                    }`
-                                  : ""
-                              }
-                            >
-                              <option value="">YY</option>
-                              {Array.from({ length: 10 }, (_, i) => {
-                                const year = (
-                                  new Date().getFullYear() + i
-                                ).toString();
-                                return (
-                                  <option key={year} value={year}>
-                                    {year}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </div>
-                          {actionData?.errors?.expiry && (
+                          {actionData?.errors?.cardholderName && (
                             <p className="mt-1 text-sm text-red-600">
-                              {actionData.errors.expiry}
+                              {actionData.errors.cardholderName}
                             </p>
                           )}
                         </div>
+
                         <div>
                           <label
-                            htmlFor="cvc"
+                            htmlFor="email"
                             className="block text-sm font-medium text-gray-700 mb-1"
                           >
-                            CVC / CVV
+                            Email
+                          </label>
+                          <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            className={`w-full px-3 py-2 border rounded-md ${
+                              actionData?.errors?.email
+                                ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                            }`}
+                            placeholder="you@example.com"
+                            defaultValue={
+                              actionData?.values?.email || user?.email || ""
+                            }
+                          />
+                          {actionData?.errors?.email && (
+                            <p className="mt-1 text-sm text-red-600">
+                              {actionData.errors.email}
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label
+                            htmlFor="cardNumber"
+                            className="block text-sm font-medium text-gray-700 mb-1"
+                          >
+                            Card Number
                           </label>
                           <div className="relative">
                             <input
                               type="text"
-                              id="cvc"
-                              name="cvc"
+                              id="cardNumber"
+                              name="cardNumber"
                               className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.cvc
+                                actionData?.errors?.cardNumber
                                   ? "border-red-300 focus:ring-red-500 focus:border-red-500"
                                   : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
                               }`}
-                              placeholder="123"
-                              maxLength={4}
-                              defaultValue={actionData?.values?.cvc || ""}
+                              placeholder="1234 5678 9012 3456"
+                              maxLength={19}
+                              onChange={(e) => {
+                                e.target.value = formatCardNumber(
+                                  e.target.value
+                                );
+                              }}
+                              defaultValue={
+                                actionData?.values?.cardNumber || ""
+                              }
                             />
                             <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                               <Lock className="h-4 w-4 text-gray-400" />
                             </div>
                           </div>
-                          {actionData?.errors?.cvc && (
+                          {actionData?.errors?.cardNumber && (
                             <p className="mt-1 text-sm text-red-600">
-                              {actionData.errors.cvc}
+                              {actionData.errors.cardNumber}
                             </p>
                           )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Billing Address Section */}
-                    <div className="md:col-span-2 pt-4 border-t border-gray-200">
-                      <h4 className="text-base font-medium text-gray-900 mb-4 flex items-center">
-                        <MapPin className="h-4 w-4 text-yellow-500 mr-2" />
-                        Billing Address
-                      </h4>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label
-                            htmlFor="billingAddressLine1"
-                            className="block text-sm font-medium text-gray-700 mb-1"
-                          >
-                            Address Line 1
-                          </label>
-                          <input
-                            type="text"
-                            id="billingAddressLine1"
-                            name="billingAddressLine1"
-                            className={`w-full px-3 py-2 border rounded-md ${
-                              actionData?.errors?.billingAddressLine1
-                                ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                            }`}
-                            placeholder="Street address"
-                            defaultValue={
-                              actionData?.values?.billingAddressLine1 ||
-                              savedPaymentMethod?.billingAddressLine1 ||
-                              ""
-                            }
-                          />
-                          {actionData?.errors?.billingAddressLine1 && (
-                            <p className="mt-1 text-sm text-red-600">
-                              {actionData.errors.billingAddressLine1}
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label
-                            htmlFor="billingAddressLine2"
-                            className="block text-sm font-medium text-gray-700 mb-1"
-                          >
-                            Address Line 2{" "}
-                            <span className="text-gray-500">(Optional)</span>
-                          </label>
-                          <input
-                            type="text"
-                            id="billingAddressLine2"
-                            name="billingAddressLine2"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
-                            placeholder="Apartment, suite, unit, etc."
-                            defaultValue={
-                              actionData?.values?.billingAddressLine2 ||
-                              savedPaymentMethod?.billingAddressLine2 ||
-                              ""
-                            }
-                          />
+                          {/* <p className="mt-1 text-xs text-gray-500">
+                            For testing, use: 4242 4242 4242 4242
+                          </p> */}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label
-                              htmlFor="billingCity"
+                              htmlFor="expiryDate"
                               className="block text-sm font-medium text-gray-700 mb-1"
                             >
-                              City
+                              Expiry Date
                             </label>
-                            <input
-                              type="text"
-                              id="billingCity"
-                              name="billingCity"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.billingCity
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                              }`}
-                              defaultValue={
-                                actionData?.values?.billingCity ||
-                                savedPaymentMethod?.billingCity ||
-                                ""
-                              }
-                            />
-                            {actionData?.errors?.billingCity && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <select
+                                id="expiryMonth"
+                                name="expiryMonth"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.expiry
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                defaultValue={
+                                  actionData?.values?.expiryMonth ||
+                                  (savedPaymentMethod?.cardExpiry || "").split(
+                                    "/"
+                                  )[0] ||
+                                  ""
+                                }
+                              >
+                                <option value="">MM</option>
+                                {Array.from({ length: 12 }, (_, i) => {
+                                  const month = (i + 1)
+                                    .toString()
+                                    .padStart(2, "0");
+                                  return (
+                                    <option key={month} value={month}>
+                                      {month}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <select
+                                id="expiryYear"
+                                name="expiryYear"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.expiry
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                defaultValue={
+                                  actionData?.values?.expiryYear ||
+                                  (savedPaymentMethod?.cardExpiry || "").split(
+                                    "/"
+                                  )[1]
+                                    ? `20${
+                                        (
+                                          savedPaymentMethod?.cardExpiry || ""
+                                        ).split("/")[1]
+                                      }`
+                                    : ""
+                                }
+                              >
+                                <option value="">YY</option>
+                                {Array.from({ length: 10 }, (_, i) => {
+                                  const year = (
+                                    new Date().getFullYear() + i
+                                  ).toString();
+                                  return (
+                                    <option key={year} value={year}>
+                                      {year}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+                            {actionData?.errors?.expiry && (
                               <p className="mt-1 text-sm text-red-600">
-                                {actionData.errors.billingCity}
+                                {actionData.errors.expiry}
                               </p>
                             )}
                           </div>
                           <div>
                             <label
-                              htmlFor="billingState"
+                              htmlFor="cvc"
                               className="block text-sm font-medium text-gray-700 mb-1"
                             >
-                              State / Province
+                              CVC / CVV
                             </label>
-                            <input
-                              type="text"
-                              id="billingState"
-                              name="billingState"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.billingState
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                              }`}
-                              defaultValue={
-                                actionData?.values?.billingState ||
-                                savedPaymentMethod?.billingState ||
-                                ""
-                              }
-                            />
-                            {actionData?.errors?.billingState && (
+                            <div className="relative">
+                              <input
+                                type="text"
+                                id="cvc"
+                                name="cvc"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.cvc
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                placeholder="123"
+                                maxLength={4}
+                                defaultValue={actionData?.values?.cvc || ""}
+                              />
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                                <Lock className="h-4 w-4 text-gray-400" />
+                              </div>
+                            </div>
+                            {actionData?.errors?.cvc && (
                               <p className="mt-1 text-sm text-red-600">
-                                {actionData.errors.billingState}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label
-                              htmlFor="billingZip"
-                              className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                              ZIP / Postal Code
-                            </label>
-                            <input
-                              type="text"
-                              id="billingZip"
-                              name="billingZip"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.billingZip
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                              }`}
-                              defaultValue={
-                                actionData?.values?.billingZip ||
-                                savedPaymentMethod?.billingZip ||
-                                ""
-                              }
-                            />
-                            {actionData?.errors?.billingZip && (
-                              <p className="mt-1 text-sm text-red-600">
-                                {actionData.errors.billingZip}
-                              </p>
-                            )}
-                          </div>
-                          <div>
-                            <label
-                              htmlFor="billingCountry"
-                              className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                              Country
-                            </label>
-                            <select
-                              id="billingCountry"
-                              name="billingCountry"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.billingCountry
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
-                              }`}
-                              defaultValue={
-                                actionData?.values?.billingCountry ||
-                                savedPaymentMethod?.billingCountry ||
-                                ""
-                              }
-                            >
-                              <option value="">Select Country</option>
-                              <option value="US">United States</option>
-                              <option value="CA">Canada</option>
-                              <option value="MX">Mexico</option>
-                              <option value="UK">United Kingdom</option>
-                              <option value="AU">Australia</option>
-                              <option value="NZ">New Zealand</option>
-                              <option value="JP">Japan</option>
-                              <option value="FR">France</option>
-                              <option value="DE">Germany</option>
-                              <option value="IT">Italy</option>
-                              {/* Add more countries as needed */}
-                            </select>
-                            {actionData?.errors?.billingCountry && (
-                              <p className="mt-1 text-sm text-red-600">
-                                {actionData.errors.billingCountry}
+                                {actionData.errors.cvc}
                               </p>
                             )}
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Save Card Checkbox */}
-                    <div className="md:col-span-2 pt-4 border-t border-gray-200">
-                      <div className="flex items-start">
-                        <div className="flex items-center h-5">
-                          <input
-                            id="saveCard"
-                            name="saveCard"
-                            type="checkbox"
-                            className="h-4 w-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500"
-                            defaultChecked={true}
-                          />
-                        </div>
-                        <div className="ml-3 text-sm">
-                          <label
-                            htmlFor="saveCard"
-                            className="font-medium text-gray-700"
-                          >
-                            Save card for future payments
-                          </label>
-                          <p className="text-gray-500 text-sm mt-1">
-                            Your payment information will be stored securely for
-                            future transactions.
-                          </p>
+                      {/* Billing Address Section */}
+                      <div className="md:col-span-2 pt-4 border-t border-gray-200">
+                        <h4 className="text-base font-medium text-gray-900 mb-4 flex items-center">
+                          <MapPin className="h-4 w-4 text-yellow-500 mr-2" />
+                          Billing Address
+                        </h4>
+
+                        <div className="space-y-4">
+                          <div>
+                            <label
+                              htmlFor="billingAddressLine1"
+                              className="block text-sm font-medium text-gray-700 mb-1"
+                            >
+                              Address Line 1
+                            </label>
+                            <input
+                              type="text"
+                              id="billingAddressLine1"
+                              name="billingAddressLine1"
+                              className={`w-full px-3 py-2 border rounded-md ${
+                                actionData?.errors?.billingAddressLine1
+                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                              }`}
+                              placeholder="Street address"
+                              defaultValue={
+                                actionData?.values?.billingAddressLine1 ||
+                                savedPaymentMethod?.billingAddressLine1 ||
+                                ""
+                              }
+                            />
+                            {actionData?.errors?.billingAddressLine1 && (
+                              <p className="mt-1 text-sm text-red-600">
+                                {actionData.errors.billingAddressLine1}
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <label
+                              htmlFor="billingAddressLine2"
+                              className="block text-sm font-medium text-gray-700 mb-1"
+                            >
+                              Address Line 2{" "}
+                              <span className="text-gray-500">(Optional)</span>
+                            </label>
+                            <input
+                              type="text"
+                              id="billingAddressLine2"
+                              name="billingAddressLine2"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                              placeholder="Apartment, suite, unit, etc."
+                              defaultValue={
+                                actionData?.values?.billingAddressLine2 ||
+                                savedPaymentMethod?.billingAddressLine2 ||
+                                ""
+                              }
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label
+                                htmlFor="billingCity"
+                                className="block text-sm font-medium text-gray-700 mb-1"
+                              >
+                                City
+                              </label>
+                              <input
+                                type="text"
+                                id="billingCity"
+                                name="billingCity"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.billingCity
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                defaultValue={
+                                  actionData?.values?.billingCity ||
+                                  savedPaymentMethod?.billingCity ||
+                                  ""
+                                }
+                              />
+                              {actionData?.errors?.billingCity && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  {actionData.errors.billingCity}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <label
+                                htmlFor="billingState"
+                                className="block text-sm font-medium text-gray-700 mb-1"
+                              >
+                                State / Province
+                              </label>
+                              <input
+                                type="text"
+                                id="billingState"
+                                name="billingState"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.billingState
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                defaultValue={
+                                  actionData?.values?.billingState ||
+                                  savedPaymentMethod?.billingState ||
+                                  ""
+                                }
+                              />
+                              {actionData?.errors?.billingState && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  {actionData.errors.billingState}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label
+                                htmlFor="billingZip"
+                                className="block text-sm font-medium text-gray-700 mb-1"
+                              >
+                                ZIP / Postal Code
+                              </label>
+                              <input
+                                type="text"
+                                id="billingZip"
+                                name="billingZip"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.billingZip
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                defaultValue={
+                                  actionData?.values?.billingZip ||
+                                  savedPaymentMethod?.billingZip ||
+                                  ""
+                                }
+                              />
+                              {actionData?.errors?.billingZip && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  {actionData.errors.billingZip}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <label
+                                htmlFor="billingCountry"
+                                className="block text-sm font-medium text-gray-700 mb-1"
+                              >
+                                Country
+                              </label>
+                              <select
+                                id="billingCountry"
+                                name="billingCountry"
+                                className={`w-full px-3 py-2 border rounded-md ${
+                                  actionData?.errors?.billingCountry
+                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
+                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                }`}
+                                defaultValue={
+                                  actionData?.values?.billingCountry ||
+                                  savedPaymentMethod?.billingCountry ||
+                                  ""
+                                }
+                              >
+                                <option value="">Select Country</option>
+                                <option value="US">United States</option>
+                                <option value="CA">Canada</option>
+                                <option value="MX">Mexico</option>
+                                <option value="UK">United Kingdom</option>
+                                <option value="AU">Australia</option>
+                                <option value="NZ">New Zealand</option>
+                                <option value="JP">Japan</option>
+                                <option value="FR">France</option>
+                                <option value="DE">Germany</option>
+                                <option value="IT">Italy</option>
+                                {/* Add more countries as needed */}
+                              </select>
+                              {actionData?.errors?.billingCountry && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  {actionData.errors.billingCountry}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="mt-8 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => navigate("/dashboard/profile")}
-                      className="mr-4 bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-yellow-500 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
-                    >
-                      {isEditMode
-                        ? "Update Payment Method"
-                        : "Save Payment Method"}
-                    </button>
-                  </div>
-                </Form>
+                    <div className="mt-8 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => navigate("/dashboard/profile")}
+                        className="mr-4 bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="bg-yellow-500 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                      >
+                        Save Payment Method
+                      </button>
+                    </div>
+                  </Form>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Security Information */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">

@@ -7,26 +7,28 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
 import { json } from "@remix-run/node";
-import { logger } from "~/logging/logger";
 
 
 export async function loader({ request }: { request: Request }) {
   try {
     // 🔍 DEBUG: Check if session retrieval works
+    console.log("Fetching user session...");
     const roleUser = await getRoleUser(request);
 
     if (!roleUser || !roleUser.userId) {
-      logger.warn("No valid user found, redirecting to login.", {url: request.url,});
+      console.log(" No valid user found, redirecting to login.");
       return redirect("/login");
     }
 
     // DEBUG: Fetch booked equipment
-    logger.info(`Fetching booked equipment for userId: ${roleUser.userId}`, {url: request.url,});
+    console.log(`Fetching booked equipment for userId: ${roleUser.userId}`);
     const myEquipments = await getUserBookedEquipments(roleUser.userId);
+
+    console.log("Fetched equipments:", myEquipments);
 
     return { roleUser, equipments: myEquipments };
   } catch (error) {
-    logger.error(`Error in loader: ${error}`, {url: request.url,});
+    console.error("Error in loader:", error);
     return redirect("/login");
   }
 }
@@ -38,7 +40,7 @@ export async function action({ request }: { request: Request }) {
 
     const roleUser = await getRoleUser(request);
     if (!roleUser || !roleUser.userId) {
-      logger.warn("No valid user found, redirecting to login.", {url: request.url,});
+      console.log(" No valid user found, redirecting to login.");
       return redirect("/login");
     }
     const myEquipments = await getUserBookedEquipments(roleUser.userId);
