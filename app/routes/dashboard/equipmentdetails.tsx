@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher, useNavigate } from "react-router-dom";
+import { useLoaderData, useFetcher, useNavigate } from "react-router";
 import {
   Card,
   CardHeader,
@@ -17,7 +17,6 @@ import { logger } from "~/logging/logger";
 export async function loader({ request, params }: { request: Request; params: { id: string } }) {
   const currentUserRole = await getRoleUser(request);
   const equipmentId = parseInt(params.id);
-  (equipmentId);
   const slots = await getAvailableSlots(equipmentId)
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
@@ -68,7 +67,6 @@ export default function EquipmentDetails() {
           setShowPopup(true);
         }
       } catch (error) {
-        logger.error("Failed to delete equipment:", error);
         setPopupMessage("An error occurred while deleting the equipment.");
         setShowPopup(true);
       }

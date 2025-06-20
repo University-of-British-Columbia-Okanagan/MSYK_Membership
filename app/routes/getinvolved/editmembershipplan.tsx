@@ -35,7 +35,6 @@ import { logger } from "~/logging/logger";
 
 export async function loader({ params }: { params: { planId: string } }) {
   const membershipPlan = await getMembershipPlan(Number(params.planId));
-  //   logger.log(membershipPlan);
 
   if (!membershipPlan) {
     throw new Response("Not Found", { status: 404 });

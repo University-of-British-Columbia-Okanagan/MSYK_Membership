@@ -127,7 +127,6 @@ function parseDateTimeAsLocal(value: string): Date {
     const timestamp = Date.parse(value);
 
     if (isNaN(timestamp)) {
-      logger.error("Failed to parse date:", value);
       return new Date("");
     }
 
@@ -135,13 +134,11 @@ function parseDateTimeAsLocal(value: string): Date {
 
     // Ensure the date is valid
     if (isNaN(date.getTime())) {
-      logger.error("Invalid date after parsing:", value);
       return new Date("");
     }
 
     return date;
   } catch (error) {
-    logger.error("Error parsing date:", error);
     return new Date("");
   }
 }
