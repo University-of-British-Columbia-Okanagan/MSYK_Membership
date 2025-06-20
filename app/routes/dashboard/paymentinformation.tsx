@@ -25,6 +25,7 @@ import {
   MapPin,
   Trash2,
 } from "lucide-react";
+import { logger } from "~/logging/logger";
 
 // Loader - Get user information and any existing payment method
 export const loader: LoaderFunction = async ({ request }) => {
@@ -122,9 +123,11 @@ export const action: ActionFunction = async ({ request }) => {
       billingCountry,
       email,
     });
+    logger.info(`Payment method saved successfully for ${userId}`, {url: request.url,});
 
     return { success: true };
   } catch (error: any) {
+    logger.error(`Failed to save payment method: ${error}`, {url: request.url,});
     return {
       errors: {
         form:

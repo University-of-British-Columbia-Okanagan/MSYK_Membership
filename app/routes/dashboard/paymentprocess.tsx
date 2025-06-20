@@ -1,3 +1,4 @@
+import { logger } from "~/logging/logger";
 import { createCheckoutSession } from "../../models/payment.server";
 import { getUser } from "~/utils/session.server";
 
@@ -13,7 +14,7 @@ export async function action({ request }) {
 
     return createCheckoutSession(request); // ✅ Pass entire request
   } catch (error) {
-    console.error("Payment action error:", error);
+    logger.error(`Payment action error: ${error}`, {url: request.url,});
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

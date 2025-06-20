@@ -78,6 +78,7 @@ import { getUser, getRoleUser } from "~/utils/session.server";
 import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
 import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
 import { db } from "~/utils/db.server";
+import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
@@ -109,12 +110,18 @@ export async function loader({
   params: { workshopId: string };
   request: Request;
 }) {
-  const workshop = await getWorkshopById(Number(params.workshopId));
+  const workshopId = Number(params.workshopId);
+  const workshop = await getWorkshopById(workshopId);
+  if (!workshop) {
+    logger.info("Workshop not found", {
+      url: request.url,
+    });
+    throw new Response("Workshop Not Found", { status: 404 });
+  }
+
   const availableWorkshops = await getWorkshops();
   const availableEquipments = await getAvailableEquipment();
-  const userCounts = await getWorkshopContinuationUserCount(
-    Number(params.workshopId)
-  );
+  const userCounts = await getWorkshopContinuationUserCount(workshopId);
 
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
@@ -155,10 +162,6 @@ export async function loader({
     }
   }
 
-  if (!workshop) {
-    throw new Response("Workshop Not Found", { status: 404 });
-  }
-
   return {
     workshop,
     availableWorkshops,
@@ -185,7 +188,11 @@ export async function action({
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
   const roleUser = await getRoleUser(request);
+
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to update workshop`, {
+      url: request.url,
+    });
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -196,22 +203,32 @@ export async function action({
 
     try {
       if (isWorkshopContinuation) {
-        // Get all active occurrences for this workshop and cancel them
         const workshop = await getWorkshopById(Number(params.workshopId));
         const activeOccurrences = workshop.occurrences.filter(
           (occ: any) => occ.status === "active"
         );
 
-        // Cancel all active occurrences
         for (const occ of activeOccurrences) {
           await cancelWorkshopOccurrence(occ.id);
         }
+
+        logger.info(
+          `[User: ${roleUser.userId}] Cancelled all active occurrences for workshop ${params.workshopId} (continuation)`,
+          { url: request.url }
+        );
       } else {
-        // Cancel just the specified occurrence
         await cancelWorkshopOccurrence(occurrenceId);
+
+        logger.info(
+          `[User: ${roleUser.userId}] Cancelled occurrence ${occurrenceId} for workshop ${params.workshopId}`,
+          { url: request.url }
+        );
       }
-    } catch (error) {
-      console.error("Error cancelling occurrence(s):", error);
+    } catch (error: any) {
+      logger.error(
+        `[User: ${roleUser.userId}] Error cancelling occurrence(s): ${error.message}`,
+        { url: request.url }
+      );
       return { errors: { cancel: ["Failed to cancel occurrence(s)"] } };
     }
     return redirect("/dashboard/admin");
@@ -220,17 +237,18 @@ export async function action({
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
-  } catch (error) {
-    console.error("Error parsing selected slots:", error);
+  } catch (error: any) {
+    logger.error(
+      `[User: ${roleUser.userId}] Error parsing selected slots: ${error.message}`,
+      { url: request.url }
+    );
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
   // Convert price & capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
-  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
-    Number
-  );
+  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
 
   const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
@@ -256,7 +274,6 @@ export async function action({
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
 
-        // VALIDATION CHECK: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
           throw new Error("End date must be later than start date");
         }
@@ -277,8 +294,11 @@ export async function action({
         };
       }
     );
-  } catch (error) {
-    console.error("Error parsing occurrences:", error);
+  } catch (error: any) {
+    logger.error(
+      `[User: ${roleUser.userId}] Error parsing occurrences: ${error.message}`,
+      { url: request.url }
+    );
     return {
       errors: {
         occurrences: [
@@ -302,7 +322,12 @@ export async function action({
   });
 
   if (!parsed.success) {
-    console.log(parsed.error.flatten().fieldErrors);
+    logger.warn(
+      `[User: ${roleUser.userId}] Validation errors: ${JSON.stringify(
+        parsed.error.flatten().fieldErrors
+      )}`,
+      { url: request.url }
+    );
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
@@ -310,7 +335,7 @@ export async function action({
     // Get the current workshop data to compare with changes
     const currentWorkshop = await getWorkshopById(Number(params.workshopId));
     const currentOccurrences = currentWorkshop.occurrences || [];
-
+    
     // Get the current user ID
     const user = await getUser(request);
     const userId = user?.id || 1;
@@ -321,7 +346,7 @@ export async function action({
       for (const occurrence of currentOccurrences) {
         if (occurrence.id) {
           try {
-            // Delete old equipment bookings for this occurrence
+              // Delete old equipment bookings for this occurrence
             await db.equipmentBooking.deleteMany({
               where: {
                 workshopId: Number(params.workshopId),
@@ -341,12 +366,11 @@ export async function action({
                 workshopOccurrenceId: null,
               },
             });
-          } catch (error) {
-            console.error(
-              `Error cleaning up old slots for occurrence ${occurrence.id}:`,
-              error
+          } catch (error: any) {
+            logger.error(
+              `[User: ${roleUser.userId}] Error cleaning old slots for occurrence ${occurrence.id}: ${error.message}`,
+              { url: request.url }
             );
-            // Continue with other occurrences
           }
         }
       }
@@ -359,12 +383,14 @@ export async function action({
             bookedFor: "workshop",
           },
         });
-      } catch (error) {
-        console.error("Error cleaning up orphaned workshop bookings:", error);
+      } catch (error: any) {
+        logger.error(
+          `[User: ${roleUser.userId}] Error cleaning orphaned workshop bookings: ${error.message}`,
+          { url: request.url }
+        );
       }
     }
 
-    // Update the workshop
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
       name: parsed.data.name,
       description: parsed.data.description,
@@ -396,41 +422,41 @@ export async function action({
                 occurrence.endDate,
                 userId
               );
-            } catch (error) {
-              console.error(
-                `Error creating slots for equipment ${equipmentId} in occurrence ${occurrence.id}:`,
-                error
+            } catch (error: any) {
+              logger.error(
+                `[User: ${roleUser.userId}] Error creating slots for equipment ${equipmentId} in occurrence ${occurrence.id}: ${error.message}`,
+                { url: request.url }
               );
-              // Continue with other equipment instead of failing completely
             }
           }
         }
       }
     }
 
-    // Process manually selected equipment slots (from the grid)
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
     const validSelectedSlotIds = allSelectedSlotIds.filter((id) => id > 0);
 
     if (validSelectedSlotIds.length > 0) {
       try {
-        await bulkBookEquipment(
-          Number(params.workshopId),
-          validSelectedSlotIds,
-          userId
+        await bulkBookEquipment(Number(params.workshopId), validSelectedSlotIds, userId);
+      } catch (error: any) {
+        logger.error(
+          `[User: ${roleUser.userId}] Error updating manually selected equipment bookings: ${error.message}`,
+          { url: request.url }
         );
-      } catch (error) {
-        console.error(
-          "Error updating manually selected equipment bookings:",
-          error
-        );
-        // Continue even if this fails
       }
     }
-  } catch (error) {
-    console.error("Error updating workshop:", error);
+  } catch (error: any) {
+    logger.error(
+      `[User: ${roleUser.userId}] Error updating workshop: ${error.message}`,
+      { url: request.url }
+    );
     return { errors: { database: ["Failed to update workshop"] } };
   }
+
+  logger.info(`[User: ${roleUser.userId}] Successfully updated workshop ${params.workshopId}`, {
+    url: request.url,
+  });
 
   return redirect("/dashboard/admin");
 }

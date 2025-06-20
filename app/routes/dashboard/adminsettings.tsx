@@ -74,11 +74,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to admin settings page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
     return redirect("/dashboard/user");
   }
 
@@ -116,28 +122,43 @@ export async function loader({ request }: { request: Request }) {
   const level3Schedule = await getLevel3ScheduleRestrictions();
   const level4UnavailableHours = await getLevel4UnavailableHours();
 
-  // Return settings to the component
-  return {
-    roleUser,
-    settings: {
-      workshopVisibilityDays,
-      equipmentVisibilityDays,
-      level3Schedule,
-      level4UnavailableHours,
-      plannedClosures,
-      maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10), // this is in slots
-      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots
-    },
-    workshops,
-    users,
-  };
-}
+    // Log successful load
+    logger.info(`[User: ${roleUser.userId}] Admin settings page loaded successfully`, {
+      url: request.url,
+      workshopCount: workshops.length,
+      userCount: users.length,
+      plannedClosuresCount: plannedClosures.length,
+    });
+
+    // Return settings to the component
+    return {
+      roleUser,
+      settings: {
+        workshopVisibilityDays,
+        equipmentVisibilityDays,
+        level3Schedule,
+        level4UnavailableHours,
+        plannedClosures,
+        maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
+        maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
+      },
+      workshops,
+      users,
+    };
+
+  }
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const actionType = formData.get("actionType");
   const roleUser = await getRoleUser(request);
+
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn("Unauthorized settings action attempt", {
+      userId: roleUser?.userId ?? "unknown",
+      url: request.url,
+      actionType,
+    });
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -215,7 +236,11 @@ export async function action({ request }: { request: Request }) {
         message: "Settings updated successfully",
       };
     } catch (error) {
-      console.error("Error updating settings:", error);
+      logger.error(`Error updating settings: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+        actionType,
+      });
       return {
         success: false,
         message: "Failed to update settings",
@@ -237,13 +262,21 @@ export async function action({ request }: { request: Request }) {
 
       await updateWorkshopCutoff(workshopId, cutoffMinutes);
 
+      logger.info(`[User: ${roleUser.userId}] Updated cutoff for workshop ${workshopId}`, {
+        url: request.url,
+        cutoffMinutes,
+      });
+
       return {
         success: true,
         message: "Workshop registration cutoff updated successfully",
         workshopId,
       };
     } catch (error) {
-      console.error("Error updating workshop cutoff:", error);
+      logger.error(`Error updating workshop cutoff: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
       return {
         success: false,
         message: "Failed to update workshop cutoff",
@@ -256,12 +289,20 @@ export async function action({ request }: { request: Request }) {
     const newRoleId = formData.get("newRoleId");
     try {
       await updateUserRole(Number(userId), String(newRoleId));
+
+      logger.info(`[User: ${roleUser.userId}] Updated role for user ${userId} to ${newRoleId}`, {
+        url: request.url,
+      });
+
       return {
         success: true,
         message: "User role updated successfully",
       };
     } catch (error) {
-      console.error("Error updating user role:", error);
+      logger.error(`Error updating user role: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
       return {
         success: false,
         message: "Failed to update user role",
@@ -274,12 +315,20 @@ export async function action({ request }: { request: Request }) {
     const allowLevel4 = formData.get("allowLevel4");
     try {
       await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
+
+      logger.info(`[User: ${roleUser.userId}] Updated level 4 access for user ${userId} to ${allowLevel4}`, {
+        url: request.url,
+      });
+
       return {
         success: true,
         message: "User permissions updated successfully",
       };
     } catch (error) {
-      console.error("Error updating allowLevel4:", error);
+      logger.error(`Error updating allowLevel4: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
       return {
         success: false,
         message: "Failed to update user permissions",
@@ -293,18 +342,30 @@ export async function action({ request }: { request: Request }) {
       if (closuresData) {
         await updatePlannedClosures(JSON.parse(closuresData.toString()));
       }
+
+      logger.info(`[User: ${roleUser.userId}] Updated planned closures`, {
+        url: request.url,
+      });
+
       return {
         success: true,
         message: "Planned closures updated successfully",
       };
     } catch (error) {
-      console.error("Error updating planned closures:", error);
+      logger.error(`Error updating planned closures: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
       return {
         success: false,
         message: "Failed to update planned closures",
       };
     }
   }
+
+  logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
+    url: request.url,
+  });
 
   return null;
 }

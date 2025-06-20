@@ -29,6 +29,7 @@ import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
 import { getRoleUser } from "~/utils/session.server";
+import { logger } from "~/logging/logger";
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
@@ -43,35 +44,36 @@ export async function action({ request }: { request: Request }) {
   });
 
   if (!parsed.success) {
-    console.log("Validation Errors:", parsed.error.flatten().fieldErrors);
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
   try {
     const roleUser = await getRoleUser(request);
     if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    throw new Response("Not Authorized", { status: 419 });
+      logger.warn(`[User: ${roleUser?.userId}] Not authorized to add equipment`, { url: request.url });
+      throw new Response("Not Authorized", { status: 401 });
     }
 
     // Check if equipment name already exists
     const existingEquipment = await getEquipmentByName(parsed.data.name);
     if (existingEquipment) {
+      logger.warn(`[User: ${roleUser?.userId}] Equipment with this name already exists`, { url: request.url });
       return { errors: { name: ["Equipment with this name already exists."] } };
     }
 
     // Send only required fields to addEquipment
-    const newEquipment = await addEquipment({
+    await addEquipment({
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
       availability: parsed.data.availability === "true" ? true : false,
     });
 
-    console.log(" New Equipment Added:", newEquipment);
+    logger.info(`[User: ${roleUser?.userId}] New Equipment ${parsed.data.name} added successfully`, { url: request.url });
 
     return redirect("/dashboard/admin");
   } catch (error: any) {
-    console.error("Error adding equipment:", error);
+    logger.error(`Error adding new equipment ${error}`, { url: request.url });
 
     if (error.code === "P2002") {
       return { errors: { name: ["Equipment name must be unique."] } };

@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher, useNavigate } from "react-router-dom";
+import { useLoaderData, useFetcher, useNavigate } from "react-router";
 import {
   Card,
   CardHeader,
@@ -19,6 +19,7 @@ import { SidebarProvider } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import { ArrowLeft } from "lucide-react";
+import { logger } from "~/logging/logger";
 
 export async function loader({
   request,
@@ -29,12 +30,13 @@ export async function loader({
 }) {
   const currentUserRole = await getRoleUser(request);
   const equipmentId = parseInt(params.id);
-  equipmentId;
   const slots = await getAvailableSlots(equipmentId);
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
+    logger.warn(`[User: ${currentUserRole?.userId}] Requested equipment not found`, { url: request.url });
     throw new Response("Equipment not found", { status: 404 });
   }
+  logger.info(`[User: ${currentUserRole?.userId}] Requested equipment details fetched`, { url: request.url });
   return { equipment, slots, currentUserRole };
 }
 
@@ -85,7 +87,6 @@ export default function EquipmentDetails() {
           setShowPopup(true);
         }
       } catch (error) {
-        console.error("Failed to delete equipment:", error);
         setPopupMessage("An error occurred while deleting the equipment.");
         setShowPopup(true);
       }
