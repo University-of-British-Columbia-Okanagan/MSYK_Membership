@@ -11,6 +11,7 @@ import { SidebarProvider } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { AppSidebar } from "~/components/ui/Dashboard/sidebar";
 import { createIssue } from "~/models/issue.server";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -22,7 +23,8 @@ export async function action({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
 
   if (!roleUser) {
-    throw new Response("Not Authorized", { status: 419 });
+    logger.warn(`User must be logged in to submit an issue.`, {url: request.url,});
+    throw new Response("Not Authorized", { status: 401 });
   }
 
   const title = form.get("title") as string;
@@ -42,10 +44,11 @@ export async function action({ request }: { request: Request }) {
       reportedById: roleUser.userId,
     //   screenshots, // TODO
     });
-
+    logger.info(`[User: ${roleUser?.userId ?? "unknown"}] New issue created`, {url: request.url,});
     return json({ success: true });
   } catch (err) {
-    console.error(err);
+    logger.error(`Error creating new issue ${err}`, {url: request.url});
+    logger.error(err);
     return json({ success: false, error: "Failed to submit issue." });
   }
 }
