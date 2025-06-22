@@ -68,7 +68,6 @@ interface EquipmentBookingGridProps {
     end: number;
   };
   plannedClosures?: Array<{
-    // Add this new prop
     id: number;
     startDate: string | Date;
     endDate: string | Date;
@@ -77,6 +76,7 @@ interface EquipmentBookingGridProps {
   workshopSlots?: { [day: string]: string[] };
   currentWorkshopOccurrences?: { startDate: Date; endDate: Date }[];
   maxSlotsPerDay?: number;
+  maxSlotsPerWeek?: number;
   currentWorkshopId?: number;
   currentWorkshopName?: string;
 }
@@ -94,7 +94,8 @@ export default function EquipmentBookingGrid({
   userRoleLevel,
   workshopSlots,
   currentWorkshopOccurrences,
-  maxSlotsPerDay = 4,
+  maxSlotsPerDay = 4, // in slots (each slot = 30 minutes)
+  maxSlotsPerWeek = 14,
   currentWorkshopId,
   currentWorkshopName,
 }: EquipmentBookingGridProps) {
@@ -365,185 +366,532 @@ export default function EquipmentBookingGrid({
       : currentDayCount + 1;
     const newWeekCount = isAlreadySelected ? totalSlots - 1 : totalSlots + 1;
 
-    // if (!isAlreadySelected && newDayCount > 4) {
-    //   setErrorMessage("You can only select up to 2 hours (4 slots) per day.");
-    //   return;
-    // }
-    const maxSlotsAllowed = Math.floor(maxSlotsPerDay / 30);
+    // maxSlotsPerDay is already in slots, no conversion needed
+    const maxSlotsAllowed = maxSlotsPerDay;
     if (!isAlreadySelected && newDayCount > maxSlotsAllowed) {
-      const hours = maxSlotsPerDay / 60; // Convert minutes to hours for display
+      const hours = (maxSlotsPerDay * 30) / 60; // Convert slots to hours for display
       setErrorMessage(
         `You can only select up to ${hours} hours (${maxSlotsAllowed} slots) per day.`
       );
       return;
     }
 
+    {
+      /* OLD 7-day period from first booking */
+    }
     // Maximum slots allowed per 7-day period is always 14
-    const maxSlotsPerWeek = 14;
+    // const maxSlotsPerWeek = 14;
+    // // Check week limit based on the first day of selection
+    // // Get the first day of the selection period, including already booked slots
+    // let firstDate: Date | null = null;
+    // let totalBookedSlots = 0;
+    // // First, check existing booked slots by the user to find the earliest booking
+    // const allDays = Object.keys(slotsByDay);
+    // for (const day of allDays) {
+    //   const daySlots = slotsByDay[day];
+    //   for (const time of Object.keys(daySlots)) {
+    //     const slot = daySlots[time];
+    //     if (slot?.bookedByMe) {
+    //       // Extract day parts and create a date for this booked slot
+    //       const dayParts = day.split(" ");
+    //       const dayNumber = parseInt(dayParts[1], 10);
+    //       const [hour, minute] = time.split(":").map(Number);
+    //       // Create date for this booked slot
+    //       const now = new Date();
+    //       const bookedSlotDate = new Date(
+    //         now.getFullYear(),
+    //         now.getMonth(),
+    //         dayNumber,
+    //         hour,
+    //         minute
+    //       );
 
-    // Check week limit based on the first day of selection
-    // Get the first day of the selection period, including already booked slots
-    let firstDate: Date | null = null;
-    let totalBookedSlots = 0;
+    //       // Adjust month if day is in next month
+    //       if (dayNumber < now.getDate() && now.getDate() > 20) {
+    //         bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+    //       }
 
-    // First, check existing booked slots by the user to find the earliest booking
-    const allDays = Object.keys(slotsByDay);
-    for (const day of allDays) {
-      const daySlots = slotsByDay[day];
-      for (const time of Object.keys(daySlots)) {
-        const slot = daySlots[time];
-        if (slot?.bookedByMe) {
-          // Extract day parts and create a date for this booked slot
-          const dayParts = day.split(" ");
-          const dayNumber = parseInt(dayParts[1], 10);
-          const [hour, minute] = time.split(":").map(Number);
+    //       if (!firstDate || bookedSlotDate < firstDate) {
+    //         firstDate = bookedSlotDate;
+    //       }
+    //     }
+    //   }
+    // }
+    // // Then check current session selections
+    // if (selectedSlots.length > 0) {
+    //   // Get the earliest date from current selections
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const date = new Date(start);
+    //     if (!firstDate || date < firstDate) {
+    //       firstDate = date;
+    //     }
+    //   }
+    // }
+    // // If this is the first selection, use this slot's date
+    // if (!firstDate) {
+    //   firstDate = startTime;
+    // }
+    // // Check if the current selection is within 7 days of the first selection
+    // const sevenDaysLater = new Date(firstDate.getTime());
+    // sevenDaysLater.setDate(firstDate.getDate() + 7);
+    // if (startTime >= sevenDaysLater) {
+    //   // Starting a new 7-day period - need to find the earliest selection in the new period
+    //   // Check if there are any current selections and find the earliest one
+    //   let earliestNewSelection = startTime;
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const date = new Date(start);
+    //     if (date < earliestNewSelection) {
+    //       earliestNewSelection = date;
+    //     }
+    //   }
+    //   // Set firstDate to the earliest selection (either existing selections or current slot)
+    //   firstDate = earliestNewSelection;
+    //   // Recalculate the 7-day window from the new starting point
+    //   sevenDaysLater.setTime(firstDate.getTime());
+    //   sevenDaysLater.setDate(firstDate.getDate() + 7);
+    //   // Reset totalBookedSlots to 0 since we're starting a new period
+    //   totalBookedSlots = 0;
+    // }
+    // // Count all slots within the 7-day period (both booked and selected)
+    // // Reset totalBookedSlots and count again for the current period
+    // totalBookedSlots = 0;
+    // if (firstDate) {
+    //   const sevenDaysFromFirst = new Date(firstDate.getTime());
+    //   sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
 
-          // Create date for this booked slot
-          const now = new Date();
-          const bookedSlotDate = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            dayNumber,
-            hour,
-            minute
-          );
+    //   // Count existing booked slots within the 7-day period
+    //   for (const day of allDays) {
+    //     const daySlots = slotsByDay[day];
+    //     for (const time of Object.keys(daySlots)) {
+    //       const slot = daySlots[time];
+    //       if (slot?.bookedByMe) {
+    //         // Create date for this booked slot
+    //         const dayParts = day.split(" ");
+    //         const dayNumber = parseInt(dayParts[1], 10);
+    //         const [hour, minute] = time.split(":").map(Number);
+    //         const now = new Date();
+    //         const bookedSlotDate = new Date(
+    //           now.getFullYear(),
+    //           now.getMonth(),
+    //           dayNumber,
+    //           hour,
+    //           minute
+    //         );
+    //         // Adjust month if day is in next month
+    //         if (dayNumber < now.getDate() && now.getDate() > 20) {
+    //           bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
+    //         }
+    //         // Check if this booked slot is within the 7-day period
+    //         if (
+    //           bookedSlotDate >= firstDate &&
+    //           bookedSlotDate < sevenDaysFromFirst
+    //         ) {
+    //           totalBookedSlots++;
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
+    // // Check if adding this slot would exceed the weekly limit
+    // const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
+    // if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
+    //   const firstDateStr = firstDate.toLocaleDateString("en-US", {
+    //     month: "short",
+    //     day: "numeric",
+    //     year: "numeric",
+    //   });
+    //   const endDateStr = new Date(
+    //     sevenDaysLater.getTime() - 1
+    //   ).toLocaleDateString("en-US", {
+    //     month: "short",
+    //     day: "numeric",
+    //     year: "numeric",
+    //   });
+    //   // Count selected slots that are actually within this 7-day period
+    //   let selectedSlotsInPeriod = 0;
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const slotDate = new Date(start);
+    //     const sevenDaysFromFirst = new Date(firstDate.getTime());
+    //     sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
 
-          // Adjust month if day is in next month
-          if (dayNumber < now.getDate() && now.getDate() > 20) {
-            bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
-          }
+    //     if (slotDate >= firstDate && slotDate < sevenDaysFromFirst) {
+    //       selectedSlotsInPeriod++;
+    //     }
+    //   }
+    //   setErrorMessage(
+    //     `You can only select up to 7 hours (14 slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlotsInPeriod} selected slots in this period.`
+    //   );
+    //   return;
+    // }
 
-          if (!firstDate || bookedSlotDate < firstDate) {
-            firstDate = bookedSlotDate;
-          }
+    {
+      /* Sliding 7-day periods approach */
+    }
+    // // Check sliding 7-day period limits - each day creates a new 7-day period
+    // if (!isAlreadySelected) {
+    //   // Helper function to create date from day and time
+    //   const createDateFromDayTime = (day: string, time: string): Date => {
+    //     const dayParts = day.split(" ");
+    //     const dayNumber = parseInt(dayParts[1], 10);
+    //     const [hour, minute] = time.split(":").map(Number);
+
+    //     const now = new Date();
+    //     const date = new Date(
+    //       now.getFullYear(),
+    //       now.getMonth(),
+    //       dayNumber,
+    //       hour,
+    //       minute
+    //     );
+
+    //     // Adjust month if day is in next month
+    //     if (dayNumber < now.getDate() && now.getDate() > 20) {
+    //       date.setMonth(date.getMonth() + 1);
+    //     }
+
+    //     return date;
+    //   };
+
+    //   // Get all unique dates from the grid
+    //   const allDays = Object.keys(slotsByDay);
+    //   const allGridDates: Date[] = [];
+
+    //   for (const day of allDays) {
+    //     const dayParts = day.split(" ");
+    //     const dayNumber = parseInt(dayParts[1], 10);
+    //     const now = new Date();
+    //     const date = new Date(
+    //       now.getFullYear(),
+    //       now.getMonth(),
+    //       dayNumber,
+    //       0,
+    //       0,
+    //       0,
+    //       0
+    //     );
+
+    //     // Adjust month if day is in next month
+    //     if (dayNumber < now.getDate() && now.getDate() > 20) {
+    //       date.setMonth(date.getMonth() + 1);
+    //     }
+
+    //     allGridDates.push(date);
+    //   }
+
+    //   // Sort dates and remove duplicates
+    //   const uniqueDates = Array.from(
+    //     new Set(allGridDates.map((d) => d.toDateString()))
+    //   )
+    //     .map((dateStr) => new Date(dateStr))
+    //     .sort((a, b) => a.getTime() - b.getTime());
+
+    //   // Check ALL possible 7-day periods that could contain this slot
+    //   // Each day can be the start of a 7-day period
+    //   // Get all dates that have actual bookings or selections
+    //   const datesWithBookings = new Set<string>();
+
+    //   // Add dates from existing bookings
+    //   for (const day of allDays) {
+    //     const daySlots = slotsByDay[day];
+    //     for (const time of Object.keys(daySlots)) {
+    //       const slot = daySlots[time];
+    //       if (slot?.bookedByMe) { // This checks ALL bookings by you even in the past
+    //         const slotDate = createDateFromDayTime(day, time);
+    //         const dateOnly = new Date(slotDate);
+    //         dateOnly.setHours(0, 0, 0, 0);
+    //         datesWithBookings.add(dateOnly.toDateString());
+    //       }
+    //     }
+    //   }
+
+    //   // Add dates from current selections
+    //   for (const s of selectedSlots) {
+    //     const [start] = s.split("|");
+    //     const slotDate = new Date(start);
+    //     const dateOnly = new Date(slotDate);
+    //     dateOnly.setHours(0, 0, 0, 0);
+    //     datesWithBookings.add(dateOnly.toDateString());
+    //   }
+
+    //   // Add the current slot date
+    //   const currentSlotDateOnly = new Date(startTime);
+    //   currentSlotDateOnly.setHours(0, 0, 0, 0);
+    //   datesWithBookings.add(currentSlotDateOnly.toDateString());
+
+    //   // Convert back to Date objects and sort
+    //   const relevantDates = Array.from(datesWithBookings)
+    //     .map((dateStr) => new Date(dateStr))
+    //     .sort((a, b) => a.getTime() - b.getTime());
+
+    //   // Check periods that start from any date that has bookings/selections
+    //   // and could contain the current slot
+    //   for (const periodStartDate of relevantDates) {
+    //     const periodStart = new Date(periodStartDate);
+    //     periodStart.setHours(0, 0, 0, 0);
+
+    //     const periodEnd = new Date(periodStart);
+    //     periodEnd.setDate(periodStart.getDate() + 7);
+    //     periodEnd.setHours(0, 0, 0, 0);
+
+    //     // Check if the current slot falls within this 7-day period
+    //     if (
+    //       currentSlotDateOnly >= periodStart &&
+    //       currentSlotDateOnly < periodEnd
+    //     ) {
+    //       let totalSlotsInPeriod = 0;
+
+    //       // Count existing booked slots in this 7-day period
+    //       for (const day of allDays) {
+    //         const daySlots = slotsByDay[day];
+    //         for (const time of Object.keys(daySlots)) {
+    //           const slot = daySlots[time];
+    //           if (slot?.bookedByMe) { // This checks ALL bookings by you even in the past
+    //             const slotDate = createDateFromDayTime(day, time);
+    //             const slotDateOnly = new Date(slotDate);
+    //             slotDateOnly.setHours(0, 0, 0, 0);
+
+    //             if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
+    //               totalSlotsInPeriod++;
+    //             }
+    //           }
+    //         }
+    //       }
+
+    //       // Count current session selections in this 7-day period
+    //       for (const s of selectedSlots) {
+    //         const [start] = s.split("|");
+    //         const slotDate = new Date(start);
+    //         const slotDateOnly = new Date(slotDate);
+    //         slotDateOnly.setHours(0, 0, 0, 0);
+
+    //         if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
+    //           totalSlotsInPeriod++;
+    //         }
+    //       }
+
+    //       // Check if adding this slot would exceed the limit for THIS period
+    //       if (totalSlotsInPeriod + 1 > maxSlotsPerWeek) {
+    //         const periodStartStr = periodStart.toLocaleDateString("en-US", {
+    //           month: "short",
+    //           day: "numeric",
+    //           year: "numeric",
+    //         });
+    //         const periodEndDate = new Date(
+    //           periodEnd.getTime() - 24 * 60 * 60 * 1000
+    //         ); // Get the last day of the period
+    //         const periodEndStr = periodEndDate.toLocaleDateString("en-US", {
+    //           month: "short",
+    //           day: "numeric",
+    //           year: "numeric",
+    //         });
+
+    //         const hoursLimit = (maxSlotsPerWeek * 30) / 60; // Convert slots to hours
+    //         setErrorMessage(
+    //           `You can only select up to ${hoursLimit} hours (${maxSlotsPerWeek} slots) within any 7-day period. Period ${periodStartStr} - ${periodEndStr} would have ${
+    //             totalSlotsInPeriod + 1
+    //           } slots if you add this selection.`
+    //         );
+    //         return;
+    //       }
+    //     }
+    //   }
+    // }
+
+    {
+      /* Sliding 7-day periods approach including dates starting a week before first visible day in grid*/
+    }
+    // Check sliding 7-day period limits - each day creates a new 7-day period
+    if (!isAlreadySelected) {
+      // Helper function to create date from day and time
+      const createDateFromDayTime = (day: string, time: string): Date => {
+        const dayParts = day.split(" ");
+        const dayNumber = parseInt(dayParts[1], 10);
+        const [hour, minute] = time.split(":").map(Number);
+
+        const now = new Date();
+        const date = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          dayNumber,
+          hour,
+          minute
+        );
+
+        // Adjust month if day is in next month
+        if (dayNumber < now.getDate() && now.getDate() > 20) {
+          date.setMonth(date.getMonth() + 1);
+        }
+
+        return date;
+      };
+
+      // Get all dates from the grid PLUS a week before the first visible date
+      const allDaysFromGrid = Object.keys(slotsByDay);
+      const allGridDates: Date[] = [];
+
+      // First, get all visible dates from the grid
+      for (const day of allDaysFromGrid) {
+        const dayParts = day.split(" ");
+        const dayNumber = parseInt(dayParts[1], 10);
+        const now = new Date();
+        const date = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          dayNumber,
+          0,
+          0,
+          0,
+          0
+        );
+
+        // Adjust month if day is in next month
+        if (dayNumber < now.getDate() && now.getDate() > 20) {
+          date.setMonth(date.getMonth() + 1);
+        }
+
+        allGridDates.push(date);
+      }
+
+      // Find the first visible date
+      const sortedGridDates = allGridDates.sort(
+        (a, b) => a.getTime() - b.getTime()
+      );
+      const firstVisibleDate = sortedGridDates[0];
+
+      // Add 7 days before the first visible date to capture previous bookings
+      if (firstVisibleDate) {
+        for (let i = 1; i <= 7; i++) {
+          const earlierDate = new Date(firstVisibleDate);
+          earlierDate.setDate(firstVisibleDate.getDate() - i);
+          allGridDates.push(earlierDate);
         }
       }
-    }
 
-    // Then check current session selections
-    if (selectedSlots.length > 0) {
-      // Get the earliest date from current selections
-      for (const s of selectedSlots) {
-        const [start] = s.split("|");
-        const date = new Date(start);
-        if (!firstDate || date < firstDate) {
-          firstDate = date;
-        }
-      }
-    }
+      // Sort dates and remove duplicates
+      const uniqueDates = Array.from(
+        new Set(allGridDates.map((d) => d.toDateString()))
+      )
+        .map((dateStr) => new Date(dateStr))
+        .sort((a, b) => a.getTime() - b.getTime());
 
-    // If this is the first selection, use this slot's date
-    if (!firstDate) {
-      firstDate = startTime;
-    }
+      // Update allDays to include the expanded date range for booking checks
+      const allDays = [...allDaysFromGrid]; // Keep original grid days for slot checking
 
-    // Check if the current selection is within 7 days of the first selection
-    const sevenDaysLater = new Date(firstDate.getTime());
-    sevenDaysLater.setDate(firstDate.getDate() + 7);
+      // Check ALL possible 7-day periods that could contain this slot
+      // Each day can be the start of a 7-day period
+      // Get all dates that have actual bookings or selections
+      const datesWithBookings = new Set<string>();
 
-    if (startTime >= sevenDaysLater) {
-      // Starting a new 7-day period - need to find the earliest selection in the new period
-      // Check if there are any current selections and find the earliest one
-      let earliestNewSelection = startTime;
-
-      for (const s of selectedSlots) {
-        const [start] = s.split("|");
-        const date = new Date(start);
-        if (date < earliestNewSelection) {
-          earliestNewSelection = date;
-        }
-      }
-
-      // Set firstDate to the earliest selection (either existing selections or current slot)
-      firstDate = earliestNewSelection;
-
-      // Recalculate the 7-day window from the new starting point
-      sevenDaysLater.setTime(firstDate.getTime());
-      sevenDaysLater.setDate(firstDate.getDate() + 7);
-
-      // Reset totalBookedSlots to 0 since we're starting a new period
-      totalBookedSlots = 0;
-    }
-
-    // Count all slots within the 7-day period (both booked and selected)
-    // Reset totalBookedSlots and count again for the current period
-    totalBookedSlots = 0;
-
-    if (firstDate) {
-      const sevenDaysFromFirst = new Date(firstDate.getTime());
-      sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
-
-      // Count existing booked slots within the 7-day period
-      for (const day of allDays) {
+      // Add dates from existing bookings (check both visible grid and expanded date range)
+      for (const day of allDaysFromGrid) {
         const daySlots = slotsByDay[day];
         for (const time of Object.keys(daySlots)) {
           const slot = daySlots[time];
           if (slot?.bookedByMe) {
-            // Create date for this booked slot
-            const dayParts = day.split(" ");
-            const dayNumber = parseInt(dayParts[1], 10);
-            const [hour, minute] = time.split(":").map(Number);
-
-            const now = new Date();
-            const bookedSlotDate = new Date(
-              now.getFullYear(),
-              now.getMonth(),
-              dayNumber,
-              hour,
-              minute
-            );
-
-            // Adjust month if day is in next month
-            if (dayNumber < now.getDate() && now.getDate() > 20) {
-              bookedSlotDate.setMonth(bookedSlotDate.getMonth() + 1);
-            }
-
-            // Check if this booked slot is within the 7-day period
-            if (
-              bookedSlotDate >= firstDate &&
-              bookedSlotDate < sevenDaysFromFirst
-            ) {
-              totalBookedSlots++;
-            }
+            // This checks ALL bookings by you even in the past
+            const slotDate = createDateFromDayTime(day, time);
+            const dateOnly = new Date(slotDate);
+            dateOnly.setHours(0, 0, 0, 0);
+            datesWithBookings.add(dateOnly.toDateString());
           }
         }
       }
-    }
 
-    // Check if adding this slot would exceed the weekly limit
-    const totalSlotsIncludingNew = totalBookedSlots + newWeekCount;
-
-    if (!isAlreadySelected && totalSlotsIncludingNew > maxSlotsPerWeek) {
-      const firstDateStr = firstDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-      const endDateStr = new Date(
-        sevenDaysLater.getTime() - 1
-      ).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-
-      // Count selected slots that are actually within this 7-day period
-      let selectedSlotsInPeriod = 0;
+      // Add dates from current selections
       for (const s of selectedSlots) {
         const [start] = s.split("|");
         const slotDate = new Date(start);
-        const sevenDaysFromFirst = new Date(firstDate.getTime());
-        sevenDaysFromFirst.setDate(firstDate.getDate() + 7);
-
-        if (slotDate >= firstDate && slotDate < sevenDaysFromFirst) {
-          selectedSlotsInPeriod++;
-        }
+        const dateOnly = new Date(slotDate);
+        dateOnly.setHours(0, 0, 0, 0);
+        datesWithBookings.add(dateOnly.toDateString());
       }
 
-      setErrorMessage(
-        `You can only select up to 7 hours (14 slots) within a 7-day period (${firstDateStr} - ${endDateStr}). You currently have ${totalBookedSlots} booked slots and ${selectedSlotsInPeriod} selected slots in this period.`
-      );
-      return;
+      // Add the current slot date
+      const currentSlotDateOnly = new Date(startTime);
+      currentSlotDateOnly.setHours(0, 0, 0, 0);
+      datesWithBookings.add(currentSlotDateOnly.toDateString());
+
+      // Convert back to Date objects and sort
+      const relevantDates = Array.from(datesWithBookings)
+        .map((dateStr) => new Date(dateStr))
+        .sort((a, b) => a.getTime() - b.getTime());
+
+      // Check periods that start from any date that has bookings/selections
+      // and could contain the current slot
+      for (const periodStartDate of relevantDates) {
+        const periodStart = new Date(periodStartDate);
+        periodStart.setHours(0, 0, 0, 0);
+
+        const periodEnd = new Date(periodStart);
+        periodEnd.setDate(periodStart.getDate() + 7);
+        periodEnd.setHours(0, 0, 0, 0);
+
+        // Check if the current slot falls within this 7-day period
+        if (
+          currentSlotDateOnly >= periodStart &&
+          currentSlotDateOnly < periodEnd
+        ) {
+          let totalSlotsInPeriod = 0;
+
+          // Count existing booked slots in this 7-day period (check all visible days)
+          for (const day of allDaysFromGrid) {
+            const daySlots = slotsByDay[day];
+            for (const time of Object.keys(daySlots)) {
+              const slot = daySlots[time];
+              if (slot?.bookedByMe) {
+                // This checks ALL bookings by you even in the past
+                const slotDate = createDateFromDayTime(day, time);
+                const slotDateOnly = new Date(slotDate);
+                slotDateOnly.setHours(0, 0, 0, 0);
+
+                if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
+                  totalSlotsInPeriod++;
+                }
+              }
+            }
+          }
+
+          // Count current session selections in this 7-day period
+          for (const s of selectedSlots) {
+            const [start] = s.split("|");
+            const slotDate = new Date(start);
+            const slotDateOnly = new Date(slotDate);
+            slotDateOnly.setHours(0, 0, 0, 0);
+
+            if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
+              totalSlotsInPeriod++;
+            }
+          }
+
+          // Check if adding this slot would exceed the limit for THIS period
+          if (totalSlotsInPeriod + 1 > maxSlotsPerWeek) {
+            const periodStartStr = periodStart.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+            const periodEndDate = new Date(
+              periodEnd.getTime() - 24 * 60 * 60 * 1000
+            ); // Get the last day of the period
+            const periodEndStr = periodEndDate.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+
+            const hoursLimit = (maxSlotsPerWeek * 30) / 60; // Convert slots to hours
+            setErrorMessage(
+              `You can only select up to ${hoursLimit} hours (${maxSlotsPerWeek} slots) within any 7-day period. Period ${periodStartStr} - ${periodEndStr} would have ${
+                totalSlotsInPeriod + 1
+              } slots if you add this selection.`
+            );
+            return;
+          }
+        }
+      }
     }
 
     setErrorMessage(null);
@@ -561,7 +909,7 @@ export default function EquipmentBookingGrid({
   // Render a single week grid
   const renderWeekGrid = (days: string[]) => {
     return (
-      <table className="border-collapse border border-gray-300 text-xs w-full">
+      <table className="border-collapse border border-gray-300 text-xs w-full table-fixed">
         <thead>
           <tr>
             {/* Empty header cell for time column */}
@@ -582,12 +930,12 @@ export default function EquipmentBookingGrid({
               return (
                 <th
                   key={day}
-                  className={`border border-gray-300 p-2 text-center ${
+                  className={`border border-gray-300 px-1 py-0.5 text-center w-24 ${
                     isToday ? "bg-yellow-100 font-bold" : "bg-white"
                   }`}
                 >
-                  <div className="text-sm">{dayName}</div>
-                  <div className="text-xs">{dayNumber}</div>
+                  <div className="text-xs leading-tight">{dayName}</div>
+                  <div className="text-xs leading-tight">{dayNumber}</div>
                 </th>
               );
             })}
@@ -606,16 +954,28 @@ export default function EquipmentBookingGrid({
                 ? "12:00 PM"
                 : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
               : "";
+            // const showTime = time.endsWith("00") && Number(time.split(":")[0]) % 2 === 0; // Show every 2 hours
+            // const [hour] = time.split(":");
+            // const displayHour = Number(hour);
+            // const formattedTime = showTime
+            //   ? displayHour === 0
+            //     ? "12 AM"
+            //     : displayHour === 12
+            //     ? "12 PM"
+            //     : `${displayHour % 12} ${displayHour < 12 ? "AM" : "PM"}`
+            //   : "";
 
             return (
               <tr key={time}>
-                {/* Time label column */}
+                {/* Time label column most important for height */}
                 <td
-                  className={`text-right pr-2 py-1 border border-gray-300 bg-white ${
+                  className={`text-center border border-gray-300 bg-white text-xs h-4 ${
                     showTime ? "font-medium" : ""
                   }`}
                 >
-                  {formattedTime}
+                  <div className="h-4 flex items-center justify-center text-xs">
+                    {formattedTime}
+                  </div>
                 </td>
 
                 {/* Slot cells for this row of days */}
@@ -742,7 +1102,7 @@ export default function EquipmentBookingGrid({
                   return (
                     <td
                       key={`${day}-${time}`}
-                      className={`border border-gray-300 h-6 relative group ${colorClass}`}
+                      className={`border border-gray-300 h-3 relative group ${colorClass}`}
                       onClick={() =>
                         !isAnyRestriction &&
                         !isPlannedClosure &&
@@ -842,7 +1202,8 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure && (
                           <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
-                            Reserved for this workshop
+                            {/* Reserved for this workshop */}
+                            Current Workshop Time
                           </div>
                         )}
                       {isCurrentWorkshopEditingSlot &&
@@ -850,7 +1211,8 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure && (
                           <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-yellow-100 border border-yellow-200 rounded text-yellow-700 text-xs whitespace-nowrap shadow-lg">
-                            Currently editing this workshop date
+                            {/* Currently editing this workshop date */}
+                            Old Workshop Time
                           </div>
                         )}
                       {isOtherWorkshopSlot &&
@@ -866,7 +1228,13 @@ export default function EquipmentBookingGrid({
                         !isAnyRestriction &&
                         !isPlannedClosure &&
                         !(isWorkshopSlot || slot?.reservedForWorkshop) && (
-                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-700 text-xs whitespace-nowrap shadow-lg">
+                          <div
+                            className={`hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 rounded text-xs whitespace-nowrap shadow-lg ${
+                              slot?.bookedByMe
+                                ? "bg-blue-100 border border-blue-200 text-blue-700"
+                                : "bg-red-100 border border-red-200 text-red-700"
+                            }`}
+                          >
                             {slot?.bookedByMe
                               ? "Booked by you"
                               : "Booked by others"}
@@ -944,7 +1312,7 @@ export default function EquipmentBookingGrid({
     return (
       <div className="w-full">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="border-b mb-4">
+          <div className="border-b mb-2">
             <TabsList className="bg-transparent h-auto p-0 mb-0 flex w-full justify-start overflow-x-auto">
               {weekDays.map((days, index) => (
                 <TabsTrigger
@@ -1002,64 +1370,65 @@ export default function EquipmentBookingGrid({
   }
 
   return (
-    <div className="w-full max-w-screen-xl mx-auto">
+    <div className="w-full mx-auto px-4">
       {/* Error Message */}
       {errorMessage && (
-        <div className="mb-4 text-red-500 bg-red-100 p-3 rounded border border-red-400 text-sm text-center">
+        <div className="mb-2 text-red-500 bg-red-100 p-2 rounded border border-red-400 text-xs text-center">
           {errorMessage}
         </div>
       )}
 
       {/* Legend */}
-      <div className="flex flex-col items-center mb-6">
-        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-pink-100 border border-gray-300" />
+      <div className="flex flex-col items-center mb-1">
+        <div className="flex items-center gap-1 justify-center flex-wrap text-xs">
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-pink-100 border border-gray-300" />
             <span>Unavailable</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-green-500 border border-gray-300" />
-            <span>Available</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-white border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-white border border-gray-300" />
             <span>Unselected</span>
           </div>
-          {/* <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-gray-200 border border-gray-300" />
-            <span>Past Time</span>
-          </div> */}
-        </div>
-        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-blue-400 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-green-500 border border-gray-300" />
+            <span>
+              {currentWorkshopOccurrences &&
+              currentWorkshopOccurrences.length > 0
+                ? "Current Workshop Time(s)"
+                : "Available"}
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-yellow-400 border border-gray-300" />
+            <span>
+              {currentWorkshopOccurrences &&
+              currentWorkshopOccurrences.length > 0
+                ? "Previous Workshop Time(s)"
+                : "Being Edited"}
+            </span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-blue-400 border border-gray-300" />
             <span>Booked by You</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-red-400 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-red-400 border border-gray-300" />
             <span>Booked by Others</span>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-purple-400 border border-gray-300" />
+          <div className="flex items-center gap-0.5">
+            <div className="w-3 h-3 bg-purple-400 border border-gray-300" />
             <span>Reserved for Workshop</span>
           </div>
-
           {(level3Restrictions || level4Restrictions) && (
-            <div className="flex items-center gap-1">
-              <div className="w-4 h-4 bg-gray-300 border border-gray-300" />
+            <div className="flex items-center gap-0.5">
+              <div className="w-3 h-3 bg-gray-300 border border-gray-300" />
               <span>Admin Restricted</span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-4 justify-center mb-2 text-sm">
-          <div className="flex items-center gap-1">
-            <div className="w-4 h-4 bg-yellow-400 border border-gray-300" />
-            <span>Being Edited</span>
-          </div>
-        </div>
 
         {/* <p className="text-md font-medium mt-2">Click and Drag to Toggle</p> */}
-        <p className="text-md font-medium mt-2">
+        <p className="text-sm font-medium mt-1">
           {readOnly
             ? "Equipment availability view"
             : "Click and Drag to Toggle"}

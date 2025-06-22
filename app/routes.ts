@@ -1,7 +1,8 @@
 import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
-  index("routes/home.tsx"),
+  index("routes/_index.tsx"),
+  route("/home", "routes/home.tsx"),
   route("/register", "routes/authentication/register.tsx"),
   route("/login", "routes/authentication/login.tsx"),
   route("/logout", "routes/authentication/logout.tsx"),
@@ -38,8 +39,8 @@ export default [
     "/editmembershipplan/:planId",
     "routes/getinvolved/editmembershipplan.tsx"
   ),
-  route("/addworkshop", "routes/dashboard/addworkshop.tsx"),
-  route("/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
+  route("/dashboard/addworkshop", "routes/dashboard/addworkshop.tsx"),
+  route("/dashboard/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
   route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
   route(
     "/dashboard/workshops/offer/:id",
@@ -83,6 +84,7 @@ export default [
   route("/dashboard/admin/settings", "routes/dashboard/adminsettings.tsx"),
   route("/dashboard/admin/reports", "routes/dashboard/adminreports.tsx"),
   route("/report", "routes/dashboard/issue.tsx"),
+  route("/logs", "routes/dashboard/serverlogs.tsx"),
   route("/dashboard/equipments/book-slot", "routes/dashboard/bookequipmentslot.tsx"),
 
 ] satisfies RouteConfig;

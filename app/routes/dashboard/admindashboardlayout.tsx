@@ -19,6 +19,7 @@ import { FiPlus } from "react-icons/fi";
 
 // Import your new ShadTable
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -26,6 +27,7 @@ export async function loader({ request }: { request: Request }) {
   const registrations = await getAllRegistrations();
 
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to access admin dashboard`, { url: request.url });
     return redirect("/dashboard/user");
   }
 
@@ -46,6 +48,7 @@ export async function loader({ request }: { request: Request }) {
     }));
   }
 
+  logger.info(`[User: ${roleUser?.userId}] Fetched admin dashboard`, { url: request.url });
   return { roleUser, workshops: workshopsWithRegistration, registrations };
 }
 
@@ -55,19 +58,21 @@ export async function action({ request }: { request: Request }) {
   const workshopId = formData.get("workshopId");
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to access admin dashboard`, { url: request.url });
     throw new Response("Not Authorized", { status: 419 });
   }
 
   if (action === "edit") {
-    return redirect(`/editworkshop/${workshopId}`);
+    return redirect(`/dashboard/editworkshop/${workshopId}`);
   }
 
   if (action === "delete") {
     try {
       await deleteWorkshop(Number(workshopId));
+      logger.info(`[User: ${roleUser?.userId}] Deleted workshop ${workshopId} successfully`, { url: request.url });
       return redirect("/dashboard/admin");
     } catch (error) {
-      console.error("Error deleting workshop:", error);
+      logger.error(`Error deleting workshop: ${error}`, { url: request.url });
       return { error: "Failed to delete workshop" };
     }
   }
@@ -75,9 +80,10 @@ export async function action({ request }: { request: Request }) {
   if (action === "duplicate") {
     try {
       await duplicateWorkshop(Number(workshopId));
+      logger.info(`[User: ${roleUser?.userId}] Duplicated workshop ${workshopId} successfully`, { url: request.url });
       return redirect("/dashboard/admin");
     } catch (error) {
-      console.error("Error duplicating workshop:", error);
+      logger.error(`Error duplicating workshop: ${error}`, { url: request.url });
       return { error: "Failed to duplicate workshop" };
     }
   }
@@ -88,9 +94,10 @@ export async function action({ request }: { request: Request }) {
     if (registrationId && newResult) {
       try {
         await updateRegistrationResult(Number(registrationId), String(newResult));
+        logger.info(`[User: ${roleUser?.userId}] updateRegistrationResult on workshop ${workshopId} successfully executed`, { url: request.url });
         return redirect("/dashboard/admin");
       } catch (error) {
-        console.error("Error updating registration result:", error);
+        logger.error(`Error updating registration result for Workshop: ${error}`, { url: request.url });
         return { error: "Failed to update registration result" };
       }
     }
@@ -102,9 +109,16 @@ export async function action({ request }: { request: Request }) {
       const registrationIds = JSON.parse(registrationIdsStr as string) as number[];
       try {
         await updateMultipleRegistrations(registrationIds, "passed");
+        logger.info(`[User: ${roleUser?.userId}] passAll executed for ${registrationIds.length} registrations on workshop ${workshopId}`, {
+          registrationIds,
+          url: request.url,
+        });
         return redirect("/dashboard/admin");
       } catch (error) {
-        console.error("Error updating multiple registrations:", error);
+        logger.error(`Error updating multiple registrations (passAll) for Workshop: ${error}`, {
+          registrationIds,
+          url: request.url,
+        });
         return { error: "Failed to pass all registrations" };
       }
     }
@@ -175,7 +189,7 @@ export default function AdminDashboard() {
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="flex justify-end mb-6 pr-4">
-            <Link to="/addworkshop">
+            <Link to="/dashboard/addworkshop">
               <button className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
                 <FiPlus size={18} /> Add Workshop
               </button>

@@ -9,13 +9,19 @@ import { useLoaderData } from "react-router";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
+
+  // Authentication check - only allow signed-in users (admins or regular users)
+  if (!roleUser) {
+    throw redirect("/login");
+  }
+
   const workshops = await getWorkshops();
 
-  return { workshops };
+  return { workshops, roleUser };
 }
 
 export default function UserDashboard() {
-  const { workshops } = useLoaderData();
+  const { workshops, roleUser } = useLoaderData();
 
   // Get current date
   const now = new Date();

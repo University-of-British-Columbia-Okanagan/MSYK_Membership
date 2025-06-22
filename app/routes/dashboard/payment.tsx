@@ -9,10 +9,13 @@ import {
 import {
   getMembershipPlanById,
   getUserActiveMembership,
-} from "../../models/membership.server"; // make sure to implement this
+} from "../../models/membership.server";
 import { getUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
+import { getSavedPaymentMethod } from "../../models/user.server";
+import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
+import { logger } from "~/logging/logger";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -23,6 +26,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export const loader: LoaderFunction = async ({ params, request }) => {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
+
+  const savedPaymentMethod = await getSavedPaymentMethod(user.id);
 
   if (params.membershipPlanId) {
     const membershipPlanId = Number(params.membershipPlanId);
@@ -96,7 +101,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isResubscription = true;
     }
 
-    console.log("Upgrade Fee:", upgradeFee);
 
     return {
       membershipPlan,
@@ -108,6 +112,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       oldMembershipNextPaymentDate,
       isDowngrade,
       isResubscription,
+      savedPaymentMethod,
     };
   }
   // Workshop branch: either single occurrence or continuation
@@ -122,7 +127,13 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrence)
       throw new Response("Workshop or Occurrence not found", { status: 404 });
 
-    return { workshop, occurrence, user, isContinuation: false };
+    return {
+      workshop,
+      occurrence,
+      user,
+      isContinuation: false,
+      savedPaymentMethod,
+    };
   } else if (params.workshopId && params.connectId) {
     // New branch for continuation workshops using connectId
     const workshopId = Number(params.workshopId);
@@ -140,7 +151,13 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw new Response("Workshop or Occurrences not found", { status: 404 });
 
     // For payment, we use the first occurrence as a representative
-    return { workshop, occurrence: occurrences[0], user, isContinuation: true };
+    return {
+      workshop,
+      occurrence: occurrences[0],
+      user,
+      isContinuation: true,
+      savedPaymentMethod,
+    };
   } else {
     throw new Response("Missing required parameters", { status: 400 });
   }
@@ -343,7 +360,7 @@ export async function action({ request }: { request: Request }) {
       });
     }
   } catch (error) {
-    console.error("Stripe Checkout Error:", error);
+    logger.error(`Stripe Checkout Error: ${error}`, {url: request.url,});
     return new Response(
       JSON.stringify({ error: "Failed to create checkout session" }),
       {
@@ -369,6 +386,7 @@ export default function Payment() {
     isDowngrade?: boolean;
     isResubscription?: boolean;
     oldMembershipNextPaymentDate?: Date | null;
+    savedPaymentMethod?: any;
   };
 
   const navigate = useNavigate();
@@ -488,9 +506,91 @@ export default function Payment() {
 
   return (
     <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
+      {/* Quick Checkout Section for Workshops */}
+      {data.workshop && data.savedPaymentMethod && (
+        <div className="mb-6">
+          <QuickCheckout
+            userId={data.user.id}
+            checkoutData={{
+              type: "workshop",
+              workshopId: data.workshop.id,
+              occurrenceId: data.isContinuation
+                ? undefined
+                : data.occurrence.id,
+              connectId: data.isContinuation
+                ? data.occurrence.connectId
+                : undefined,
+            }}
+            itemName={data.workshop.name}
+            itemPrice={data.workshop.price}
+            savedCard={{
+              cardLast4: data.savedPaymentMethod.cardLast4,
+              cardExpiry: data.savedPaymentMethod.cardExpiry,
+            }}
+            onSuccess={() => {
+              console.log("Workshop payment successful!");
+            }}
+            onError={(error) => {
+              console.error("Workshop payment failed:", error);
+            }}
+          />
+
+          {/* Divider */}
+          <div className="my-6 flex items-center">
+            <div className="flex-1 border-t border-gray-300"></div>
+            <div className="mx-4 text-gray-500 text-sm">OR</div>
+            <div className="flex-1 border-t border-gray-300"></div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Checkout Section for Memberships */}
+      {data.membershipPlan &&
+        data.savedPaymentMethod &&
+        !data.isResubscription &&
+        !data.isDowngrade && (
+          <div className="mb-6">
+            <QuickCheckout
+              userId={data.user.id}
+              checkoutData={{
+                type: "membership",
+                membershipPlanId: data.membershipPlan.id,
+                price: data.userActiveMembership
+                  ? data.upgradeFee
+                  : data.membershipPlan.price,
+                currentMembershipId: data.userActiveMembership?.id,
+                upgradeFee: data.upgradeFee,
+              }}
+              itemName={data.membershipPlan.title}
+              itemPrice={
+                data.userActiveMembership
+                  ? data.upgradeFee
+                  : data.membershipPlan.price
+              }
+              savedCard={{
+                cardLast4: data.savedPaymentMethod.cardLast4,
+                cardExpiry: data.savedPaymentMethod.cardExpiry,
+              }}
+              onSuccess={() => {
+                console.log("Membership payment successful!");
+              }}
+              onError={(error) => {
+                console.error("Membership payment failed:", error);
+              }}
+            />
+
+            {/* Divider */}
+            <div className="my-6 flex items-center">
+              <div className="flex-1 border-t border-gray-300"></div>
+              <div className="mx-4 text-gray-500 text-sm">OR</div>
+              <div className="flex-1 border-t border-gray-300"></div>
+            </div>
+          </div>
+        )}
+
       {data.membershipPlan ? (
         <>
-          {/* UPDATED: Adjust title based on isResubscription or isDowngrade */}
+          {/* Adjusted title based on isResubscription or isDowngrade */}
           <h2 className="text-xl font-bold mb-4">
             {data.isResubscription
               ? "Confirm Membership Resubscription"

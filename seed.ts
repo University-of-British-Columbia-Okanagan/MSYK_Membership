@@ -183,8 +183,8 @@ async function main() {
     },
     {
       workshopId: 2, // Pottery
-      startDate: new Date("2025-06-10T14:00:00Z"),
-      endDate: new Date("2025-06-10T16:00:00Z"),
+      startDate: new Date("2025-07-10T14:00:00Z"),
+      endDate: new Date("2025-07-10T16:00:00Z"),
     },
     {
       workshopId: 3, // Knitting
@@ -314,11 +314,21 @@ async function main() {
 
   await prisma.adminSettings.upsert({
     where: { key: "max_number_equipment_slots_per_day" },
-    update: { value: "120" },
+    update: { value: "4" },
     create: {
       key: "max_number_equipment_slots_per_day",
-      value: "120",
-      description: "Maximum number of minutes a user can book equipment per day (stored in minutes, 120 = 2 hours)",
+      value: "4",
+      description: "Maximum number of 30-minute slots a user can book equipment per day (stored as slot count, 4 = 2 hours)",
+    },
+  })
+
+  await prisma.adminSettings.upsert({
+    where: { key: "max_number_equipment_slots_per_week" },
+    update: { value: "14" },
+    create: {
+      key: "max_number_equipment_slots_per_week",
+      value: "14",
+      description: "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
     },
   })
 
