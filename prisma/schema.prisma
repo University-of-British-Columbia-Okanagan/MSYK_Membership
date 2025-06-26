@@ -74,16 +74,16 @@ model WorkshopPrerequisite {
 }
 
 model EquipmentPrerequisite {
-  id             Int @id @default(autoincrement())
-  equipmentId    Int // The equipment that has prerequisites
-  prerequisiteId Int // The workshop (orientation) that is a prerequisite
+  id                     Int @id @default(autoincrement())
+  equipmentId            Int // The equipment that has prerequisites
+  workshopPrerequisiteId Int // The workshop (orientation) that is a prerequisite
 
   // Relationships
   equipment            Equipment @relation("EquipmentWithPrerequisite", fields: [equipmentId], references: [id], onDelete: Cascade)
-  prerequisiteWorkshop Workshop  @relation("EquipmentPrerequisiteWorkshop", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+  prerequisiteWorkshop Workshop  @relation("EquipmentPrerequisiteWorkshop", fields: [workshopPrerequisiteId], references: [id], onDelete: Cascade)
 
   // Ensure uniqueness - an equipment can only have the same prerequisite once
-  @@unique([equipmentId, prerequisiteId])
+  @@unique([equipmentId, workshopPrerequisiteId])
 }
 
 model Workshop {

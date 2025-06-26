@@ -1,4 +1,4 @@
-import { redirect, useActionData } from "react-router";
+import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +30,16 @@ import {
 } from "@/components/ui/tooltip";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
+import { getWorkshops } from "~/models/workshop.server";
+import MultiSelectField from "@/components/ui/MultiSelectField";
+import { useState } from "react";
+
+export async function loader({ request }: { request: Request }) {
+  const workshops = await getWorkshops();
+  const roleUser = await getRoleUser(request);
+
+  return { workshops, roleUser };
+}
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
@@ -37,10 +47,16 @@ export async function action({ request }: { request: Request }) {
 
   const price = parseFloat(rawValues.price as string);
 
+  const workshopPrerequisitesString = rawValues.workshopPrerequisites as string;
+  const workshopPrerequisites = workshopPrerequisitesString
+    ? workshopPrerequisitesString.split(",").map(Number)
+    : [];
+
   // Validate data
   const parsed = equipmentFormSchema.safeParse({
     ...rawValues,
     price,
+    workshopPrerequisites,
   });
 
   if (!parsed.success) {
@@ -50,14 +66,20 @@ export async function action({ request }: { request: Request }) {
   try {
     const roleUser = await getRoleUser(request);
     if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      logger.warn(`[User: ${roleUser?.userId}] Not authorized to add equipment`, { url: request.url });
+      logger.warn(
+        `[User: ${roleUser?.userId}] Not authorized to add equipment`,
+        { url: request.url }
+      );
       throw new Response("Not Authorized", { status: 401 });
     }
 
     // Check if equipment name already exists
     const existingEquipment = await getEquipmentByName(parsed.data.name);
     if (existingEquipment) {
-      logger.warn(`[User: ${roleUser?.userId}] Equipment with this name already exists`, { url: request.url });
+      logger.warn(
+        `[User: ${roleUser?.userId}] Equipment with this name already exists`,
+        { url: request.url }
+      );
       return { errors: { name: ["Equipment with this name already exists."] } };
     }
 
@@ -67,9 +89,13 @@ export async function action({ request }: { request: Request }) {
       description: parsed.data.description,
       price: parsed.data.price,
       availability: parsed.data.availability === "true" ? true : false,
+      workshopPrerequisites: parsed.data.workshopPrerequisites || [],
     });
 
-    logger.info(`[User: ${roleUser?.userId}] New Equipment ${parsed.data.name} added successfully`, { url: request.url });
+    logger.info(
+      `[User: ${roleUser?.userId}] New Equipment ${parsed.data.name} added successfully`,
+      { url: request.url }
+    );
 
     return redirect("/dashboard/admin");
   } catch (error: any) {
@@ -85,6 +111,9 @@ export async function action({ request }: { request: Request }) {
 
 export default function AddEquipment() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const { workshops } = useLoaderData<typeof loader>();
+  const [selectedWorkshopPrerequisites, setSelectedWorkshopPrerequisites] =
+    useState<number[]>([]);
 
   const form = useForm<EquipmentFormValues>({
     resolver: zodResolver(equipmentFormSchema),
@@ -93,8 +122,29 @@ export default function AddEquipment() {
       description: "",
       price: 0,
       availability: "true",
+      workshopPrerequisites: [],
     },
   });
+
+  const handleWorkshopPrerequisiteSelect = (workshopId: number) => {
+    let updated: number[];
+    if (selectedWorkshopPrerequisites.includes(workshopId)) {
+      updated = selectedWorkshopPrerequisites.filter((id) => id !== workshopId);
+    } else {
+      updated = [...selectedWorkshopPrerequisites, workshopId];
+    }
+    updated.sort((a, b) => a - b);
+    setSelectedWorkshopPrerequisites(updated);
+    form.setValue("workshopPrerequisites", updated);
+  };
+
+  const removeWorkshopPrerequisite = (workshopId: number) => {
+    const updated = selectedWorkshopPrerequisites.filter(
+      (id) => id !== workshopId
+    );
+    setSelectedWorkshopPrerequisites(updated);
+    form.setValue("workshopPrerequisites", updated);
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-8 bg-white shadow-md rounded-lg">
@@ -227,6 +277,27 @@ export default function AddEquipment() {
                 <FormMessage />
               </FormItem>
             )}
+          />
+
+          <MultiSelectField
+            control={form.control}
+            name="workshopPrerequisites"
+            label="Workshop Prerequisites"
+            options={workshops}
+            selectedItems={selectedWorkshopPrerequisites}
+            onSelect={handleWorkshopPrerequisiteSelect}
+            onRemove={removeWorkshopPrerequisite}
+            error={actionData?.errors?.workshopPrerequisites}
+            placeholder="Select workshop prerequisites..."
+            helperText="Select workshops of type Orientation that must be completed before using this equipment."
+            filterFn={(item) => item.type.toLowerCase() === "orientation"}
+          />
+
+          {/* Hidden input for form submission */}
+          <input
+            type="hidden"
+            name="workshopPrerequisites"
+            value={selectedWorkshopPrerequisites.join(",")}
           />
 
           {/* Submit Button */}
