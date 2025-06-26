@@ -28,7 +28,6 @@ import { getRoleUser } from "../../utils/session.server";
 import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
 
-
 export async function loader({
   request,
   params,
@@ -43,9 +42,27 @@ export async function loader({
   const roleUser = await getRoleUser(request);
 
   logger.info(
-    `[User: ${userId ?? "guest"}] Loading equipment scheduler (equipmentId: ${equipmentId})`,
+    `[User: ${
+      userId ?? "guest"
+    }] Loading equipment scheduler (equipmentId: ${equipmentId})`,
     { url: request.url }
   );
+
+  let hasCompletedEquipmentPrerequisites = true;
+  let equipmentPrerequisiteMessage = "";
+
+  if (user && equipmentId && (roleLevel === 3 || roleLevel === 4)) {
+    const { hasUserCompletedEquipmentPrerequisites } = await import(
+      "../../models/equipment.server"
+    );
+    hasCompletedEquipmentPrerequisites =
+      await hasUserCompletedEquipmentPrerequisites(user.id, equipmentId);
+
+    if (!hasCompletedEquipmentPrerequisites) {
+      equipmentPrerequisiteMessage =
+        "You must complete the required prerequisite orientations before booking this equipment. Please check the equipment details page to see which orientations are required.";
+    }
+  }
 
   // Get the equipment_visible_registrable_days setting
   const equipmentWithSlots = await getEquipmentSlotsWithStatus(
@@ -89,6 +106,8 @@ export async function loader({
     maxSlotsPerWeek: parseInt(maxSlotsPerWeek, 10),
     roleUser,
     savedPaymentMethod,
+    hasCompletedEquipmentPrerequisites,
+    equipmentPrerequisiteMessage,
   });
 }
 
@@ -165,10 +184,9 @@ export async function action({ request }: { request: Request }) {
     const sessionRes = await response.json();
 
     if (sessionRes?.url) {
-      logger.info(
-        `[User: ${user.id}] Checkout session created successfully`,
-        { url: request.url }
-      );
+      logger.info(`[User: ${user.id}] Checkout session created successfully`, {
+        url: request.url,
+      });
       return redirect(sessionRes.url);
     } else {
       logger.error(
@@ -202,6 +220,8 @@ export default function EquipmentBookingForm() {
     maxSlotsPerWeek,
     roleUser,
     savedPaymentMethod,
+    hasCompletedEquipmentPrerequisites,
+    equipmentPrerequisiteMessage,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -304,7 +324,6 @@ export default function EquipmentBookingForm() {
                   <EquipmentBookingGrid
                     slotsByDay={selectedEquip?.slotsByDay || {}}
                     onSelectSlots={setSelectedSlots}
-                    disabled={roleLevel === 1 || roleLevel === 2}
                     visibleTimeRange={
                       roleLevel === 3
                         ? { startHour: 9, endHour: 17 }
@@ -323,6 +342,17 @@ export default function EquipmentBookingForm() {
                     userRoleLevel={roleLevel}
                     maxSlotsPerDay={maxSlotsPerDay}
                     maxSlotsPerWeek={maxSlotsPerWeek}
+                    disabled={
+                      roleLevel === 1 ||
+                      roleLevel === 2 ||
+                      (!hasCompletedEquipmentPrerequisites &&
+                        (roleLevel === 3 || roleLevel === 4))
+                    }
+                    disabledMessage={
+                      roleLevel === 1 || roleLevel === 2
+                        ? "You do not have the required membership to book equipment."
+                        : equipmentPrerequisiteMessage
+                    }
                   />
 
                   {totalPrice && (

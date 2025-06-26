@@ -32,13 +32,21 @@ export async function createPaymentIntentWithSavedCard(
   }
 
   // Create payment intent
+  const gstRate = 0.05;
+  const amountWithGST = amount * (1 + gstRate);
+
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(amount * 100), // Convert to cents
-    currency: "usd",
+    amount: Math.round(amountWithGST * 100), // Convert to cents with GST included
+    currency: "cad", // Changed from "usd" to "cad"
     customer: savedPayment.stripeCustomerId,
     payment_method: savedPayment.stripePaymentMethodId,
-    description,
-    metadata,
+    description: `${description} (Includes 5% GST)`,
+    metadata: {
+      ...metadata,
+      original_amount: amount.toString(),
+      gst_amount: (amountWithGST - amount).toString(),
+      total_with_gst: amountWithGST.toString(),
+    },
     confirm: true, // Automatically confirm the payment
     off_session: true, // Payment is being made without customer present
     payment_method_types: ["card"],
@@ -449,6 +457,10 @@ export async function createCheckoutSession(request: Request) {
       }.`;
     }
 
+    // Calculate GST (5% for Canada)
+    const gstRate = 0.05;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -458,12 +470,12 @@ export async function createCheckoutSession(request: Request) {
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: membershipPlan.title,
-              description: finalDescription,
+              description: `${finalDescription} (Includes 5% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,
         },
@@ -502,20 +514,25 @@ export async function createCheckoutSession(request: Request) {
     if (!workshop || !occurrence) {
       throw new Error("Workshop or Occurrence not found");
     }
+
+    // Calculate GST (5% for Canada)
+    const gstRate = 0.05;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: workshop.name,
-              description: `Occurrence on ${new Date(
+              description: `${`Occurrence on ${new Date(
                 occurrence.startDate
-              ).toLocaleString()}`,
+              ).toLocaleString()}`} (Includes 5% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,
         },
@@ -559,18 +576,21 @@ export async function createCheckoutSession(request: Request) {
 
     const description = `Occurrences:\n${occurrencesDescription}`;
 
+    const gstRate = 0.05;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: workshop.name,
-              description,
+              description: `${description} (Includes 5% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,
         },
@@ -607,18 +627,23 @@ export async function createCheckoutSession(request: Request) {
       userEmail,
       slotsDataKey,
     } = body;
+
+    // Calculate GST (5% for Canada)
+    const gstRate = 0.05;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: `Equipment Booking (ID: ${equipmentId})`,
-              description: `Booking for ${slotCount} slots`,
+              description: `Booking for ${slotCount} slots (Includes 5% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,
         },

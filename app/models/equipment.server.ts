@@ -9,20 +9,39 @@ interface EquipmentData {
   price: number;
 }
 
-console.log(db.equipment);
-
 /**
- * Fetch equipment details by ID
+ * Get equipment with prerequisites by ID
  */
 export async function getEquipmentById(equipmentId: number) {
-  return await db.equipment.findUnique({
-    where: { id: equipmentId },
-    include: {
-      slots: {
-        orderBy: { startTime: "asc" }, // Ensures proper ordering
+  try {
+    const equipment = await db.equipment.findUnique({
+      where: { id: equipmentId },
+      include: {
+        prerequisites: {
+          select: {
+            workshopPrerequisiteId: true, // CHANGED: from prerequisiteId to workshopPrerequisiteId
+          },
+        },
       },
-    },
-  });
+    });
+
+    if (!equipment) {
+      throw new Error("Equipment not found");
+    }
+
+    // Flatten prerequisite workshop IDs
+    const prerequisites = equipment.prerequisites.map(
+      (p) => p.workshopPrerequisiteId
+    ); // CHANGED
+
+    return {
+      ...equipment,
+      prerequisites,
+    };
+  } catch (error) {
+    console.error("Error fetching equipment by ID:", error);
+    throw new Error("Failed to fetch equipment");
+  }
 }
 
 /**
@@ -177,6 +196,7 @@ export async function addEquipment(data: {
   description: string;
   price: number;
   availability: boolean;
+  workshopPrerequisites?: number[];
 }) {
   try {
     // Create Equipment Without Slots
@@ -189,7 +209,14 @@ export async function addEquipment(data: {
       },
     });
 
-    console.log(" New Equipment Created:", newEquipment);
+    if (data.workshopPrerequisites && data.workshopPrerequisites.length > 0) {
+      await db.equipmentPrerequisite.createMany({
+        data: data.workshopPrerequisites.map((prereqId) => ({
+          equipmentId: newEquipment.id,
+          workshopPrerequisiteId: prereqId,
+        })),
+      });
+    }
 
     return newEquipment;
   } catch (error) {
@@ -1223,4 +1250,81 @@ export async function getAllEquipment() {
         status: eq.availability ? "available" : "unavailable", // Only based on availability field
       }))
     );
+}
+
+/**
+ * Get the list of prerequisite workshop IDs that a user has successfully completed for equipment
+ */
+export async function getUserCompletedEquipmentPrerequisites(
+  userId: number,
+  equipmentId: number
+) {
+  if (!userId) return [];
+
+  // First, get all prerequisite IDs for the equipment
+  const equipment = await db.equipment.findUnique({
+    where: { id: equipmentId },
+    include: {
+      prerequisites: {
+        select: { workshopPrerequisiteId: true },
+      },
+    },
+  });
+
+  if (!equipment || !equipment.prerequisites.length) return [];
+
+  // Get the list of prerequisite IDs
+  const prerequisiteIds = equipment.prerequisites.map(
+    (p) => p.workshopPrerequisiteId
+  );
+
+  // Find all workshop occurrences the user has completed successfully
+  const completedWorkshops = await db.userWorkshop.findMany({
+    where: {
+      userId: userId,
+      workshopId: { in: prerequisiteIds },
+      result: "passed",
+    },
+    select: {
+      workshopId: true,
+    },
+  });
+
+  // Return array of completed prerequisite workshop IDs
+  return [...new Set(completedWorkshops.map((cw) => cw.workshopId))];
+}
+
+/**
+ * Check if user has completed all prerequisites for equipment
+ */
+export async function hasUserCompletedEquipmentPrerequisites(
+  userId: number,
+  equipmentId: number
+): Promise<boolean> {
+  if (!userId) return false;
+
+  const equipment = await db.equipment.findUnique({
+    where: { id: equipmentId },
+    include: {
+      prerequisites: {
+        select: { workshopPrerequisiteId: true },
+      },
+    },
+  });
+
+  // If no prerequisites, user can use equipment
+  if (!equipment || !equipment.prerequisites.length) return true;
+
+  const completedPrerequisites = await getUserCompletedEquipmentPrerequisites(
+    userId,
+    equipmentId
+  );
+  const requiredPrerequisites = equipment.prerequisites.map(
+    (p) => p.workshopPrerequisiteId
+  );
+
+  // Check if user has completed all required prerequisites
+  return requiredPrerequisites.every((reqId) =>
+    completedPrerequisites.includes(reqId)
+  );
 }

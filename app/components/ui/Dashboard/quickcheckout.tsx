@@ -112,7 +112,7 @@ export default function QuickCheckout({
               Payment Successful!
             </h3>
             <p className="text-green-700">
-              Charged ${itemPrice.toFixed(2)} to card ending in{" "}
+              Charged CA${(itemPrice * 1.05).toFixed(2)} to card ending in{" "}
               {savedCard.cardLast4}
             </p>
             <p className="text-sm text-green-600 mt-1">
@@ -178,7 +178,13 @@ export default function QuickCheckout({
         <div className="flex justify-between items-center mb-2">
           <span className="text-sm font-medium text-gray-600">Amount:</span>
           <span className="text-lg font-bold text-green-600">
-            ${itemPrice.toFixed(2)}
+            CA${(itemPrice * 1.05).toFixed(2)} {/* Display price with 5% GST */}
+          </span>
+        </div>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-xs text-gray-500">Includes GST:</span>
+          <span className="text-xs text-gray-600">
+            CA${(itemPrice * 0.05).toFixed(2)}
           </span>
         </div>
         <div className="flex justify-between items-center">
@@ -212,7 +218,8 @@ export default function QuickCheckout({
         ) : (
           <>
             <Clock className="h-5 w-5 mr-2" />
-            Pay ${itemPrice.toFixed(2)} Now
+            Pay CA${(itemPrice * 1.05).toFixed(2)} Now{" "}
+            {/* Display total with GST */}
           </>
         )}
       </button>
