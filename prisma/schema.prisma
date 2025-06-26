@@ -73,6 +73,19 @@ model WorkshopPrerequisite {
   @@unique([workshopId, prerequisiteId])
 }
 
+model EquipmentPrerequisite {
+  id             Int @id @default(autoincrement())
+  equipmentId    Int // The equipment that has prerequisites
+  prerequisiteId Int // The workshop (orientation) that is a prerequisite
+
+  // Relationships
+  equipment            Equipment @relation("EquipmentWithPrerequisite", fields: [equipmentId], references: [id], onDelete: Cascade)
+  prerequisiteWorkshop Workshop  @relation("EquipmentPrerequisiteWorkshop", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  // Ensure uniqueness - an equipment can only have the same prerequisite once
+  @@unique([equipmentId, prerequisiteId])
+}
+
 model Workshop {
   id                 Int      @id @default(autoincrement())
   name               String
@@ -95,6 +108,8 @@ model Workshop {
   // Prerequisite relationships
   prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
   prerequisites   WorkshopPrerequisite[] @relation("WorkshopWithPrerequisite")
+
+  equipmentPrerequisites EquipmentPrerequisite[] @relation("EquipmentPrerequisiteWorkshop")   
 }
 
 model WorkshopOccurrence {
@@ -127,6 +142,8 @@ model Equipment {
   imageUrl    String?
 slots       EquipmentSlot[]
   bookings    EquipmentBooking[]
+
+  prerequisites EquipmentPrerequisite[] @relation("EquipmentWithPrerequisite")
 }
 
 model EquipmentSlot {
