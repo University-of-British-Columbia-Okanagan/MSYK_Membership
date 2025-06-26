@@ -56,6 +56,7 @@ interface EquipmentBookingGridProps {
   slotsByDay: SlotsByDay;
   onSelectSlots: (selectedSlots: string[]) => void;
   disabled?: boolean;
+  disabledMessage?: string
   readOnly?: boolean;
   visibleTimeRange?: { startHour: number; endHour: number };
   preselectedSlotIds?: number[];
@@ -87,6 +88,7 @@ export default function EquipmentBookingGrid({
   disabled = false,
   readOnly = false,
   visibleTimeRange,
+  disabledMessage = "Booking is currently disabled.",
   visibleDays = 7, // Default to 7 days if not specified
   level3Restrictions,
   level4Restrictions,
@@ -954,16 +956,6 @@ export default function EquipmentBookingGrid({
                 ? "12:00 PM"
                 : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
               : "";
-            // const showTime = time.endsWith("00") && Number(time.split(":")[0]) % 2 === 0; // Show every 2 hours
-            // const [hour] = time.split(":");
-            // const displayHour = Number(hour);
-            // const formattedTime = showTime
-            //   ? displayHour === 0
-            //     ? "12 AM"
-            //     : displayHour === 12
-            //     ? "12 PM"
-            //     : `${displayHour % 12} ${displayHour < 12 ? "AM" : "PM"}`
-            //   : "";
 
             return (
               <tr key={time}>
@@ -1361,7 +1353,8 @@ export default function EquipmentBookingGrid({
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="bg-white bg-opacity-90 p-6 border border-red-300 text-red-600 rounded shadow-md text-center max-w-md">
             <p className="text-md font-semibold">
-              🚫 You do not have the required membership to book equipment.
+              {/* 🚫 You do not have the required membership to book equipment. */}
+              🚫 {disabledMessage}
             </p>
           </div>
         </div>
