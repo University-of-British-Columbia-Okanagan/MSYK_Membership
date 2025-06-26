@@ -101,7 +101,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isResubscription = true;
     }
 
-
     return {
       membershipPlan,
       user,
@@ -198,23 +197,27 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
+      const gstRate = 0.05;
+      const priceWithGST = price * (1 + gstRate);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "cad", // Changed from "usd" to "cad"
               product_data: {
                 name: membershipPlan.title,
                 // ▼ use upgradeFee for description ▼
                 description:
                   membershipPlan.description +
                   (upgradeFee > 0
-                    ? ` (Upgrade fee: $${upgradeFee.toFixed(2)})`
-                    : ""),
+                    ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
+                    : "") +
+                  " (Includes 5% GST)",
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -260,20 +263,23 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
+      const gstRate = 0.05;
+      const priceWithGST = price * (1 + gstRate);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "cad", // Changed from "usd" to "cad"
               product_data: {
                 name: workshop.name,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
-                ).toLocaleString()}`,
+                ).toLocaleString()} (Includes 5% GST)`,
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -322,20 +328,23 @@ export async function action({ request }: { request: Request }) {
       }
       const firstOccurrence = occurrences[0];
 
+      const gstRate = 0.05;
+      const priceWithGST = price * (1 + gstRate);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "cad", // Changed from "usd" to "cad"
               product_data: {
                 name: workshop.name,
                 description: `Occurrences starting on ${new Date(
                   firstOccurrence.startDate
-                ).toLocaleString()}`,
+                ).toLocaleString()} (Includes 5% GST)`,
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -360,7 +369,7 @@ export async function action({ request }: { request: Request }) {
       });
     }
   } catch (error) {
-    logger.error(`Stripe Checkout Error: ${error}`, {url: request.url,});
+    logger.error(`Stripe Checkout Error: ${error}`, { url: request.url });
     return new Response(
       JSON.stringify({ error: "Failed to create checkout session" }),
       {
@@ -607,8 +616,9 @@ export default function Payment() {
           {/* Show a message if user has an old membership */}
           {data.oldMembershipTitle && data.oldMembershipPrice && (
             <p className="mt-2 text-gray-700">
-              Current membership: <strong>{data.oldMembershipTitle}</strong> ($
-              {data.oldMembershipPrice.toFixed(2)}/month)
+              Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
+              (CA$
+              {(data.oldMembershipPrice * 1.05).toFixed(2)}/month incl. GST)
             </p>
           )}
 
@@ -630,24 +640,31 @@ export default function Payment() {
           ) : data.isDowngrade ? (
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
               <p className="text-gray-700">
-                You will continue at your current rate of $
-                {data.oldMembershipPrice?.toFixed(2)}/month until your next
-                payment date at{" "}
+                You will continue at your current rate of CA$
+                {data.oldMembershipPrice
+                  ? (data.oldMembershipPrice * 1.05).toFixed(2)
+                  : "0.00"}
+                /month until your next payment date at{" "}
                 {data.oldMembershipNextPaymentDate
                   ? new Date(
                       data.oldMembershipNextPaymentDate
                     ).toLocaleDateString()
                   : "N/A"}
-                , then switch to ${data.membershipPlan.price.toFixed(2)}/month.
+                , then switch to CA$
+                {(data.membershipPlan.price * 1.05).toFixed(2)}/month (incl.
+                GST).
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
             </div>
           ) : data.upgradeFee > 0 ? (
             <p className="mt-2 text-gray-700">
-              You'll pay a prorated amount of ${data.upgradeFee.toFixed(2)} now
-              to enjoy the benefits of{" "}
-              <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
-              <strong>${data.membershipPlan.price.toFixed(2)}/month</strong>{" "}
+              You'll pay a prorated amount of CA$
+              {(data.upgradeFee * 1.05).toFixed(2)} now (incl. GST) to enjoy the
+              benefits of <strong>{data.membershipPlan.title}</strong>. Then,
+              you will pay{" "}
+              <strong>
+                CA${(data.membershipPlan.price * 1.05).toFixed(2)}/month
+              </strong>{" "}
               starting from{" "}
               {data.oldMembershipNextPaymentDate
                 ? new Date(
@@ -668,12 +685,21 @@ export default function Payment() {
             (in case of upgrade or brand-new membership).
           */}
           {!data.isDowngrade && !data.isResubscription && (
-            <p className="text-lg font-semibold mt-2">
-              Total due now: $
-              {data.userActiveMembership
-                ? data.upgradeFee.toFixed(2)
-                : data.membershipPlan.price.toFixed(2)}
-            </p>
+            <div className="mt-2">
+              <p className="text-lg font-semibold">
+                Total due now: CA$
+                {data.userActiveMembership
+                  ? (data.upgradeFee * 1.05).toFixed(2)
+                  : (data.membershipPlan.price * 1.05).toFixed(2)}
+              </p>
+              <p className="text-sm text-gray-600">
+                (Includes CA$
+                {data.userActiveMembership
+                  ? (data.upgradeFee * 0.05).toFixed(2)
+                  : (data.membershipPlan.price * 0.05).toFixed(2)}{" "}
+                GST)
+              </p>
+            </div>
           )}
         </>
       ) : (
@@ -690,9 +716,19 @@ export default function Payment() {
               Occurrence ID: {data.occurrence?.id}
             </p>
           )}
-          <p className="text-lg font-semibold mt-2">
-            Total: ${data.workshop?.price.toFixed(2)}
-          </p>
+          <div className="mt-2">
+            <p className="text-lg font-semibold">
+              Total: CA$
+              {data.workshop ? (data.workshop.price * 1.05).toFixed(2) : "0.00"}
+            </p>
+            <p className="text-sm text-gray-600">
+              (Includes CA$
+              {data.workshop
+                ? (data.workshop.price * 0.05).toFixed(2)
+                : "0.00"}{" "}
+              GST)
+            </p>
+          </div>
         </>
       )}
 
