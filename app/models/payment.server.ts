@@ -9,6 +9,7 @@ import {
 import { getMembershipPlanById } from "./membership.server";
 import { getSavedPaymentMethod } from "./user.server";
 import { db } from "../utils/db.server";
+import { getAdminSetting } from "./admin.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -31,8 +32,10 @@ export async function createPaymentIntentWithSavedCard(
     throw new Error("No saved payment method found");
   }
 
-  // Create payment intent
-  const gstRate = 0.05;
+  // Get dynamic GST rate from admin settings
+  const { getAdminSetting } = await import("./admin.server");
+  const gstPercentage = await getAdminSetting("gst_percentage", "5");
+  const gstRate = parseFloat(gstPercentage) / 100;
   const amountWithGST = amount * (1 + gstRate);
 
   const paymentIntent = await stripe.paymentIntents.create({
@@ -40,12 +43,13 @@ export async function createPaymentIntentWithSavedCard(
     currency: "cad", // Changed from "usd" to "cad"
     customer: savedPayment.stripeCustomerId,
     payment_method: savedPayment.stripePaymentMethodId,
-    description: `${description} (Includes 5% GST)`,
+    description: `${description} (Includes ${gstPercentage}% GST)`,
     metadata: {
       ...metadata,
       original_amount: amount.toString(),
       gst_amount: (amountWithGST - amount).toString(),
       total_with_gst: amountWithGST.toString(),
+      gst_percentage: gstPercentage,
     },
     confirm: true, // Automatically confirm the payment
     off_session: true, // Payment is being made without customer present
@@ -458,7 +462,8 @@ export async function createCheckoutSession(request: Request) {
     }
 
     // Calculate GST (5% for Canada)
-    const gstRate = 0.05;
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
 
     const session = await stripe.checkout.sessions.create({
@@ -473,7 +478,7 @@ export async function createCheckoutSession(request: Request) {
             currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: membershipPlan.title,
-              description: `${finalDescription} (Includes 5% GST)`,
+              description: `${finalDescription} (Includes ${gstPercentage}% GST)`,
             },
             unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
@@ -516,7 +521,8 @@ export async function createCheckoutSession(request: Request) {
     }
 
     // Calculate GST (5% for Canada)
-    const gstRate = 0.05;
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
 
     const session = await stripe.checkout.sessions.create({
@@ -530,7 +536,7 @@ export async function createCheckoutSession(request: Request) {
               name: workshop.name,
               description: `${`Occurrence on ${new Date(
                 occurrence.startDate
-              ).toLocaleString()}`} (Includes 5% GST)`,
+              ).toLocaleString()}`} (Includes ${gstPercentage}% GST)`,
             },
             unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
@@ -576,7 +582,8 @@ export async function createCheckoutSession(request: Request) {
 
     const description = `Occurrences:\n${occurrencesDescription}`;
 
-    const gstRate = 0.05;
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
 
     const session = await stripe.checkout.sessions.create({
@@ -588,7 +595,7 @@ export async function createCheckoutSession(request: Request) {
             currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: workshop.name,
-              description: `${description} (Includes 5% GST)`,
+              description: `${description} (Includes ${gstPercentage}% GST)`,
             },
             unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
@@ -629,7 +636,8 @@ export async function createCheckoutSession(request: Request) {
     } = body;
 
     // Calculate GST (5% for Canada)
-    const gstRate = 0.05;
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
 
     const session = await stripe.checkout.sessions.create({
@@ -641,7 +649,7 @@ export async function createCheckoutSession(request: Request) {
             currency: "cad", // Changed from "usd" to "cad"
             product_data: {
               name: `Equipment Booking (ID: ${equipmentId})`,
-              description: `Booking for ${slotCount} slots (Includes 5% GST)`,
+              description: `Booking for ${slotCount} slots (Includes ${gstPercentage}% GST)`,
             },
             unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },

@@ -5,7 +5,6 @@ const prisma = new PrismaClient();
 // run npx tsx seed.ts
 async function main() {
   await prisma.adminSettings.deleteMany();
-  await prisma.userMembershipPayment.deleteMany();
   await prisma.userMembership.deleteMany();
   await prisma.user.deleteMany();
   await prisma.membershipPlan.deleteMany();
@@ -329,6 +328,16 @@ async function main() {
       key: "max_number_equipment_slots_per_week",
       value: "14",
       description: "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
+    },
+  })
+
+  await prisma.adminSettings.upsert({
+    where: { key: "gst_percentage" },
+    update: { value: "5" },
+    create: {
+      key: "gst_percentage",
+      value: "5",
+      description: "GST/HST tax percentage applied to all payments in Canada (5% for GST, varies by province for HST)",
     },
   })
 

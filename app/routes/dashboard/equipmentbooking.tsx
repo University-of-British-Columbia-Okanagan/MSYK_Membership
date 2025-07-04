@@ -93,6 +93,7 @@ export async function loader({
   );
 
   const savedPaymentMethod = user ? await getSavedPaymentMethod(user.id) : null;
+  const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
   return json({
     equipment: equipmentWithSlots,
@@ -108,6 +109,7 @@ export async function loader({
     savedPaymentMethod,
     hasCompletedEquipmentPrerequisites,
     equipmentPrerequisiteMessage,
+    gstPercentage: parseFloat(gstPercentage),
   });
 }
 
@@ -222,6 +224,7 @@ export default function EquipmentBookingForm() {
     savedPaymentMethod,
     hasCompletedEquipmentPrerequisites,
     equipmentPrerequisiteMessage,
+    gstPercentage,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -416,6 +419,7 @@ export default function EquipmentBookingForm() {
                       }}
                       itemName={`${selectedEquip?.name} Booking`}
                       itemPrice={parseFloat(totalPrice)}
+                      gstPercentage={gstPercentage}
                       savedCard={{
                         cardLast4: savedPaymentMethod.cardLast4,
                         cardExpiry: savedPaymentMethod.cardExpiry,
