@@ -16,6 +16,7 @@ import { Stripe } from "stripe";
 import { getSavedPaymentMethod } from "../../models/user.server";
 import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
 import { logger } from "~/logging/logger";
+import { getAdminSetting } from "../../models/admin.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -101,6 +102,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isResubscription = true;
     }
 
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
     return {
       membershipPlan,
       user,
@@ -112,6 +115,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isDowngrade,
       isResubscription,
       savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
     };
   }
   // Workshop branch: either single occurrence or continuation
@@ -126,12 +130,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrence)
       throw new Response("Workshop or Occurrence not found", { status: 404 });
 
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
     return {
       workshop,
       occurrence,
       user,
       isContinuation: false,
       savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
     };
   } else if (params.workshopId && params.connectId) {
     // New branch for continuation workshops using connectId
@@ -149,6 +156,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrences || occurrences.length === 0)
       throw new Response("Workshop or Occurrences not found", { status: 404 });
 
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
     // For payment, we use the first occurrence as a representative
     return {
       workshop,
@@ -156,6 +165,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       user,
       isContinuation: true,
       savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
     };
   } else {
     throw new Response("Missing required parameters", { status: 400 });
@@ -197,7 +207,8 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
-      const gstRate = 0.05;
+      const gstPercentage = await getAdminSetting("gst_percentage", "5");
+      const gstRate = parseFloat(gstPercentage) / 100;
       const priceWithGST = price * (1 + gstRate);
 
       const session = await stripe.checkout.sessions.create({
@@ -215,7 +226,7 @@ export async function action({ request }: { request: Request }) {
                   (upgradeFee > 0
                     ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
                     : "") +
-                  " (Includes 5% GST)",
+                  ` (Includes ${gstPercentage}% GST)`,
               },
               unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
@@ -263,10 +274,11 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
-      const gstRate = 0.05;
+      const gstPercentage = await getAdminSetting("gst_percentage", "5");
+      const gstRate = parseFloat(gstPercentage) / 100;
       const priceWithGST = price * (1 + gstRate);
 
-      const session = await stripe.checkout.sessions.create({
+       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
@@ -277,9 +289,9 @@ export async function action({ request }: { request: Request }) {
                 name: workshop.name,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
-                ).toLocaleString()} (Includes 5% GST)`,
+                ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
               },
-              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
+              unit_amount: Math.round(priceWithGST * 100),// Price with GST included
             },
             quantity: 1,
           },
@@ -328,7 +340,8 @@ export async function action({ request }: { request: Request }) {
       }
       const firstOccurrence = occurrences[0];
 
-      const gstRate = 0.05;
+      const gstPercentage = await getAdminSetting("gst_percentage", "5");
+      const gstRate = parseFloat(gstPercentage) / 100;
       const priceWithGST = price * (1 + gstRate);
 
       const session = await stripe.checkout.sessions.create({
@@ -342,7 +355,7 @@ export async function action({ request }: { request: Request }) {
                 name: workshop.name,
                 description: `Occurrences starting on ${new Date(
                   firstOccurrence.startDate
-                ).toLocaleString()} (Includes 5% GST)`,
+                ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
               },
               unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
@@ -396,6 +409,7 @@ export default function Payment() {
     isResubscription?: boolean;
     oldMembershipNextPaymentDate?: Date | null;
     savedPaymentMethod?: any;
+    gstPercentage: number;
   };
 
   const navigate = useNavigate();
@@ -532,6 +546,7 @@ export default function Payment() {
             }}
             itemName={data.workshop.name}
             itemPrice={data.workshop.price}
+            gstPercentage={data.gstPercentage}
             savedCard={{
               cardLast4: data.savedPaymentMethod.cardLast4,
               cardExpiry: data.savedPaymentMethod.cardExpiry,
@@ -576,6 +591,7 @@ export default function Payment() {
                   ? data.upgradeFee
                   : data.membershipPlan.price
               }
+              gstPercentage={data.gstPercentage}
               savedCard={{
                 cardLast4: data.savedPaymentMethod.cardLast4,
                 cardExpiry: data.savedPaymentMethod.cardExpiry,
@@ -618,7 +634,7 @@ export default function Payment() {
             <p className="mt-2 text-gray-700">
               Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
               (CA$
-              {(data.oldMembershipPrice * 1.05).toFixed(2)}/month incl. GST)
+              {(data.oldMembershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}/month incl. GST)
             </p>
           )}
 
@@ -642,7 +658,7 @@ export default function Payment() {
               <p className="text-gray-700">
                 You will continue at your current rate of CA$
                 {data.oldMembershipPrice
-                  ? (data.oldMembershipPrice * 1.05).toFixed(2)
+                  ? (data.oldMembershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)
                   : "0.00"}
                 /month until your next payment date at{" "}
                 {data.oldMembershipNextPaymentDate
@@ -651,7 +667,7 @@ export default function Payment() {
                     ).toLocaleDateString()
                   : "N/A"}
                 , then switch to CA$
-                {(data.membershipPlan.price * 1.05).toFixed(2)}/month (incl.
+                {(data.membershipPlan.price * (1 + data.gstPercentage / 100)).toFixed(2)}/month (incl.
                 GST).
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
@@ -659,11 +675,11 @@ export default function Payment() {
           ) : data.upgradeFee > 0 ? (
             <p className="mt-2 text-gray-700">
               You'll pay a prorated amount of CA$
-              {(data.upgradeFee * 1.05).toFixed(2)} now (incl. GST) to enjoy the
+              {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(2)} now (incl. GST) to enjoy the
               benefits of <strong>{data.membershipPlan.title}</strong>. Then,
               you will pay{" "}
               <strong>
-                CA${(data.membershipPlan.price * 1.05).toFixed(2)}/month
+                CA${(data.membershipPlan.price * (1 + data.gstPercentage / 100)).toFixed(2)}/month
               </strong>{" "}
               starting from{" "}
               {data.oldMembershipNextPaymentDate
@@ -689,14 +705,14 @@ export default function Payment() {
               <p className="text-lg font-semibold">
                 Total due now: CA$
                 {data.userActiveMembership
-                  ? (data.upgradeFee * 1.05).toFixed(2)
-                  : (data.membershipPlan.price * 1.05).toFixed(2)}
+                  ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(2)
+                  : (data.membershipPlan.price * (1 + data.gstPercentage / 100)).toFixed(2)}
               </p>
               <p className="text-sm text-gray-600">
                 (Includes CA$
                 {data.userActiveMembership
-                  ? (data.upgradeFee * 0.05).toFixed(2)
-                  : (data.membershipPlan.price * 0.05).toFixed(2)}{" "}
+                  ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
+                  : (data.membershipPlan.price * (data.gstPercentage / 100)).toFixed(2)}{" "}
                 GST)
               </p>
             </div>
@@ -719,12 +735,12 @@ export default function Payment() {
           <div className="mt-2">
             <p className="text-lg font-semibold">
               Total: CA$
-              {data.workshop ? (data.workshop.price * 1.05).toFixed(2) : "0.00"}
+              {data.workshop ? (data.workshop.price * (1 + data.gstPercentage / 100)).toFixed(2) : "0.00"}
             </p>
             <p className="text-sm text-gray-600">
               (Includes CA$
               {data.workshop
-                ? (data.workshop.price * 0.05).toFixed(2)
+                ? (data.workshop.price * (data.gstPercentage / 100)).toFixed(2)
                 : "0.00"}{" "}
               GST)
             </p>

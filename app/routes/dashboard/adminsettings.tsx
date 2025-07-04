@@ -100,6 +100,7 @@ export async function loader({ request }: { request: Request }) {
     "max_number_equipment_slots_per_week",
     "14"
   );
+  const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
   const workshopsRaw = await getWorkshops();
   // Process workshops to determine which have active occurrences
@@ -122,31 +123,34 @@ export async function loader({ request }: { request: Request }) {
   const level3Schedule = await getLevel3ScheduleRestrictions();
   const level4UnavailableHours = await getLevel4UnavailableHours();
 
-    // Log successful load
-    logger.info(`[User: ${roleUser.userId}] Admin settings page loaded successfully`, {
+  // Log successful load
+  logger.info(
+    `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
+    {
       url: request.url,
       workshopCount: workshops.length,
       userCount: users.length,
       plannedClosuresCount: plannedClosures.length,
-    });
+    }
+  );
 
-    // Return settings to the component
-    return {
-      roleUser,
-      settings: {
-        workshopVisibilityDays,
-        equipmentVisibilityDays,
-        level3Schedule,
-        level4UnavailableHours,
-        plannedClosures,
-        maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
-        maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
-      },
-      workshops,
-      users,
-    };
-
-  }
+  // Return settings to the component
+  return {
+    roleUser,
+    settings: {
+      workshopVisibilityDays,
+      equipmentVisibilityDays,
+      level3Schedule,
+      level4UnavailableHours,
+      plannedClosures,
+      maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
+      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
+      gstPercentage: parseFloat(gstPercentage),
+    },
+    workshops,
+    users,
+  };
+}
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
@@ -231,6 +235,17 @@ export async function action({ request }: { request: Request }) {
         }
       }
 
+      if (settingType === "gstPercentage") {
+        const gstData = formData.get("gstPercentage");
+        if (gstData) {
+          await updateAdminSetting(
+            "gst_percentage",
+            gstData.toString(),
+            "GST/HST tax percentage applied to all payments in Canada"
+          );
+        }
+      }
+
       return {
         success: true,
         message: "Settings updated successfully",
@@ -262,10 +277,13 @@ export async function action({ request }: { request: Request }) {
 
       await updateWorkshopCutoff(workshopId, cutoffMinutes);
 
-      logger.info(`[User: ${roleUser.userId}] Updated cutoff for workshop ${workshopId}`, {
-        url: request.url,
-        cutoffMinutes,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Updated cutoff for workshop ${workshopId}`,
+        {
+          url: request.url,
+          cutoffMinutes,
+        }
+      );
 
       return {
         success: true,
@@ -290,9 +308,12 @@ export async function action({ request }: { request: Request }) {
     try {
       await updateUserRole(Number(userId), String(newRoleId));
 
-      logger.info(`[User: ${roleUser.userId}] Updated role for user ${userId} to ${newRoleId}`, {
-        url: request.url,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Updated role for user ${userId} to ${newRoleId}`,
+        {
+          url: request.url,
+        }
+      );
 
       return {
         success: true,
@@ -316,9 +337,12 @@ export async function action({ request }: { request: Request }) {
     try {
       await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
 
-      logger.info(`[User: ${roleUser.userId}] Updated level 4 access for user ${userId} to ${allowLevel4}`, {
-        url: request.url,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Updated level 4 access for user ${userId} to ${allowLevel4}`,
+        {
+          url: request.url,
+        }
+      );
 
       return {
         success: true,
@@ -441,6 +465,7 @@ export default function AdminSettings() {
       }>;
       maxEquipmentSlotsPerDay: number;
       maxEquipmentSlotsPerWeek: number;
+      gstPercentage: number;
     };
     workshops: Array<{
       id: number;
@@ -484,6 +509,10 @@ export default function AdminSettings() {
     value: settings.maxEquipmentSlotsPerWeek, // Weekly slots are stored as slot count
     unit: "slots",
   });
+
+  const [gstPercentage, setGstPercentage] = useState(
+    settings.gstPercentage.toString()
+  );
 
   const [level3Schedule, setLevel3Schedule] = useState(() => {
     const days = [
@@ -897,6 +926,7 @@ export default function AdminSettings() {
                 <TabsTrigger value="plannedClosures">
                   Planned Closures
                 </TabsTrigger>
+                <TabsTrigger value="miscellaneous">Miscellaneous Settings</TabsTrigger>
                 <TabsTrigger value="placeholder">Other Settings</TabsTrigger>
                 {/* Add more tabs here in the future */}
               </TabsList>
@@ -1430,7 +1460,10 @@ export default function AdminSettings() {
                             onChange={(e) => {
                               const inputValue = parseInt(e.target.value) || 1;
                               // For slots: minimum 1, maximum 48 (24 hours * 2 slots per hour)
-                              const validValue = Math.max(1, Math.min(48, inputValue));
+                              const validValue = Math.max(
+                                1,
+                                Math.min(48, inputValue)
+                              );
 
                               const newDailyState = {
                                 ...maxEquipmentSlotsPerDay,
@@ -1440,7 +1473,8 @@ export default function AdminSettings() {
 
                               // Validate with the new values immediately
                               const dailyInSlots = validValue;
-                              const weeklyInSlots = maxEquipmentSlotsPerWeek.value;
+                              const weeklyInSlots =
+                                maxEquipmentSlotsPerWeek.value;
 
                               if (weeklyInSlots < dailyInSlots) {
                                 setWeeklyLimitError(
@@ -1467,8 +1501,12 @@ export default function AdminSettings() {
                         </div>
                         {/* Updated description for slots */}
                         <p className="text-sm text-gray-500">
-                          Maximum number of 30-minute slots a user can book per day. 
-                          Range: 1-48 slots (each slot = 30 minutes). Current setting: {maxEquipmentSlotsPerDay.value} slots ({maxEquipmentSlotsPerDay.value * 30} minutes). Must be no greater than {maxEquipmentSlotsPerWeek.value} slots (weekly limit).
+                          Maximum number of 30-minute slots a user can book per
+                          day. Range: 1-48 slots (each slot = 30 minutes).
+                          Current setting: {maxEquipmentSlotsPerDay.value} slots
+                          ({maxEquipmentSlotsPerDay.value * 30} minutes). Must
+                          be no greater than {maxEquipmentSlotsPerWeek.value}{" "}
+                          slots (weekly limit).
                         </p>
                       </div>
                     </CardContent>
@@ -1599,7 +1637,8 @@ export default function AdminSettings() {
                           minutes). Current setting:{" "}
                           {maxEquipmentSlotsPerWeek.value} slots (
                           {maxEquipmentSlotsPerWeek.value / 2} hours). Must be
-                          at least {maxEquipmentSlotsPerDay.value} slots (daily limit).
+                          at least {maxEquipmentSlotsPerDay.value} slots (daily
+                          limit).
                         </p>
                       </div>
                     </CardContent>
@@ -2152,6 +2191,61 @@ export default function AdminSettings() {
                     </div>
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              {/* Tab: Miscellaneous Settings */}
+              <TabsContent value="miscellaneous">
+                <Form method="post" className="space-y-6">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input type="hidden" name="settingType" value="gstPercentage" />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Tax Settings</CardTitle>
+                      <CardDescription>
+                        Configure tax rates applied to all payments
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="gstPercentage">
+                          GST/HST Percentage
+                        </Label>
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            id="gstPercentage"
+                            name="gstPercentage"
+                            type="number"
+                            value={gstPercentage}
+                            onChange={(e) => setGstPercentage(e.target.value)}
+                            min="0"
+                            max="20"
+                            step="0.1"
+                            className="w-24"
+                          />
+                          <span className="text-sm text-gray-600">%</span>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          GST/HST tax percentage applied to all payments. Standard Canadian GST is 5%. 
+                          HST varies by province (13% in Ontario, 15% in Atlantic Canada). This rate 
+                          will be applied to all memberships, workshops, and equipment bookings.
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Tax Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
               </TabsContent>
 
               {/* Tab 2: Placeholder for Future Settings */}
