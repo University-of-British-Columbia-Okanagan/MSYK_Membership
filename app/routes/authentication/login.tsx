@@ -160,6 +160,18 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                     </a>
                   </p>
                 </div>
+
+                <div className="text-center mb-4">
+                  <p className="text-sm text-gray-600">
+                    View the portal as a guest?{" "}
+                    <a
+                      href="/dashboard"
+                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                    >
+                      View here
+                    </a>
+                  </p>
+                </div>
               </form>
             </Form>
           </>

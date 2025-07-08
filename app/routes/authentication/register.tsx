@@ -683,6 +683,18 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     </p>
                   </div>
 
+                  <div className="text-center mb-4">
+                    <p className="text-sm text-gray-600">
+                      View the portal as a guest?{" "}
+                      <a
+                        href="/dashboard"
+                        className="text-yellow-600 hover:text-yellow-700 font-medium"
+                      >
+                        View here
+                      </a>
+                    </p>
+                  </div>
+
                   {/* Submit Button */}
                   <button
                     type="submit"
