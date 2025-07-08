@@ -321,139 +321,171 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
   }, [actionData]);
 
   return (
-    <div className="max-w-xl mx-auto p-4">
-      <h1 className="text-xl font-bold mb-4">Register</h1>
-      {actionData?.success && (
-        <div className="text-sm text-green-500 bg-green-100 border-green-400 rounded p-2 mb-4">
-          Your registration was successful!
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-md bg-white border border-yellow-400 rounded-xl shadow-md p-8">
+        {/* Header with logo */}
+        <div className="flex flex-col items-center mb-6">
+          <img
+            src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
+            alt="Makerspace Logo"
+            className="h-16 mb-2"
+          />
         </div>
-      )}
-      {hasErrors && (
-        <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-          There are some errors in your form. Please review the highlighted
-          fields below.
-        </div>
-      )}
-      {user ? (
-        <div className="text-center">
-          <p className="text-lg font-medium mb-4">
-            You are currently logged in as email: {user.email}, id: {user.id}!
-          </p>
-          <RouterForm action="/logout" method="post">
-            <Button type="submit" className="mt-4" disabled={loading}>
-              {loading ? "Logging out..." : "Logout"}
-            </Button>
-          </RouterForm>
-        </div>
-      ) : (
-        <>
-          <Form {...form}>
-            <form method="post" encType="multipart/form-data" ref={formRef}>
-              {/* Reusable Fields */}
-              <GenericFormField
-                control={form.control}
-                name="firstName"
-                label="First Name"
-                placeholder="First Name"
-                required
-                error={actionData?.errors?.firstName}
-              />
-              <GenericFormField
-                control={form.control}
-                name="lastName"
-                label="Last Name"
-                placeholder="Last Name"
-                required
-                error={actionData?.errors?.lastName}
-              />
-              <GenericFormField
-                control={form.control}
-                name="email"
-                label="Email"
-                placeholder="your@email.com"
-                required
-                error={actionData?.errors?.email}
-              />
-              <GenericFormField
-                control={form.control}
-                name="password"
-                label="Password"
-                placeholder="Enter your password"
-                type="password"
-                required
-                error={actionData?.errors?.password}
-              />
-              <GenericFormField
-                control={form.control}
-                name="phone"
-                label="Phone"
-                placeholder="123-456-7890"
-                required
-                error={actionData?.errors?.phone}
-              />
 
-              {/* Over 18 Radio Group */}
-              <FormField
-                control={form.control}
-                name="over18"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Over 18? <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        name="over18"
-                        value={field.value ? "true" : "false"}
-                        onValueChange={(value) =>
-                          field.onChange(value === "true")
-                        }
-                        className="flex space-x-4 mt-2"
-                      >
-                        <label className="flex items-center space-x-2">
-                          <RadioGroupItem value="true" id="over18-yes" />
-                          <span>Yes</span>
-                        </label>
-                        <label className="flex items-center space-x-2">
-                          <RadioGroupItem value="false" id="over18-no" />
-                          <span>No</span>
-                        </label>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage>{actionData?.errors?.over18}</FormMessage>
-                  </FormItem>
-                )}
-              />
-
-              {/* Parent/Guardian Fields when not over 18 */}
-              {form.watch("over18") === false && (
-                <>
+        {/* Content area */}
+        <div className="px-8 pb-8">
+          {actionData?.success && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800 font-medium">
+                ✓ Registration successful!
+              </p>
+            </div>
+          )}
+          {hasErrors && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-800 font-medium">
+                Please review the highlighted fields below.
+              </p>
+            </div>
+          )}
+          {user ? (
+            <div className="text-center">
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800 mb-1">Already logged in</p>
+                <p className="text-xs text-blue-600">{user.email}</p>
+              </div>
+              <RouterForm action="/logout" method="post">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  {loading ? "Logging out..." : "Logout"}
+                </button>
+              </RouterForm>
+            </div>
+          ) : (
+            <>
+              <Form {...form}>
+                <form
+                  method="post"
+                  encType="multipart/form-data"
+                  ref={formRef}
+                  className="space-y-2"
+                >
+                  {/* Reusable Fields */}
                   <GenericFormField
                     control={form.control}
-                    name="parentGuardianName"
-                    label="Parent/Guardian Name"
-                    placeholder="Parent/Guardian Name"
+                    name="firstName"
+                    label="First Name"
+                    placeholder="First Name"
                     required
-                    error={actionData?.errors?.parentGuardianName}
+                    error={actionData?.errors?.firstName}
+                    className="w-full"
                   />
                   <GenericFormField
                     control={form.control}
-                    name="parentGuardianPhone"
-                    label="Parent/Guardian Phone"
-                    placeholder="Parent/Guardian Phone"
+                    name="lastName"
+                    label="Last Name"
+                    placeholder="Last Name"
                     required
-                    error={actionData?.errors?.parentGuardianPhone}
+                    error={actionData?.errors?.lastName}
+                    className="w-full"
                   />
                   <GenericFormField
                     control={form.control}
-                    name="parentGuardianEmail"
-                    label="Parent/Guardian Email"
-                    placeholder="Parent/Guardian Email"
+                    name="email"
+                    label="Email"
+                    placeholder="your@email.com"
                     required
-                    error={actionData?.errors?.parentGuardianEmail}
+                    error={actionData?.errors?.email}
+                    className="w-full"
+                  />
+                  <GenericFormField
+                    control={form.control}
+                    name="password"
+                    label="Password"
+                    placeholder="Enter your password"
+                    type="password"
+                    required
+                    error={actionData?.errors?.password}
+                    className="w-full"
+                  />
+                  <GenericFormField
+                    control={form.control}
+                    name="phone"
+                    label="Phone"
+                    placeholder="123-456-7890"
+                    required
+                    error={actionData?.errors?.phone}
+                    className="w-full"
                   />
 
-                  {/* <div
+                  {/* Over 18 Radio Group */}
+                  <FormField
+                    control={form.control}
+                    name="over18"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Over 18? <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <RadioGroup
+                            name="over18"
+                            value={field.value ? "true" : "false"}
+                            onValueChange={(value) =>
+                              field.onChange(value === "true")
+                            }
+                            className="flex space-x-4 mt-2"
+                          >
+                            <label className="flex items-center space-x-2">
+                              <RadioGroupItem value="true" id="over18-yes" />
+                              <span>Yes</span>
+                            </label>
+                            <label className="flex items-center space-x-2">
+                              <RadioGroupItem value="false" id="over18-no" />
+                              <span>No</span>
+                            </label>
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage>{actionData?.errors?.over18}</FormMessage>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Parent/Guardian Fields when not over 18 */}
+                  {form.watch("over18") === false && (
+                    <>
+                      <GenericFormField
+                        control={form.control}
+                        name="parentGuardianName"
+                        label="Parent/Guardian Name"
+                        placeholder="Parent/Guardian Name"
+                        required
+                        error={actionData?.errors?.parentGuardianName}
+                        className="w-full"
+                      />
+                      <GenericFormField
+                        control={form.control}
+                        name="parentGuardianPhone"
+                        label="Parent/Guardian Phone"
+                        placeholder="Parent/Guardian Phone"
+                        required
+                        error={actionData?.errors?.parentGuardianPhone}
+                        className="w-full"
+                      />
+                      <GenericFormField
+                        control={form.control}
+                        name="parentGuardianEmail"
+                        label="Parent/Guardian Email"
+                        placeholder="Parent/Guardian Email"
+                        required
+                        error={actionData?.errors?.parentGuardianEmail}
+                        className="w-full"
+                      />
+
+                      {/* <div
                     style={{
                       border: "1px solid #ccc",
                       padding: "10px",
@@ -467,150 +499,179 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       style={{ maxWidth: "300px", height: "auto" }}
                     />
                   </div> */}
+                      <FormField
+                        control={form.control}
+                        name="guardianSignedConsent"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              Guardian Digital Signature{" "}
+                              <span className="text-red-500">*</span>
+                            </FormLabel>
+                            <FormControl>
+                              <div>
+                                <SignatureCanvas
+                                  onSave={(signature) =>
+                                    field.onChange(signature)
+                                  }
+                                  value={field.value}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="guardianSignedConsent"
+                                  value={field.value || ""}
+                                />
+                              </div>
+                            </FormControl>
+                            <FormMessage>
+                              {actionData?.errors?.guardianSignedConsent}
+                            </FormMessage>
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
+
+                  {/* Photo Release Radio Group */}
                   <FormField
                     control={form.control}
-                    name="guardianSignedConsent"
+                    name="photoRelease"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Guardian Digital Signature{" "}
-                          <span className="text-red-500">*</span>
+                          Photo Release <span className="text-red-500">*</span>
                         </FormLabel>
+                        <FormDescription>
+                          I grant permission to Makerspace YK, its
+                          representatives and employees, to take photographs of
+                          me and/or my dependent, as well as my property, in
+                          connection with their programs.
+                        </FormDescription>
                         <FormControl>
-                          <div>
-                            <SignatureCanvas
-                              onSave={(signature) => field.onChange(signature)}
-                              value={field.value}
-                            />
-                            <input
-                              type="hidden"
-                              name="guardianSignedConsent"
-                              value={field.value || ""}
-                            />
-                          </div>
+                          <RadioGroup
+                            name="photoRelease"
+                            value={field.value ? "true" : "false"}
+                            onValueChange={(value) =>
+                              field.onChange(value === "true")
+                            }
+                            className="flex space-x-4 mt-4"
+                          >
+                            <label className="flex items-center space-x-2">
+                              <RadioGroupItem value="true" id="photo-consent" />
+                              <span>I consent</span>
+                            </label>
+                            <label className="flex items-center space-x-2">
+                              <RadioGroupItem
+                                value="false"
+                                id="photo-no-consent"
+                              />
+                              <span>I do not consent</span>
+                            </label>
+                          </RadioGroup>
                         </FormControl>
                         <FormMessage>
-                          {actionData?.errors?.guardianSignedConsent}
+                          {actionData?.errors?.photoRelease}
                         </FormMessage>
                       </FormItem>
                     )}
                   />
-                </>
-              )}
 
-              {/* Photo Release Radio Group */}
-              <FormField
-                control={form.control}
-                name="photoRelease"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Photo Release <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormDescription>
-                      I grant permission to Makerspace YK, its representatives
-                      and employees, to take photographs of me and/or my
-                      dependent, as well as my property, in connection with
-                      their programs.
-                    </FormDescription>
-                    <FormControl>
-                      <RadioGroup
-                        name="photoRelease"
-                        value={field.value ? "true" : "false"}
-                        onValueChange={(value) =>
-                          field.onChange(value === "true")
-                        }
-                        className="flex space-x-4 mt-4"
+                  {/* Data Privacy Checkbox */}
+                  <FormField
+                    control={form.control}
+                    name="dataPrivacy"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Data Privacy <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormDescription>
+                          I understand that Makerspace YK shall treat all
+                          Confidential Information belonging to me and/or my
+                          dependant as confidential and safeguard it
+                          accordingly. Makerspace YK may use my and/or my
+                          dependant's information internally to provide their
+                          services to me and/or my dependant, where necessary,
+                          to help them improve their product or service
+                          delivery. I understand that Makerspace YK shall not
+                          disclose any Confidential Information belonging to me
+                          and/or my dependant to any third-parties without my
+                          and my dependant's prior written consent, except where
+                          disclosure is required by law.
+                        </FormDescription>
+                        <FormControl>
+                          <label className="flex items-center space-x-3 mt-4">
+                            <Checkbox
+                              name="dataPrivacy"
+                              checked={field.value}
+                              onCheckedChange={(value) => field.onChange(value)}
+                              id="data-privacy"
+                            />
+                            <span>I agree to the Data Privacy policy</span>
+                          </label>
+                        </FormControl>
+                        <FormMessage>
+                          {actionData?.errors?.dataPrivacy}
+                        </FormMessage>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Emergency Contact Fields */}
+                  <GenericFormField
+                    control={form.control}
+                    name="emergencyContactName"
+                    label="Emergency Contact Name"
+                    placeholder="Emergency Contact Name"
+                    required
+                    error={actionData?.errors?.emergencyContactName}
+                    className="w-full"
+                  />
+                  <GenericFormField
+                    control={form.control}
+                    name="emergencyContactPhone"
+                    label="Emergency Contact Phone"
+                    placeholder="Emergency Contact Phone"
+                    required
+                    error={actionData?.errors?.emergencyContactPhone}
+                    className="w-full"
+                  />
+                  <GenericFormField
+                    control={form.control}
+                    name="emergencyContactEmail"
+                    label="Emergency Contact Email"
+                    placeholder="emergency@example.com"
+                    required
+                    error={actionData?.errors?.emergencyContactEmail}
+                    className="w-full"
+                  />
+
+                  <div className="text-center mb-4">
+                    <p className="text-sm text-gray-600">
+                      Already have an account?{" "}
+                      <a
+                        href="/login"
+                        className="text-yellow-600 hover:text-yellow-700 font-medium"
                       >
-                        <label className="flex items-center space-x-2">
-                          <RadioGroupItem value="true" id="photo-consent" />
-                          <span>I consent</span>
-                        </label>
-                        <label className="flex items-center space-x-2">
-                          <RadioGroupItem value="false" id="photo-no-consent" />
-                          <span>I do not consent</span>
-                        </label>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage>
-                      {actionData?.errors?.photoRelease}
-                    </FormMessage>
-                  </FormItem>
-                )}
-              />
+                        Sign in here
+                      </a>
+                    </p>
+                  </div>
 
-              {/* Data Privacy Checkbox */}
-              <FormField
-                control={form.control}
-                name="dataPrivacy"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Data Privacy <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormDescription>
-                      I understand that Makerspace YK shall treat all
-                      Confidential Information belonging to me and/or my
-                      dependant as confidential and safeguard it accordingly.
-                      Makerspace YK may use my and/or my dependant's information
-                      internally to provide their services to me and/or my
-                      dependant, where necessary, to help them improve their
-                      product or service delivery. I understand that Makerspace
-                      YK shall not disclose any Confidential Information
-                      belonging to me and/or my dependant to any third-parties
-                      without my and my dependant's prior written consent,
-                      except where disclosure is required by law.
-                    </FormDescription>
-                    <FormControl>
-                      <label className="flex items-center space-x-3 mt-4">
-                        <Checkbox
-                          name="dataPrivacy"
-                          checked={field.value}
-                          onCheckedChange={(value) => field.onChange(value)}
-                          id="data-privacy"
-                        />
-                        <span>I agree to the Data Privacy policy</span>
-                      </label>
-                    </FormControl>
-                    <FormMessage>{actionData?.errors?.dataPrivacy}</FormMessage>
-                  </FormItem>
-                )}
-              />
-
-              {/* Emergency Contact Fields */}
-              <GenericFormField
-                control={form.control}
-                name="emergencyContactName"
-                label="Emergency Contact Name"
-                placeholder="Emergency Contact Name"
-                required
-                error={actionData?.errors?.emergencyContactName}
-              />
-              <GenericFormField
-                control={form.control}
-                name="emergencyContactPhone"
-                label="Emergency Contact Phone"
-                placeholder="Emergency Contact Phone"
-                required
-                error={actionData?.errors?.emergencyContactPhone}
-              />
-              <GenericFormField
-                control={form.control}
-                name="emergencyContactEmail"
-                label="Emergency Contact Email"
-                placeholder="emergency@example.com"
-                required
-                error={actionData?.errors?.emergencyContactEmail}
-              />
-
-              {/* Submit Button */}
-              <Button type="submit" className="mt-4" disabled={loading}>
-                {loading ? "Submitting..." : "Submit"}
-              </Button>
-            </form>
-          </Form>
-        </>
-      )}
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg disabled:opacity-50 transition-colors"
+                  >
+                    {loading ? "Creating Account..." : "Create Account"}
+                  </button>
+                </form>
+              </Form>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
