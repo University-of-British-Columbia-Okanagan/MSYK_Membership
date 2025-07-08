@@ -21,10 +21,10 @@ import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { getRoleUser } from "../../utils/session.server";
-// import { checkSlotAvailability } from "../../models/equipment.server";
 import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
 
@@ -248,7 +248,13 @@ export default function EquipmentBookingForm() {
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        {!roleUser ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-8 w-full">
             {/* Back Button */}
