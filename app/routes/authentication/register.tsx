@@ -148,8 +148,11 @@ const SignatureCanvas: React.FC<{
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -165,8 +168,11 @@ const SignatureCanvas: React.FC<{
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -214,8 +220,13 @@ const SignatureCanvas: React.FC<{
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
-        className="border border-gray-200 cursor-crosshair bg-white"
-        style={{ width: "100%", maxWidth: "400px", height: "200px" }}
+        className="border border-gray-200 cursor-crosshair bg-white block"
+        style={{
+          width: "100%",
+          maxWidth: "400px",
+          height: "200px",
+          touchAction: "none",
+        }}
       />
       <div className="flex gap-2 mt-2">
         <Button
@@ -226,14 +237,14 @@ const SignatureCanvas: React.FC<{
         >
           Clear
         </Button>
-        <Button
+        {/* <Button
           type="button"
           onClick={saveSignature}
           variant="outline"
           size="sm"
         >
           Save Signature
-        </Button>
+        </Button> */}
       </div>
       <p className="text-xs text-gray-500 mt-1">
         Click and drag to sign. Signature is auto-saved when you finish drawing.
@@ -440,11 +451,19 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             className="flex space-x-4 mt-2"
                           >
                             <label className="flex items-center space-x-2">
-                              <RadioGroupItem value="true" id="over18-yes" />
+                              <RadioGroupItem
+                                value="true"
+                                id="over18-yes"
+                                className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
+                              />
                               <span>Yes</span>
                             </label>
                             <label className="flex items-center space-x-2">
-                              <RadioGroupItem value="false" id="over18-no" />
+                              <RadioGroupItem
+                                value="false"
+                                id="over18-no"
+                                className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
+                              />
                               <span>No</span>
                             </label>
                           </RadioGroup>
@@ -557,13 +576,18 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             className="flex space-x-4 mt-4"
                           >
                             <label className="flex items-center space-x-2">
-                              <RadioGroupItem value="true" id="photo-consent" />
+                              <RadioGroupItem
+                                value="true"
+                                id="photo-consent"
+                                className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
+                              />
                               <span>I consent</span>
                             </label>
                             <label className="flex items-center space-x-2">
                               <RadioGroupItem
                                 value="false"
                                 id="photo-no-consent"
+                                className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
                               />
                               <span>I do not consent</span>
                             </label>
@@ -606,6 +630,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                               checked={field.value}
                               onCheckedChange={(value) => field.onChange(value)}
                               id="data-privacy"
+                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
                             />
                             <span>I agree to the Data Privacy policy</span>
                           </label>
