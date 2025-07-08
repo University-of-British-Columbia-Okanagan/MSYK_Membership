@@ -36,7 +36,7 @@ export async function loader({ request }: { request: Request }) {
 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
-  
+
   // Debug: Log guardian signature data
   const guardianSignedConsent = formData.get("guardianSignedConsent");
 
@@ -47,7 +47,10 @@ export async function action({ request }: Route.ActionArgs) {
   rawValues.dataPrivacy = rawValues.dataPrivacy === "on";
 
   // Ensure signature data is properly handled
-  if (typeof guardianSignedConsent === "string" && guardianSignedConsent.trim() !== "") {
+  if (
+    typeof guardianSignedConsent === "string" &&
+    guardianSignedConsent.trim() !== ""
+  ) {
     rawValues.guardianSignedConsent = guardianSignedConsent;
   } else {
     rawValues.guardianSignedConsent = null;
@@ -242,21 +245,21 @@ const SignatureCanvas: React.FC<{
   );
 };
 
-const SignatureDisplay: React.FC<{ signature: string; className?: string }> = ({ 
-  signature, 
-  className = "max-w-md mx-auto border border-gray-300 rounded-lg p-2" 
+const SignatureDisplay: React.FC<{ signature: string; className?: string }> = ({
+  signature,
+  className = "max-w-md mx-auto border border-gray-300 rounded-lg p-2",
 }) => {
-  if (!signature || !signature.startsWith('data:image/')) {
+  if (!signature || !signature.startsWith("data:image/")) {
     return <div className="text-gray-500 text-sm">No signature available</div>;
   }
 
   return (
     <div className={className}>
-      <img 
-        src={signature} 
-        alt="Digital Signature" 
+      <img
+        src={signature}
+        alt="Digital Signature"
         className="w-full h-auto"
-        style={{ maxHeight: '200px' }}
+        style={{ maxHeight: "200px" }}
       />
     </div>
   );
@@ -449,6 +452,21 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     required
                     error={actionData?.errors?.parentGuardianEmail}
                   />
+
+                  {/* <div
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      margin: "10px 0",
+                    }}
+                  >
+                    <h3>Test Signature Display:</h3>
+                    <img
+                      src=""
+                      alt="Signature"
+                      style={{ maxWidth: "300px", height: "auto" }}
+                    />
+                  </div> */}
                   <FormField
                     control={form.control}
                     name="guardianSignedConsent"
