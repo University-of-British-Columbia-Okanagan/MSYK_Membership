@@ -310,26 +310,44 @@ export default function EquipmentBookingForm() {
 
               {selectedEquipment && (
                 <>
+                  {/* Guest Authentication Section */}
+                  {!roleUser && (
+                    <div className="mt-6 mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="text-center">
+                        <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                          Account Required
+                        </h3>
+                        <p className="text-blue-700 mb-4">
+                          You need an account to book equipment. Please sign in or create an account to continue.
+                        </p>
+                        <div className="flex gap-3 justify-center">
+                          <button
+                            onClick={() => {
+                              const currentUrl = window.location.pathname + window.location.search;
+                              window.location.href = `/login?redirect=${encodeURIComponent(currentUrl)}`;
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                          >
+                            Sign In
+                          </button>
+                          <button
+                            onClick={() => {
+                              const currentUrl = window.location.pathname + window.location.search;
+                              window.location.href = `/register?redirect=${encodeURIComponent(currentUrl)}`;
+                            }}
+                            className="bg-white hover:bg-blue-50 text-blue-500 border border-blue-500 px-6 py-2 rounded-lg font-medium transition-colors"
+                          >
+                            Create Account
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <label className="block text-gray-700 font-bold mt-4 mb-2">
                     Select Time Slots
                   </label>
-                  {/* <EquipmentBookingGrid
-              slotsByDay={selectedEquip?.slotsByDay || {}}
-              onSelectSlots={setSelectedSlots}
-              disabled={roleLevel === 1 || roleLevel === 2}
-              visibleTimeRange={
-                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
-              }
-            /> */}
-                  {/* <EquipmentBookingGrid
-              slotsByDay={selectedEquip?.slotsByDay || {}}
-              onSelectSlots={setSelectedSlots}
-              disabled={roleLevel === 1 || roleLevel === 2}
-              visibleTimeRange={
-                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
-              }
-              visibleDays={visibleDays} // Pass the number of visible days
-            /> */}
+                  
                   <EquipmentBookingGrid
                     slotsByDay={selectedEquip?.slotsByDay || {}}
                     onSelectSlots={setSelectedSlots}
@@ -347,18 +365,21 @@ export default function EquipmentBookingForm() {
                     }
                     plannedClosures={
                       roleLevel === 3 ? plannedClosures : undefined
-                    } // Add this prop
+                    }
                     userRoleLevel={roleLevel}
                     maxSlotsPerDay={maxSlotsPerDay}
                     maxSlotsPerWeek={maxSlotsPerWeek}
                     disabled={
+                      !roleUser ||
                       roleLevel === 1 ||
                       roleLevel === 2 ||
                       (!hasCompletedEquipmentPrerequisites &&
                         (roleLevel === 3 || roleLevel === 4))
                     }
                     disabledMessage={
-                      roleLevel === 1 || roleLevel === 2
+                      !roleUser
+                        ? "You need an account to book equipment."
+                        : roleLevel === 1 || roleLevel === 2
                         ? "You do not have the required membership to book equipment."
                         : equipmentPrerequisiteMessage
                     }
