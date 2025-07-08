@@ -15,6 +15,12 @@ import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
 import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -247,6 +253,7 @@ return (
                   highestActivePrice={highestActivePrice}
                   highestCanceledPrice={highestCanceledPrice}
                   nextPaymentDate={membership?.nextPaymentDate}
+                  roleUser={roleUser}
                 />
               );
             })}

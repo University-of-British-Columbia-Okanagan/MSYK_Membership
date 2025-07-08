@@ -41,6 +41,11 @@ interface MembershipCardProps {
   nextPaymentDate?: Date;
   membershipRecordId?: number;
   needAdminPermission?: boolean;
+  roleUser?: {
+    roleId: number;
+    roleName: string;
+    userId: number;
+  } | null;
 }
 
 export default function MembershipCard({
@@ -60,6 +65,7 @@ export default function MembershipCard({
   nextPaymentDate,
   membershipRecordId,
   needAdminPermission,
+  roleUser,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -86,10 +92,17 @@ export default function MembershipCard({
   };
 
   // By default, the user can select a membership plan
-  let canSelect = true; // CHANGE: we will override this if the user doesn't meet plan-specific requirements
-  let reason = ""; // CHANGE: store the reason the button is disabled
+  let canSelect = true; // We will override this if the user doesn't meet plan-specific requirements
+  let reason = ""; // Store the reason the button is disabled
 
-  // CHANGE: Additional check for plan.needAdminPermission (level 4 membership).
+  // Guest user authentication
+  const isGuest = !roleUser || !roleUser.userId;
+  if (isGuest) {
+    canSelect = false;
+    reason = "You need an account to purchase a membership.";
+  }
+
+  // Additional check for plan.needAdminPermission (level 4 membership).
   // Must have:
   //   1) A valid user record
   //   2) roleLevel >= 3 (they've completed orientation and are effectively "level 3")
@@ -184,110 +197,165 @@ export default function MembershipCard({
       ) : (
         // Non-subscribed branch: membershipStatus is "inactive" or no record
         <div className="mt-4 flex justify-center">
-  {(() => {
-    // 1) Plan‑4 gating: disabled Subscribe with reason
-    if (!canSelect) {
-      return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-block">
+          {(() => {
+            // 1) Plan‑4 gating OR guest user: disabled Subscribe with reason
+            if (!canSelect) {
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-block">
+                        <Button
+                          disabled
+                          className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed flex items-center justify-center"
+                          onClick={
+                            isGuest
+                              ? () => {
+                                  const currentUrl =
+                                    window.location.pathname +
+                                    window.location.search;
+                                  window.location.href = `/login?redirect=${encodeURIComponent(
+                                    currentUrl
+                                  )}`;
+                                }
+                              : undefined
+                          }
+                        >
+                          <PlusCircle className="w-5 h-5 mr-2" />
+                          Subscribe
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      className={
+                        isGuest
+                          ? "bg-blue-100 text-blue-800 border border-blue-300 p-2 max-w-xs"
+                          : ""
+                      }
+                    >
+                      {isGuest ? (
+                        <div className="text-center">
+                          <p className="mb-2">{reason}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                const currentUrl =
+                                  window.location.pathname +
+                                  window.location.search;
+                                window.location.href = `/login?redirect=${encodeURIComponent(
+                                  currentUrl
+                                )}`;
+                              }}
+                              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                            >
+                              Sign In
+                            </button>
+                            <button
+                              onClick={() => {
+                                const currentUrl =
+                                  window.location.pathname +
+                                  window.location.search;
+                                window.location.href = `/register?redirect=${encodeURIComponent(
+                                  currentUrl
+                                )}`;
+                              }}
+                              className="bg-white hover:bg-blue-50 text-blue-500 border border-blue-500 px-3 py-1 rounded text-sm"
+                            >
+                              Create Account
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p>{reason}</p>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+
+            const now = new Date();
+
+            // 2) Mid‑billing‑cycle: status inactive but nextPaymentDate in future → disable change
+            if (
+              membershipStatus === "inactive" &&
+              nextPaymentDate != null &&
+              new Date(nextPaymentDate) > now
+            ) {
+              // Choose Upgrade or Downgrade if you have an active sub; otherwise Subscribe
+              const buttonLabel = hasActiveSubscription
+                ? price > highestActivePrice
+                  ? "Upgrade"
+                  : "Downgrade"
+                : "Subscribe";
+              const Icon = getIconForLabel(buttonLabel);
+
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-block">
+                        <Button
+                          disabled
+                          className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed flex items-center justify-center"
+                        >
+                          {Icon && <Icon className="w-5 h-5 mr-2" />}
+                          {buttonLabel}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        You can change only after your old membership billing
+                        cycle ends.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+
+            // 3) Normal upgrade/downgrade when not mid‑cycle
+            if (hasActiveSubscription) {
+              const buttonLabel =
+                price > highestActivePrice ? "Upgrade" : "Downgrade";
+              const Icon = getIconForLabel(buttonLabel);
+              return (
                 <Button
-                  disabled
-                  className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed flex items-center justify-center"
-                >
-                  <PlusCircle className="w-5 h-5 mr-2" />
-                  Subscribe
-                </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{reason}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      );
-    }
-
-    const now = new Date();
-
-    // 2) Mid‑billing‑cycle: status inactive but nextPaymentDate in future → disable change
-    if (
-      membershipStatus === "inactive" &&
-      nextPaymentDate != null &&
-      new Date(nextPaymentDate) > now
-    ) {
-      // Choose Upgrade or Downgrade if you have an active sub; otherwise Subscribe
-      const buttonLabel = hasActiveSubscription
-        ? price > highestActivePrice
-          ? "Upgrade"
-          : "Downgrade"
-        : "Subscribe";
-      const Icon = getIconForLabel(buttonLabel);
-
-      return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-block">
-                <Button
-                  disabled
-                  className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed flex items-center justify-center"
+                  onClick={handleSelect}
+                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
                 >
                   {Icon && <Icon className="w-5 h-5 mr-2" />}
                   {buttonLabel}
                 </Button>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>You can change only after your old membership billing cycle ends.</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      );
-    }
+              );
+            }
 
-    // 3) Normal upgrade/downgrade when not mid‑cycle
-    if (hasActiveSubscription) {
-      const buttonLabel =
-        price > highestActivePrice ? "Upgrade" : "Downgrade";
-      const Icon = getIconForLabel(buttonLabel);
-      return (
-        <Button
-          onClick={handleSelect}
-          className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
-        >
-          {Icon && <Icon className="w-5 h-5 mr-2" />}
-          {buttonLabel}
-        </Button>
-      );
-    }
+            // 4) Fully cancelled (no active), must resubscribe first
+            if (!hasActiveSubscription && hasCancelledSubscription) {
+              return (
+                <Button
+                  onClick={handleSelect}
+                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
+                >
+                  <RefreshCw className="w-5 h-5 mr-2" />
+                  Resubscribe
+                </Button>
+              );
+            }
 
-    // 4) Fully cancelled (no active), must resubscribe first
-    if (!hasActiveSubscription && hasCancelledSubscription) {
-      return (
-        <Button
-          onClick={handleSelect}
-          className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
-        >
-          <RefreshCw className="w-5 h-5 mr-2" />
-          Resubscribe
-        </Button>
-      );
-    }
-
-    // 5) Fallback: brand‑new Subscribe
-    return (
-      <Button
-        onClick={handleSelect}
-        className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
-      >
-        <PlusCircle className="w-5 h-5 mr-2" />
-        Subscribe
-      </Button>
-    );
-  })()}
-</div>
+            // 5) Fallback: brand‑new Subscribe
+            return (
+              <Button
+                onClick={handleSelect}
+                className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
+              >
+                <PlusCircle className="w-5 h-5 mr-2" />
+                Subscribe
+              </Button>
+            );
+          })()}
+        </div>
       )}
 
       <ul className="text-left text-gray-700 mt-6 space-y-2">
