@@ -27,6 +27,10 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
+  // Get redirect parameter from URL
+  const url = new URL(request.url);
+  const redirectParam = url.searchParams.get("redirect");
+
   const result = await login(rawValues);
 
   if (!result) {
@@ -37,8 +41,10 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: result.errors };
   }
 
-  const redirectTo =
-    result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user";
+  // Use redirect parameter if provided, otherwise use default
+  const redirectTo = redirectParam || 
+    (result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user");
+  
   return createUserSession(result.id, result.password, redirectTo);
 }
 

@@ -73,7 +73,18 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: result.errors };
   }
 
+  // Get redirect parameter from URL
+  const url = new URL(request.url);
+  const redirectParam = url.searchParams.get("redirect");
+
+  if (redirectParam) {
+    // If there's a redirect parameter, redirect to login page with the same redirect parameter
+    // so after login, user goes back to where they came from
+    return redirect(`/login?redirect=${encodeURIComponent(redirectParam)}`);
+  }
+
   return { success: true, user: result };
+
 }
 
 interface FormErrors {
