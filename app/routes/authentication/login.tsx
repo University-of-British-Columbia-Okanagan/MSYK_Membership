@@ -151,7 +151,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
 
                 <div className="text-center mt-4">
                   <p className="text-sm text-gray-600">
-                    Do not have an account?{" "}
+                    Don't have an account?{" "}
                     <a
                       href="/register"
                       className="text-yellow-600 hover:text-yellow-700 font-medium"
