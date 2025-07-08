@@ -31,7 +31,7 @@ export function GuestAppSidebar() {
     <Sidebar className="h-screen w-64 bg-white shadow-lg flex flex-col">
       {/* Sidebar Header with Logo wrapped in Link */}
       <SidebarHeader className="flex justify-center p-4">
-        <Link to="/dashboard/admin">
+        <Link to="/dashboard">
           <img
             src="/images/Makerspace Horizontal Text Logo Colour-01.avif"
             alt="Makerspace YK"
