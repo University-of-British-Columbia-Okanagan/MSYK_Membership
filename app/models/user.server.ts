@@ -386,3 +386,13 @@ export async function getOrCreateStripeCustomer(userId: number) {
 
   return customer.id;
 }
+
+export async function updateUserVolunteerStatus(userId: number, isVolunteer: boolean) {
+  return await db.user.update({
+    where: { id: userId },
+    data: { 
+      isVolunteer,
+      volunteerSince: isVolunteer ? new Date() : null
+    },
+  });
+}
