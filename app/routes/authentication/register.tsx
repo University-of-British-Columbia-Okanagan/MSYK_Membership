@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   redirect,
   useNavigation,
@@ -36,18 +36,18 @@ export async function loader({ request }: { request: Request }) {
 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
+  
+  // Debug: Log guardian signature data
+  const guardianSignedConsent = formData.get("guardianSignedConsent");
+
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
   rawValues.over18 = rawValues.over18 === "true";
   rawValues.photoRelease = rawValues.photoRelease === "true";
   rawValues.dataPrivacy = rawValues.dataPrivacy === "on";
 
-  rawValues.trainingCardUserNumber = rawValues.trainingCardUserNumber
-    ? parseInt(rawValues.trainingCardUserNumber, 10)
-    : null;
-
-  const guardianSignedConsent = formData.get("guardianSignedConsent");
-  if (guardianSignedConsent instanceof File && guardianSignedConsent.size > 0) {
+  // Ensure signature data is properly handled
+  if (typeof guardianSignedConsent === "string" && guardianSignedConsent.trim() !== "") {
     rawValues.guardianSignedConsent = guardianSignedConsent;
   } else {
     rawValues.guardianSignedConsent = null;
@@ -79,7 +79,6 @@ interface FormErrors {
   email?: string[];
   password?: string[];
   phone?: string[];
-  address?: string[];
   over18?: boolean[];
   parentGuardianName?: string[];
   parentGuardianPhone?: string[];
@@ -90,7 +89,6 @@ interface FormErrors {
   emergencyContactName?: string[];
   emergencyContactPhone?: string[];
   emergencyContactEmail?: string[];
-  trainingCardUserNumber?: number[];
 }
 
 interface ActionData {
@@ -98,8 +96,176 @@ interface ActionData {
   success?: boolean;
 }
 
+const SignatureCanvas: React.FC<{
+  onSave: (signature: string) => void;
+  value?: string | null;
+}> = ({ onSave, value }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Set canvas size
+    canvas.width = 400;
+    canvas.height = 200;
+
+    // Set drawing styles
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Clear and set background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // If there's an existing signature, load it
+    if (value && value.startsWith("data:image")) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        setHasSignature(true);
+      };
+      img.src = value;
+    }
+  }, [value]);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    setHasSignature(true);
+  };
+
+  const stopDrawing = () => {
+    if (isDrawing && hasSignature) {
+      // Auto-save when user stops drawing
+      saveSignature();
+    }
+    setIsDrawing(false);
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+    onSave("");
+  };
+
+  const saveSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const dataURL = canvas.toDataURL("image/png");
+    onSave(dataURL);
+  };
+
+  return (
+    <div className="border border-gray-300 rounded-lg p-4 bg-white">
+      <canvas
+        ref={canvasRef}
+        onMouseDown={startDrawing}
+        onMouseMove={draw}
+        onMouseUp={stopDrawing}
+        onMouseLeave={stopDrawing}
+        className="border border-gray-200 cursor-crosshair bg-white"
+        style={{ width: "100%", maxWidth: "400px", height: "200px" }}
+      />
+      <div className="flex gap-2 mt-2">
+        <Button
+          type="button"
+          onClick={clearSignature}
+          variant="outline"
+          size="sm"
+        >
+          Clear
+        </Button>
+        <Button
+          type="button"
+          onClick={saveSignature}
+          variant="outline"
+          size="sm"
+        >
+          Save Signature
+        </Button>
+      </div>
+      <p className="text-xs text-gray-500 mt-1">
+        Click and drag to sign. Signature is auto-saved when you finish drawing.
+      </p>
+      {hasSignature && (
+        <p className="text-xs text-green-600 mt-1">✓ Signature captured</p>
+      )}
+    </div>
+  );
+};
+
+const SignatureDisplay: React.FC<{ signature: string; className?: string }> = ({ 
+  signature, 
+  className = "max-w-md mx-auto border border-gray-300 rounded-lg p-2" 
+}) => {
+  if (!signature || !signature.startsWith('data:image/')) {
+    return <div className="text-gray-500 text-sm">No signature available</div>;
+  }
+
+  return (
+    <div className={className}>
+      <img 
+        src={signature} 
+        alt="Digital Signature" 
+        className="w-full h-auto"
+        style={{ maxHeight: '200px' }}
+      />
+    </div>
+  );
+};
+
 export default function Register({ actionData }: { actionData?: ActionData }) {
-  const loaderData = useLoaderData<{ user: { id: number; email: string } | null }>();
+  const loaderData = useLoaderData<{
+    user: { id: number; email: string } | null;
+  }>();
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -108,7 +274,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       email: "",
       password: "",
       phone: "",
-      address: "",
       over18: false,
       parentGuardianName: null,
       parentGuardianPhone: null,
@@ -119,7 +284,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       emergencyContactName: "",
       emergencyContactPhone: "",
       emergencyContactEmail: "",
-      trainingCardUserNumber: undefined,
     },
   });
 
@@ -131,7 +295,8 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     setLoading(true);
   };
 
-  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
+  const hasErrors =
+    actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   React.useEffect(() => {
     if (formRef.current) {
@@ -162,7 +327,8 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       )}
       {hasErrors && (
         <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-          There are some errors in your form. Please review the highlighted fields below.
+          There are some errors in your form. Please review the highlighted
+          fields below.
         </div>
       )}
       {user ? (
@@ -179,11 +345,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       ) : (
         <>
           <Form {...form}>
-            <form
-              method="post"
-              encType="multipart/form-data"
-              ref={formRef}
-            >
+            <form method="post" encType="multipart/form-data" ref={formRef}>
               {/* Reusable Fields */}
               <GenericFormField
                 control={form.control}
@@ -226,14 +388,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                 required
                 error={actionData?.errors?.phone}
               />
-              <GenericFormField
-                control={form.control}
-                name="address"
-                label="Address"
-                placeholder="123 Main St"
-                required
-                error={actionData?.errors?.address}
-              />
 
               {/* Over 18 Radio Group */}
               <FormField
@@ -248,7 +402,9 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       <RadioGroup
                         name="over18"
                         value={field.value ? "true" : "false"}
-                        onValueChange={(value) => field.onChange(value === "true")}
+                        onValueChange={(value) =>
+                          field.onChange(value === "true")
+                        }
                         className="flex space-x-4 mt-2"
                       >
                         <label className="flex items-center space-x-2">
@@ -296,22 +452,24 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   <FormField
                     control={form.control}
                     name="guardianSignedConsent"
-                    render={() => (
+                    render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Guardian Signed Consent <span className="text-red-500">*</span>
+                          Guardian Digital Signature{" "}
+                          <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
-                          <Input
-                            name="guardianSignedConsent"
-                            type="file"
-                            onChange={(e) =>
-                              form.setValue(
-                                "guardianSignedConsent",
-                                e.target.files?.[0] || null
-                              )
-                            }
-                          />
+                          <div>
+                            <SignatureCanvas
+                              onSave={(signature) => field.onChange(signature)}
+                              value={field.value}
+                            />
+                            <input
+                              type="hidden"
+                              name="guardianSignedConsent"
+                              value={field.value || ""}
+                            />
+                          </div>
                         </FormControl>
                         <FormMessage>
                           {actionData?.errors?.guardianSignedConsent}
@@ -332,13 +490,18 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       Photo Release <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormDescription>
-                      I grant permission to Makerspace YK, its representatives and employees, to take photographs of me and/or my dependent, as well as my property, in connection with their programs.
+                      I grant permission to Makerspace YK, its representatives
+                      and employees, to take photographs of me and/or my
+                      dependent, as well as my property, in connection with
+                      their programs.
                     </FormDescription>
                     <FormControl>
                       <RadioGroup
                         name="photoRelease"
                         value={field.value ? "true" : "false"}
-                        onValueChange={(value) => field.onChange(value === "true")}
+                        onValueChange={(value) =>
+                          field.onChange(value === "true")
+                        }
                         className="flex space-x-4 mt-4"
                       >
                         <label className="flex items-center space-x-2">
@@ -351,7 +514,9 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                         </label>
                       </RadioGroup>
                     </FormControl>
-                    <FormMessage>{actionData?.errors?.photoRelease}</FormMessage>
+                    <FormMessage>
+                      {actionData?.errors?.photoRelease}
+                    </FormMessage>
                   </FormItem>
                 )}
               />
@@ -366,7 +531,17 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       Data Privacy <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormDescription>
-                      I understand that Makerspace YK shall treat all Confidential Information belonging to me and/or my dependant as confidential and safeguard it accordingly. Makerspace YK may use my and/or my dependant's information internally to provide their services to me and/or my dependant, where necessary, to help them improve their product or service delivery. I understand that Makerspace YK shall not disclose any Confidential Information belonging to me and/or my dependant to any third-parties without my and my dependant's prior written consent, except where disclosure is required by law.
+                      I understand that Makerspace YK shall treat all
+                      Confidential Information belonging to me and/or my
+                      dependant as confidential and safeguard it accordingly.
+                      Makerspace YK may use my and/or my dependant's information
+                      internally to provide their services to me and/or my
+                      dependant, where necessary, to help them improve their
+                      product or service delivery. I understand that Makerspace
+                      YK shall not disclose any Confidential Information
+                      belonging to me and/or my dependant to any third-parties
+                      without my and my dependant's prior written consent,
+                      except where disclosure is required by law.
                     </FormDescription>
                     <FormControl>
                       <label className="flex items-center space-x-3 mt-4">
@@ -408,17 +583,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                 placeholder="emergency@example.com"
                 required
                 error={actionData?.errors?.emergencyContactEmail}
-              />
-
-              {/* Training Card/User Number */}
-              <GenericFormField
-                control={form.control}
-                name="trainingCardUserNumber"
-                label="Training Card/User Number"
-                placeholder="123"
-                required
-                type="number"
-                error={actionData?.errors?.trainingCardUserNumber}
               />
 
               {/* Submit Button */}
