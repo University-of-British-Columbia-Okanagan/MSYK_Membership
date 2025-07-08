@@ -22,6 +22,7 @@ import { Link } from "react-router";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { logger } from "~/logging/logger";
 
@@ -176,7 +177,13 @@ export default function EquipmentDetails() {
     <SidebarProvider>
       <div className="flex h-screen">
         {/* Conditional sidebar rendering */}
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        {!user ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
 
         {/* Main content area */}
         <main className="flex-grow p-6 overflow-auto">

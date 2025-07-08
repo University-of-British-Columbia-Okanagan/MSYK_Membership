@@ -27,6 +27,10 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
+  // Get redirect parameter from URL
+  const url = new URL(request.url);
+  const redirectParam = url.searchParams.get("redirect");
+
   const result = await login(rawValues);
 
   if (!result) {
@@ -37,8 +41,10 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: result.errors };
   }
 
-  const redirectTo =
-    result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user";
+  // Use redirect parameter if provided, otherwise use default
+  const redirectTo = redirectParam || 
+    (result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user");
+  
   return createUserSession(result.id, result.password, redirectTo);
 }
 
@@ -148,6 +154,30 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 >
                   {loading ? "Logging in..." : "Login"}
                 </Button>
+
+                <div className="text-center mt-4">
+                  <p className="text-sm text-gray-600">
+                    Don't have an account?{" "}
+                    <a
+                      href="/register"
+                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                    >
+                      Register here
+                    </a>
+                  </p>
+                </div>
+
+                <div className="text-center mb-4">
+                  <p className="text-sm text-gray-600">
+                    View the portal as a guest?{" "}
+                    <a
+                      href="/dashboard"
+                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                    >
+                      View here
+                    </a>
+                  </p>
+                </div>
               </form>
             </Form>
           </>

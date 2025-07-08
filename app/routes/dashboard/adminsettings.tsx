@@ -75,6 +75,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
+import { updateUserVolunteerStatus } from "~/models/user.server";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -387,6 +388,35 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updateVolunteerStatus") {
+    const userId = formData.get("userId");
+    const isVolunteer = formData.get("isVolunteer");
+    try {
+      await updateUserVolunteerStatus(Number(userId), isVolunteer === "true");
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated volunteer status for user ${userId} to ${isVolunteer}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Volunteer status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating volunteer status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update volunteer status",
+      };
+    }
+  }
+
   logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
     url: request.url,
   });
@@ -445,6 +475,129 @@ function RoleControl({
   );
 }
 
+function VolunteerControl({
+  user,
+}: {
+  user: { id: number; isVolunteer: boolean; volunteerSince: Date | null };
+}) {
+  const [isVolunteer, setIsVolunteer] = useState<boolean>(user.isVolunteer);
+  const submit = useSubmit();
+
+  const updateVolunteerStatus = (newStatus: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateVolunteerStatus");
+    formData.append("userId", user.id.toString());
+    formData.append("isVolunteer", newStatus.toString());
+    submit(formData, { method: "post" });
+    setIsVolunteer(newStatus);
+  };
+
+  return (
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        checked={isVolunteer}
+        onChange={(e) => updateVolunteerStatus(e.target.checked)}
+        className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+        id={`volunteer-${user.id}`}
+      />
+      <label
+        htmlFor={`volunteer-${user.id}`}
+        className="ml-2 text-sm text-gray-600"
+      >
+        Volunteer
+      </label>
+    </div>
+  );
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  const getVisiblePageNumbers = () => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+
+    for (
+      let i = Math.max(2, currentPage - delta);
+      i <= Math.min(totalPages - 1, currentPage + delta);
+      i++
+    ) {
+      range.push(i);
+    }
+
+    if (currentPage - delta > 2) {
+      rangeWithDots.push(1, "...");
+    } else {
+      rangeWithDots.push(1);
+    }
+
+    rangeWithDots.push(...range);
+
+    if (currentPage + delta < totalPages - 1) {
+      rangeWithDots.push("...", totalPages);
+    } else if (totalPages > 1) {
+      rangeWithDots.push(totalPages);
+    }
+
+    return rangeWithDots;
+  };
+
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-center space-x-2 mt-4">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="px-3 py-1"
+      >
+        Previous
+      </Button>
+
+      {getVisiblePageNumbers().map((page, index) => (
+        <React.Fragment key={index}>
+          {page === "..." ? (
+            <span className="px-2 py-1 text-gray-500">...</span>
+          ) : (
+            <Button
+              variant={currentPage === page ? "default" : "outline"}
+              size="sm"
+              onClick={() => onPageChange(page as number)}
+              className={`px-3 py-1 ${
+                currentPage === page
+                  ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+                  : ""
+              }`}
+            >
+              {page}
+            </Button>
+          )}
+        </React.Fragment>
+      ))}
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="px-3 py-1"
+      >
+        Next
+      </Button>
+    </div>
+  );
+}
+
 export default function AdminSettings() {
   const { roleUser, settings, workshops, users } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
@@ -483,6 +636,8 @@ export default function AdminSettings() {
       trainingCardUserNumber: string;
       roleLevel: number;
       allowLevel4: boolean;
+      isVolunteer: boolean;
+      volunteerSince: Date | null;
     }>;
   }>();
 
@@ -552,6 +707,9 @@ export default function AdminSettings() {
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
 
   const [searchName, setSearchName] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage] = useState(5);
+
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -559,10 +717,22 @@ export default function AdminSettings() {
       return searchName === "" || fullName.includes(searchName.toLowerCase());
     });
   }, [users, searchName]);
+
   // Sort filtered users by user.id in ascending order
   const sortedFilteredUsers = useMemo(() => {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
   }, [filteredUsers]);
+
+  // PAGINATION LOGIC
+  const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const paginatedUsers = sortedFilteredUsers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchName]);
 
   const [plannedClosures, setPlannedClosures] = useState(
     settings.plannedClosures.map((closure) => ({
@@ -919,17 +1089,20 @@ export default function AdminSettings() {
             )}
 
             <Tabs defaultValue="workshops" className="w-full">
-              <TabsList className="mb-4">
-                <TabsTrigger value="workshops">Workshop Settings</TabsTrigger>
-                <TabsTrigger value="users">User Settings</TabsTrigger>
-                <TabsTrigger value="equipment">Equipment Settings</TabsTrigger>
-                <TabsTrigger value="plannedClosures">
-                  Planned Closures
-                </TabsTrigger>
-                <TabsTrigger value="miscellaneous">Miscellaneous Settings</TabsTrigger>
-                <TabsTrigger value="placeholder">Other Settings</TabsTrigger>
-                {/* Add more tabs here in the future */}
-              </TabsList>
+              <div className="w-full overflow-x-auto mb-4">
+                <TabsList className="inline-flex w-max min-w-full">
+                  <TabsTrigger value="workshops" className="whitespace-nowrap">Workshop Settings</TabsTrigger>
+                  <TabsTrigger value="users" className="whitespace-nowrap">User Settings</TabsTrigger>
+                  <TabsTrigger value="volunteers" className="whitespace-nowrap">Volunteer Settings</TabsTrigger>
+                  <TabsTrigger value="equipment" className="whitespace-nowrap">Equipment Settings</TabsTrigger>
+                  <TabsTrigger value="plannedClosures" className="whitespace-nowrap">
+                    Planned Closures
+                  </TabsTrigger>
+                  <TabsTrigger value="miscellaneous" className="whitespace-nowrap">Miscellaneous Settings</TabsTrigger>
+                  <TabsTrigger value="placeholder" className="whitespace-nowrap">Other Settings</TabsTrigger>
+                  {/* Add more tabs here in the future */}
+                </TabsList>
+              </div>
 
               {/* Tab 1: All Workshop Settings */}
               <TabsContent value="workshops">
@@ -1953,6 +2126,76 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="volunteers">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Manage All Volunteers</CardTitle>
+                    <CardDescription>
+                      View and manage volunteer status for all users
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="Search by first or last name"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          className="w-full md:w-64"
+                        />
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Showing {startIndex + 1}-
+                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
+                        {sortedFilteredUsers.length} users
+                      </div>
+                    </div>
+
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "First Name",
+                          render: (user: any) => user.firstName,
+                        },
+                        {
+                          header: "Last Name",
+                          render: (user: any) => user.lastName,
+                        },
+                        { header: "Email", render: (user: any) => user.email },
+                        {
+                          header: "Phone Number",
+                          render: (user: any) => user.phone,
+                        },
+                        {
+                          header: "Volunteer Status",
+                          render: (user: any) => (
+                            <VolunteerControl user={user} />
+                          ),
+                        },
+                        {
+                          header: "Volunteer Since",
+                          render: (user: any) =>
+                            user.volunteerSince
+                              ? new Date(
+                                  user.volunteerSince
+                                ).toLocaleDateString()
+                              : "N/A",
+                        },
+                      ]}
+                      data={paginatedUsers}
+                      emptyMessage="No users found"
+                    />
+
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="plannedClosures">
                 <Card>
                   <CardHeader>
@@ -2201,7 +2444,11 @@ export default function AdminSettings() {
                     name="actionType"
                     value="updateSettings"
                   />
-                  <input type="hidden" name="settingType" value="gstPercentage" />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="gstPercentage"
+                  />
                   <Card>
                     <CardHeader>
                       <CardTitle>Tax Settings</CardTitle>
@@ -2229,9 +2476,11 @@ export default function AdminSettings() {
                           <span className="text-sm text-gray-600">%</span>
                         </div>
                         <p className="text-sm text-gray-500">
-                          GST/HST tax percentage applied to all payments. Standard Canadian GST is 5%. 
-                          HST varies by province (13% in Ontario, 15% in Atlantic Canada). This rate 
-                          will be applied to all memberships, workshops, and equipment bookings.
+                          GST/HST tax percentage applied to all payments.
+                          Standard Canadian GST is 5%. HST varies by province
+                          (13% in Ontario, 15% in Atlantic Canada). This rate
+                          will be applied to all memberships, workshops, and
+                          equipment bookings.
                         </p>
                       </div>
                     </CardContent>

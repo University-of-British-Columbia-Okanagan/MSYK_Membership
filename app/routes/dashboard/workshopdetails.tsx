@@ -42,6 +42,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { duplicateWorkshop } from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 interface Occurrence {
   id: number;
@@ -216,10 +220,15 @@ export async function action({ request }: { request: Request }) {
         occurrenceId: Number(occurrenceId),
         userId: user.id,
       });
-      logger.info(`User ${user.id}'s workshop registration cancelled successfully.`, {url: request.url,})
+      logger.info(
+        `User ${user.id}'s workshop registration cancelled successfully.`,
+        { url: request.url }
+      );
       return { success: true, cancelled: true };
     } catch (error) {
-      logger.error(`Error cancelling registration: ${error}`, {url: request.url,});
+      logger.error(`Error cancelling registration: ${error}`, {
+        url: request.url,
+      });
       return { error: "Failed to cancel registration" };
     }
   }
@@ -502,155 +511,180 @@ export default function WorkshopDetails() {
   );
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      {/* Popup Notification */}
-      {showPopup && (
-        <div
-          className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
-            popupType === "success"
-              ? "bg-green-500 text-white"
-              : "bg-red-500 text-white"
-          }`}
-        >
-          {popupMessage}
-        </div>
-      )}
+    <SidebarProvider>
+      <div className="flex h-screen">
+        {/* Conditional sidebar rendering based on user role */}
+        {!user ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
 
-      <Card className="mt-6 shadow-lg">
-        <CardHeader className="flex flex-col items-center text-center">
-          <CardTitle className="text-2xl font-bold">{workshop.name}</CardTitle>
-          <CardDescription className="text-gray-600 max-w-2xl mx-auto">
-            {workshop.description}
-          </CardDescription>
-
-          {/* Admin Only: View Users Button */}
-          {isAdmin && (
-            <div className="flex items-center gap-2 mt-4">
-              <Button
-                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
-                onClick={() =>
-                  navigate(`/dashboard/admin/workshop/${workshop.id}/users`)
-                }
+        <main className="flex-grow overflow-auto">
+          <div className="max-w-4xl mx-auto p-6">
+            {/* Popup Notification */}
+            {showPopup && (
+              <div
+                className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
+                  popupType === "success"
+                    ? "bg-green-500 text-white"
+                    : "bg-red-500 text-white"
+                }`}
               >
-                <Users size={18} />
-                View Users ({workshop.userCount})
-              </Button>
-
-              {isContinuation ? (
-                <ConfirmButton
-                  confirmTitle="Duplicate Workshop"
-                  confirmDescription="This will open the Add Workshop form with the current workshop's details pre-filled. You can then add new dates and make any other changes before saving."
-                  onConfirm={() => {
-                    // Store the workshop data in localStorage for the add workshop page to use
-                    localStorage.setItem(
-                      "duplicateWorkshopData",
-                      JSON.stringify({
-                        id: workshop.id,
-                        name: workshop.name,
-                        description: workshop.description,
-                        price: workshop.price,
-                        location: workshop.location,
-                        capacity: workshop.capacity || 10,
-                        type: workshop.type,
-                        prerequisites: workshop.prerequisites || [],
-                        equipments: workshop.equipments || [],
-                        // Exclude occurrences/dates
-                        isContinuation: isContinuation,
-                      })
-                    );
-                    // Navigate to the add workshop page
-                    navigate("/dashboard/addworkshop");
-                  }}
-                  buttonLabel="Duplicate"
-                  buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
-                />
-              ) : (
-                <Button
-                  className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
-                  onClick={() => handleOfferAgain()}
-                >
-                  Offer Again
-                </Button>
-              )}
-            </div>
-          )}
-        </CardHeader>
-
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Badge variant="outline" className="px-4 py-2 text-lg font-medium">
-              ${workshop.price}
-            </Badge>
-            <Badge variant="outline" className="px-4 py-2 text-lg font-medium">
-              {workshop.location}
-            </Badge>
-          </div>
-
-          <Separator className="my-6" />
-
-          {/* Continuation Workshop Block */}
-          {isContinuation ? (
-            <>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">
-                  Multi-day Workshop Dates
-                </h2>
-                <Badge
-                  variant="outline"
-                  className="bg-blue-50 border-blue-200 text-blue-700"
-                >
-                  {sortedOccurrences.length} Workshop Dates
-                </Badge>
+                {popupMessage}
               </div>
-              {/* New Box-Style UI for multi-day workshops */}
-              <div className="border rounded-lg shadow-md bg-white p-4 mb-6">
-                <div className="grid gap-3">
-                  {sortedOccurrences.map((occ: any, index: number) => (
-                    <div
-                      key={occ.id}
-                      className="flex items-center p-3 rounded-md bg-gray-50 border border-gray-200"
-                      // className={`flex items-center p-3 rounded-md ${
-                      //   occ.status === "cancelled"
-                      //     ? "bg-red-50 border border-red-200"
-                      //     : occ.status === "past"
-                      //     ? "bg-gray-50 border border-gray-200"
-                      //     : "bg-green-50 border border-green-200"
-                      // }`}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-500 text-white text-xs mr-2">
-                            {index + 1}
-                          </span>
-                          <p className="font-medium">
-                            {new Date(occ.startDate).toLocaleDateString(
-                              undefined,
-                              {
-                                weekday: "short",
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              }
-                            )}
-                          </p>
-                        </div>
-                        <p className="text-sm text-gray-600 ml-8">
-                          {new Date(occ.startDate).toLocaleTimeString(
-                            undefined,
-                            {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )}{" "}
-                          {" - "}
-                          {new Date(occ.endDate).toLocaleTimeString(undefined, {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
+            )}
 
-                      {/* <div>
+            <Card className="mt-6 shadow-lg">
+              <CardHeader className="flex flex-col items-center text-center">
+                <CardTitle className="text-2xl font-bold">
+                  {workshop.name}
+                </CardTitle>
+                <CardDescription className="text-gray-600 max-w-2xl mx-auto">
+                  {workshop.description}
+                </CardDescription>
+
+                {/* Admin Only: View Users Button */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2 mt-4">
+                    <Button
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                      onClick={() =>
+                        navigate(
+                          `/dashboard/admin/workshop/${workshop.id}/users`
+                        )
+                      }
+                    >
+                      <Users size={18} />
+                      View Users ({workshop.userCount})
+                    </Button>
+
+                    {isContinuation ? (
+                      <ConfirmButton
+                        confirmTitle="Duplicate Workshop"
+                        confirmDescription="This will open the Add Workshop form with the current workshop's details pre-filled. You can then add new dates and make any other changes before saving."
+                        onConfirm={() => {
+                          // Store the workshop data in localStorage for the add workshop page to use
+                          localStorage.setItem(
+                            "duplicateWorkshopData",
+                            JSON.stringify({
+                              id: workshop.id,
+                              name: workshop.name,
+                              description: workshop.description,
+                              price: workshop.price,
+                              location: workshop.location,
+                              capacity: workshop.capacity || 10,
+                              type: workshop.type,
+                              prerequisites: workshop.prerequisites || [],
+                              equipments: workshop.equipments || [],
+                              // Exclude occurrences/dates
+                              isContinuation: isContinuation,
+                            })
+                          );
+                          // Navigate to the add workshop page
+                          navigate("/dashboard/addworkshop");
+                        }}
+                        buttonLabel="Duplicate"
+                        buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                      />
+                    ) : (
+                      <Button
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                        onClick={() => handleOfferAgain()}
+                      >
+                        Offer Again
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </CardHeader>
+
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <Badge
+                    variant="outline"
+                    className="px-4 py-2 text-lg font-medium"
+                  >
+                    ${workshop.price}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="px-4 py-2 text-lg font-medium"
+                  >
+                    {workshop.location}
+                  </Badge>
+                </div>
+
+                <Separator className="my-6" />
+
+                {/* Continuation Workshop Block */}
+                {isContinuation ? (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-lg font-semibold">
+                        Multi-day Workshop Dates
+                      </h2>
+                      <Badge
+                        variant="outline"
+                        className="bg-blue-50 border-blue-200 text-blue-700"
+                      >
+                        {sortedOccurrences.length} Workshop Dates
+                      </Badge>
+                    </div>
+                    {/* New Box-Style UI for multi-day workshops */}
+                    <div className="border rounded-lg shadow-md bg-white p-4 mb-6">
+                      <div className="grid gap-3">
+                        {sortedOccurrences.map((occ: any, index: number) => (
+                          <div
+                            key={occ.id}
+                            className="flex items-center p-3 rounded-md bg-gray-50 border border-gray-200"
+                            // className={`flex items-center p-3 rounded-md ${
+                            //   occ.status === "cancelled"
+                            //     ? "bg-red-50 border border-red-200"
+                            //     : occ.status === "past"
+                            //     ? "bg-gray-50 border border-gray-200"
+                            //     : "bg-green-50 border border-green-200"
+                            // }`}
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center">
+                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-500 text-white text-xs mr-2">
+                                  {index + 1}
+                                </span>
+                                <p className="font-medium">
+                                  {new Date(occ.startDate).toLocaleDateString(
+                                    undefined,
+                                    {
+                                      weekday: "short",
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    }
+                                  )}
+                                </p>
+                              </div>
+                              <p className="text-sm text-gray-600 ml-8">
+                                {new Date(occ.startDate).toLocaleTimeString(
+                                  undefined,
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  }
+                                )}{" "}
+                                {" - "}
+                                {new Date(occ.endDate).toLocaleTimeString(
+                                  undefined,
+                                  {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  }
+                                )}
+                              </p>
+                            </div>
+
+                            {/* <div>
               {occ.status === "cancelled" ? (
                 <Badge className="bg-red-500 text-white">Cancelled</Badge>
               ) : occ.status === "past" ? (
@@ -659,432 +693,603 @@ export default function WorkshopDetails() {
                 <Badge className="bg-green-500 text-white">Active</Badge>
               )}
             </div> */}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <Separator className="my-6" />
-
-              {/* Single registration/cancellation for the entire workshop */}
-              {allPast ? (
-                <Badge className="bg-gray-500 text-white px-3 py-1">Past</Badge>
-              ) : allCancelled ? (
-                <Badge className="bg-red-500 text-white px-3 py-1">
-                  Cancelled
-                </Badge>
-              ) : (
-                (() => {
-                  // Check if ANY workshop date has passed the current date
-                  const anyDatePassed = workshop.occurrences.some(
-                    (occ: any) => new Date(occ.endDate) < new Date()
-                  );
-
-                  if (anyDatePassed) {
-                    return (
-                      <Badge className="bg-gray-500 text-white px-3 py-1">
-                        Workshop registration has passed
-                      </Badge>
-                    );
-                  } else if (isUserRegisteredForAny) {
-                    const canCancel =
-                      earliestRegDate &&
-                      (new Date().getTime() - earliestRegDate.getTime()) /
-                        (1000 * 60 * 60) <
-                        48;
-                    return (
-                      <div className="flex items-center gap-4">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
-                              Registered (Entire Workshop)
-                            </Badge>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canCancel ? (
-                              <>
-                                <DropdownMenuItem
-                                  onSelect={(e) => {
-                                    e.preventDefault();
-                                    handleCancelAll();
-                                  }}
-                                >
-                                  Yes, Cancel Entire Workshop Registration
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onSelect={(e) => {
-                                    e.preventDefault();
-                                  }}
-                                >
-                                  No, Keep Registration
-                                </DropdownMenuItem>
-                              </>
-                            ) : (
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <DropdownMenuItem disabled>
-                                      Cancel Entire Workshop
-                                    </DropdownMenuItem>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>48 hours have passed; cannot cancel.</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  } else {
-                    // CHANGE 2: Replace the Register button with a Confirm button
-                    // This shows number of sessions being registered for
-                    const activeOccurrences = sortedOccurrences.filter(
-                      (occ: any) =>
-                        occ.status !== "past" && occ.status !== "cancelled"
-                    );
+                    </div>
 
-                    const earliestActiveOccurrence = activeOccurrences.reduce(
-                      (earliest, current) => {
-                        const currentDate = new Date(current.startDate);
-                        const earliestDate = new Date(earliest.startDate);
-                        return currentDate < earliestDate ? current : earliest;
-                      },
-                      activeOccurrences[0]
-                    );
+                    <Separator className="my-6" />
 
-                    const withinCutoffPeriod = earliestActiveOccurrence
-                      ? isWithinCutoffPeriod(
-                          new Date(earliestActiveOccurrence.startDate),
-                          workshop.registrationCutoff
-                        )
-                      : false;
+                    {/* Single registration/cancellation for the entire workshop */}
+                    {allPast ? (
+                      <Badge className="bg-gray-500 text-white px-3 py-1">
+                        Past
+                      </Badge>
+                    ) : allCancelled ? (
+                      <Badge className="bg-red-500 text-white px-3 py-1">
+                        Cancelled
+                      </Badge>
+                    ) : (
+                      (() => {
+                        // Check if ANY workshop date has passed the current date
+                        const anyDatePassed = workshop.occurrences.some(
+                          (occ: any) => new Date(occ.endDate) < new Date()
+                        );
 
-                    return (
-                      <>
-                        {withinCutoffPeriod ? (
-                          <div className="flex flex-col items-start gap-2">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div>
-                                    <Button
-                                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg opacity-70"
-                                      disabled={true}
-                                    >
-                                      Register for Entire Workshop
-                                    </Button>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent
-                                  side="top"
-                                  align="start"
-                                  className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs"
-                                >
-                                  <p>
+                        if (anyDatePassed) {
+                          return (
+                            <Badge className="bg-gray-500 text-white px-3 py-1">
+                              Workshop registration has passed
+                            </Badge>
+                          );
+                        } else if (isUserRegisteredForAny) {
+                          const canCancel =
+                            earliestRegDate &&
+                            (new Date().getTime() - earliestRegDate.getTime()) /
+                              (1000 * 60 * 60) <
+                              48;
+                          return (
+                            <div className="flex items-center gap-4">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
+                                    Registered (Entire Workshop)
+                                  </Badge>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  {canCancel ? (
+                                    <>
+                                      <DropdownMenuItem
+                                        onSelect={(e) => {
+                                          e.preventDefault();
+                                          handleCancelAll();
+                                        }}
+                                      >
+                                        Yes, Cancel Entire Workshop Registration
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onSelect={(e) => {
+                                          e.preventDefault();
+                                        }}
+                                      >
+                                        No, Keep Registration
+                                      </DropdownMenuItem>
+                                    </>
+                                  ) : (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <DropdownMenuItem disabled>
+                                            Cancel Entire Workshop
+                                          </DropdownMenuItem>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>
+                                            48 hours have passed; cannot cancel.
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          );
+                        } else {
+                          // CHANGE 2: Replace the Register button with a Confirm button
+                          // This shows number of sessions being registered for
+                          const activeOccurrences = sortedOccurrences.filter(
+                            (occ: any) =>
+                              occ.status !== "past" &&
+                              occ.status !== "cancelled"
+                          );
+
+                          const earliestActiveOccurrence =
+                            activeOccurrences.reduce((earliest, current) => {
+                              const currentDate = new Date(current.startDate);
+                              const earliestDate = new Date(earliest.startDate);
+                              return currentDate < earliestDate
+                                ? current
+                                : earliest;
+                            }, activeOccurrences[0]);
+
+                          const withinCutoffPeriod = earliestActiveOccurrence
+                            ? isWithinCutoffPeriod(
+                                new Date(earliestActiveOccurrence.startDate),
+                                workshop.registrationCutoff
+                              )
+                            : false;
+
+                          return (
+                            <>
+                              {withinCutoffPeriod ? (
+                                <div className="flex flex-col items-start gap-2">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div>
+                                          <Button
+                                            className={`${
+                                              !user
+                                                ? "bg-gray-400 hover:bg-gray-500"
+                                                : "bg-blue-500 hover:bg-blue-600"
+                                            } text-white px-4 py-2 rounded-lg ${
+                                              withinCutoffPeriod
+                                                ? "opacity-70"
+                                                : ""
+                                            }`}
+                                            disabled={
+                                              !user ||
+                                              withinCutoffPeriod ||
+                                              !hasCompletedAllPrerequisites
+                                            }
+                                          >
+                                            Register for Entire Workshop
+                                          </Button>
+                                        </div>
+                                      </TooltipTrigger>
+                                      {!user ? (
+                                        <TooltipContent className="bg-blue-50 text-blue-800 border border-blue-300 p-3 max-w-xs">
+                                          <p className="font-medium mb-2">
+                                            Account required
+                                          </p>
+                                          <p className="text-sm mb-3">
+                                            You need an account to register for
+                                            workshops.
+                                          </p>
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => {
+                                                const currentUrl =
+                                                  window.location.pathname;
+                                                window.location.href = `/login?redirect=${encodeURIComponent(
+                                                  currentUrl
+                                                )}`;
+                                              }}
+                                              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
+                                            >
+                                              Sign In
+                                            </button>
+                                            <button
+                                              onClick={() => {
+                                                const currentUrl =
+                                                  window.location.pathname;
+                                                window.location.href = `/register?redirect=${encodeURIComponent(
+                                                  currentUrl
+                                                )}`;
+                                              }}
+                                              className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-3 py-1 rounded text-xs"
+                                            >
+                                              Register
+                                            </button>
+                                          </div>
+                                        </TooltipContent>
+                                      ) : withinCutoffPeriod ? (
+                                        <TooltipContent
+                                          side="top"
+                                          align="start"
+                                          className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs"
+                                        >
+                                          <p>
+                                            Registration is closed. Registration
+                                            cutoff is{" "}
+                                            {formatCutoffTime(
+                                              workshop.registrationCutoff
+                                            )}{" "}
+                                            before the first workshop session.
+                                          </p>
+                                        </TooltipContent>
+                                      ) : null}
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                  <div className="bg-amber-100 text-amber-800 border border-amber-300 rounded-md p-3 text-sm">
                                     Registration is closed. Registration cutoff
                                     is{" "}
                                     {formatCutoffTime(
                                       workshop.registrationCutoff
                                     )}{" "}
                                     before the first workshop session.
-                                  </p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <div className="bg-amber-100 text-amber-800 border border-amber-300 rounded-md p-3 text-sm">
-                              Registration is closed. Registration cutoff is{" "}
-                              {formatCutoffTime(workshop.registrationCutoff)}{" "}
-                              before the first workshop session.
-                            </div>
-                          </div>
-                        ) : (
-                          <ConfirmButton
-                            confirmTitle="Register for Multi-Day Workshop"
-                            confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
-                            onConfirm={() => handleRegisterAll()}
-                            buttonLabel={`Register for Entire Workshop (${activeOccurrences.length} Sessions)`}
-                            buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                            disabled={!hasCompletedAllPrerequisites}
-                          />
-                        )}
-                      </>
-                    );
-                  }
-                })()
-              )}
-            </>
-          ) : (
-            // Non-continuation workshop: existing per-occurrence UI
-            <>
-              <h2 className="text-lg font-semibold mb-4">Available Dates</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {sortedOccurrences.map((occurrence: Occurrence) => {
-                  const regData = registrations[occurrence.id] || {
-                    registered: false,
-                    registeredAt: null,
-                  };
-                  const isOccurrenceRegistered = regData.registered;
+                                  </div>
+                                </div>
+                              ) : (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <ConfirmButton
+                                          confirmTitle="Register for Multi-Day Workshop"
+                                          confirmDescription={`You are registering for ${activeOccurrences.length} workshop sessions. All dates are included in this registration.`}
+                                          onConfirm={() => handleRegisterAll()}
+                                          buttonLabel={`Register for Entire Workshop (${activeOccurrences.length} Sessions)`}
+                                          buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                                          disabled={
+                                            !user ||
+                                            !hasCompletedAllPrerequisites
+                                          }
+                                        />
+                                      </div>
+                                    </TooltipTrigger>
+                                    {!user ? (
+                                      <TooltipContent className="bg-blue-50 text-blue-800 border border-blue-300 p-3 max-w-xs">
+                                        <p className="font-medium mb-2">
+                                          Account required
+                                        </p>
+                                        <p className="text-sm mb-3">
+                                          You need an account to register for
+                                          workshops.
+                                        </p>
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => {
+                                              const currentUrl =
+                                                window.location.pathname;
+                                              window.location.href = `/login?redirect=${encodeURIComponent(
+                                                currentUrl
+                                              )}`;
+                                            }}
+                                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
+                                          >
+                                            Sign In
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              const currentUrl =
+                                                window.location.pathname;
+                                              window.location.href = `/register?redirect=${encodeURIComponent(
+                                                currentUrl
+                                              )}`;
+                                            }}
+                                            className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-3 py-1 rounded text-xs"
+                                          >
+                                            Register
+                                          </button>
+                                        </div>
+                                      </TooltipContent>
+                                    ) : !hasCompletedAllPrerequisites ? (
+                                      <TooltipContent className="bg-red-100 text-red-800 border border-red-300 p-2 max-w-xs">
+                                        <p>
+                                          You must complete all prerequisites
+                                          before registering.
+                                        </p>
+                                      </TooltipContent>
+                                    ) : null}
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </>
+                          );
+                        }
+                      })()
+                    )}
+                  </>
+                ) : (
+                  // Non-continuation workshop: existing per-occurrence UI
+                  <>
+                    <h2 className="text-lg font-semibold mb-4">
+                      Available Dates
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {sortedOccurrences.map((occurrence: Occurrence) => {
+                        const regData = registrations[occurrence.id] || {
+                          registered: false,
+                          registeredAt: null,
+                        };
+                        const isOccurrenceRegistered = regData.registered;
 
-                  return (
-                    <div
-                      key={occurrence.id}
-                      className="border p-4 rounded-lg shadow-md bg-gray-50"
-                    >
-                      <p className="text-lg font-medium text-gray-800">
-                        📅 {new Date(occurrence.startDate).toLocaleString()} -{" "}
-                        {new Date(occurrence.endDate).toLocaleString()}
-                      </p>
+                        return (
+                          <div
+                            key={occurrence.id}
+                            className="border p-4 rounded-lg shadow-md bg-gray-50"
+                          >
+                            <p className="text-lg font-medium text-gray-800">
+                              📅{" "}
+                              {new Date(occurrence.startDate).toLocaleString()}{" "}
+                              - {new Date(occurrence.endDate).toLocaleString()}
+                            </p>
 
-                      <div className="mt-2 flex items-center justify-between">
-                        {occurrence.status === "cancelled" ? (
-                          <Badge className="bg-red-500 text-white px-3 py-1">
-                            Cancelled
-                          </Badge>
-                        ) : occurrence.status === "past" ? (
-                          <>
-                            <Badge className="bg-gray-500 text-white px-3 py-1">
-                              Registration has past
-                            </Badge>
-                          </>
-                        ) : isOccurrenceRegistered ? (
-                          <>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
-                                  Registered
+                            <div className="mt-2 flex items-center justify-between">
+                              {occurrence.status === "cancelled" ? (
+                                <Badge className="bg-red-500 text-white px-3 py-1">
+                                  Cancelled
                                 </Badge>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {confirmOccurrenceId === occurrence.id ? (
-                                  <>
-                                    <DropdownMenuItem
-                                      onSelect={(e) => {
-                                        e.preventDefault();
-                                        handleCancel(occurrence.id);
-                                        setConfirmOccurrenceId(null);
-                                      }}
-                                    >
-                                      Yes, Cancel
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      onSelect={(e) => {
-                                        e.preventDefault();
-                                        setConfirmOccurrenceId(null);
-                                      }}
-                                    >
-                                      No, Keep Registration
-                                    </DropdownMenuItem>
-                                  </>
-                                ) : (
-                                  <>
-                                    {(() => {
-                                      // Determine if cancel should be allowed (<48 hours)
-                                      const canCancel =
-                                        earliestRegDate &&
-                                        (new Date().getTime() -
-                                          earliestRegDate.getTime()) /
-                                          (1000 * 60 * 60) <
-                                          48;
-                                      return canCancel ? (
-                                        <DropdownMenuItem
-                                          onSelect={(e) => {
-                                            e.preventDefault();
-                                            setConfirmOccurrenceId(
-                                              occurrence.id
-                                            );
-                                          }}
-                                        >
-                                          Cancel
-                                        </DropdownMenuItem>
+                              ) : occurrence.status === "past" ? (
+                                <>
+                                  <Badge className="bg-gray-500 text-white px-3 py-1">
+                                    Registration has past
+                                  </Badge>
+                                </>
+                              ) : isOccurrenceRegistered ? (
+                                <>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
+                                        Registered
+                                      </Badge>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {confirmOccurrenceId === occurrence.id ? (
+                                        <>
+                                          <DropdownMenuItem
+                                            onSelect={(e) => {
+                                              e.preventDefault();
+                                              handleCancel(occurrence.id);
+                                              setConfirmOccurrenceId(null);
+                                            }}
+                                          >
+                                            Yes, Cancel
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={(e) => {
+                                              e.preventDefault();
+                                              setConfirmOccurrenceId(null);
+                                            }}
+                                          >
+                                            No, Keep Registration
+                                          </DropdownMenuItem>
+                                        </>
                                       ) : (
-                                        <TooltipProvider>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <DropdownMenuItem disabled>
+                                        <>
+                                          {(() => {
+                                            // Determine if cancel should be allowed (<48 hours)
+                                            const canCancel =
+                                              earliestRegDate &&
+                                              (new Date().getTime() -
+                                                earliestRegDate.getTime()) /
+                                                (1000 * 60 * 60) <
+                                                48;
+                                            return canCancel ? (
+                                              <DropdownMenuItem
+                                                onSelect={(e) => {
+                                                  e.preventDefault();
+                                                  setConfirmOccurrenceId(
+                                                    occurrence.id
+                                                  );
+                                                }}
+                                              >
                                                 Cancel
                                               </DropdownMenuItem>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                              <p>
-                                                48 hours have passed; cannot
-                                                cancel.
-                                              </p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
-                                      );
-                                    })()}
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </>
-                        ) : (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div>
-                                  <Button
-                                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                                    onClick={() =>
-                                      handleRegister(occurrence.id)
-                                    }
-                                    disabled={
-                                      !hasCompletedAllPrerequisites ||
-                                      isWithinCutoffPeriod(
+                                            ) : (
+                                              <TooltipProvider>
+                                                <Tooltip>
+                                                  <TooltipTrigger asChild>
+                                                    <DropdownMenuItem disabled>
+                                                      Cancel
+                                                    </DropdownMenuItem>
+                                                  </TooltipTrigger>
+                                                  <TooltipContent>
+                                                    <p>
+                                                      48 hours have passed;
+                                                      cannot cancel.
+                                                    </p>
+                                                  </TooltipContent>
+                                                </Tooltip>
+                                              </TooltipProvider>
+                                            );
+                                          })()}
+                                        </>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </>
+                              ) : (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <Button
+                                          className={`${
+                                            !user
+                                              ? "bg-blue-400 hover:bg-gray-500"
+                                              : "bg-blue-500 hover:bg-blue-600"
+                                          } text-white px-4 py-2 rounded-lg`}
+                                          onClick={() =>
+                                            handleRegister(occurrence.id)
+                                          }
+                                          disabled={
+                                            !user ||
+                                            !hasCompletedAllPrerequisites ||
+                                            isWithinCutoffPeriod(
+                                              new Date(occurrence.startDate),
+                                              workshop.registrationCutoff
+                                            )
+                                          }
+                                        >
+                                          Register
+                                        </Button>
+                                      </div>
+                                    </TooltipTrigger>
+                                    {!user ? (
+                                      <TooltipContent className="bg-blue-50 text-blue-800 border border-blue-300 p-3 max-w-xs">
+                                        <p className="font-medium mb-2">
+                                          Account required
+                                        </p>
+                                        <p className="text-sm mb-3">
+                                          You need an account to register for
+                                          workshops.
+                                        </p>
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => {
+                                              const currentUrl =
+                                                window.location.pathname;
+                                              window.location.href = `/login?redirect=${encodeURIComponent(
+                                                currentUrl
+                                              )}`;
+                                            }}
+                                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
+                                          >
+                                            Sign In
+                                          </button>
+                                          <button
+                                            onClick={() => {
+                                              const currentUrl =
+                                                window.location.pathname;
+                                              window.location.href = `/register?redirect=${encodeURIComponent(
+                                                currentUrl
+                                              )}`;
+                                            }}
+                                            className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-3 py-1 rounded text-xs"
+                                          >
+                                            Register
+                                          </button>
+                                        </div>
+                                      </TooltipContent>
+                                    ) : isWithinCutoffPeriod(
                                         new Date(occurrence.startDate),
                                         workshop.registrationCutoff
-                                      )
-                                    }
-                                  >
-                                    Register
-                                  </Button>
-                                </div>
-                              </TooltipTrigger>
-                              {isWithinCutoffPeriod(
-                                new Date(occurrence.startDate),
-                                workshop.registrationCutoff
-                              ) && (
-                                <TooltipContent className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs">
-                                  <p>
-                                    Registration is closed. Registration cutoff
-                                    is{" "}
-                                    {formatCutoffTime(
-                                      workshop.registrationCutoff
-                                    )}{" "}
-                                    before the workshop starts.
-                                  </p>
-                                </TooltipContent>
+                                      ) ? (
+                                      <TooltipContent className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs">
+                                        <p>
+                                          Registration is closed. Registration
+                                          cutoff is{" "}
+                                          {formatCutoffTime(
+                                            workshop.registrationCutoff
+                                          )}{" "}
+                                          before the workshop starts.
+                                        </p>
+                                      </TooltipContent>
+                                    ) : !hasCompletedAllPrerequisites ? (
+                                      <TooltipContent className="bg-red-100 text-red-800 border border-red-300 p-2 max-w-xs">
+                                        <p>
+                                          You must complete all prerequisites
+                                          before registering.
+                                        </p>
+                                      </TooltipContent>
+                                    ) : null}
+                                  </Tooltip>
+                                </TooltipProvider>
                               )}
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                  </>
+                )}
 
-          <Separator className="my-6" />
+                <Separator className="my-6" />
 
-          {/* Prerequisites Section */}
-          {prerequisiteWorkshops.length > 0 && (
-            <div className="mt-6 mb-8">
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <h2 className="text-lg font-semibold mb-3 flex items-center">
-                  <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                      className="w-5 h-5"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </span>
-                  Prerequisites Required
-                </h2>
+                {/* Prerequisites Section */}
+                {prerequisiteWorkshops.length > 0 && (
+                  <div className="mt-6 mb-8">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h2 className="text-lg font-semibold mb-3 flex items-center">
+                        <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            className="w-5 h-5"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </span>
+                        Prerequisites Required
+                      </h2>
 
-                <div className="space-y-3">
-                  {prerequisiteWorkshops.map((prereq) => (
-                    <div
-                      key={prereq.id}
-                      className={`flex items-center p-3 rounded-md ${
-                        prereq.completed
-                          ? "bg-green-50 border border-green-200"
-                          : "bg-red-50 border border-red-200"
-                      }`}
-                    >
-                      <div
-                        className={`flex-shrink-0 mr-3 h-8 w-8 rounded-full flex items-center justify-center ${
-                          prereq.completed ? "bg-green-500" : "bg-red-500"
-                        } text-white`}
-                      >
-                        {prereq.completed ? "✓" : "!"}
+                      <div className="space-y-3">
+                        {prerequisiteWorkshops.map((prereq) => (
+                          <div
+                            key={prereq.id}
+                            className={`flex items-center p-3 rounded-md ${
+                              prereq.completed
+                                ? "bg-green-50 border border-green-200"
+                                : "bg-red-50 border border-red-200"
+                            }`}
+                          >
+                            <div
+                              className={`flex-shrink-0 mr-3 h-8 w-8 rounded-full flex items-center justify-center ${
+                                prereq.completed ? "bg-green-500" : "bg-red-500"
+                              } text-white`}
+                            >
+                              {prereq.completed ? "✓" : "!"}
+                            </div>
+                            <div className="flex-1">
+                              <Link
+                                to={`/dashboard/workshops/${prereq.id}`}
+                                className={`font-medium hover:underline ${
+                                  prereq.completed
+                                    ? "text-green-700"
+                                    : "text-red-700"
+                                }`}
+                              >
+                                {prereq.name}
+                              </Link>
+                              <p
+                                className={`text-sm ${
+                                  prereq.completed
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {prereq.completed
+                                  ? "Completed"
+                                  : "Not completed - you must complete this workshop first"}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="flex-1">
-                        <Link
-                          to={`/dashboard/workshops/${prereq.id}`}
-                          className={`font-medium hover:underline ${
-                            prereq.completed ? "text-green-700" : "text-red-700"
-                          }`}
-                        >
-                          {prereq.name}
-                        </Link>
-                        <p
-                          className={`text-sm ${
-                            prereq.completed ? "text-green-600" : "text-red-600"
-                          }`}
-                        >
-                          {prereq.completed
-                            ? "Completed"
-                            : "Not completed - you must complete this workshop first"}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
 
-                {!hasCompletedAllPrerequisites && (
-                  <div className="mt-4 p-3 bg-amber-100 border border-amber-300 rounded-md">
-                    <div className="flex items-start">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-5 w-5 text-amber-500 mt-0.5 mr-2"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <div>
-                        <p className="font-medium text-amber-800">
-                          Registration Blocked
-                        </p>
-                        <p className="text-amber-700 text-sm">
-                          You cannot register for this workshop until you have
-                          completed all prerequisites listed above.
-                        </p>
-                      </div>
+                      {!hasCompletedAllPrerequisites && (
+                        <div className="mt-4 p-3 bg-amber-100 border border-amber-300 rounded-md">
+                          <div className="flex items-start">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              className="h-5 w-5 text-amber-500 mt-0.5 mr-2"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            <div>
+                              <p className="font-medium text-amber-800">
+                                Registration Blocked
+                              </p>
+                              <p className="text-amber-700 text-sm">
+                                You cannot register for this workshop until you
+                                have completed all prerequisites listed above.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          )}
 
-          <h2 className="text-lg font-semibold">Cancellation Policy</h2>
-          <p
-            className="text-gray-600"
-            dangerouslySetInnerHTML={{
-              __html: workshop.cancellationPolicy.replace(
-                "info@makerspaceyk.com",
-                `<a href="mailto:info@makerspaceyk.com" class="text-blue-500 hover:underline">info@makerspaceyk.com</a>`
-              ),
-            }}
-          />
+                <h2 className="text-lg font-semibold">Cancellation Policy</h2>
+                <p
+                  className="text-gray-600"
+                  dangerouslySetInnerHTML={{
+                    __html: workshop.cancellationPolicy.replace(
+                      "info@makerspaceyk.com",
+                      `<a href="mailto:info@makerspaceyk.com" class="text-blue-500 hover:underline">info@makerspaceyk.com</a>`
+                    ),
+                  }}
+                />
 
-          <div className="mt-6">
-            <Button
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
-              onClick={() => navigate("/dashboard/workshops")}
-            >
-              Back to Workshops
-            </Button>
+                <div className="mt-6">
+                  <Button
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
+                    onClick={() => navigate("/dashboard/workshops")}
+                  >
+                    Back to Workshops
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }

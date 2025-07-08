@@ -19,34 +19,23 @@ export async function register(rawValues: Record<string, any>) {
     if (!parsed.success) {
       // If validation fails, return errors
       const errors = parsed.error.flatten();
+      console.log("Validation errors:", errors.fieldErrors);
       return { errors: errors.fieldErrors };
     }
 
     const data = parsed.data;
 
+    // Handle digital signature as base64 string instead of file
+    let guardianSignedConsentData = null;
     const guardianSignedConsent = rawValues.guardianSignedConsent;
-    if (
-      guardianSignedConsent instanceof File &&
-      guardianSignedConsent.size > 0
-    ) {
-      // Define the storage directory relative to project root
-      const storageDir = path.join(process.cwd(), "app", "storage");
-
-      // Ensure the storage directory exists
-      await fs.mkdir(storageDir, { recursive: true });
-
-      // Create a unique file name
-      const fileName = `${Date.now()}_${guardianSignedConsent.name}`;
-      const filePath = path.join(storageDir, fileName);
-
-      // Save the file to the storage directory
-      const fileBuffer = await guardianSignedConsent.arrayBuffer();
-      await fs.writeFile(filePath, Buffer.from(fileBuffer));
-
-      // Add the file name to the data
-      data.guardianSignedConsent = fileName;
+    
+    if (typeof guardianSignedConsent === "string" && 
+        guardianSignedConsent.trim() !== "" && 
+        guardianSignedConsent.startsWith("data:image/")) {
+      // Store the base64 string directly in the database
+      guardianSignedConsentData = guardianSignedConsent;
     } else {
-      data.guardianSignedConsent = null;
+      guardianSignedConsentData = null;
     }
 
     // Hash the password
@@ -60,22 +49,21 @@ export async function register(rawValues: Record<string, any>) {
         email: data.email,
         password: hashedPassword,
         phone: data.phone || "",
-        address: data.address || "",
-        over18: data.over18 ?? null,
-        photoRelease: data.photoRelease ?? null,
-        dataPrivacy: data.dataPrivacy ?? null,
+        over18: data.over18 ?? false,
+        photoRelease: data.photoRelease ?? false,
+        dataPrivacy: data.dataPrivacy ?? false,
         parentGuardianName: data.parentGuardianName || null,
         parentGuardianPhone: data.parentGuardianPhone || null,
         parentGuardianEmail: data.parentGuardianEmail || null,
-        guardianSignedConsent: data.guardianSignedConsent || null,
+        guardianSignedConsent: guardianSignedConsentData, // Store base64 string
         emergencyContactName: data.emergencyContactName || "",
         emergencyContactPhone: data.emergencyContactPhone || "",
         emergencyContactEmail: data.emergencyContactEmail || "",
-        trainingCardUserNumber: data.trainingCardUserNumber || -1,
       },
       select: {
         id: true,
         email: true,
+        guardianSignedConsent: true,
       },
     });
 

@@ -23,27 +23,26 @@ model User {
   email                  String  @unique
   password               String
   phone                  String
-  address                String
   over18                 Boolean
   parentGuardianName     String?
   parentGuardianPhone    String?
   parentGuardianEmail    String?
-  guardianSignedConsent  String?
   photoRelease           Boolean
   dataPrivacy            Boolean
   emergencyContactName   String
   emergencyContactPhone  String
   emergencyContactEmail  String
-  trainingCardUserNumber Int
-
-  avatarUrl              String? 
 
   // Role Connection
   roleUserId Int      @default(1)
   roleUser   RoleUser @relation(fields: [roleUserId], references: [id])
-
   roleLevel Int @default(1)
   allowLevel4 Boolean @default(false)
+  isVolunteer Boolean @default(false)
+  volunteerSince DateTime?
+
+  avatarUrl              String? 
+  guardianSignedConsent  String? // This will store the base64 image data
 
   // Relationships
   userWorkshops     UserWorkshop[]

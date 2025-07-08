@@ -26,12 +26,12 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Form as RouterForm } from "react-router";
 
-export function AdminAppSidebar() {
+export function GuestAppSidebar() {
   return (
     <Sidebar className="h-screen w-64 bg-white shadow-lg flex flex-col">
       {/* Sidebar Header with Logo wrapped in Link */}
       <SidebarHeader className="flex justify-center p-4">
-        <Link to="/dashboard/admin">
+        <Link to="/dashboard">
           <img
             src="/images/Makerspace Horizontal Text Logo Colour-01.avif"
             alt="Makerspace YK"
@@ -43,13 +43,6 @@ export function AdminAppSidebar() {
       {/* Sidebar Content - Navigation Links */}
       <SidebarContent className="flex flex-col gap-3 px-4 flex-grow space-y-4">
         <SidebarGroup className="space-y-10">
-          <Link
-            to="/dashboard/profile"
-            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-          >
-            <User className="w-5 h-5" />
-            Profile
-          </Link>
           <Link
             to="/dashboard/workshops"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
@@ -78,53 +71,32 @@ export function AdminAppSidebar() {
             <Home className="w-5 h-5" />
             Membership Plans
           </Link>
-          <Link
-            to="/dashboard/admin/settings"
-            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-          >
-            <Settings className="w-5 h-5" />
-            Admin Panel
-          </Link>
-          <Link
-            to="/dashboard/admin/reports"
-            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-          >
-            <BarChart3 className="w-5 h-5" />
-            Admin Reports
-          </Link>
-          <Link
-            to="/report"
-            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-          >
-            <BugIcon className="w-5 h-5" />
-            Report Issue
-          </Link>
-          <Link
-            to="/logs"
-            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
-          >
-            <FileTextIcon className="w-5 h-5" />
-            Server Logs
-          </Link>
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Sidebar Footer - Sign Out Button */}
+      {/* Sidebar Footer - Sign In and Register Buttons */}
       <SidebarFooter className="p-4">
         <Separator className="mb-4" />
-        <RouterForm action="/logout" method="post">
-          <Button
-            variant="secondary"
-            className="flex items-center gap-2 w-full"
-            type="submit"
-          >
-            <LogOut className="w-5 h-5" />
-            Sign Out
-          </Button>
-        </RouterForm>
+        <div className="space-y-2">
+          <Link to="/login">
+            <Button className="flex items-center gap-2 w-full bg-yellow-500 hover:bg-yellow-600 text-white">
+              <LogOut className="w-5 h-5" />
+              Sign In
+            </Button>
+          </Link>
+          <Link to="/register">
+            <Button
+              variant="outline"
+              className="flex items-center gap-2 w-full border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+            >
+              <User className="w-5 h-5" />
+              Register
+            </Button>
+          </Link>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );
 }
 
-export default AdminAppSidebar;
+export default GuestAppSidebar;

@@ -14,6 +14,13 @@ import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
+import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -40,6 +47,7 @@ export async function loader({ request }: { request: Request }) {
   let userMemberships: UserMembershipData[] = [];
   let userRecord: any = null;
 
+  // Only fetch user-specific data if logged in
   if (roleUser?.userId) {
     const rawMemberships = await getUserMemberships(roleUser.userId);
     rawMemberships.sort(
@@ -187,13 +195,20 @@ export default function MembershipPage() {
   }>();
 
   const isAdmin =
-    roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+  roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+const isGuest = !roleUser || !roleUser.userId;
 
-  return (
-    <SidebarProvider>
-      <div className="flex min-h-screen">
-        {/* Sidebar */}
-        {isAdmin ? <AdminSidebar /> : <AppSidebar />}
+return (
+  <SidebarProvider>
+    <div className="flex min-h-screen">
+      {/* Sidebar */}
+      {isGuest ? (
+        <GuestAppSidebar />
+      ) : isAdmin ? (
+        <AdminSidebar />
+      ) : (
+        <AppSidebar />
+      )}
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
@@ -238,6 +253,7 @@ export default function MembershipPage() {
                   highestActivePrice={highestActivePrice}
                   highestCanceledPrice={highestCanceledPrice}
                   nextPaymentDate={membership?.nextPaymentDate}
+                  roleUser={roleUser}
                 />
               );
             })}

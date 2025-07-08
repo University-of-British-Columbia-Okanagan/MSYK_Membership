@@ -36,7 +36,6 @@ async function main() {
         firstName: "Test1",
         lastName: "User1",
         phone: "1234567890",
-        address: "123 Main St",
         over18: true,
         parentGuardianName: "John Doe",
         parentGuardianPhone: "9876543210",
@@ -47,7 +46,6 @@ async function main() {
         emergencyContactName: "Jane Doe",
         emergencyContactPhone: "5551234567",
         emergencyContactEmail: "emergency1@example.com",
-        trainingCardUserNumber: 1001,
         // roleUser and roleLevel default to 1 but will put roleUser 2 to make admin
         roleUserId: 2,
       },
@@ -57,7 +55,6 @@ async function main() {
         firstName: "Test2",
         lastName: "User2",
         phone: "2233445566",
-        address: "456 Maple Ave",
         over18: false,
         parentGuardianName: "Mary Smith",
         parentGuardianPhone: "5566778899",
@@ -68,7 +65,6 @@ async function main() {
         emergencyContactName: "Mark Smith",
         emergencyContactPhone: "5559876543",
         emergencyContactEmail: "emergency2@example.com",
-        trainingCardUserNumber: 1002,
       },
       {
         email: "testuser3@gmail.com",
@@ -76,7 +72,6 @@ async function main() {
         firstName: "Test3",
         lastName: "User3",
         phone: "3344556677",
-        address: "789 Oak Blvd",
         over18: true,
         parentGuardianName: "Peter Parker",
         parentGuardianPhone: "6677889900",
@@ -87,7 +82,6 @@ async function main() {
         emergencyContactName: "Bruce Wayne",
         emergencyContactPhone: "5551122334",
         emergencyContactEmail: "emergency3@example.com",
-        trainingCardUserNumber: 1003,
       },
     ],
   });
