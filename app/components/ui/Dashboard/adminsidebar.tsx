@@ -51,7 +51,7 @@ export function AdminAppSidebar() {
             Profile
           </Link>
           <Link
-            to="/dashboard/myworkshops"
+            to="/dashboard/workshops"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <LayoutDashboard className="w-5 h-5" />
