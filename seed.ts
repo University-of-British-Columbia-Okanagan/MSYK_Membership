@@ -176,13 +176,13 @@ async function main() {
     },
     {
       workshopId: 2, // Pottery
-      startDate: new Date("2025-07-10T14:00:00Z"),
-      endDate: new Date("2025-07-10T16:00:00Z"),
+      startDate: new Date("2025-09-10T14:00:00Z"),
+      endDate: new Date("2025-09-10T16:00:00Z"),
     },
     {
       workshopId: 3, // Knitting
-      startDate: new Date("2025-08-10T10:00:00Z"),
-      endDate: new Date("2025-08-10T12:00:00Z"),
+      startDate: new Date("2025-09-10T10:00:00Z"),
+      endDate: new Date("2025-09-10T12:00:00Z"),
     },
   ];
 
