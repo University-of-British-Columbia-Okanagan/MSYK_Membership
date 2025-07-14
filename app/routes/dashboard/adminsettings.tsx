@@ -1116,7 +1116,7 @@ export default function AdminSettings() {
                   <input type="hidden" name="settingType" value="workshop" />
                   <Card>
                     <CardHeader>
-                      <CardTitle>Workshop Visibility Settings</CardTitle>
+                      <CardTitle>Workshop Visibility Days Settings</CardTitle>
                       <CardDescription>
                         Configure how far ahead users can see workshops
                       </CardDescription>
