@@ -8,6 +8,7 @@ export const registerSchema = z
     password: z
       .string()
       .min(6, "Password is required and must be at least 6 characters"),
+    confirmPassword: z.string().min(1, "Please confirm your password"),
     phone: z.string().min(1, "Phone is required"),
 
     over18: z.boolean(),
@@ -36,6 +37,10 @@ export const registerSchema = z
       .string()
       .min(1, "Emergency Contact Phone is required"),
     emergencyContactEmail: z.string().email("Invalid Emergency Contact Email"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
   })
   .refine(
     (data) =>
