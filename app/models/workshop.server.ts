@@ -234,7 +234,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
     // Step 5: Create equipment slots for workshop dates
     // This will handle creating slots for all workshop occurrences and equipment
     for (const occurrence of occurrences) {
-      for (const equipmentId of data.equipments) {
+      for (const equipmentId of data.equipments ?? []) {
         // Create equipment slots for this occurrence's time range
         await createEquipmentSlotsForOccurrence(
           occurrence.id,
