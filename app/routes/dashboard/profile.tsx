@@ -670,7 +670,7 @@ export default function ProfilePage() {
                     {/* Recent Hours */}
                     <div>
                       <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-medium text-gray-900">
+                        <h4 className="font-semibold text-gray-900">
                           Recent Hours
                         </h4>
                       </div>
