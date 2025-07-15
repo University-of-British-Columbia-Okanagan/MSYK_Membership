@@ -7,6 +7,7 @@ import type { UserProfileData } from "~/models/profile.server";
 import { CreditCard, User, Calendar, Medal } from "lucide-react";
 import { getRoleUser } from "~/utils/session.server";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   const user = await getProfileDetails(request);
@@ -15,12 +16,26 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
 }
 
 export default function ProfilePage() {
-  const { user, roleUser } = useLoaderData<{ user: UserProfileData; roleUser: { roleId: number; roleName: string; userId: number; }; }>();
+  const { user, roleUser } = useLoaderData<{
+    user: UserProfileData;
+    roleUser: { roleId: number; roleName: string; userId: number };
+  }>();
 
   const isAdmin =
     roleUser &&
     roleUser.roleId === 2 &&
     roleUser.roleName.toLowerCase() === "admin";
+  const isGuest = !roleUser || !roleUser.userId;
+
+  const renderSidebar = () => {
+    if (isAdmin) {
+      return <AdminAppSidebar />;
+    } else if (isGuest) {
+      return <GuestAppSidebar />;
+    } else {
+      return <Sidebar />;
+    }
+  };
 
   if (!user) {
     return (
@@ -33,13 +48,15 @@ export default function ProfilePage() {
   return (
     <SidebarProvider>
       <div className="flex h-screen bg-gray-100">
-        {isAdmin ? <AdminAppSidebar /> : <Sidebar />}
+        {renderSidebar()}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             {/* Header */}
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
-              <p className="text-gray-600">Manage your account details and preferences</p>
+              <p className="text-gray-600">
+                Manage your account details and preferences
+              </p>
             </div>
 
             {/* Profile Card */}
@@ -60,10 +77,14 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <div className="text-center sm:text-left text-white">
-                    <h2 className="text-2xl sm:text-3xl font-bold">{user.name}</h2>
+                    <h2 className="text-2xl sm:text-3xl font-bold">
+                      {user.name}
+                    </h2>
                     <p className="text-yellow-100 mb-2">{user.email}</p>
                     <div className="inline-block bg-yellow-700 bg-opacity-30 px-3 py-1 rounded-full text-sm text-yellow-50">
-                      {user.membershipTitle !== "None" ? user.membershipTitle : "Free Account"}
+                      {user.membershipTitle !== "None"
+                        ? user.membershipTitle
+                        : "Free Account"}
                     </div>
                   </div>
                 </div>
@@ -75,22 +96,30 @@ export default function ProfilePage() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <Medal className="h-5 w-5 text-yellow-500" />
-                      <h3 className="text-lg font-semibold text-gray-900">Membership Details</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Membership Details
+                      </h3>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">Status</span>
                         <span className="font-medium text-gray-900">
-                          {user.membershipTitle !== "None" ? "Active" : "Inactive"}
+                          {user.membershipTitle !== "None"
+                            ? "Active"
+                            : "Inactive"}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">Plan</span>
-                        <span className="font-medium text-gray-900">{user.membershipTitle}</span>
+                        <span className="font-medium text-gray-900">
+                          {user.membershipTitle}
+                        </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">Type</span>
-                        <span className="font-medium text-gray-900">{user.membershipType}</span>
+                        <span className="font-medium text-gray-900">
+                          {user.membershipType}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -99,42 +128,56 @@ export default function ProfilePage() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <CreditCard className="h-5 w-5 text-yellow-500" />
-                      <h3 className="text-lg font-semibold text-gray-900">Payment Information</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Payment Information
+                      </h3>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                       {user.cardLast4 !== "N/A" ? (
                         <>
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Payment Method</span>
+                            <span className="text-gray-600">
+                              Payment Method
+                            </span>
                             <div className="flex items-center">
-                              <span className="font-medium text-gray-900">•••• {user.cardLast4}</span>
+                              <span className="font-medium text-gray-900">
+                                •••• {user.cardLast4}
+                              </span>
                             </div>
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-600">Billing Date</span>
                             <span className="font-medium text-gray-900">
-                              {user.nextBillingDate 
-                                ? new Date(user.nextBillingDate).toLocaleDateString('en-US', { 
-                                    month: 'short', 
-                                    day: 'numeric', 
-                                    year: 'numeric' 
-                                  }) 
+                              {user.nextBillingDate
+                                ? new Date(
+                                    user.nextBillingDate
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })
                                 : "N/A"}
                             </span>
                           </div>
                         </>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-4">
-                          <p className="text-gray-500 mb-2 text-center">No payment method on file</p>
-                          <p className="text-gray-500 mb-6 text-sm text-center">Add a payment method to enable automatic billing</p>
+                          <p className="text-gray-500 mb-2 text-center">
+                            No payment method on file
+                          </p>
+                          <p className="text-gray-500 mb-6 text-sm text-center">
+                            Add a payment method to enable automatic billing
+                          </p>
                         </div>
                       )}
                       <div className="pt-2">
-                        <a 
-                          href="/user/profile/paymentinformation" 
+                        <a
+                          href="/user/profile/paymentinformation"
                           className="block w-full bg-yellow-500 hover:bg-yellow-600 text-white text-center py-2 px-4 rounded-md transition duration-200 font-medium"
                         >
-                          {user.cardLast4 !== "N/A" ? "Update Payment Method" : "Add Payment Method"}
+                          {user.cardLast4 !== "N/A"
+                            ? "Update Payment Method"
+                            : "Add Payment Method"}
                         </a>
                       </div>
                     </div>
@@ -146,12 +189,16 @@ export default function ProfilePage() {
             {/* Account Activity */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Recent Activity
+                </h3>
               </div>
               <div className="p-6">
                 <div className="space-y-4">
                   {/* You could add recent activity items here */}
-                  <p className="text-gray-500 text-center py-4">No recent activity to display</p>
+                  <p className="text-gray-500 text-center py-4">
+                    No recent activity to display
+                  </p>
                 </div>
               </div>
             </div>
