@@ -129,13 +129,22 @@ export default function ProfilePage() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [description, setDescription] = useState("");
+  const [showSuccessMessage, setShowSuccessMessage] = useState(true);
 
-  // Clear form after successful submission
+  // Clear form after successful submission and auto-hide success message
   useEffect(() => {
     if (actionData?.success) {
       setStartTime("");
       setEndTime("");
       setDescription("");
+      setShowSuccessMessage(true);
+
+      // Auto-hide success message after 3 seconds
+      const timer = setTimeout(() => {
+        setShowSuccessMessage(false);
+      }, 3000);
+
+      return () => clearTimeout(timer);
     }
   }, [actionData]);
 
@@ -321,158 +330,185 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Volunteer Hours Section - Only show for active volunteers */}
-            {isActiveVolunteer && (
-              <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-                <div className="p-6 border-b border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-blue-500" />
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      Volunteer Hours
-                    </h3>
-                  </div>
-                </div>
-                <div className="p-6">
-                  {/* Add Hours Form */}
-                  <div className="bg-blue-50 rounded-lg p-4 mb-6">
-                    <h4 className="font-medium text-blue-900 mb-4">
-                      Log New Hours
-                    </h4>
-
-                    {/* Success/Error Messages */}
-                    {actionData?.success && (
-                      <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md">
-                        {actionData.success}
-                      </div>
-                    )}
-                    {actionData?.error && (
-                      <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
-                        {actionData.error}
-                      </div>
-                    )}
-
-                    <Form
-                      method="post"
-                      className="grid grid-cols-1 md:grid-cols-4 gap-4"
-                    >
-                      <input type="hidden" name="_action" value="logHours" />
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Start Time
-                        </label>
-                        <input
-                          type="datetime-local"
-                          name="startTime"
-                          value={startTime}
-                          onChange={(e) => setStartTime(e.target.value)}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          End Time
-                        </label>
-                        <input
-                          type="datetime-local"
-                          name="endTime"
-                          value={endTime}
-                          onChange={(e) => setEndTime(e.target.value)}
-                          required
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Description (Optional)
-                        </label>
-                        <input
-                          type="text"
-                          name="description"
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                          placeholder="What did you work on?"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                        />
-                      </div>
-
-                      <div className="flex items-end">
-                        <button
-                          type="submit"
-                          className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center justify-center gap-2"
-                        >
-                          <Plus className="h-4 w-4" />
-                          Log Hours
-                        </button>
-                      </div>
-                    </Form>
-                  </div>
-
-                  {/* Recent Hours */}
-                  <div>
-                    <h4 className="font-medium text-gray-900 mb-4">
-                      Recent Hours
-                    </h4>
-                    {volunteerHours.length > 0 ? (
-                      <div className="space-y-3">
-                        {volunteerHours.map((entry) => {
-                          const start = new Date(entry.startTime);
-                          const end = new Date(entry.endTime);
-                          const durationMs = end.getTime() - start.getTime();
-                          const hours =
-                            Math.round((durationMs / (1000 * 60 * 60)) * 10) /
-                            10;
-
-                          return (
-                            <div
-                              key={entry.id}
-                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                            >
-                              <div>
-                                <p className="font-medium text-gray-900">
-                                  {start.toLocaleDateString()} • {hours} hours
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  {start.toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}{" "}
-                                  -{" "}
-                                  {end.toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </p>
-                                {entry.description && (
-                                  <p className="text-sm text-gray-500 mt-1">
-                                    {entry.description}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <p className="text-sm text-gray-500">
-                                  Logged{" "}
-                                  {new Date(
-                                    entry.createdAt
-                                  ).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="text-gray-500">
-                        No volunteer hours logged yet.
-                      </p>
-                    )}
-                  </div>
+            {/* Volunteer Hours Section - Always show */}
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-blue-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Volunteer Hours
+                  </h3>
                 </div>
               </div>
-            )}
+              <div className="p-6">
+                {isActiveVolunteer ? (
+                  <>
+                    {/* Add Hours Form */}
+                    <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                      <h4 className="font-medium text-blue-900 mb-4">
+                        Log New Hours
+                      </h4>
+
+                      {/* Success/Error Messages */}
+                      {actionData?.success && showSuccessMessage && (
+                        <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md">
+                          {actionData.success}
+                        </div>
+                      )}
+                      {actionData?.error && (
+                        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
+                          {actionData.error}
+                        </div>
+                      )}
+
+                      <Form
+                        method="post"
+                        className="grid grid-cols-1 md:grid-cols-4 gap-4"
+                      >
+                        <input type="hidden" name="_action" value="logHours" />
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Start Time
+                          </label>
+                          <input
+                            type="datetime-local"
+                            name="startTime"
+                            value={startTime}
+                            onChange={(e) => setStartTime(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            End Time
+                          </label>
+                          <input
+                            type="datetime-local"
+                            name="endTime"
+                            value={endTime}
+                            onChange={(e) => setEndTime(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Description (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            name="description"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            placeholder="What did you work on?"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div className="flex items-end">
+                          <button
+                            type="submit"
+                            className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center justify-center gap-2"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Log Hours
+                          </button>
+                        </div>
+                      </Form>
+                    </div>
+
+                    {/* Recent Hours */}
+                    <div>
+                      <h4 className="font-medium text-gray-900 mb-4">
+                        Recent Hours
+                      </h4>
+                      {volunteerHours.length > 0 ? (
+                        <div className="space-y-3">
+                          {volunteerHours.map((entry) => {
+                            const start = new Date(entry.startTime);
+                            const end = new Date(entry.endTime);
+                            const durationMs = end.getTime() - start.getTime();
+                            const hours =
+                              Math.round((durationMs / (1000 * 60 * 60)) * 10) /
+                              10;
+
+                            return (
+                              <div
+                                key={entry.id}
+                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                              >
+                                <div>
+                                  <p className="font-medium text-gray-900">
+                                    {start.toLocaleDateString()} • {hours} hours
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    {start.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}{" "}
+                                    -{" "}
+                                    {end.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </p>
+                                  {entry.description && (
+                                    <p className="text-sm text-gray-500 mt-1">
+                                      {entry.description}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-500">
+                                    Logged{" "}
+                                    {new Date(
+                                      entry.createdAt
+                                    ).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500">
+                          No volunteer hours logged yet.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* Non-volunteer message */
+                  <div className="text-center py-8">
+                    <div className="bg-gray-50 rounded-lg p-6 border-2 border-dashed border-gray-300">
+                      <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h4 className="text-lg font-medium text-gray-900 mb-2">
+                        Volunteer Access Required
+                      </h4>
+                      <p className="text-gray-600 mb-4">
+                        This section is only accessible to active volunteers.
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Interested in volunteering? Contact us to learn more
+                        about volunteer opportunities!
+                      </p>
+                      <div className="mt-4">
+                        <a
+                          href="/dashboard/volunteer"
+                          className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                        >
+                          Learn About Volunteering
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </main>
       </div>

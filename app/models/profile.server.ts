@@ -17,6 +17,7 @@ export type VolunteerHourEntry = {
   startTime: Date;
   endTime: Date;
   description: string | null;
+  status: string;
   createdAt: Date;
   updatedAt: Date;
 };
