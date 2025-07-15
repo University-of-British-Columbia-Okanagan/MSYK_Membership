@@ -12,6 +12,16 @@ export type UserProfileData = {
   cardLast4: string;
 };
 
+export type VolunteerHourEntry = {
+  id: number;
+  userId: number;
+  startTime: Date;
+  endTime: Date;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export async function getProfileDetails(request: Request) {
   const userId = await getUserId(request);
   if (!userId) return null;
@@ -53,4 +63,41 @@ export async function getProfileDetails(request: Request) {
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
   };
+}
+
+export async function checkActiveVolunteerStatus(userId: number) {
+  const activeVolunteer = await db.volunteer.findFirst({
+    where: {
+      userId,
+      volunteerEnd: null,
+    },
+  });
+  return activeVolunteer !== null;
+}
+
+export async function getVolunteerHours(
+  userId: number,
+  limit: number = 10
+): Promise<VolunteerHourEntry[]> {
+  return await db.volunteerTimetable.findMany({
+    where: { userId },
+    orderBy: { startTime: "desc" },
+    take: limit,
+  });
+}
+
+export async function logVolunteerHours(
+  userId: number,
+  startTime: Date,
+  endTime: Date,
+  description?: string
+) {
+  return await db.volunteerTimetable.create({
+    data: {
+      userId,
+      startTime,
+      endTime,
+      description,
+    },
+  });
 }

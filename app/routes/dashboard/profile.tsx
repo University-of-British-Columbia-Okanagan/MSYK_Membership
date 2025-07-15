@@ -1,24 +1,44 @@
-import { useLoaderData } from "react-router-dom";
-import { getProfileDetails } from "../../models/profile.server";
+import { useLoaderData, Form } from "react-router-dom";
+import {
+  getProfileDetails,
+  checkActiveVolunteerStatus,
+  getVolunteerHours,
+} from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
 import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
-import { CreditCard, User, Calendar, Medal } from "lucide-react";
+import { CreditCard, User, Calendar, Medal, Clock, Plus } from "lucide-react";
 import { getRoleUser } from "~/utils/session.server";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import type { VolunteerHourEntry } from "../../models/profile.server";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   const user = await getProfileDetails(request);
   const roleUser = await getRoleUser(request);
-  return { user, roleUser };
+
+  // Check if user is an active volunteer and get their hours
+  let isActiveVolunteer = false;
+  let volunteerHours: VolunteerHourEntry[] = [];
+
+  if (roleUser?.userId) {
+    isActiveVolunteer = await checkActiveVolunteerStatus(roleUser.userId);
+
+    if (isActiveVolunteer) {
+      volunteerHours = await getVolunteerHours(roleUser.userId, 10);
+    }
+  }
+
+  return { user, roleUser, isActiveVolunteer, volunteerHours };
 }
 
 export default function ProfilePage() {
-  const { user, roleUser } = useLoaderData<{
+  const { user, roleUser, isActiveVolunteer, volunteerHours } = useLoaderData<{
     user: UserProfileData;
     roleUser: { roleId: number; roleName: string; userId: number };
+    isActiveVolunteer: boolean;
+    volunteerHours: VolunteerHourEntry[];
   }>();
 
   const isAdmin =
@@ -187,7 +207,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Account Activity */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900">
                   Recent Activity
@@ -202,6 +222,140 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
+
+            {/* Volunteer Hours Section - Only show for active volunteers */}
+            {isActiveVolunteer && (
+              <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+                <div className="p-6 border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-blue-500" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Volunteer Hours
+                    </h3>
+                  </div>
+                </div>
+                <div className="p-6">
+                  {/* Add Hours Form */}
+                  <div className="bg-blue-50 rounded-lg p-4 mb-6">
+                    <h4 className="font-medium text-blue-900 mb-4">
+                      Log New Hours
+                    </h4>
+                    <Form
+                      method="post"
+                      className="grid grid-cols-1 md:grid-cols-4 gap-4"
+                    >
+                      <input type="hidden" name="_action" value="logHours" />
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Start Time
+                        </label>
+                        <input
+                          type="datetime-local"
+                          name="startTime"
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          End Time
+                        </label>
+                        <input
+                          type="datetime-local"
+                          name="endTime"
+                          required
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Description (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          name="description"
+                          placeholder="What did you work on?"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex items-end">
+                        <button
+                          type="submit"
+                          className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center justify-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Log Hours
+                        </button>
+                      </div>
+                    </Form>
+                  </div>
+
+                  {/* Recent Hours */}
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-4">
+                      Recent Hours
+                    </h4>
+                    {volunteerHours.length > 0 ? (
+                      <div className="space-y-3">
+                        {volunteerHours.map((entry) => {
+                          const start = new Date(entry.startTime);
+                          const end = new Date(entry.endTime);
+                          const durationMs = end.getTime() - start.getTime();
+                          const hours =
+                            Math.round((durationMs / (1000 * 60 * 60)) * 10) /
+                            10;
+
+                          return (
+                            <div
+                              key={entry.id}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                            >
+                              <div>
+                                <p className="font-medium text-gray-900">
+                                  {start.toLocaleDateString()} • {hours} hours
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  {start.toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}{" "}
+                                  -{" "}
+                                  {end.toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </p>
+                                {entry.description && (
+                                  <p className="text-sm text-gray-500 mt-1">
+                                    {entry.description}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm text-gray-500">
+                                  Logged{" "}
+                                  {new Date(
+                                    entry.createdAt
+                                  ).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500">
+                        No volunteer hours logged yet.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>
