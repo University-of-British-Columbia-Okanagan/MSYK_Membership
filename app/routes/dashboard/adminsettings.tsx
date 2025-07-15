@@ -30,6 +30,7 @@ import {
   getPlannedClosures,
   updatePlannedClosures,
   getAdminSetting,
+  getPastWorkshopVisibility,
 } from "~/models/admin.server";
 import {
   getLevel3ScheduleRestrictions,
@@ -91,6 +92,7 @@ export async function loader({ request }: { request: Request }) {
 
   // Load current settings
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
+  const pastWorkshopVisibility = await getPastWorkshopVisibility();
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
   const plannedClosures = await getPlannedClosures();
   const maxEquipmentSlotsPerDay = await getAdminSetting(
@@ -140,6 +142,7 @@ export async function loader({ request }: { request: Request }) {
     roleUser,
     settings: {
       workshopVisibilityDays,
+      pastWorkshopVisibility,
       equipmentVisibilityDays,
       level3Schedule,
       level4UnavailableHours,
@@ -171,6 +174,7 @@ export async function action({ request }: { request: Request }) {
     try {
       // Get values from form
       const workshopVisibilityDays = formData.get("workshopVisibilityDays");
+      const pastWorkshopVisibility = formData.get("pastWorkshopVisibility");
       const equipmentVisibilityDays = formData.get("equipmentVisibilityDays");
       const settingType = formData.get("settingType");
 
@@ -180,6 +184,14 @@ export async function action({ request }: { request: Request }) {
           "workshop_visibility_days",
           workshopVisibilityDays.toString(),
           "Number of days to show future workshop dates"
+        );
+      }
+
+      if (settingType === "pastWorkshop" && pastWorkshopVisibility) {
+        await updateAdminSetting(
+          "past_workshop_visibility",
+          pastWorkshopVisibility.toString(),
+          "Number of days in the past to show entire workshops (in past events section as of 7/14/2025)"
         );
       }
 
@@ -603,6 +615,7 @@ export default function AdminSettings() {
     roleUser: { roleId: number; roleName: string };
     settings: {
       workshopVisibilityDays: number;
+      pastWorkshopVisibility: number;
       equipmentVisibilityDays: number;
       level3Schedule: {
         [day: string]: { start: number; end: number; closed?: boolean };
@@ -650,6 +663,9 @@ export default function AdminSettings() {
 
   const [workshopVisibilityDays, setWorkshopVisibilityDays] = useState(
     settings.workshopVisibilityDays.toString()
+  );
+  const [pastWorkshopVisibility, setPastWorkshopVisibility] = useState(
+    settings.pastWorkshopVisibility.toString()
   );
   const [equipmentVisibilityDays, setEquipmentVisibilityDays] = useState(
     settings.equipmentVisibilityDays.toString()
@@ -1091,15 +1107,36 @@ export default function AdminSettings() {
             <Tabs defaultValue="workshops" className="w-full">
               <div className="w-full overflow-x-auto mb-4">
                 <TabsList className="inline-flex w-max min-w-full">
-                  <TabsTrigger value="workshops" className="whitespace-nowrap">Workshop Settings</TabsTrigger>
-                  <TabsTrigger value="users" className="whitespace-nowrap">User Settings</TabsTrigger>
-                  <TabsTrigger value="volunteers" className="whitespace-nowrap">Volunteer Settings</TabsTrigger>
-                  <TabsTrigger value="equipment" className="whitespace-nowrap">Equipment Settings</TabsTrigger>
-                  <TabsTrigger value="plannedClosures" className="whitespace-nowrap">
+                  <TabsTrigger value="workshops" className="whitespace-nowrap">
+                    Workshop Settings
+                  </TabsTrigger>
+                  <TabsTrigger value="users" className="whitespace-nowrap">
+                    User Settings
+                  </TabsTrigger>
+                  <TabsTrigger value="volunteers" className="whitespace-nowrap">
+                    Volunteer Settings
+                  </TabsTrigger>
+                  <TabsTrigger value="equipment" className="whitespace-nowrap">
+                    Equipment Settings
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="plannedClosures"
+                    className="whitespace-nowrap"
+                  >
                     Planned Closures
                   </TabsTrigger>
-                  <TabsTrigger value="miscellaneous" className="whitespace-nowrap">Miscellaneous Settings</TabsTrigger>
-                  <TabsTrigger value="placeholder" className="whitespace-nowrap">Other Settings</TabsTrigger>
+                  <TabsTrigger
+                    value="miscellaneous"
+                    className="whitespace-nowrap"
+                  >
+                    Miscellaneous Settings
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="placeholder"
+                    className="whitespace-nowrap"
+                  >
+                    Other Settings
+                  </TabsTrigger>
                   {/* Add more tabs here in the future */}
                 </TabsList>
               </div>
@@ -1153,6 +1190,62 @@ export default function AdminSettings() {
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Visibility Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+
+                {/* Past Workshop Visibility Section */}
+                <Form method="post" className="space-y-6 mb-8">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="pastWorkshop"
+                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Past Workshop Visibility</CardTitle>
+                      <CardDescription>
+                        Configure how far back users can see past workshops
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="pastWorkshopVisibility">
+                          Past Workshop Visibility Days
+                        </Label>
+                        <Input
+                          id="pastWorkshopVisibility"
+                          name="pastWorkshopVisibility"
+                          type="number"
+                          value={pastWorkshopVisibility}
+                          onChange={(e) =>
+                            setPastWorkshopVisibility(e.target.value)
+                          }
+                          min="1"
+                          max="365"
+                          className="w-full max-w-xs"
+                        />
+                        <p className="text-sm text-gray-500">
+                          Number of days in the past to show entire workshops in
+                          past events. If any workshop date falls within this
+                          period, the entire workshop will appear in past
+                          events.
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Past Visibility Settings
                       </Button>
                     </CardFooter>
                   </Card>
