@@ -63,6 +63,8 @@ import {
   getAllUsers,
   updateUserRole,
   updateUserAllowLevel,
+  getAllUsersWithVolunteerStatus,
+  updateUserVolunteerStatus,
 } from "~/models/user.server";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
@@ -76,7 +78,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
-import { updateUserVolunteerStatus } from "~/models/user.server";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -121,7 +122,7 @@ export async function loader({ request }: { request: Request }) {
   });
 
   // Fetch all users for the user management tab
-  const users = await getAllUsers();
+  const users = await getAllUsersWithVolunteerStatus();
 
   const level3Schedule = await getLevel3ScheduleRestrictions();
   const level4UnavailableHours = await getLevel4UnavailableHours();
@@ -490,7 +491,16 @@ function RoleControl({
 function VolunteerControl({
   user,
 }: {
-  user: { id: number; isVolunteer: boolean; volunteerSince: Date | null };
+  user: {
+    id: number;
+    isVolunteer: boolean;
+    volunteerSince: Date | null;
+    volunteerHistory?: Array<{
+      id: number;
+      volunteerStart: Date;
+      volunteerEnd: Date | null;
+    }>;
+  };
 }) {
   const [isVolunteer, setIsVolunteer] = useState<boolean>(user.isVolunteer);
   const submit = useSubmit();
@@ -2263,17 +2273,45 @@ export default function AdminSettings() {
                         {
                           header: "Volunteer Status",
                           render: (user: any) => (
-                            <VolunteerControl user={user} />
+                            <div className="space-y-1">
+                              <VolunteerControl user={user} />
+                              {user.volunteerHistory &&
+                                user.volunteerHistory.length > 0 && (
+                                  <details className="text-xs text-gray-500">
+                                    <summary className="cursor-pointer hover:text-gray-700">
+                                      History ({user.volunteerHistory.length})
+                                    </summary>
+                                    <div className="mt-1 space-y-1">
+                                      {user.volunteerHistory
+                                        .slice(0, 3)
+                                        .map((period: any) => (
+                                          <div
+                                            key={period.id}
+                                            className="text-xs"
+                                          >
+                                            {new Date(
+                                              period.volunteerStart
+                                            ).toLocaleDateString()}{" "}
+                                            -{" "}
+                                            {period.volunteerEnd
+                                              ? new Date(
+                                                  period.volunteerEnd
+                                                ).toLocaleDateString()
+                                              : "Active"}
+                                          </div>
+                                        ))}
+                                      {user.volunteerHistory.length > 3 && (
+                                        <div className="text-xs">
+                                          ...and{" "}
+                                          {user.volunteerHistory.length - 3}{" "}
+                                          more
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                )}
+                            </div>
                           ),
-                        },
-                        {
-                          header: "Volunteer Since",
-                          render: (user: any) =>
-                            user.volunteerSince
-                              ? new Date(
-                                  user.volunteerSince
-                                ).toLocaleDateString()
-                              : "N/A",
                         },
                       ]}
                       data={paginatedUsers}

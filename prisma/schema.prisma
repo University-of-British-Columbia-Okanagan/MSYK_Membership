@@ -38,8 +38,6 @@ model User {
   roleUser   RoleUser @relation(fields: [roleUserId], references: [id])
   roleLevel Int @default(1)
   allowLevel4 Boolean @default(false)
-  isVolunteer Boolean @default(false)
-  volunteerSince DateTime?
 
   avatarUrl              String? 
   guardianSignedConsent  String? // This will store the base64 image data
@@ -50,6 +48,18 @@ model User {
   userMemberships UserMembership[] 
   paymentInformation  UserPaymentInformation?
   issuesReported Issue[]
+  volunteers Volunteer[]
+} 
+
+model Volunteer {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  volunteerStart DateTime @default(now())
+  volunteerEnd   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RoleUser {
