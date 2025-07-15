@@ -84,7 +84,6 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   return { success: true, user: result };
-
 }
 
 interface FormErrors {
@@ -92,6 +91,7 @@ interface FormErrors {
   lastName?: string[];
   email?: string[];
   password?: string[];
+  confirmPassword?: string[];
   phone?: string[];
   over18?: boolean[];
   parentGuardianName?: string[];
@@ -298,6 +298,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       lastName: "",
       email: "",
       password: "",
+      confirmPassword: "",
       phone: "",
       over18: false,
       parentGuardianName: null,
@@ -431,6 +432,16 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     type="password"
                     required
                     error={actionData?.errors?.password}
+                    className="w-full"
+                  />
+                  <GenericFormField
+                    control={form.control}
+                    name="confirmPassword"
+                    label="Confirm Password"
+                    placeholder="Re-enter your password"
+                    type="password"
+                    required
+                    error={actionData?.errors?.confirmPassword}
                     className="w-full"
                   />
                   <GenericFormField

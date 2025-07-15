@@ -176,13 +176,13 @@ async function main() {
     },
     {
       workshopId: 2, // Pottery
-      startDate: new Date("2025-07-10T14:00:00Z"),
-      endDate: new Date("2025-07-10T16:00:00Z"),
+      startDate: new Date("2025-09-10T14:00:00Z"),
+      endDate: new Date("2025-09-10T16:00:00Z"),
     },
     {
       workshopId: 3, // Knitting
-      startDate: new Date("2025-08-10T10:00:00Z"),
-      endDate: new Date("2025-08-10T12:00:00Z"),
+      startDate: new Date("2025-09-10T10:00:00Z"),
+      endDate: new Date("2025-09-10T12:00:00Z"),
     },
   ];
 
@@ -248,6 +248,17 @@ async function main() {
   });
 
   await prisma.adminSettings.upsert({
+    where: { key: "past_workshop_visibility" },
+    update: { value: "180" },
+    create: {
+      key: "past_workshop_visibility",
+      value: "180",
+      description:
+        "Number of days in the past to show entire workshops (in past events section as of 7/14/2025)",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
     where: { key: "equipment_visible_registrable_days" },
     update: { value: "7" },
     create: {
@@ -289,19 +300,20 @@ async function main() {
 
   await prisma.adminSettings.upsert({
     where: { key: "level4_unavaliable_hours" },
-    update: { 
+    update: {
       value: JSON.stringify({
-        start: 0, 
-        end: 0
-      })
+        start: 0,
+        end: 0,
+      }),
     },
     create: {
       key: "level4_unavaliable_hours",
       value: JSON.stringify({
         start: 0,
-        end: 0
+        end: 0,
       }),
-      description: "Hours when level 4 users cannot book equipment. Special case: start=0, end=0 means no restrictions. If start > end (e.g. 22 to 5), it represents a period that crosses midnight.",
+      description:
+        "Hours when level 4 users cannot book equipment. Special case: start=0, end=0 means no restrictions. If start > end (e.g. 22 to 5), it represents a period that crosses midnight.",
     },
   });
 
@@ -311,9 +323,10 @@ async function main() {
     create: {
       key: "max_number_equipment_slots_per_day",
       value: "4",
-      description: "Maximum number of 30-minute slots a user can book equipment per day (stored as slot count, 4 = 2 hours)",
+      description:
+        "Maximum number of 30-minute slots a user can book equipment per day (stored as slot count, 4 = 2 hours)",
     },
-  })
+  });
 
   await prisma.adminSettings.upsert({
     where: { key: "max_number_equipment_slots_per_week" },
@@ -321,9 +334,10 @@ async function main() {
     create: {
       key: "max_number_equipment_slots_per_week",
       value: "14",
-      description: "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
+      description:
+        "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
     },
-  })
+  });
 
   await prisma.adminSettings.upsert({
     where: { key: "gst_percentage" },
@@ -331,9 +345,10 @@ async function main() {
     create: {
       key: "gst_percentage",
       value: "5",
-      description: "GST/HST tax percentage applied to all payments in Canada (5% for GST, varies by province for HST)",
+      description:
+        "GST/HST tax percentage applied to all payments in Canada (5% for GST, varies by province for HST)",
     },
-  })
+  });
 
   console.log("Database seeded successfully!");
 }

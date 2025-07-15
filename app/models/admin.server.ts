@@ -55,6 +55,18 @@ export async function getWorkshopVisibilityDays(): Promise<number> {
 }
 
 /**
+ * Get past workshop visibility days setting
+ * @returns Number of days in the past to show entire workshops in past events
+ */
+export async function getPastWorkshopVisibility(): Promise<number> {
+  const pastWorkshopVisibility = await getAdminSetting(
+    "past_workshop_visibility",
+    "180"
+  );
+  return parseInt(pastWorkshopVisibility, 10);
+}
+
+/**
  * Update a workshop's registration cutoff
  * @param workshopId The workshop ID to update
  * @param cutoffMinutes The new cutoff time in minutes
