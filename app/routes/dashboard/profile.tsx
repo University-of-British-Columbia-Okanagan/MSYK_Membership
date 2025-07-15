@@ -1,8 +1,11 @@
-import { useLoaderData, Form } from "react-router-dom";
+import { useLoaderData, Form, useActionData, redirect } from "react-router-dom";
+import { useState, useEffect } from "react";
 import {
   getProfileDetails,
   checkActiveVolunteerStatus,
   getVolunteerHours,
+  logVolunteerHours,
+  checkVolunteerHourOverlap,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
 import Sidebar from "../../components/ui/Dashboard/sidebar";
@@ -33,6 +36,82 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   return { user, roleUser, isActiveVolunteer, volunteerHours };
 }
 
+export async function action({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+
+  if (!roleUser?.userId) {
+    return { error: "Unauthorized" };
+  }
+
+  // Check if user is still an active volunteer
+  const isActiveVolunteer = await checkActiveVolunteerStatus(roleUser.userId);
+  if (!isActiveVolunteer) {
+    return { error: "You must be an active volunteer to log hours" };
+  }
+
+  const formData = await request.formData();
+  const action = formData.get("_action");
+
+  if (action === "logHours") {
+    const startTimeStr = formData.get("startTime") as string;
+    const endTimeStr = formData.get("endTime") as string;
+    const description = (formData.get("description") as string) || undefined;
+
+    // Validate the data
+    if (!startTimeStr || !endTimeStr) {
+      return { error: "Start time and end time are required" };
+    }
+
+    const startTime = new Date(startTimeStr);
+    const endTime = new Date(endTimeStr);
+
+    // Basic validation
+    if (endTime <= startTime) {
+      return { error: "End time must be after start time" };
+    }
+
+    // Check if trying to log hours in the future
+    const now = new Date();
+    if (startTime > now) {
+      return { error: "Cannot log volunteer hours for future dates" };
+    }
+    if (endTime > now) {
+      return { error: "Cannot log volunteer hours that end in the future" };
+    }
+
+    // Check if the time period is reasonable (not more than 24 hours)
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const maxDurationMs = 24 * 60 * 60 * 1000; // 24 hours
+    if (durationMs > maxDurationMs) {
+      return { error: "Volunteer session cannot be longer than 24 hours" };
+    }
+
+    // Check for overlapping volunteer hours
+    const hasOverlap = await checkVolunteerHourOverlap(
+      roleUser.userId,
+      startTime,
+      endTime
+    );
+    if (hasOverlap) {
+      return {
+        error:
+          "This time period overlaps with existing volunteer hours. Please choose a different time period.",
+      };
+    }
+
+    try {
+      await logVolunteerHours(roleUser.userId, startTime, endTime, description);
+      return { success: "Volunteer hours logged successfully!" };
+      // return redirect("/dashboard/profile?success=hours-logged");
+    } catch (error) {
+      console.error("Error logging volunteer hours:", error);
+      return { error: "Failed to log volunteer hours. Please try again." };
+    }
+  }
+
+  return { error: "Invalid action" };
+}
+
 export default function ProfilePage() {
   const { user, roleUser, isActiveVolunteer, volunteerHours } = useLoaderData<{
     user: UserProfileData;
@@ -40,6 +119,25 @@ export default function ProfilePage() {
     isActiveVolunteer: boolean;
     volunteerHours: VolunteerHourEntry[];
   }>();
+
+  const actionData = useActionData<{
+    success?: string;
+    error?: string;
+  }>();
+
+  // Form state for volunteer hours
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [description, setDescription] = useState("");
+
+  // Clear form after successful submission
+  useEffect(() => {
+    if (actionData?.success) {
+      setStartTime("");
+      setEndTime("");
+      setDescription("");
+    }
+  }, [actionData]);
 
   const isAdmin =
     roleUser &&
@@ -240,6 +338,19 @@ export default function ProfilePage() {
                     <h4 className="font-medium text-blue-900 mb-4">
                       Log New Hours
                     </h4>
+
+                    {/* Success/Error Messages */}
+                    {actionData?.success && (
+                      <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md">
+                        {actionData.success}
+                      </div>
+                    )}
+                    {actionData?.error && (
+                      <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md">
+                        {actionData.error}
+                      </div>
+                    )}
+
                     <Form
                       method="post"
                       className="grid grid-cols-1 md:grid-cols-4 gap-4"
@@ -253,6 +364,8 @@ export default function ProfilePage() {
                         <input
                           type="datetime-local"
                           name="startTime"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                         />
@@ -265,6 +378,8 @@ export default function ProfilePage() {
                         <input
                           type="datetime-local"
                           name="endTime"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
                           required
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                         />
@@ -277,6 +392,8 @@ export default function ProfilePage() {
                         <input
                           type="text"
                           name="description"
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
                           placeholder="What did you work on?"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                         />

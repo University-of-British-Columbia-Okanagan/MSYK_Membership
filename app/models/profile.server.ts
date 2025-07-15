@@ -1,4 +1,3 @@
-// app/utils/profile.server.ts
 import { db } from "../utils/db.server";
 import { getUserId } from "~/utils/session.server";
 
@@ -100,4 +99,48 @@ export async function logVolunteerHours(
       description,
     },
   });
+}
+
+export async function checkVolunteerHourOverlap(
+  userId: number,
+  startTime: Date,
+  endTime: Date
+): Promise<boolean> {
+  const overlappingHours = await db.volunteerTimetable.findFirst({
+    where: {
+      userId,
+      OR: [
+        // New session starts during existing session
+        {
+          AND: [
+            { startTime: { lte: startTime } },
+            { endTime: { gt: startTime } }
+          ]
+        },
+        // New session ends during existing session
+        {
+          AND: [
+            { startTime: { lt: endTime } },
+            { endTime: { gte: endTime } }
+          ]
+        },
+        // New session completely contains existing session
+        {
+          AND: [
+            { startTime: { gte: startTime } },
+            { endTime: { lte: endTime } }
+          ]
+        },
+        // Existing session completely contains new session
+        {
+          AND: [
+            { startTime: { lte: startTime } },
+            { endTime: { gte: endTime } }
+          ]
+        }
+      ]
+    }
+  });
+
+  return overlappingHours !== null;
 }
