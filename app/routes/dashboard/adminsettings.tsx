@@ -76,6 +76,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
 
@@ -503,6 +504,8 @@ function VolunteerControl({
   };
 }) {
   const [isVolunteer, setIsVolunteer] = useState<boolean>(user.isVolunteer);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingStatus, setPendingStatus] = useState<boolean>(false);
   const submit = useSubmit();
 
   const updateVolunteerStatus = (newStatus: boolean) => {
@@ -512,6 +515,12 @@ function VolunteerControl({
     formData.append("isVolunteer", newStatus.toString());
     submit(formData, { method: "post" });
     setIsVolunteer(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setPendingStatus(checked);
+    setShowConfirmDialog(true);
   };
 
   return (
@@ -519,7 +528,7 @@ function VolunteerControl({
       <input
         type="checkbox"
         checked={isVolunteer}
-        onChange={(e) => updateVolunteerStatus(e.target.checked)}
+        onChange={(e) => handleCheckboxChange(e.target.checked)}
         className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
         id={`volunteer-${user.id}`}
       />
@@ -529,6 +538,33 @@ function VolunteerControl({
       >
         Volunteer
       </label>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingStatus
+                ? "Start Volunteer Period"
+                : "End Volunteer Period"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatus
+                ? "Are you sure you want to start a new volunteer period for this user? This will mark them as an active volunteer."
+                : "Are you sure you want to end the volunteer period for this user? This will mark their current volunteer period as ended."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateVolunteerStatus(pendingStatus)}
+            >
+              {pendingStatus ? "Start Volunteer" : "End Volunteer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
