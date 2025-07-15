@@ -1,5 +1,6 @@
+import React from "react";
 import { useLoaderData, Form, useActionData, redirect } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   getProfileDetails,
   checkActiveVolunteerStatus,
@@ -12,6 +13,15 @@ import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
 import { CreditCard, User, Calendar, Medal, Clock, Plus } from "lucide-react";
+import { FiSearch } from "react-icons/fi";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
@@ -131,6 +141,13 @@ export default function ProfilePage() {
   const [description, setDescription] = useState("");
   const [showSuccessMessage, setShowSuccessMessage] = useState(true);
 
+  // Filtering and pagination state for volunteer hours and date filters
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState("");
+  const [timeFilter, setTimeFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hoursPerPage] = useState(5);
+
   // Clear form after successful submission and auto-hide success message
   useEffect(() => {
     if (actionData?.success) {
@@ -153,6 +170,192 @@ export default function ProfilePage() {
     roleUser.roleId === 2 &&
     roleUser.roleName.toLowerCase() === "admin";
   const isGuest = !roleUser || !roleUser.userId;
+
+  // Filter volunteer hours by status, date, and time
+  const filteredVolunteerHours = useMemo(() => {
+    if (!isActiveVolunteer || !volunteerHours) return [];
+
+    return volunteerHours.filter((entry) => {
+      // Status filter
+      const statusMatch =
+        statusFilter === "all" || entry.status === statusFilter;
+
+      // Date filter (YYYY-MM-DD format) - use local date to avoid timezone issues
+      const dateMatch =
+        !dateFilter ||
+        (() => {
+          const entryDate = new Date(entry.startTime);
+          const year = entryDate.getFullYear();
+          const month = String(entryDate.getMonth() + 1).padStart(2, "0");
+          const day = String(entryDate.getDate()).padStart(2, "0");
+          const localDateString = `${year}-${month}-${day}`;
+          return localDateString === dateFilter;
+        })();
+
+      // Time filter (HH format, matching start hour)
+      const timeMatch =
+        timeFilter === "all" ||
+        !timeFilter ||
+        new Date(entry.startTime).getHours().toString().padStart(2, "0") ===
+          timeFilter;
+
+      return statusMatch && dateMatch && timeMatch;
+    });
+  }, [volunteerHours, statusFilter, dateFilter, timeFilter, isActiveVolunteer]);
+
+  // Sort filtered hours by start time (most recent first)
+  const sortedVolunteerHours = useMemo(() => {
+    return filteredVolunteerHours
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
+  }, [filteredVolunteerHours]);
+
+  // PAGINATION LOGIC
+  const totalPages = Math.ceil(sortedVolunteerHours.length / hoursPerPage);
+  const startIndex = (currentPage - 1) * hoursPerPage;
+  const endIndex = startIndex + hoursPerPage;
+  const paginatedVolunteerHours = sortedVolunteerHours.slice(
+    startIndex,
+    endIndex
+  );
+
+  // Reset to page 1 when any filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, dateFilter, timeFilter]);
+
+  // Define columns for the ShadTable
+  type VolunteerHourRow = (typeof volunteerHours)[number];
+  const volunteerHoursColumns: ColumnDefinition<VolunteerHourRow>[] = [
+    {
+      header: "Date",
+      render: (entry) => new Date(entry.startTime).toLocaleDateString(),
+    },
+    {
+      header: "Time",
+      render: (entry) => {
+        const start = new Date(entry.startTime);
+        const end = new Date(entry.endTime);
+        return `${start.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })} - ${end.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`;
+      },
+    },
+    {
+      header: "Hours",
+      render: (entry) => {
+        const start = new Date(entry.startTime);
+        const end = new Date(entry.endTime);
+        const durationMs = end.getTime() - start.getTime();
+        const hours = Math.round((durationMs / (1000 * 60 * 60)) * 10) / 10;
+        return `${hours} hours`;
+      },
+    },
+    {
+      header: "Description",
+      render: (entry) => entry.description || "—",
+    },
+    {
+      header: "Status",
+      render: (entry) => (
+        <span
+          className={`px-2 py-1 rounded-full text-xs font-medium ${
+            entry.status === "approved"
+              ? "bg-green-100 text-green-800"
+              : entry.status === "denied"
+              ? "bg-red-100 text-red-800"
+              : "bg-yellow-100 text-yellow-800"
+          }`}
+        >
+          {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+        </span>
+      ),
+    },
+    {
+      header: "Logged",
+      render: (entry) => new Date(entry.createdAt).toLocaleDateString(),
+    },
+  ];
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    const getVisiblePageNumbers = () => {
+      const delta = 2;
+      const range = [];
+      const rangeWithDots = [];
+
+      for (
+        let i = Math.max(2, currentPage - delta);
+        i <= Math.min(totalPages - 1, currentPage + delta);
+        i++
+      ) {
+        range.push(i);
+      }
+
+      if (currentPage - delta > 2) {
+        rangeWithDots.push(1, "...");
+      } else {
+        rangeWithDots.push(1);
+      }
+
+      rangeWithDots.push(...range);
+
+      if (currentPage + delta < totalPages - 1) {
+        rangeWithDots.push("...", totalPages);
+      } else if (totalPages > 1) {
+        rangeWithDots.push(totalPages);
+      }
+
+      return rangeWithDots;
+    };
+
+    return (
+      <div className="flex items-center justify-center space-x-2 mt-4">
+        <button
+          onClick={() => setCurrentPage(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+        >
+          Previous
+        </button>
+
+        {getVisiblePageNumbers().map((page, index) => (
+          <React.Fragment key={index}>
+            {page === "..." ? (
+              <span className="px-3 py-1 text-sm text-gray-500">...</span>
+            ) : (
+              <button
+                onClick={() => setCurrentPage(Number(page))}
+                className={`px-3 py-1 text-sm border rounded ${
+                  currentPage === page
+                    ? "bg-blue-500 text-white border-blue-500"
+                    : "hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            )}
+          </React.Fragment>
+        ))}
+
+        <button
+          onClick={() => setCurrentPage(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 text-sm border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+        >
+          Next
+        </button>
+      </div>
+    );
+  };
 
   const renderSidebar = () => {
     if (isAdmin) {
@@ -423,60 +626,132 @@ export default function ProfilePage() {
 
                     {/* Recent Hours */}
                     <div>
-                      <h4 className="font-medium text-gray-900 mb-4">
-                        Recent Hours
-                      </h4>
-                      {volunteerHours.length > 0 ? (
-                        <div className="space-y-3">
-                          {volunteerHours.map((entry) => {
-                            const start = new Date(entry.startTime);
-                            const end = new Date(entry.endTime);
-                            const durationMs = end.getTime() - start.getTime();
-                            const hours =
-                              Math.round((durationMs / (1000 * 60 * 60)) * 10) /
-                              10;
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-medium text-gray-900">
+                          Recent Hours
+                        </h4>
+                      </div>
 
-                            return (
-                              <div
-                                key={entry.id}
-                                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                              >
-                                <div>
-                                  <p className="font-medium text-gray-900">
-                                    {start.toLocaleDateString()} • {hours} hours
-                                  </p>
-                                  <p className="text-sm text-gray-600">
-                                    {start.toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}{" "}
-                                    -{" "}
-                                    {end.toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </p>
-                                  {entry.description && (
-                                    <p className="text-sm text-gray-500 mt-1">
-                                      {entry.description}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm text-gray-500">
-                                    Logged{" "}
-                                    {new Date(
-                                      entry.createdAt
-                                    ).toLocaleDateString()}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })}
+                      {/* Filters Row */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        {/* Status Filter */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            Filter by status:
+                          </label>
+                          <Select
+                            value={statusFilter}
+                            onValueChange={setStatusFilter}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Status</SelectItem>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="approved">Approved</SelectItem>
+                              <SelectItem value="denied">Denied</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
+
+                        {/* Date Filter */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            Filter by date:
+                          </label>
+                          <input
+                            type="date"
+                            value={dateFilter}
+                            onChange={(e) => setDateFilter(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+
+                        {/* Time Filter */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            Filter by start hour:
+                          </label>
+                          <Select
+                            value={timeFilter}
+                            onValueChange={setTimeFilter}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="All Hours" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Hours</SelectItem>
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <SelectItem
+                                  key={i}
+                                  value={i.toString().padStart(2, "0")}
+                                >
+                                  {i.toString().padStart(2, "0")}:00
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Clear Filters Button */}
+                      {(statusFilter !== "all" ||
+                        dateFilter ||
+                        (timeFilter && timeFilter !== "all")) && (
+                        <div className="mb-4">
+                          <button
+                            onClick={() => {
+                              setStatusFilter("all");
+                              setDateFilter("");
+                              setTimeFilter("all");
+                            }}
+                            className="text-sm text-blue-600 hover:text-blue-800 underline"
+                          >
+                            Clear all filters
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Stats */}
+                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <span>
+                            Showing {startIndex + 1}-
+                            {Math.min(endIndex, sortedVolunteerHours.length)} of{" "}
+                            {sortedVolunteerHours.length} entries
+                          </span>
+                          <span>
+                            Total:{" "}
+                            {filteredVolunteerHours
+                              .reduce((total, entry) => {
+                                const start = new Date(entry.startTime);
+                                const end = new Date(entry.endTime);
+                                const durationMs =
+                                  end.getTime() - start.getTime();
+                                const hours = durationMs / (1000 * 60 * 60);
+                                return total + hours;
+                              }, 0)
+                              .toFixed(1)}{" "}
+                            hours
+                          </span>
+                        </div>
+                      </div>
+
+                      {sortedVolunteerHours.length > 0 ? (
+                        <>
+                          <ShadTable
+                            columns={volunteerHoursColumns}
+                            data={paginatedVolunteerHours}
+                            emptyMessage="No volunteer hours found for the selected filters"
+                          />
+                          {renderPagination()}
+                        </>
                       ) : (
-                        <p className="text-gray-500">
-                          No volunteer hours logged yet.
+                        <p className="text-gray-500 text-center py-8">
+                          {volunteerHours.length === 0
+                            ? "No volunteer hours logged yet."
+                            : "No volunteer hours match the selected filters."}
                         </p>
                       )}
                     </div>
