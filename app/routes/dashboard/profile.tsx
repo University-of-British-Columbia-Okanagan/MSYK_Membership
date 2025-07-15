@@ -143,8 +143,10 @@ export default function ProfilePage() {
 
   // Filtering and pagination state for volunteer hours and date filters
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFilter, setDateFilter] = useState("");
-  const [timeFilter, setTimeFilter] = useState("");
+  const [startDateFilter, setStartDateFilter] = useState("");
+  const [startTimeFilter, setStartTimeFilter] = useState("");
+  const [endDateFilter, setEndDateFilter] = useState("");
+  const [endTimeFilter, setEndTimeFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [hoursPerPage] = useState(5);
 
@@ -171,7 +173,8 @@ export default function ProfilePage() {
     roleUser.roleName.toLowerCase() === "admin";
   const isGuest = !roleUser || !roleUser.userId;
 
-  // Filter volunteer hours by status, date, and time
+  // Filter volunteer hours by status, start date/time, and end date/time
+  // Filter volunteer hours by status, start date/time, and end date/time
   const filteredVolunteerHours = useMemo(() => {
     if (!isActiveVolunteer || !volunteerHours) return [];
 
@@ -180,28 +183,83 @@ export default function ProfilePage() {
       const statusMatch =
         statusFilter === "all" || entry.status === statusFilter;
 
-      // Date filter (YYYY-MM-DD format) - use local date to avoid timezone issues
-      const dateMatch =
-        !dateFilter ||
-        (() => {
-          const entryDate = new Date(entry.startTime);
-          const year = entryDate.getFullYear();
-          const month = String(entryDate.getMonth() + 1).padStart(2, "0");
-          const day = String(entryDate.getDate()).padStart(2, "0");
-          const localDateString = `${year}-${month}-${day}`;
-          return localDateString === dateFilter;
-        })();
+      // Date range filtering
+      const entryStartDate = new Date(entry.startTime);
+      const entryEndDate = new Date(entry.endTime);
 
-      // Time filter (HH format, matching start hour)
-      const timeMatch =
-        timeFilter === "all" ||
-        !timeFilter ||
-        new Date(entry.startTime).getHours().toString().padStart(2, "0") ===
-          timeFilter;
+      // Helper function to convert date to YYYY-MM-DD string
+      const getDateString = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      };
 
-      return statusMatch && dateMatch && timeMatch;
+      const entryStartDateStr = getDateString(entryStartDate);
+      const entryEndDateStr = getDateString(entryEndDate);
+
+      // Date range logic: if both start and end dates are provided, show entries within that range
+      // If only start date is provided, show entries on or after that date
+      // If only end date is provided, show entries on or before that date
+      let dateRangeMatch = true;
+
+      if (startDateFilter && endDateFilter) {
+        // Both dates provided - show entries that start on or after startDate AND start on or before endDate
+        dateRangeMatch =
+          entryStartDateStr >= startDateFilter &&
+          entryStartDateStr <= endDateFilter;
+      } else if (startDateFilter) {
+        // Only start date provided - entry must start on or after this date
+        dateRangeMatch = entryStartDateStr >= startDateFilter;
+      } else if (endDateFilter) {
+        // Only end date provided - entry must start on or before this date
+        dateRangeMatch = entryStartDateStr <= endDateFilter;
+      }
+
+      // Hour range filtering - similar logic to date range
+      const entryStartHour = entryStartDate.getHours();
+      const entryEndHour = entryEndDate.getHours();
+
+      // Convert filter strings to numbers for comparison
+      const startHourNum =
+        startTimeFilter === "all" || !startTimeFilter
+          ? null
+          : parseInt(startTimeFilter);
+      const endHourNum =
+        endTimeFilter === "all" || !endTimeFilter
+          ? null
+          : parseInt(endTimeFilter);
+
+      // Hour range logic: more precise time checking including minutes
+      // If only start hour is provided, show entries that start at or after that hour
+      // If only end hour is provided, show entries that start at or before that hour
+      let hourRangeMatch = true;
+
+      if (startHourNum !== null && endHourNum !== null) {
+        // Both hours provided
+        const entryStartHour = entryStartDate.getHours();
+        hourRangeMatch = entryStartHour >= startHourNum && entryStartHour < endHourNum;
+      } else if (startHourNum !== null) {
+        // Only start hour provided - entry must start at or after this hour
+        const entryStartHour = entryStartDate.getHours();
+        hourRangeMatch = entryStartHour >= startHourNum;
+      } else if (endHourNum !== null) {
+        // Only end hour provided - entry must start before this hour (exclusive)
+        const entryStartHour = entryStartDate.getHours();
+        hourRangeMatch = entryStartHour < endHourNum;
+      }
+
+      return statusMatch && dateRangeMatch && hourRangeMatch;
     });
-  }, [volunteerHours, statusFilter, dateFilter, timeFilter, isActiveVolunteer]);
+  }, [
+    volunteerHours,
+    statusFilter,
+    startDateFilter,
+    startTimeFilter,
+    endDateFilter,
+    endTimeFilter,
+    isActiveVolunteer,
+  ]);
 
   // Sort filtered hours by start time (most recent first)
   const sortedVolunteerHours = useMemo(() => {
@@ -225,7 +283,13 @@ export default function ProfilePage() {
   // Reset to page 1 when any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, dateFilter, timeFilter]);
+  }, [
+    statusFilter,
+    startDateFilter,
+    startTimeFilter,
+    endDateFilter,
+    endTimeFilter,
+  ]);
 
   // Define columns for the ShadTable
   type VolunteerHourRow = (typeof volunteerHours)[number];
@@ -633,7 +697,7 @@ export default function ProfilePage() {
                       </div>
 
                       {/* Filters Row */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
                         {/* Status Filter */}
                         <div className="flex flex-col">
                           <label className="text-sm text-gray-600 mb-1">
@@ -655,27 +719,66 @@ export default function ProfilePage() {
                           </Select>
                         </div>
 
-                        {/* Date Filter */}
+                        {/* Start Date Filter */}
                         <div className="flex flex-col">
                           <label className="text-sm text-gray-600 mb-1">
-                            Filter by date:
+                            From date:
                           </label>
                           <input
                             type="date"
-                            value={dateFilter}
-                            onChange={(e) => setDateFilter(e.target.value)}
+                            value={startDateFilter}
+                            onChange={(e) => setStartDateFilter(e.target.value)}
                             className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                           />
                         </div>
 
-                        {/* Time Filter */}
+                        {/* Start Time Filter */}
                         <div className="flex flex-col">
                           <label className="text-sm text-gray-600 mb-1">
-                            Filter by start hour:
+                            From hour:
                           </label>
                           <Select
-                            value={timeFilter}
-                            onValueChange={setTimeFilter}
+                            value={startTimeFilter}
+                            onValueChange={setStartTimeFilter}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="All Hours" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Hours</SelectItem>
+                              {Array.from({ length: 24 }, (_, i) => (
+                                <SelectItem
+                                  key={i}
+                                  value={i.toString().padStart(2, "0")}
+                                >
+                                  {i.toString().padStart(2, "0")}:00
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* End Date Filter */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            To date:
+                          </label>
+                          <input
+                            type="date"
+                            value={endDateFilter}
+                            onChange={(e) => setEndDateFilter(e.target.value)}
+                            className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+
+                        {/* End Time Filter */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            To hour:
+                          </label>
+                          <Select
+                            value={endTimeFilter}
+                            onValueChange={setEndTimeFilter}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="All Hours" />
@@ -697,14 +800,18 @@ export default function ProfilePage() {
 
                       {/* Clear Filters Button */}
                       {(statusFilter !== "all" ||
-                        dateFilter ||
-                        (timeFilter && timeFilter !== "all")) && (
+                        startDateFilter ||
+                        (startTimeFilter && startTimeFilter !== "all") ||
+                        endDateFilter ||
+                        (endTimeFilter && endTimeFilter !== "all")) && (
                         <div className="mb-4">
                           <button
                             onClick={() => {
                               setStatusFilter("all");
-                              setDateFilter("");
-                              setTimeFilter("all");
+                              setStartDateFilter("");
+                              setStartTimeFilter("all");
+                              setEndDateFilter("");
+                              setEndTimeFilter("all");
                             }}
                             className="text-sm text-blue-600 hover:text-blue-800 underline"
                           >
