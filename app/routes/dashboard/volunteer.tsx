@@ -8,17 +8,17 @@ import AppSidebar from "@/components/ui/Dashboard/sidebar"; // User sidebar
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar"; // Admin sidebar
 import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar"; // Guest sidebar
 import { getRoleUser } from "~/utils/session.server";
-import { 
-  Mail, 
-  MapPin, 
-  Clock, 
-  Heart, 
-  Users, 
-  Wrench, 
-  Monitor, 
+import {
+  Mail,
+  MapPin,
+  Clock,
+  Heart,
+  Users,
+  Wrench,
+  Monitor,
   Calendar,
   MessageSquare,
-  UserPlus
+  UserPlus,
 } from "lucide-react";
 
 export async function loader({ request }: { request: Request }) {
@@ -39,43 +39,52 @@ export default function VolunteerPage() {
     {
       title: "Woodshop Supervisor",
       icon: <Wrench className="h-8 w-8 text-yellow-500" />,
-      description: "Help people with their woodworking projects and ensure they stay safe and following our community guidelines when using the woodshop!",
-      skills: ["Safety Knowledge", "Woodworking Experience", "Teaching Skills"]
+      description:
+        "Help people with their woodworking projects and ensure they stay safe and following our community guidelines when using the woodshop!",
+      skills: ["Safety Knowledge", "Woodworking Experience", "Teaching Skills"],
     },
     {
-      title: "Hackspace Supervisor", 
+      title: "Hackspace Supervisor",
       icon: <Monitor className="h-8 w-8 text-yellow-500" />,
-      description: "Help people use the equipment in the Hackspace. Support them with their digital fabrication projects and ensure they are following our community guidelines.",
-      skills: ["Technical Knowledge", "3D Printing", "Digital Fabrication"]
+      description:
+        "Help people use the equipment in the Hackspace. Support them with their digital fabrication projects and ensure they are following our community guidelines.",
+      skills: ["Technical Knowledge", "3D Printing", "Digital Fabrication"],
     },
     {
       title: "Front Desk Support",
       icon: <Users className="h-8 w-8 text-yellow-500" />,
-      description: "Help people sign-in when they visit the makerspace for events and workshops, collect payments and give short tours to visitors.",
-      skills: ["Customer Service", "Organization", "Communication"]
+      description:
+        "Help people sign-in when they visit the makerspace for events and workshops, collect payments and give short tours to visitors.",
+      skills: ["Customer Service", "Organization", "Communication"],
     },
     {
       title: "Workshop Facilitator",
       icon: <Calendar className="h-8 w-8 text-yellow-500" />,
-      description: "Have an idea for a workshop you would like to host at MSYK?",
-      skills: ["Teaching", "Subject Expertise", "Workshop Planning"]
+      description:
+        "Have an idea for a workshop you would like to host at MSYK?",
+      skills: ["Teaching", "Subject Expertise", "Workshop Planning"],
     },
     {
       title: "Social Media and Marketing",
       icon: <MessageSquare className="h-8 w-8 text-yellow-500" />,
-      description: "Support MSYK with our digital communications! Update our Instagram and Facebook, create our monthly newsletter and share content from activities in the space!",
-      skills: ["Social Media", "Content Creation", "Marketing"]
+      description:
+        "Support MSYK with our digital communications! Update our Instagram and Facebook, create our monthly newsletter and share content from activities in the space!",
+      skills: ["Social Media", "Content Creation", "Marketing"],
     },
     {
       title: "General Event Volunteer",
       icon: <Heart className="h-8 w-8 text-yellow-500" />,
-      description: "We don't always have events, but when we do we may need volunteers! This could be for tradeshows, concerts at our space, and more. Event volunteers will be notified when an event is on!",
-      skills: ["Flexibility", "Event Support", "Community Spirit"]
-    }
+      description:
+        "We don't always have events, but when we do we may need volunteers! This could be for tradeshows, concerts at our space, and more. Event volunteers will be notified when an event is on!",
+      skills: ["Flexibility", "Event Support", "Community Spirit"],
+    },
   ];
 
   // Determine which sidebar to show based on role
-  const isAdmin = roleUser && roleUser.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
   const isGuest = !roleUser || !roleUser.userId;
 
   const renderSidebar = () => {
@@ -92,21 +101,25 @@ export default function VolunteerPage() {
     <SidebarProvider>
       <div className="flex h-screen">
         {renderSidebar()}
-        
+
         <main className="flex-1 overflow-auto bg-gray-50">
           {/* Hero Section */}
           <div className="relative bg-yellow-500 text-white overflow-hidden">
             <div className="absolute inset-0"></div>
             <div className="relative container mx-auto px-4 py-16 md:py-24">
               <div className="text-center max-w-4xl mx-auto">
-                <Badge variant="outline" className="bg-white/10 border-white/20 text-white mb-4">
+                <Badge
+                  variant="outline"
+                  className="bg-white/10 border-white/20 text-white mb-4"
+                >
                   MAKERSPACE YK
                 </Badge>
                 <h1 className="text-4xl md:text-6xl font-bold mb-6">
                   Volunteer
                 </h1>
                 <p className="text-xl md:text-2xl leading-relaxed mb-8">
-                  Want to support the MSYK community?<br />
+                  Want to support the MSYK community?
+                  <br />
                   Here's how you can help!
                 </p>
               </div>
@@ -120,11 +133,28 @@ export default function VolunteerPage() {
                 Join Our Community of Makers
               </h2>
               <p className="text-lg text-gray-600 leading-relaxed mb-8">
-                Volunteering at Makerspace YK is a rewarding way to give back to the community, 
-                share your skills, and help others discover the joy of making. Whether you have 
-                technical expertise or just enthusiasm to help, there's a place for you!
+                Volunteering at Makerspace YK is a rewarding way to give back to
+                the community, share your skills, and help others discover the
+                joy of making. Whether you have technical expertise or just
+                enthusiasm to help, there's a place for you!
               </p>
-              
+
+              {/* Volunteer Hours Tracking Section */}
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
+                <div className="flex items-center justify-center gap-3 mb-4">
+                  <Clock className="h-8 w-8 text-blue-500" />
+                  <h3 className="text-xl font-semibold text-blue-900">
+                    Track Your Volunteer Hours
+                  </h3>
+                </div>
+                <p className="text-blue-800 leading-relaxed">
+                  Once you become a volunteer, you'll be able to log and track
+                  your volunteer hours directly in your profile. This helps us
+                  recognize your contributions and provides you with a record of
+                  your community service for personal or professional use.
+                </p>
+              </div>
+
               {/* Contact Information Cards */}
               <div className="grid md:grid-cols-2 gap-6 mb-12">
                 <Card className="border-2 border-yellow-200 hover:border-yellow-300 transition-colors">
@@ -149,9 +179,13 @@ export default function VolunteerPage() {
                       Visit Our Space
                     </h3>
                     <p className="text-gray-600 mb-4">
-                      Come by during our open hours to learn more about volunteering
+                      Come by during our open hours to learn more about
+                      volunteering
                     </p>
-                    <Button variant="outline" className="border-yellow-500 text-yellow-600 hover:bg-yellow-50">
+                    <Button
+                      variant="outline"
+                      className="border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                    >
                       <Clock className="h-4 w-4 mr-2" />
                       See Our Hours
                     </Button>
@@ -173,7 +207,10 @@ export default function VolunteerPage() {
 
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {volunteerRoles.map((role, index) => (
-                  <Card key={index} className="hover:shadow-lg transition-shadow border border-gray-200">
+                  <Card
+                    key={index}
+                    className="hover:shadow-lg transition-shadow border border-gray-200"
+                  >
                     <CardHeader className="pb-4">
                       <div className="flex items-center gap-3 mb-3">
                         {role.icon}
@@ -187,12 +224,14 @@ export default function VolunteerPage() {
                         {role.description}
                       </p>
                       <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-900">Skills needed:</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          Skills needed:
+                        </p>
                         <div className="flex flex-wrap gap-2">
                           {role.skills.map((skill, skillIndex) => (
-                            <Badge 
-                              key={skillIndex} 
-                              variant="outline" 
+                            <Badge
+                              key={skillIndex}
+                              variant="outline"
                               className="text-xs bg-yellow-50 border-yellow-200 text-yellow-700"
                             >
                               {skill}
@@ -215,19 +254,28 @@ export default function VolunteerPage() {
                     Ready to Get Started?
                   </h2>
                   <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
-                    Whether you want to share your expertise, learn new skills, or simply be part 
-                    of an amazing community, we'd love to have you join our volunteer team.
+                    Whether you want to share your expertise, learn new skills,
+                    or simply be part of an amazing community, we'd love to have
+                    you join our volunteer team.
+                    {!isGuest && (
+                      <span className="block mt-4 text-blue-600 font-medium">
+                        As a registered user, you'll be able to track your
+                        volunteer hours in your profile once you become a
+                        volunteer!
+                      </span>
+                    )}
                   </p>
+
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button 
-                      size="lg" 
+                    <Button
+                      size="lg"
                       className="bg-yellow-500 hover:bg-yellow-600 text-white px-8 py-3"
                     >
                       <Mail className="h-5 w-5 mr-2" />
                       Contact Us Today
                     </Button>
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="lg"
                       className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 px-8 py-3"
                     >
