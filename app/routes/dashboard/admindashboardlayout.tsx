@@ -2,6 +2,7 @@ import React from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
@@ -176,7 +177,7 @@ export default function AdminDashboard() {
         roleId: number;
         roleName: string;
         userId: number;
-      };
+      } | null;
       workshops: {
         id: number;
         name: string;
@@ -194,7 +195,7 @@ export default function AdminDashboard() {
         workshop: { name: string; type: string };
         occurrence: { startDate: string | Date; endDate: string | Date };
       }[];
-      pastVisibilityDays: number; // ADD THIS LINE
+      pastVisibilityDays: number;
     };
 
   const isAdmin =
@@ -202,9 +203,12 @@ export default function AdminDashboard() {
     roleUser.roleId === 2 &&
     roleUser.roleName.toLowerCase() === "admin";
 
+  // Check if user is not logged in (guest)
+  const isGuest = !roleUser || !roleUser.userId;
+
   // New filtering logic based on current date and past visibility setting
   const now = new Date();
-  const pastCutoffDate = new Date(); // ADD THIS BLOCK
+  const pastCutoffDate = new Date();
   pastCutoffDate.setDate(pastCutoffDate.getDate() - pastVisibilityDays);
 
   const activeWorkshops = workshops.filter(
@@ -223,7 +227,7 @@ export default function AdminDashboard() {
       )
   );
 
-  // UPDATE: Use the past visibility setting to filter past events
+  // Use the past visibility setting to filter past events
   const pastEvents = workshops.filter((event) => {
     // Check if all occurrences are in the past
     const allOccurrencesPast = event.occurrences.every(
@@ -241,7 +245,13 @@ export default function AdminDashboard() {
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        {isGuest ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
         <main className="flex-grow p-6">
           <div className="flex justify-end mb-6 pr-4">
             <Link to="/dashboard/addworkshop">
