@@ -63,6 +63,8 @@ import {
   getAllUsers,
   updateUserRole,
   updateUserAllowLevel,
+  getAllUsersWithVolunteerStatus,
+  updateUserVolunteerStatus,
 } from "~/models/user.server";
 import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
@@ -74,9 +76,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
-import { updateUserVolunteerStatus } from "~/models/user.server";
+import {
+  getAllVolunteerHours,
+  updateVolunteerHourStatus,
+  getRecentVolunteerHourActions,
+} from "~/models/profile.server";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -121,10 +128,13 @@ export async function loader({ request }: { request: Request }) {
   });
 
   // Fetch all users for the user management tab
-  const users = await getAllUsers();
+  const users = await getAllUsersWithVolunteerStatus();
 
   const level3Schedule = await getLevel3ScheduleRestrictions();
   const level4UnavailableHours = await getLevel4UnavailableHours();
+
+  const allVolunteerHours = await getAllVolunteerHours();
+  const recentVolunteerActions = await getRecentVolunteerHourActions(50);
 
   // Log successful load
   logger.info(
@@ -153,6 +163,8 @@ export async function loader({ request }: { request: Request }) {
     },
     workshops,
     users,
+    volunteerHours: allVolunteerHours,
+    recentVolunteerActions,
   };
 }
 
@@ -429,6 +441,35 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updateVolunteerHourStatus") {
+    const hourId = formData.get("hourId");
+    const newStatus = formData.get("newStatus");
+    try {
+      await updateVolunteerHourStatus(Number(hourId), String(newStatus));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated volunteer hour status for hour ${hourId} to ${newStatus}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Volunteer hour status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating volunteer hour status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update volunteer hour status",
+      };
+    }
+  }
+
   logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
     url: request.url,
   });
@@ -490,10 +531,29 @@ function RoleControl({
 function VolunteerControl({
   user,
 }: {
-  user: { id: number; isVolunteer: boolean; volunteerSince: Date | null };
+  user: {
+    id: number;
+    isVolunteer: boolean;
+    volunteerSince: Date | null;
+    volunteerHistory?: Array<{
+      id: number;
+      volunteerStart: Date;
+      volunteerEnd: Date | null;
+    }>;
+  };
 }) {
-  const [isVolunteer, setIsVolunteer] = useState<boolean>(user.isVolunteer);
+  // Use the actual data from the server instead of maintaining separate state
+  const isActuallyVolunteer = user.isVolunteer;
+
+  const [isVolunteer, setIsVolunteer] = useState<boolean>(isActuallyVolunteer);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingStatus, setPendingStatus] = useState<boolean>(false);
   const submit = useSubmit();
+
+  // Update local state when the actual data changes (important for pagination)
+  React.useEffect(() => {
+    setIsVolunteer(isActuallyVolunteer);
+  }, [isActuallyVolunteer, user.id]); // Include user.id to reset when user changes
 
   const updateVolunteerStatus = (newStatus: boolean) => {
     const formData = new FormData();
@@ -502,6 +562,12 @@ function VolunteerControl({
     formData.append("isVolunteer", newStatus.toString());
     submit(formData, { method: "post" });
     setIsVolunteer(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setPendingStatus(checked);
+    setShowConfirmDialog(true);
   };
 
   return (
@@ -509,7 +575,7 @@ function VolunteerControl({
       <input
         type="checkbox"
         checked={isVolunteer}
-        onChange={(e) => updateVolunteerStatus(e.target.checked)}
+        onChange={(e) => handleCheckboxChange(e.target.checked)}
         className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
         id={`volunteer-${user.id}`}
       />
@@ -519,6 +585,33 @@ function VolunteerControl({
       >
         Volunteer
       </label>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingStatus
+                ? "Start Volunteer Period"
+                : "End Volunteer Period"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatus
+                ? "Are you sure you want to start a new volunteer period for this user? This will mark them as an active volunteer."
+                : "Are you sure you want to end the volunteer period for this user? This will mark their current volunteer period as ended."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateVolunteerStatus(pendingStatus)}
+            >
+              {pendingStatus ? "Start Volunteer" : "End Volunteer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -610,8 +703,146 @@ function Pagination({
   );
 }
 
+function VolunteerHourStatusControl({
+  hour,
+}: {
+  hour: {
+    id: number;
+    status: string;
+    user: {
+      firstName: string;
+      lastName: string;
+    };
+  };
+}) {
+  const [status, setStatus] = useState<string>(hour.status);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingNewStatus, setPendingNewStatus] = useState<string>("");
+  const submit = useSubmit();
+
+  const updateStatus = (newStatus: string) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateVolunteerHourStatus");
+    formData.append("hourId", hour.id.toString());
+    formData.append("newStatus", newStatus);
+    submit(formData, { method: "post" });
+    setStatus(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    // If the status is the same, no confirmation needed
+    if (newStatus === status) {
+      return;
+    }
+
+    // Show confirmation for any status change
+    setPendingNewStatus(newStatus);
+    setShowConfirmDialog(true);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "denied":
+        return "bg-red-100 text-red-800";
+      case "resolved":
+        return "bg-purple-100 text-purple-800";
+      default:
+        return "bg-yellow-100 text-yellow-800";
+    }
+  };
+
+  const getStatusDisplayName = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getConfirmationMessage = (newStatus: string) => {
+    const userName = `${hour.user.firstName} ${hour.user.lastName}`;
+    const currentStatusName = getStatusDisplayName(status);
+    const newStatusName = getStatusDisplayName(newStatus);
+
+    switch (newStatus) {
+      case "approved":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Approved? This will mark their submission as approved.`;
+      case "denied":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Denied? This will reject their submission.`;
+      case "resolved":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Resolved? This typically means the issue has been addressed.`;
+      case "pending":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Pending? This will mark their submission as pending review.`;
+      default:
+        return `Are you sure you want to change the status from ${currentStatusName} to ${newStatusName}?`;
+    }
+  };
+
+  const getActionButtonColor = (newStatus: string) => {
+    switch (newStatus) {
+      case "denied":
+        return "bg-red-600 hover:bg-red-700";
+      case "approved":
+        return "bg-green-600 hover:bg-green-700";
+      case "resolved":
+        return "bg-purple-600 hover:bg-purple-700";
+      case "pending":
+        return "bg-yellow-600 hover:bg-yellow-700";
+      default:
+        return "bg-blue-600 hover:bg-blue-700";
+    }
+  };
+
+  return (
+    <>
+      <select
+        value={status}
+        onChange={(e) => handleStatusChange(e.target.value)}
+        className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${getStatusColor(
+          status
+        )}`}
+      >
+        <option value="pending">Pending</option>
+        <option value="approved">Approved</option>
+        <option value="denied">Denied</option>
+        <option value="resolved">Resolved</option>
+      </select>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Confirm Status Change to {getStatusDisplayName(pendingNewStatus)}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {getConfirmationMessage(pendingNewStatus)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateStatus(pendingNewStatus)}
+              className={getActionButtonColor(pendingNewStatus)}
+            >
+              Change to {getStatusDisplayName(pendingNewStatus)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 export default function AdminSettings() {
-  const { roleUser, settings, workshops, users } = useLoaderData<{
+  const {
+    roleUser,
+    settings,
+    workshops,
+    users,
+    volunteerHours,
+    recentVolunteerActions,
+  } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
     settings: {
       workshopVisibilityDays: number;
@@ -651,6 +882,42 @@ export default function AdminSettings() {
       allowLevel4: boolean;
       isVolunteer: boolean;
       volunteerSince: Date | null;
+      volunteerHistory?: Array<{
+        id: number;
+        volunteerStart: Date;
+        volunteerEnd: Date | null;
+      }>;
+    }>;
+    volunteerHours: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+    }>;
+    recentVolunteerActions: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      previousStatus: string | null;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
     }>;
   }>();
 
@@ -726,6 +993,39 @@ export default function AdminSettings() {
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage] = useState(5);
 
+  // Volunteer hours management state
+  const [volunteerSearchName, setVolunteerSearchName] = useState("");
+  const [volunteerFromDate, setVolunteerFromDate] = useState("");
+  const [volunteerFromTime, setVolunteerFromTime] = useState("");
+  const [volunteerToDate, setVolunteerToDate] = useState("");
+  const [volunteerToTime, setVolunteerToTime] = useState("");
+  const [appliedVolunteerFromDate, setAppliedVolunteerFromDate] = useState("");
+  const [appliedVolunteerFromTime, setAppliedVolunteerFromTime] = useState("");
+  const [appliedVolunteerToDate, setAppliedVolunteerToDate] = useState("");
+  const [appliedVolunteerToTime, setAppliedVolunteerToTime] = useState("");
+  const [volunteerCurrentPage, setVolunteerCurrentPage] = useState(1);
+  const [volunteerHoursPerPage] = useState(5);
+  const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
+  const [actionsPerPage] = useState(5);
+
+  // Recent actions filters state
+  const [actionsSearchName, setActionsSearchName] = useState("");
+  const [actionsFromDate, setActionsFromDate] = useState("");
+  const [actionsFromTime, setActionsFromTime] = useState("");
+  const [actionsToDate, setActionsToDate] = useState("");
+  const [actionsToTime, setActionsToTime] = useState("");
+  const [appliedActionsFromDate, setAppliedActionsFromDate] = useState("");
+  const [appliedActionsFromTime, setAppliedActionsFromTime] = useState("");
+  const [appliedActionsToDate, setAppliedActionsToDate] = useState("");
+  const [appliedActionsToTime, setAppliedActionsToTime] = useState("");
+
+  // Status filters for volunteer hours
+  const [volunteerStatusFilter, setVolunteerStatusFilter] =
+    useState<string>("pending");
+
+  // Status filters for recent actions
+  const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
+
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -738,6 +1038,244 @@ export default function AdminSettings() {
   const sortedFilteredUsers = useMemo(() => {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
   }, [filteredUsers]);
+
+  // Helper function to generate time options
+  const generateVolunteerTimeOptions = () => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute of [0, 15, 30, 45]) {
+        const formattedHour = hour.toString().padStart(2, "0");
+        const formattedMinute = minute.toString().padStart(2, "0");
+        options.push(`${formattedHour}:${formattedMinute}`);
+      }
+    }
+    return options;
+  };
+
+  // Filter volunteer hours
+  const filteredVolunteerHours = useMemo(() => {
+    return volunteerHours.filter((hour) => {
+      // Name filter
+      const fullName =
+        `${hour.user.firstName} ${hour.user.lastName}`.toLowerCase();
+      const nameMatch =
+        volunteerSearchName === "" ||
+        fullName.includes(volunteerSearchName.toLowerCase());
+
+      // Status filter
+      const statusMatch =
+        volunteerStatusFilter === "all" ||
+        hour.status === volunteerStatusFilter;
+
+      // Date/time range filtering
+      let dateTimeMatch = true;
+      if (
+        appliedVolunteerFromDate &&
+        appliedVolunteerFromTime &&
+        appliedVolunteerToDate &&
+        appliedVolunteerToTime
+      ) {
+        const entryStartDate = new Date(hour.startTime);
+        const fromDateTime = new Date(
+          `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+        );
+        const toDateTime = new Date(
+          `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+        );
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return nameMatch && statusMatch && dateTimeMatch;
+    });
+  }, [
+    volunteerHours,
+    volunteerSearchName,
+    volunteerStatusFilter,
+    appliedVolunteerFromDate,
+    appliedVolunteerFromTime,
+    appliedVolunteerToDate,
+    appliedVolunteerToTime,
+  ]);
+
+  // Sort and paginate volunteer hours
+  const sortedVolunteerHours = useMemo(() => {
+    return filteredVolunteerHours
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
+  }, [filteredVolunteerHours]);
+
+  const volunteerTotalPages = Math.ceil(
+    sortedVolunteerHours.length / volunteerHoursPerPage
+  );
+  const volunteerStartIndex =
+    (volunteerCurrentPage - 1) * volunteerHoursPerPage;
+  const volunteerEndIndex = volunteerStartIndex + volunteerHoursPerPage;
+  const paginatedVolunteerHours = sortedVolunteerHours.slice(
+    volunteerStartIndex,
+    volunteerEndIndex
+  );
+
+  // Filter recent actions
+  const filteredRecentActions = useMemo(() => {
+    return recentVolunteerActions.filter((action) => {
+      // Name filter
+      const fullName =
+        `${action.user.firstName} ${action.user.lastName}`.toLowerCase();
+      const nameMatch =
+        actionsSearchName === "" ||
+        fullName.includes(actionsSearchName.toLowerCase());
+
+      // Status filter
+      const statusMatch =
+        actionsStatusFilter === "all" || action.status === actionsStatusFilter;
+
+      // Date/time range filtering
+      let dateTimeMatch = true;
+      if (
+        appliedActionsFromDate &&
+        appliedActionsFromTime &&
+        appliedActionsToDate &&
+        appliedActionsToTime
+      ) {
+        const entryStartDate = new Date(action.startTime);
+        const fromDateTime = new Date(
+          `${appliedActionsFromDate}T${appliedActionsFromTime}`
+        );
+        const toDateTime = new Date(
+          `${appliedActionsToDate}T${appliedActionsToTime}`
+        );
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return nameMatch && statusMatch && dateTimeMatch;
+    });
+  }, [
+    recentVolunteerActions,
+    actionsSearchName,
+    actionsStatusFilter,
+    appliedActionsFromDate,
+    appliedActionsFromTime,
+    appliedActionsToDate,
+    appliedActionsToTime,
+  ]);
+
+  // Handle recent actions search
+  const handleActionsSearch = () => {
+    setAppliedActionsFromDate(actionsFromDate);
+    setAppliedActionsFromTime(actionsFromTime);
+    setAppliedActionsToDate(actionsToDate);
+    setAppliedActionsToTime(actionsToTime);
+  };
+
+  // Handle clear actions filters
+  const handleClearActionsFilters = () => {
+    setActionsSearchName("");
+    setActionsStatusFilter("all"); // Reset to default
+    setActionsFromDate("");
+    setActionsFromTime("");
+    setActionsToDate("");
+    setActionsToTime("");
+    setAppliedActionsFromDate("");
+    setAppliedActionsFromTime("");
+    setAppliedActionsToDate("");
+    setAppliedActionsToTime("");
+  };
+
+  // Sort and paginate recent actions
+  const sortedRecentActions = useMemo(() => {
+    return filteredRecentActions
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+  }, [filteredRecentActions]);
+
+  const actionsTotalPages = Math.ceil(
+    sortedRecentActions.length / actionsPerPage
+  );
+  const actionsStartIndex = (actionsCurrentPage - 1) * actionsPerPage;
+  const actionsEndIndex = actionsStartIndex + actionsPerPage;
+  const paginatedRecentActions = sortedRecentActions.slice(
+    actionsStartIndex,
+    actionsEndIndex
+  );
+
+  // Handle volunteer hours search
+  const handleVolunteerSearch = () => {
+    setAppliedVolunteerFromDate(volunteerFromDate);
+    setAppliedVolunteerFromTime(volunteerFromTime);
+    setAppliedVolunteerToDate(volunteerToDate);
+    setAppliedVolunteerToTime(volunteerToTime);
+  };
+
+  // Handle clear volunteer filters
+  const handleClearVolunteerFilters = () => {
+    setVolunteerSearchName("");
+    setVolunteerStatusFilter("pending"); // Reset to default
+    setVolunteerFromDate("");
+    setVolunteerFromTime("");
+    setVolunteerToDate("");
+    setVolunteerToTime("");
+    setAppliedVolunteerFromDate("");
+    setAppliedVolunteerFromTime("");
+    setAppliedVolunteerToDate("");
+    setAppliedVolunteerToTime("");
+  };
+
+  // Reset pagination when filters change
+  React.useEffect(() => {
+    setVolunteerCurrentPage(1);
+  }, [
+    volunteerSearchName,
+    volunteerStatusFilter,
+    appliedVolunteerFromDate,
+    appliedVolunteerFromTime,
+    appliedVolunteerToDate,
+    appliedVolunteerToTime,
+  ]);
+
+  React.useEffect(() => {
+    setActionsCurrentPage(1);
+  }, [recentVolunteerActions]);
+
+  // Reset actions pagination when filters change
+  React.useEffect(() => {
+    setActionsCurrentPage(1);
+  }, [
+    actionsSearchName,
+    actionsStatusFilter,
+    appliedActionsFromDate,
+    appliedActionsFromTime,
+    appliedActionsToDate,
+    appliedActionsToTime,
+  ]);
+
+  // Helper function to calculate total hours from volunteer hour entries
+  const calculateTotalHours = (hours: any[]) => {
+    return hours.reduce((total, entry) => {
+      const start = new Date(entry.startTime);
+      const end = new Date(entry.endTime);
+      const durationMs = end.getTime() - start.getTime();
+      const hoursDecimal = durationMs / (1000 * 60 * 60);
+      return total + hoursDecimal;
+    }, 0);
+  };
+
+  // Calculate total hours for filtered volunteer hours
+  const totalVolunteerHours = useMemo(() => {
+    return calculateTotalHours(filteredVolunteerHours);
+  }, [filteredVolunteerHours]);
+
+  // Calculate total hours for filtered recent actions
+  const totalRecentActionHours = useMemo(() => {
+    return calculateTotalHours(filteredRecentActions);
+  }, [filteredRecentActions]);
 
   // PAGINATION LOGIC
   const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
@@ -2263,17 +2801,45 @@ export default function AdminSettings() {
                         {
                           header: "Volunteer Status",
                           render: (user: any) => (
-                            <VolunteerControl user={user} />
+                            <div className="space-y-1">
+                              <VolunteerControl user={user} />
+                              {user.volunteerHistory &&
+                                user.volunteerHistory.length > 0 && (
+                                  <details className="text-xs text-gray-500">
+                                    <summary className="cursor-pointer hover:text-gray-700">
+                                      History ({user.volunteerHistory.length})
+                                    </summary>
+                                    <div className="mt-1 space-y-1">
+                                      {user.volunteerHistory
+                                        .slice(0, 3)
+                                        .map((period: any) => (
+                                          <div
+                                            key={period.id}
+                                            className="text-xs"
+                                          >
+                                            {new Date(
+                                              period.volunteerStart
+                                            ).toLocaleDateString()}{" "}
+                                            -{" "}
+                                            {period.volunteerEnd
+                                              ? new Date(
+                                                  period.volunteerEnd
+                                                ).toLocaleDateString()
+                                              : "Active"}
+                                          </div>
+                                        ))}
+                                      {user.volunteerHistory.length > 3 && (
+                                        <div className="text-xs">
+                                          ...and{" "}
+                                          {user.volunteerHistory.length - 3}{" "}
+                                          more
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                )}
+                            </div>
                           ),
-                        },
-                        {
-                          header: "Volunteer Since",
-                          render: (user: any) =>
-                            user.volunteerSince
-                              ? new Date(
-                                  user.volunteerSince
-                                ).toLocaleDateString()
-                              : "N/A",
                         },
                       ]}
                       data={paginatedUsers}
@@ -2284,6 +2850,666 @@ export default function AdminSettings() {
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Volunteer Hours Management */}
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Manage Volunteer Hours</CardTitle>
+                    <CardDescription>
+                      Review and approve/deny/resolve/pending volunteer hour
+                      submissions from all users
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {/* Search and Filter Controls */}
+                      <div className="space-y-4 mb-6">
+                        {/* Name Search and Status Filter Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Name Search */}
+                          <div className="w-full">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Search by volunteer name
+                            </label>
+                            <div className="relative">
+                              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                              <Input
+                                placeholder="Enter first name or last name to search..."
+                                value={volunteerSearchName}
+                                onChange={(e) =>
+                                  setVolunteerSearchName(e.target.value)
+                                }
+                                className="pl-10 h-10 text-base"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Status Filter */}
+                          <div className="w-full">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Filter by status
+                            </label>
+                            <select
+                              value={volunteerStatusFilter}
+                              onChange={(e) =>
+                                setVolunteerStatusFilter(e.target.value)
+                              }
+                              className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                            >
+                              <option value="all">All Status</option>
+                              <option value="pending">Pending</option>
+                              <option value="approved">Approved</option>
+                              <option value="denied">Denied</option>
+                              <option value="resolved">Resolved</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Date and Time Filters - Two Rows */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* From Date and Time */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                              Filter From
+                            </h4>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  Start Date
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={volunteerFromDate}
+                                  onChange={(e) =>
+                                    setVolunteerFromDate(e.target.value)
+                                  }
+                                  className="w-full h-10"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  Start Time
+                                </label>
+                                <select
+                                  value={volunteerFromTime}
+                                  onChange={(e) =>
+                                    setVolunteerFromTime(e.target.value)
+                                  }
+                                  disabled={!volunteerFromDate}
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                >
+                                  <option value="">
+                                    {!volunteerFromDate
+                                      ? "Select start date first"
+                                      : "Choose start time"}
+                                  </option>
+                                  {generateVolunteerTimeOptions().map(
+                                    (time) => (
+                                      <option key={time} value={time}>
+                                        {time}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* To Date and Time */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                              Filter To
+                            </h4>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  End Date
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={volunteerToDate}
+                                  onChange={(e) =>
+                                    setVolunteerToDate(e.target.value)
+                                  }
+                                  className="w-full h-10"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  End Time
+                                </label>
+                                <select
+                                  value={volunteerToTime}
+                                  onChange={(e) =>
+                                    setVolunteerToTime(e.target.value)
+                                  }
+                                  disabled={!volunteerToDate}
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                >
+                                  <option value="">
+                                    {!volunteerToDate
+                                      ? "Select end date first"
+                                      : "Choose end time"}
+                                  </option>
+                                  {generateVolunteerTimeOptions().map(
+                                    (time) => (
+                                      <option key={time} value={time}>
+                                        {time}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                          <Button
+                            onClick={handleVolunteerSearch}
+                            disabled={
+                              !volunteerFromDate ||
+                              !volunteerFromTime ||
+                              !volunteerToDate ||
+                              !volunteerToTime
+                            }
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                          >
+                            Apply Date/Time Filter
+                          </Button>
+
+                          {(volunteerSearchName ||
+                            volunteerStatusFilter !== "pending" ||
+                            appliedVolunteerFromDate ||
+                            appliedVolunteerFromTime ||
+                            appliedVolunteerToDate ||
+                            appliedVolunteerToTime) && (
+                            <Button
+                              variant="outline"
+                              onClick={handleClearVolunteerFilters}
+                              className="h-10 px-6"
+                            >
+                              Clear All Filters
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stats */}
+                      {/* <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex flex-col space-y-2">
+                          <div className="flex items-center justify-between text-sm text-gray-600">
+                            <span>
+                              Showing {volunteerStartIndex + 1}-
+                              {Math.min(
+                                volunteerEndIndex,
+                                sortedVolunteerHours.length
+                              )}{" "}
+                              of {sortedVolunteerHours.length} volunteer hour
+                              entries
+                              {appliedVolunteerFromDate &&
+                                appliedVolunteerFromTime &&
+                                appliedVolunteerToDate &&
+                                appliedVolunteerToTime && (
+                                  <span className="ml-2 text-yellow-600">
+                                    (filtered from{" "}
+                                    {new Date(
+                                      `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+                                    ).toLocaleString()}{" "}
+                                    to{" "}
+                                    {new Date(
+                                      `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+                                    ).toLocaleString()}
+                                    )
+                                  </span>
+                                )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4 text-sm">
+                              <span className="text-blue-700 font-medium">
+                                Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
+                                hours
+                              </span>
+                              {volunteerStatusFilter !== "all" && (
+                                <span className="text-gray-600">
+                                  (Status:{" "}
+                                  {volunteerStatusFilter
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                    volunteerStatusFilter.slice(1)}
+                                  )
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div> */}
+
+                      {/* Volunteer Hours Table */}
+                      <ShadTable
+                        key={`volunteer-table-${volunteerStatusFilter}-${volunteerSearchName}-${volunteerCurrentPage}`}
+                        columns={[
+                          {
+                            header: "User",
+                            render: (hour: any) => (
+                              <div>
+                                <div className="font-medium">
+                                  {hour.user.firstName} {hour.user.lastName}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {hour.user.email}
+                                </div>
+                              </div>
+                            ),
+                          },
+                          {
+                            header: "Date",
+                            render: (hour: any) =>
+                              new Date(hour.startTime).toLocaleDateString(),
+                          },
+                          {
+                            header: "Time",
+                            render: (hour: any) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              return `${start.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })} - ${end.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}`;
+                            },
+                          },
+                          {
+                            header: "Hours",
+                            render: (hour: any) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              const durationMs =
+                                end.getTime() - start.getTime();
+                              const hours =
+                                Math.round(
+                                  (durationMs / (1000 * 60 * 60)) * 10
+                                ) / 10;
+                              return `${hours} hours`;
+                            },
+                          },
+                          {
+                            header: "Description",
+                            render: (hour: any) => hour.description || "—",
+                          },
+                          {
+                            header: "Status",
+                            render: (hour: any) => (
+                              <VolunteerHourStatusControl hour={hour} />
+                            ),
+                          },
+                          {
+                            header: "Logged",
+                            render: (hour: any) =>
+                              new Date(hour.createdAt).toLocaleDateString(),
+                          },
+                        ]}
+                        data={paginatedVolunteerHours}
+                        emptyMessage="No volunteer hours found"
+                      />
+
+                      {/* Pagination for Volunteer Hours */}
+                      <Pagination
+                        currentPage={volunteerCurrentPage}
+                        totalPages={volunteerTotalPages}
+                        onPageChange={setVolunteerCurrentPage}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recent Actions */}
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Recently Managed Volunteer Actions</CardTitle>
+                    <CardDescription>
+                      Recently modified volunteer hour statuses and number of total hours per filter
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Search and Filter Controls for Recent Actions */}
+                    <div className="space-y-4 mb-6">
+                      {/* Name Search and Status Filter Row */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Name Search */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Search by volunteer name
+                          </label>
+                          <div className="relative">
+                            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <Input
+                              placeholder="Enter first name or last name to search..."
+                              value={actionsSearchName}
+                              onChange={(e) =>
+                                setActionsSearchName(e.target.value)
+                              }
+                              className="pl-10 h-10 text-base"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Filter by status
+                          </label>
+                          <select
+                            value={actionsStatusFilter}
+                            onChange={(e) =>
+                              setActionsStatusFilter(e.target.value)
+                            }
+                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                          >
+                            <option value="all">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="denied">Denied</option>
+                            <option value="resolved">Resolved</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Date and Time Filters - Two Rows */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* From Date and Time */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                            Filter From
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                Start Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={actionsFromDate}
+                                onChange={(e) =>
+                                  setActionsFromDate(e.target.value)
+                                }
+                                className="w-full h-10"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                Start Time
+                              </label>
+                              <select
+                                value={actionsFromTime}
+                                onChange={(e) =>
+                                  setActionsFromTime(e.target.value)
+                                }
+                                disabled={!actionsFromDate}
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                              >
+                                <option value="">
+                                  {!actionsFromDate
+                                    ? "Select start date first"
+                                    : "Choose start time"}
+                                </option>
+                                {generateVolunteerTimeOptions().map((time) => (
+                                  <option key={time} value={time}>
+                                    {time}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* To Date and Time */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                            Filter To
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                End Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={actionsToDate}
+                                onChange={(e) =>
+                                  setActionsToDate(e.target.value)
+                                }
+                                className="w-full h-10"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                End Time
+                              </label>
+                              <select
+                                value={actionsToTime}
+                                onChange={(e) =>
+                                  setActionsToTime(e.target.value)
+                                }
+                                disabled={!actionsToDate}
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                              >
+                                <option value="">
+                                  {!actionsToDate
+                                    ? "Select end date first"
+                                    : "Choose end time"}
+                                </option>
+                                {generateVolunteerTimeOptions().map((time) => (
+                                  <option key={time} value={time}>
+                                    {time}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <Button
+                          onClick={handleActionsSearch}
+                          disabled={
+                            !actionsFromDate ||
+                            !actionsFromTime ||
+                            !actionsToDate ||
+                            !actionsToTime
+                          }
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                        >
+                          Apply Date/Time Filter
+                        </Button>
+
+                        {(actionsSearchName ||
+                          actionsStatusFilter !== "all" ||
+                          appliedActionsFromDate ||
+                          appliedActionsFromTime ||
+                          appliedActionsToDate ||
+                          appliedActionsToTime) && (
+                          <Button
+                            variant="outline"
+                            onClick={handleClearActionsFilters}
+                            className="h-10 px-6"
+                          >
+                            Clear All Filters
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <span>
+                            Showing {actionsStartIndex + 1}-
+                            {Math.min(
+                              actionsEndIndex,
+                              sortedRecentActions.length
+                            )}{" "}
+                            of {sortedRecentActions.length} entries
+                            {appliedActionsFromDate &&
+                              appliedActionsFromTime &&
+                              appliedActionsToDate &&
+                              appliedActionsToTime && (
+                                <span className="ml-2 text-yellow-600">
+                                  (filtered from{" "}
+                                  {new Date(
+                                    `${appliedActionsFromDate}T${appliedActionsFromTime}`
+                                  ).toLocaleString()}{" "}
+                                  to{" "}
+                                  {new Date(
+                                    `${appliedActionsToDate}T${appliedActionsToTime}`
+                                  ).toLocaleString()}
+                                  )
+                                </span>
+                              )}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4 text-sm">
+                            <span className="text-blue-700 font-medium">
+                              Total Hours: {totalRecentActionHours.toFixed(1)}{" "}
+                              hours
+                            </span>
+                            {actionsStatusFilter !== "all" && (
+                              <span className="text-gray-600">
+                                (Status:{" "}
+                                {actionsStatusFilter.charAt(0).toUpperCase() +
+                                  actionsStatusFilter.slice(1)}
+                                )
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Recent Actions Table */}
+                    <ShadTable
+                      key={`actions-table-${actionsStatusFilter}-${actionsSearchName}-${actionsCurrentPage}`}
+                      columns={[
+                        {
+                          header: "User",
+                          render: (action: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {action.user.firstName} {action.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {action.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Date",
+                          render: (action: any) =>
+                            new Date(action.startTime).toLocaleDateString(),
+                        },
+                        {
+                          header: "Time",
+                          render: (action: any) => {
+                            const start = new Date(action.startTime);
+                            const end = new Date(action.endTime);
+                            return `${start.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })} - ${end.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}`;
+                          },
+                        },
+                        {
+                          header: "Status History",
+                          render: (action: any) => {
+                            const currentStatus = action.status;
+                            const previousStatus = action.previousStatus;
+
+                            // If no previous status, just show current status
+                            if (!previousStatus) {
+                              return (
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    currentStatus === "approved"
+                                      ? "bg-green-100 text-green-800"
+                                      : currentStatus === "denied"
+                                      ? "bg-red-100 text-red-800"
+                                      : currentStatus === "resolved"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {currentStatus.charAt(0).toUpperCase() +
+                                    currentStatus.slice(1)}
+                                </span>
+                              );
+                            }
+
+                            // Show previous -> current status
+                            return (
+                              <div className="flex items-center space-x-2">
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    previousStatus === "approved"
+                                      ? "bg-green-100 text-green-800"
+                                      : previousStatus === "denied"
+                                      ? "bg-red-100 text-red-800"
+                                      : previousStatus === "resolved"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {previousStatus.charAt(0).toUpperCase() +
+                                    previousStatus.slice(1)}
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    currentStatus === "approved"
+                                      ? "bg-green-100 text-green-800"
+                                      : currentStatus === "denied"
+                                      ? "bg-red-100 text-red-800"
+                                      : currentStatus === "resolved"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {currentStatus.charAt(0).toUpperCase() +
+                                    currentStatus.slice(1)}
+                                </span>
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Last Modified",
+                          render: (action: any) =>
+                            new Date(action.updatedAt).toLocaleString(),
+                        },
+                      ]}
+                      data={paginatedRecentActions}
+                      emptyMessage="No recent actions found"
+                    />
+
+                    {/* Pagination for Recent Actions */}
+                    <Pagination
+                      currentPage={actionsCurrentPage}
+                      totalPages={actionsTotalPages}
+                      onPageChange={setActionsCurrentPage}
                     />
                   </CardContent>
                 </Card>

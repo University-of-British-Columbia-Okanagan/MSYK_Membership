@@ -122,9 +122,9 @@ export async function savePaymentMethod(
     const token = await stripe.tokens.create({
       card: {
         number: paymentData.cardNumber.replace(/\s+/g, ""),
-        exp_month: expMonthStr,  // ← string
-        exp_year: expYearStr,    // ← string
-        cvc: paymentData.cvc,    // ← string
+        exp_month: expMonthStr, // ← string
+        exp_year: expYearStr, // ← string
+        cvc: paymentData.cvc, // ← string
       },
     });
 
@@ -387,12 +387,102 @@ export async function getOrCreateStripeCustomer(userId: number) {
   return customer.id;
 }
 
-export async function updateUserVolunteerStatus(userId: number, isVolunteer: boolean) {
-  return await db.user.update({
-    where: { id: userId },
-    data: { 
-      isVolunteer,
-      volunteerSince: isVolunteer ? new Date() : null
+export async function updateUserVolunteerStatus(
+  userId: number,
+  isVolunteer: boolean
+) {
+  if (isVolunteer) {
+    // Check if user already has an active volunteer period
+    const activeVolunteer = await db.volunteer.findFirst({
+      where: {
+        userId,
+        volunteerEnd: null,
+      },
+    });
+
+    // Only create new volunteer record if not already active
+    if (!activeVolunteer) {
+      return await db.volunteer.create({
+        data: {
+          userId,
+          volunteerStart: new Date(),
+        },
+      });
+    }
+    return activeVolunteer;
+  } else {
+    // End the current volunteer period
+    const activeVolunteer = await db.volunteer.findFirst({
+      where: {
+        userId,
+        volunteerEnd: null,
+      },
+    });
+
+    if (activeVolunteer) {
+      return await db.volunteer.update({
+        where: { id: activeVolunteer.id },
+        data: {
+          volunteerEnd: new Date(),
+        },
+      });
+    }
+  }
+}
+
+export async function getUserVolunteerHistory(userId: number) {
+  return await db.volunteer.findMany({
+    where: { userId },
+    orderBy: { volunteerStart: "desc" },
+  });
+}
+
+export async function getUserCurrentVolunteerStatus(userId: number) {
+  const activeVolunteer = await db.volunteer.findFirst({
+    where: {
+      userId,
+      volunteerEnd: null,
     },
+  });
+  return activeVolunteer !== null;
+}
+
+export async function getAllUsersWithVolunteerStatus() {
+  const users = await db.user.findMany({
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      roleLevel: true,
+      allowLevel4: true,
+      volunteers: {
+        select: {
+          id: true,
+          volunteerStart: true,
+          volunteerEnd: true,
+        },
+        orderBy: {
+          volunteerStart: "desc",
+        },
+      },
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
+
+  // Transform the data to include computed volunteer status
+  return users.map((user) => {
+    const activeVolunteer = user.volunteers.find(
+      (v) => v.volunteerEnd === null
+    );
+    return {
+      ...user,
+      isVolunteer: !!activeVolunteer,
+      volunteerSince: activeVolunteer?.volunteerStart || null,
+      volunteerHistory: user.volunteers,
+    };
   });
 }
