@@ -3359,7 +3359,7 @@ export default function AdminSettings() {
                               actionsEndIndex,
                               sortedRecentActions.length
                             )}{" "}
-                            of {sortedRecentActions.length} recent actions
+                            of {sortedRecentActions.length} entries
                             {appliedActionsFromDate &&
                               appliedActionsFromTime &&
                               appliedActionsToDate &&
