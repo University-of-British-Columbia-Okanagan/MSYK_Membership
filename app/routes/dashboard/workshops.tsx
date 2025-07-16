@@ -1,4 +1,3 @@
-// workshops.tsx
 import { useLoaderData } from "react-router";
 import { Outlet } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
