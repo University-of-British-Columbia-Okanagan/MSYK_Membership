@@ -156,6 +156,9 @@ export default function ProfilePage() {
   const [appliedToDate, setAppliedToDate] = useState("");
   const [appliedToTime, setAppliedToTime] = useState("");
 
+  // State for expanding denied hours message
+  const [showDeniedMessage, setShowDeniedMessage] = useState(false);
+
   // Clear form after successful submission and auto-hide success message
   useEffect(() => {
     if (actionData?.success) {
@@ -179,13 +182,18 @@ export default function ProfilePage() {
     roleUser.roleName.toLowerCase() === "admin";
   const isGuest = !roleUser || !roleUser.userId;
 
+  // Check if there are any denied hours to show the resubmit message
+  const hasDeniedHours = useMemo(() => {
+    return volunteerHours.some(entry => entry.status === "denied");
+  }, [volunteerHours]);
+
   // Helper function to generate time options
   const generateTimeOptions = () => {
     const options = [];
     for (let hour = 0; hour < 24; hour++) {
       for (let minute of [0, 15, 30, 45]) {
-        const formattedHour = hour.toString().padStart(2, '0');
-        const formattedMinute = minute.toString().padStart(2, '0');
+        const formattedHour = hour.toString().padStart(2, "0");
+        const formattedMinute = minute.toString().padStart(2, "0");
         options.push(`${formattedHour}:${formattedMinute}`);
       }
     }
@@ -198,19 +206,26 @@ export default function ProfilePage() {
 
     return volunteerHours.filter((entry) => {
       // Status filter
-      const statusMatch = statusFilter === "all" || entry.status === statusFilter;
+      const statusMatch =
+        statusFilter === "all" || entry.status === statusFilter;
 
       // Date/time range filtering - only apply if all filter values are set
       let dateTimeMatch = true;
-      if (appliedFromDate && appliedFromTime && appliedToDate && appliedToTime) {
+      if (
+        appliedFromDate &&
+        appliedFromTime &&
+        appliedToDate &&
+        appliedToTime
+      ) {
         const entryStartDate = new Date(entry.startTime);
-        
+
         // Create from and to datetime objects
         const fromDateTime = new Date(`${appliedFromDate}T${appliedFromTime}`);
         const toDateTime = new Date(`${appliedToDate}T${appliedToTime}`);
-        
+
         // Check if entry start time is within the range
-        dateTimeMatch = entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
       }
 
       return statusMatch && dateTimeMatch;
@@ -247,7 +262,13 @@ export default function ProfilePage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, appliedFromDate, appliedFromTime, appliedToDate, appliedToTime]);
+  }, [
+    statusFilter,
+    appliedFromDate,
+    appliedFromTime,
+    appliedToDate,
+    appliedToTime,
+  ]);
 
   // Handle search button click
   const handleSearch = () => {
@@ -675,6 +696,48 @@ export default function ProfilePage() {
                         </h4>
                       </div>
 
+                      {/* Collapsible Denied Hours Notice */}
+                      {isActiveVolunteer && hasDeniedHours && (
+                        <div className="mb-4">
+                          {/* Collapsed State - Just the clickable header */}
+                          <div 
+                            onClick={() => setShowDeniedMessage(!showDeniedMessage)}
+                            className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg cursor-pointer hover:bg-orange-100 transition-colors"
+                          >
+                            <div className="flex items-center gap-2">
+                              <svg className="h-4 w-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                              <span className="text-sm font-medium text-orange-800">
+                                Notice About Denied Hours
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-orange-600">
+                                {showDeniedMessage ? 'Hide' : 'Show'}
+                              </span>
+                              <svg 
+                                className={`h-4 w-4 text-orange-500 transition-transform ${showDeniedMessage ? 'rotate-180' : ''}`} 
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          {/* Expanded State - The full message */}
+                          {showDeniedMessage && (
+                            <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                              <p className="text-sm text-orange-700">
+                                If any of your volunteer hours were denied by an admin, please contact the Makerspace YK team for more information.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Filters Row */}
                       <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
                         {/* Status Filter */}
@@ -795,14 +858,25 @@ export default function ProfilePage() {
                       <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center justify-between text-sm text-gray-600">
                           <span>
-                            Showing {startIndex + 1}-{Math.min(endIndex, sortedVolunteerHours.length)} of{" "}
+                            Showing {startIndex + 1}-
+                            {Math.min(endIndex, sortedVolunteerHours.length)} of{" "}
                             {sortedVolunteerHours.length} entries
-                            {(appliedFromDate && appliedFromTime && appliedToDate && appliedToTime) && (
-                              <span className="ml-2 text-blue-600">
-                                (filtered from {new Date(`${appliedFromDate}T${appliedFromTime}`).toLocaleString()} to{" "}
-                                {new Date(`${appliedToDate}T${appliedToTime}`).toLocaleString()})
-                              </span>
-                            )}
+                            {appliedFromDate &&
+                              appliedFromTime &&
+                              appliedToDate &&
+                              appliedToTime && (
+                                <span className="ml-2 text-blue-600">
+                                  (filtered from{" "}
+                                  {new Date(
+                                    `${appliedFromDate}T${appliedFromTime}`
+                                  ).toLocaleString()}{" "}
+                                  to{" "}
+                                  {new Date(
+                                    `${appliedToDate}T${appliedToTime}`
+                                  ).toLocaleString()}
+                                  )
+                                </span>
+                              )}
                           </span>
                           <span>
                             Total:{" "}
@@ -810,7 +884,8 @@ export default function ProfilePage() {
                               .reduce((total, entry) => {
                                 const start = new Date(entry.startTime);
                                 const end = new Date(entry.endTime);
-                                const durationMs = end.getTime() - start.getTime();
+                                const durationMs =
+                                  end.getTime() - start.getTime();
                                 const hours = durationMs / (1000 * 60 * 60);
                                 return total + hours;
                               }, 0)
