@@ -3040,7 +3040,7 @@ export default function AdminSettings() {
                       </div>
 
                       {/* Stats */}
-                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      {/* <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                         <div className="flex flex-col space-y-2">
                           <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>
@@ -3088,7 +3088,7 @@ export default function AdminSettings() {
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </div> */}
 
                       {/* Volunteer Hours Table */}
                       <ShadTable
@@ -3173,9 +3173,9 @@ export default function AdminSettings() {
                 {/* Recent Actions */}
                 <Card className="mt-8">
                   <CardHeader>
-                    <CardTitle>Recent Manage Volunteer Actions</CardTitle>
+                    <CardTitle>Recently Managed Volunteer Actions</CardTitle>
                     <CardDescription>
-                      Recently modified volunteer hour statuses
+                      Recently modified volunteer hour statuses and number of total hours per filter
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
