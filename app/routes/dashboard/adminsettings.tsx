@@ -542,10 +542,18 @@ function VolunteerControl({
     }>;
   };
 }) {
-  const [isVolunteer, setIsVolunteer] = useState<boolean>(user.isVolunteer);
+  // Use the actual data from the server instead of maintaining separate state
+  const isActuallyVolunteer = user.isVolunteer;
+
+  const [isVolunteer, setIsVolunteer] = useState<boolean>(isActuallyVolunteer);
   const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
   const [pendingStatus, setPendingStatus] = useState<boolean>(false);
   const submit = useSubmit();
+
+  // Update local state when the actual data changes (important for pagination)
+  React.useEffect(() => {
+    setIsVolunteer(isActuallyVolunteer);
+  }, [isActuallyVolunteer, user.id]); // Include user.id to reset when user changes
 
   const updateVolunteerStatus = (newStatus: boolean) => {
     const formData = new FormData();
@@ -792,6 +800,11 @@ export default function AdminSettings() {
       allowLevel4: boolean;
       isVolunteer: boolean;
       volunteerSince: Date | null;
+      volunteerHistory?: Array<{
+        id: number;
+        volunteerStart: Date;
+        volunteerEnd: Date | null;
+      }>;
     }>;
     volunteerHours: Array<{
       id: number;

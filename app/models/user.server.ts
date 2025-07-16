@@ -448,29 +448,41 @@ export async function getUserCurrentVolunteerStatus(userId: number) {
 }
 
 export async function getAllUsersWithVolunteerStatus() {
-  const usersRaw = await getAllUsers();
-
-  const users = await Promise.all(
-    usersRaw.map(async (user) => {
-      const activeVolunteer = await db.volunteer.findFirst({
-        where: {
-          userId: user.id,
-          volunteerEnd: null,
+  const users = await db.user.findMany({
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      roleLevel: true,
+      allowLevel4: true,
+      volunteers: {
+        select: {
+          id: true,
+          volunteerStart: true,
+          volunteerEnd: true,
         },
-      });
-      const volunteerHistory = await db.volunteer.findMany({
-        where: { userId: user.id },
-        orderBy: { volunteerStart: "desc" },
-      });
+        orderBy: {
+          volunteerStart: "desc",
+        },
+      },
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
 
-      return {
-        ...user,
-        isVolunteer: activeVolunteer !== null,
-        volunteerSince: activeVolunteer?.volunteerStart || null,
-        volunteerHistory,
-      };
-    })
-  );
-
-  return users;
+  // Transform the data to include computed volunteer status
+  return users.map((user) => {
+    const activeVolunteer = user.volunteers.find(
+      (v) => v.volunteerEnd === null
+    );
+    return {
+      ...user,
+      isVolunteer: !!activeVolunteer,
+      volunteerSince: activeVolunteer?.volunteerStart || null,
+      volunteerHistory: user.volunteers,
+    };
+  });
 }
