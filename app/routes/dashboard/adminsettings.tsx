@@ -2793,23 +2793,6 @@ export default function AdminSettings() {
                         </div>
                       </div>
 
-                      {/* Clear Filters Button */}
-                      {(volunteerSearchName ||
-                        appliedVolunteerFromDate ||
-                        appliedVolunteerFromTime ||
-                        appliedVolunteerToDate ||
-                        appliedVolunteerToTime) && (
-                        <div className="mb-4">
-                          <Button
-                            variant="outline"
-                            onClick={handleClearVolunteerFilters}
-                            className="text-sm"
-                          >
-                            Clear all filters
-                          </Button>
-                        </div>
-                      )}
-
                       {/* Stats */}
                       <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center justify-between text-sm text-gray-600">
