@@ -28,12 +28,17 @@ export async function register(rawValues: Record<string, any>) {
     // Handle digital signature as base64 string instead of file
     let guardianSignedConsentData = null;
     const guardianSignedConsent = rawValues.guardianSignedConsent;
-    
-    if (typeof guardianSignedConsent === "string" && 
-        guardianSignedConsent.trim() !== "" && 
-        guardianSignedConsent.startsWith("data:image/")) {
+
+    if (
+      typeof guardianSignedConsent === "string" &&
+      guardianSignedConsent.trim() !== "" &&
+      guardianSignedConsent.startsWith("data:image/")
+    ) {
       // Store the base64 string directly in the database
-      guardianSignedConsentData = guardianSignedConsent;
+      // guardianSignedConsentData = guardianSignedConsent;
+      
+      // Hash the base64 signature data like a password
+      guardianSignedConsentData = await bcrypt.hash(guardianSignedConsent, 10);
     } else {
       guardianSignedConsentData = null;
     }
@@ -127,7 +132,7 @@ export async function login(rawValues: Record<string, any>) {
     id: user.id,
     email: user.email,
     roleUserId: user.roleUserId,
-    password: data.password
+    password: data.password,
   };
 }
 
@@ -196,11 +201,10 @@ export async function getUser(request: Request) {
     select: {
       id: true,
       email: true,
-      roleLevel: true, 
+      roleLevel: true,
     },
     where: { id: parseInt(userId) },
   });
-
 
   if (!user) {
     throw await logout(request);
@@ -218,7 +222,11 @@ export async function logout(request: Request) {
   });
 }
 
-export async function createUserSession(userId: number, password: string, redirectTo: string) {
+export async function createUserSession(
+  userId: number,
+  password: string,
+  redirectTo: string
+) {
   const session = await storage.getSession();
   session.set("userId", userId.toString());
   session.set("userPassword", password);
@@ -256,4 +264,3 @@ export async function getRoleUser(request: Request) {
   }
   return null;
 }
-
