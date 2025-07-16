@@ -184,7 +184,7 @@ export default function ProfilePage() {
 
   // Check if there are any denied hours to show the resubmit message
   const hasDeniedHours = useMemo(() => {
-    return volunteerHours.some(entry => entry.status === "denied");
+    return volunteerHours.some((entry) => entry.status === "denied");
   }, [volunteerHours]);
 
   // Helper function to generate time options
@@ -335,6 +335,8 @@ export default function ProfilePage() {
               ? "bg-green-100 text-green-800"
               : entry.status === "denied"
               ? "bg-red-100 text-red-800"
+              : entry.status === "resolved"
+              ? "bg-purple-100 text-purple-800"
               : "bg-yellow-100 text-yellow-800"
           }`}
         >
@@ -700,13 +702,23 @@ export default function ProfilePage() {
                       {isActiveVolunteer && hasDeniedHours && (
                         <div className="mb-4">
                           {/* Collapsed State - Just the clickable header */}
-                          <div 
-                            onClick={() => setShowDeniedMessage(!showDeniedMessage)}
+                          <div
+                            onClick={() =>
+                              setShowDeniedMessage(!showDeniedMessage)
+                            }
                             className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg cursor-pointer hover:bg-orange-100 transition-colors"
                           >
                             <div className="flex items-center gap-2">
-                              <svg className="h-4 w-4 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                              <svg
+                                className="h-4 w-4 text-orange-500"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                                  clipRule="evenodd"
+                                />
                               </svg>
                               <span className="text-sm font-medium text-orange-800">
                                 Notice About Denied Hours
@@ -714,15 +726,22 @@ export default function ProfilePage() {
                             </div>
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-orange-600">
-                                {showDeniedMessage ? 'Hide' : 'Show'}
+                                {showDeniedMessage ? "Hide" : "Show"}
                               </span>
-                              <svg 
-                                className={`h-4 w-4 text-orange-500 transition-transform ${showDeniedMessage ? 'rotate-180' : ''}`} 
-                                fill="none" 
-                                stroke="currentColor" 
+                              <svg
+                                className={`h-4 w-4 text-orange-500 transition-transform ${
+                                  showDeniedMessage ? "rotate-180" : ""
+                                }`}
+                                fill="none"
+                                stroke="currentColor"
                                 viewBox="0 0 24 24"
                               >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 9l-7 7-7-7"
+                                />
                               </svg>
                             </div>
                           </div>
@@ -731,7 +750,9 @@ export default function ProfilePage() {
                           {showDeniedMessage && (
                             <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                               <p className="text-sm text-orange-700">
-                                If any of your volunteer hours were denied by an admin, please contact the Makerspace YK team for more information.
+                                If any of your volunteer hours were denied by an
+                                admin, please contact the Makerspace YK team for
+                                more information.
                               </p>
                             </div>
                           )}
@@ -745,7 +766,10 @@ export default function ProfilePage() {
                           <label className="text-sm text-gray-600 mb-1">
                             Filter by status:
                           </label>
-                          <Select value={statusFilter} onValueChange={setStatusFilter}>
+                          <Select
+                            value={statusFilter}
+                            onValueChange={setStatusFilter}
+                          >
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
@@ -754,6 +778,7 @@ export default function ProfilePage() {
                               <SelectItem value="pending">Pending</SelectItem>
                               <SelectItem value="approved">Approved</SelectItem>
                               <SelectItem value="denied">Denied</SelectItem>
+                              <SelectItem value="resolved">Resolved</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -776,13 +801,19 @@ export default function ProfilePage() {
                           <label className="text-sm text-gray-600 mb-1">
                             From time:
                           </label>
-                          <Select 
-                            value={fromTime} 
+                          <Select
+                            value={fromTime}
                             onValueChange={setFromTime}
                             disabled={!fromDate}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder={!fromDate ? "Select date first" : "Select time"} />
+                              <SelectValue
+                                placeholder={
+                                  !fromDate
+                                    ? "Select date first"
+                                    : "Select time"
+                                }
+                              />
                             </SelectTrigger>
                             <SelectContent>
                               {generateTimeOptions().map((time) => (
@@ -812,13 +843,17 @@ export default function ProfilePage() {
                           <label className="text-sm text-gray-600 mb-1">
                             To time:
                           </label>
-                          <Select 
-                            value={toTime} 
+                          <Select
+                            value={toTime}
                             onValueChange={setToTime}
                             disabled={!toDate}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder={!toDate ? "Select date first" : "Select time"} />
+                              <SelectValue
+                                placeholder={
+                                  !toDate ? "Select date first" : "Select time"
+                                }
+                              />
                             </SelectTrigger>
                             <SelectContent>
                               {generateTimeOptions().map((time) => (
@@ -834,7 +869,9 @@ export default function ProfilePage() {
                         <div className="flex flex-col justify-end">
                           <button
                             onClick={handleSearch}
-                            disabled={!fromDate || !fromTime || !toDate || !toTime}
+                            disabled={
+                              !fromDate || !fromTime || !toDate || !toTime
+                            }
                             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                           >
                             Search
@@ -843,7 +880,11 @@ export default function ProfilePage() {
                       </div>
 
                       {/* Clear Filters Button */}
-                      {(statusFilter !== "all" || appliedFromDate || appliedFromTime || appliedToDate || appliedToTime) && (
+                      {(statusFilter !== "all" ||
+                        appliedFromDate ||
+                        appliedFromTime ||
+                        appliedToDate ||
+                        appliedToTime) && (
                         <div className="mb-4">
                           <button
                             onClick={handleClearFilters}
