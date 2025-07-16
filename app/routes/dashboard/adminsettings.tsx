@@ -2637,112 +2637,133 @@ export default function AdminSettings() {
                   <CardHeader>
                     <CardTitle>Manage Volunteer Hours</CardTitle>
                     <CardDescription>
-                      Review and approve/deny volunteer hour submissions from
+                      Review and approve/deny/resolve/pending volunteer hour submissions from
                       all users
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
                       {/* Search and Filter Controls */}
-                      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
-                        {/* Name Search */}
-                        <div className="flex flex-col">
-                          <label className="text-sm text-gray-600 mb-1">
-                            Search by name:
+                      <div className="space-y-4 mb-6">
+                        {/* Name Search - Full Width Row */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Search by volunteer name
                           </label>
-                          <div className="flex items-center gap-2">
-                            <FiSearch className="text-gray-500" />
+                          <div className="relative">
+                            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                             <Input
-                              placeholder="First or last name"
+                              placeholder="Enter first name or last name to search..."
                               value={volunteerSearchName}
                               onChange={(e) =>
                                 setVolunteerSearchName(e.target.value)
                               }
-                              className="w-full"
+                              className="pl-10 h-10 text-base"
                             />
                           </div>
                         </div>
 
-                        {/* From Date */}
-                        <div className="flex flex-col">
-                          <label className="text-sm text-gray-600 mb-1">
-                            From date:
-                          </label>
-                          <Input
-                            type="date"
-                            value={volunteerFromDate}
-                            onChange={(e) =>
-                              setVolunteerFromDate(e.target.value)
-                            }
-                            className="w-full"
-                          />
+                        {/* Date and Time Filters - Two Rows */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* From Date and Time */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                              Filter From
+                            </h4>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  Start Date
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={volunteerFromDate}
+                                  onChange={(e) =>
+                                    setVolunteerFromDate(e.target.value)
+                                  }
+                                  className="w-full h-10"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  Start Time
+                                </label>
+                                <select
+                                  value={volunteerFromTime}
+                                  onChange={(e) =>
+                                    setVolunteerFromTime(e.target.value)
+                                  }
+                                  disabled={!volunteerFromDate}
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                >
+                                  <option value="">
+                                    {!volunteerFromDate
+                                      ? "Select start date first"
+                                      : "Choose start time"}
+                                  </option>
+                                  {generateVolunteerTimeOptions().map(
+                                    (time) => (
+                                      <option key={time} value={time}>
+                                        {time}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* To Date and Time */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                              Filter To
+                            </h4>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  End Date
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={volunteerToDate}
+                                  onChange={(e) =>
+                                    setVolunteerToDate(e.target.value)
+                                  }
+                                  className="w-full h-10"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  End Time
+                                </label>
+                                <select
+                                  value={volunteerToTime}
+                                  onChange={(e) =>
+                                    setVolunteerToTime(e.target.value)
+                                  }
+                                  disabled={!volunteerToDate}
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                >
+                                  <option value="">
+                                    {!volunteerToDate
+                                      ? "Select end date first"
+                                      : "Choose end time"}
+                                  </option>
+                                  {generateVolunteerTimeOptions().map(
+                                    (time) => (
+                                      <option key={time} value={time}>
+                                        {time}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
-                        {/* From Time */}
-                        <div className="flex flex-col">
-                          <label className="text-sm text-gray-600 mb-1">
-                            From time:
-                          </label>
-                          <select
-                            value={volunteerFromTime}
-                            onChange={(e) =>
-                              setVolunteerFromTime(e.target.value)
-                            }
-                            disabled={!volunteerFromDate}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-100"
-                          >
-                            <option value="">
-                              {!volunteerFromDate
-                                ? "Select date first"
-                                : "Select time"}
-                            </option>
-                            {generateVolunteerTimeOptions().map((time) => (
-                              <option key={time} value={time}>
-                                {time}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* To Date */}
-                        <div className="flex flex-col">
-                          <label className="text-sm text-gray-600 mb-1">
-                            To date:
-                          </label>
-                          <Input
-                            type="date"
-                            value={volunteerToDate}
-                            onChange={(e) => setVolunteerToDate(e.target.value)}
-                            className="w-full"
-                          />
-                        </div>
-
-                        {/* To Time */}
-                        <div className="flex flex-col">
-                          <label className="text-sm text-gray-600 mb-1">
-                            To time:
-                          </label>
-                          <select
-                            value={volunteerToTime}
-                            onChange={(e) => setVolunteerToTime(e.target.value)}
-                            disabled={!volunteerToDate}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-100"
-                          >
-                            <option value="">
-                              {!volunteerToDate
-                                ? "Select date first"
-                                : "Select time"}
-                            </option>
-                            {generateVolunteerTimeOptions().map((time) => (
-                              <option key={time} value={time}>
-                                {time}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Search Button */}
-                        <div className="flex flex-col justify-end">
+                        {/* Action Buttons */}
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
                           <Button
                             onClick={handleVolunteerSearch}
                             disabled={
@@ -2751,10 +2772,24 @@ export default function AdminSettings() {
                               !volunteerToDate ||
                               !volunteerToTime
                             }
-                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
                           >
-                            Search
+                            Apply Date/Time Filter
                           </Button>
+
+                          {(volunteerSearchName ||
+                            appliedVolunteerFromDate ||
+                            appliedVolunteerFromTime ||
+                            appliedVolunteerToDate ||
+                            appliedVolunteerToTime) && (
+                            <Button
+                              variant="outline"
+                              onClick={handleClearVolunteerFilters}
+                              className="h-10 px-6"
+                            >
+                              Clear All Filters
+                            </Button>
+                          )}
                         </div>
                       </div>
 
