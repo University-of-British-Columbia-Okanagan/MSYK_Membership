@@ -79,6 +79,11 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
+import {
+  getAllVolunteerHours,
+  updateVolunteerHourStatus,
+  getRecentVolunteerHourActions,
+} from "~/models/profile.server";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -128,6 +133,9 @@ export async function loader({ request }: { request: Request }) {
   const level3Schedule = await getLevel3ScheduleRestrictions();
   const level4UnavailableHours = await getLevel4UnavailableHours();
 
+  const allVolunteerHours = await getAllVolunteerHours();
+  const recentVolunteerActions = await getRecentVolunteerHourActions(50);
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -155,6 +163,8 @@ export async function loader({ request }: { request: Request }) {
     },
     workshops,
     users,
+    volunteerHours: allVolunteerHours,
+    recentVolunteerActions,
   };
 }
 
@@ -431,6 +441,35 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updateVolunteerHourStatus") {
+    const hourId = formData.get("hourId");
+    const newStatus = formData.get("newStatus");
+    try {
+      await updateVolunteerHourStatus(Number(hourId), String(newStatus));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated volunteer hour status for hour ${hourId} to ${newStatus}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Volunteer hour status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating volunteer hour status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update volunteer hour status",
+      };
+    }
+  }
+
   logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
     url: request.url,
   });
@@ -656,8 +695,64 @@ function Pagination({
   );
 }
 
+function VolunteerHourStatusControl({
+  hour,
+}: {
+  hour: {
+    id: number;
+    status: string;
+  };
+}) {
+  const [status, setStatus] = useState<string>(hour.status);
+  const submit = useSubmit();
+
+  const updateStatus = (newStatus: string) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateVolunteerHourStatus");
+    formData.append("hourId", hour.id.toString());
+    formData.append("newStatus", newStatus);
+    submit(formData, { method: "post" });
+    setStatus(newStatus);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "denied":
+        return "bg-red-100 text-red-800";
+      case "resolved":
+        return "bg-purple-100 text-purple-800";
+      default:
+        return "bg-yellow-100 text-yellow-800";
+    }
+  };
+
+  return (
+    <select
+      value={status}
+      onChange={(e) => updateStatus(e.target.value)}
+      className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${getStatusColor(
+        status
+      )}`}
+    >
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="denied">Denied</option>
+      <option value="resolved">Resolved</option>
+    </select>
+  );
+}
+
 export default function AdminSettings() {
-  const { roleUser, settings, workshops, users } = useLoaderData<{
+  const {
+    roleUser,
+    settings,
+    workshops,
+    users,
+    volunteerHours,
+    recentVolunteerActions,
+  } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
     settings: {
       workshopVisibilityDays: number;
@@ -697,6 +792,36 @@ export default function AdminSettings() {
       allowLevel4: boolean;
       isVolunteer: boolean;
       volunteerSince: Date | null;
+    }>;
+    volunteerHours: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+    }>;
+    recentVolunteerActions: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
     }>;
   }>();
 
@@ -772,6 +897,21 @@ export default function AdminSettings() {
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage] = useState(5);
 
+  // Volunteer hours management state
+  const [volunteerSearchName, setVolunteerSearchName] = useState("");
+  const [volunteerFromDate, setVolunteerFromDate] = useState("");
+  const [volunteerFromTime, setVolunteerFromTime] = useState("");
+  const [volunteerToDate, setVolunteerToDate] = useState("");
+  const [volunteerToTime, setVolunteerToTime] = useState("");
+  const [appliedVolunteerFromDate, setAppliedVolunteerFromDate] = useState("");
+  const [appliedVolunteerFromTime, setAppliedVolunteerFromTime] = useState("");
+  const [appliedVolunteerToDate, setAppliedVolunteerToDate] = useState("");
+  const [appliedVolunteerToTime, setAppliedVolunteerToTime] = useState("");
+  const [volunteerCurrentPage, setVolunteerCurrentPage] = useState(1);
+  const [volunteerHoursPerPage] = useState(5);
+  const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
+  const [actionsPerPage] = useState(5);
+
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -784,6 +924,136 @@ export default function AdminSettings() {
   const sortedFilteredUsers = useMemo(() => {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
   }, [filteredUsers]);
+
+  // Helper function to generate time options
+  const generateVolunteerTimeOptions = () => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute of [0, 15, 30, 45]) {
+        const formattedHour = hour.toString().padStart(2, "0");
+        const formattedMinute = minute.toString().padStart(2, "0");
+        options.push(`${formattedHour}:${formattedMinute}`);
+      }
+    }
+    return options;
+  };
+
+  // Filter volunteer hours
+  const filteredVolunteerHours = useMemo(() => {
+    return volunteerHours.filter((hour) => {
+      // Name filter
+      const fullName =
+        `${hour.user.firstName} ${hour.user.lastName}`.toLowerCase();
+      const nameMatch =
+        volunteerSearchName === "" ||
+        fullName.includes(volunteerSearchName.toLowerCase());
+
+      // Date/time range filtering
+      let dateTimeMatch = true;
+      if (
+        appliedVolunteerFromDate &&
+        appliedVolunteerFromTime &&
+        appliedVolunteerToDate &&
+        appliedVolunteerToTime
+      ) {
+        const entryStartDate = new Date(hour.startTime);
+        const fromDateTime = new Date(
+          `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+        );
+        const toDateTime = new Date(
+          `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+        );
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return nameMatch && dateTimeMatch;
+    });
+  }, [
+    volunteerHours,
+    volunteerSearchName,
+    appliedVolunteerFromDate,
+    appliedVolunteerFromTime,
+    appliedVolunteerToDate,
+    appliedVolunteerToTime,
+  ]);
+
+  // Sort and paginate volunteer hours
+  const sortedVolunteerHours = useMemo(() => {
+    return filteredVolunteerHours
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
+  }, [filteredVolunteerHours]);
+
+  const volunteerTotalPages = Math.ceil(
+    sortedVolunteerHours.length / volunteerHoursPerPage
+  );
+  const volunteerStartIndex =
+    (volunteerCurrentPage - 1) * volunteerHoursPerPage;
+  const volunteerEndIndex = volunteerStartIndex + volunteerHoursPerPage;
+  const paginatedVolunteerHours = sortedVolunteerHours.slice(
+    volunteerStartIndex,
+    volunteerEndIndex
+  );
+
+  // Sort and paginate recent actions
+  const sortedRecentActions = useMemo(() => {
+    return recentVolunteerActions
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+  }, [recentVolunteerActions]);
+
+  const actionsTotalPages = Math.ceil(
+    sortedRecentActions.length / actionsPerPage
+  );
+  const actionsStartIndex = (actionsCurrentPage - 1) * actionsPerPage;
+  const actionsEndIndex = actionsStartIndex + actionsPerPage;
+  const paginatedRecentActions = sortedRecentActions.slice(
+    actionsStartIndex,
+    actionsEndIndex
+  );
+
+  // Handle volunteer hours search
+  const handleVolunteerSearch = () => {
+    setAppliedVolunteerFromDate(volunteerFromDate);
+    setAppliedVolunteerFromTime(volunteerFromTime);
+    setAppliedVolunteerToDate(volunteerToDate);
+    setAppliedVolunteerToTime(volunteerToTime);
+  };
+
+  // Handle clear volunteer filters
+  const handleClearVolunteerFilters = () => {
+    setVolunteerSearchName("");
+    setVolunteerFromDate("");
+    setVolunteerFromTime("");
+    setVolunteerToDate("");
+    setVolunteerToTime("");
+    setAppliedVolunteerFromDate("");
+    setAppliedVolunteerFromTime("");
+    setAppliedVolunteerToDate("");
+    setAppliedVolunteerToTime("");
+  };
+
+  // Reset pagination when filters change
+  React.useEffect(() => {
+    setVolunteerCurrentPage(1);
+  }, [
+    volunteerSearchName,
+    appliedVolunteerFromDate,
+    appliedVolunteerFromTime,
+    appliedVolunteerToDate,
+    appliedVolunteerToTime,
+  ]);
+
+  React.useEffect(() => {
+    setActionsCurrentPage(1);
+  }, [recentVolunteerActions]);
 
   // PAGINATION LOGIC
   const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
@@ -2358,6 +2628,371 @@ export default function AdminSettings() {
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Volunteer Hours Management */}
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Manage Volunteer Hours</CardTitle>
+                    <CardDescription>
+                      Review and approve/deny volunteer hour submissions from
+                      all users
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {/* Search and Filter Controls */}
+                      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
+                        {/* Name Search */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            Search by name:
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <FiSearch className="text-gray-500" />
+                            <Input
+                              placeholder="First or last name"
+                              value={volunteerSearchName}
+                              onChange={(e) =>
+                                setVolunteerSearchName(e.target.value)
+                              }
+                              className="w-full"
+                            />
+                          </div>
+                        </div>
+
+                        {/* From Date */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            From date:
+                          </label>
+                          <Input
+                            type="date"
+                            value={volunteerFromDate}
+                            onChange={(e) =>
+                              setVolunteerFromDate(e.target.value)
+                            }
+                            className="w-full"
+                          />
+                        </div>
+
+                        {/* From Time */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            From time:
+                          </label>
+                          <select
+                            value={volunteerFromTime}
+                            onChange={(e) =>
+                              setVolunteerFromTime(e.target.value)
+                            }
+                            disabled={!volunteerFromDate}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-100"
+                          >
+                            <option value="">
+                              {!volunteerFromDate
+                                ? "Select date first"
+                                : "Select time"}
+                            </option>
+                            {generateVolunteerTimeOptions().map((time) => (
+                              <option key={time} value={time}>
+                                {time}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* To Date */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            To date:
+                          </label>
+                          <Input
+                            type="date"
+                            value={volunteerToDate}
+                            onChange={(e) => setVolunteerToDate(e.target.value)}
+                            className="w-full"
+                          />
+                        </div>
+
+                        {/* To Time */}
+                        <div className="flex flex-col">
+                          <label className="text-sm text-gray-600 mb-1">
+                            To time:
+                          </label>
+                          <select
+                            value={volunteerToTime}
+                            onChange={(e) => setVolunteerToTime(e.target.value)}
+                            disabled={!volunteerToDate}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-100"
+                          >
+                            <option value="">
+                              {!volunteerToDate
+                                ? "Select date first"
+                                : "Select time"}
+                            </option>
+                            {generateVolunteerTimeOptions().map((time) => (
+                              <option key={time} value={time}>
+                                {time}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Search Button */}
+                        <div className="flex flex-col justify-end">
+                          <Button
+                            onClick={handleVolunteerSearch}
+                            disabled={
+                              !volunteerFromDate ||
+                              !volunteerFromTime ||
+                              !volunteerToDate ||
+                              !volunteerToTime
+                            }
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+                          >
+                            Search
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Clear Filters Button */}
+                      {(volunteerSearchName ||
+                        appliedVolunteerFromDate ||
+                        appliedVolunteerFromTime ||
+                        appliedVolunteerToDate ||
+                        appliedVolunteerToTime) && (
+                        <div className="mb-4">
+                          <Button
+                            variant="outline"
+                            onClick={handleClearVolunteerFilters}
+                            className="text-sm"
+                          >
+                            Clear all filters
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Stats */}
+                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <span>
+                            Showing {volunteerStartIndex + 1}-
+                            {Math.min(
+                              volunteerEndIndex,
+                              sortedVolunteerHours.length
+                            )}{" "}
+                            of {sortedVolunteerHours.length} volunteer hour
+                            entries
+                            {appliedVolunteerFromDate &&
+                              appliedVolunteerFromTime &&
+                              appliedVolunteerToDate &&
+                              appliedVolunteerToTime && (
+                                <span className="ml-2 text-yellow-600">
+                                  (filtered from{" "}
+                                  {new Date(
+                                    `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+                                  ).toLocaleString()}{" "}
+                                  to{" "}
+                                  {new Date(
+                                    `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+                                  ).toLocaleString()}
+                                  )
+                                </span>
+                              )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Volunteer Hours Table */}
+                      <ShadTable
+                        columns={[
+                          {
+                            header: "User",
+                            render: (hour: any) => (
+                              <div>
+                                <div className="font-medium">
+                                  {hour.user.firstName} {hour.user.lastName}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {hour.user.email}
+                                </div>
+                              </div>
+                            ),
+                          },
+                          {
+                            header: "Date",
+                            render: (hour: any) =>
+                              new Date(hour.startTime).toLocaleDateString(),
+                          },
+                          {
+                            header: "Time",
+                            render: (hour: any) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              return `${start.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })} - ${end.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}`;
+                            },
+                          },
+                          {
+                            header: "Hours",
+                            render: (hour: any) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              const durationMs =
+                                end.getTime() - start.getTime();
+                              const hours =
+                                Math.round(
+                                  (durationMs / (1000 * 60 * 60)) * 10
+                                ) / 10;
+                              return `${hours} hours`;
+                            },
+                          },
+                          {
+                            header: "Description",
+                            render: (hour: any) => hour.description || "—",
+                          },
+                          {
+                            header: "Status",
+                            render: (hour: any) => (
+                              <VolunteerHourStatusControl hour={hour} />
+                            ),
+                          },
+                          {
+                            header: "Logged",
+                            render: (hour: any) =>
+                              new Date(hour.createdAt).toLocaleDateString(),
+                          },
+                        ]}
+                        data={paginatedVolunteerHours}
+                        emptyMessage="No volunteer hours found"
+                      />
+
+                      {/* Pagination for Volunteer Hours */}
+                      <Pagination
+                        currentPage={volunteerCurrentPage}
+                        totalPages={volunteerTotalPages}
+                        onPageChange={setVolunteerCurrentPage}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recent Actions */}
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Recent Manage Volunteer Actions</CardTitle>
+                    <CardDescription>
+                      Recently modified volunteer hour statuses
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Stats */}
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between text-sm text-gray-600">
+                        <span>
+                          Showing {actionsStartIndex + 1}-
+                          {Math.min(
+                            actionsEndIndex,
+                            sortedRecentActions.length
+                          )}{" "}
+                          of {sortedRecentActions.length} recent actions
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Recent Actions Table */}
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (action: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {action.user.firstName} {action.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {action.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Date",
+                          render: (action: any) =>
+                            new Date(action.startTime).toLocaleDateString(),
+                        },
+                        {
+                          header: "Time",
+                          render: (action: any) => {
+                            const start = new Date(action.startTime);
+                            const end = new Date(action.endTime);
+                            return `${start.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })} - ${end.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}`;
+                          },
+                        },
+                        {
+                          header: "Hours",
+                          render: (action: any) => {
+                            const start = new Date(action.startTime);
+                            const end = new Date(action.endTime);
+                            const durationMs = end.getTime() - start.getTime();
+                            const hours =
+                              Math.round((durationMs / (1000 * 60 * 60)) * 10) /
+                              10;
+                            return `${hours} hours`;
+                          },
+                        },
+                        {
+                          header: "Description",
+                          render: (action: any) => action.description || "—",
+                        },
+                        {
+                          header: "Status",
+                          render: (action: any) => (
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                action.status === "approved"
+                                  ? "bg-green-100 text-green-800"
+                                  : action.status === "denied"
+                                  ? "bg-red-100 text-red-800"
+                                  : action.status === "resolved"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-yellow-100 text-yellow-800"
+                              }`}
+                            >
+                              {action.status.charAt(0).toUpperCase() +
+                                action.status.slice(1)}
+                            </span>
+                          ),
+                        },
+                        {
+                          header: "Last Modified",
+                          render: (action: any) =>
+                            new Date(action.updatedAt).toLocaleString(),
+                        },
+                      ]}
+                      data={paginatedRecentActions}
+                      emptyMessage="No recent actions found"
+                    />
+
+                    {/* Pagination for Recent Actions */}
+                    <Pagination
+                      currentPage={actionsCurrentPage}
+                      totalPages={actionsTotalPages}
+                      onPageChange={setActionsCurrentPage}
                     />
                   </CardContent>
                 </Card>

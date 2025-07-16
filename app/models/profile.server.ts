@@ -115,33 +115,83 @@ export async function checkVolunteerHourOverlap(
         {
           AND: [
             { startTime: { lte: startTime } },
-            { endTime: { gt: startTime } }
-          ]
+            { endTime: { gt: startTime } },
+          ],
         },
         // New session ends during existing session
         {
-          AND: [
-            { startTime: { lt: endTime } },
-            { endTime: { gte: endTime } }
-          ]
+          AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }],
         },
         // New session completely contains existing session
         {
           AND: [
             { startTime: { gte: startTime } },
-            { endTime: { lte: endTime } }
-          ]
+            { endTime: { lte: endTime } },
+          ],
         },
         // Existing session completely contains new session
         {
           AND: [
             { startTime: { lte: startTime } },
-            { endTime: { gte: endTime } }
-          ]
-        }
-      ]
-    }
+            { endTime: { gte: endTime } },
+          ],
+        },
+      ],
+    },
   });
 
   return overlappingHours !== null;
+}
+
+export async function getAllVolunteerHours() {
+  return await db.volunteerTimetable.findMany({
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+}
+
+export async function updateVolunteerHourStatus(
+  hourId: number,
+  status: string
+) {
+  return await db.volunteerTimetable.update({
+    where: { id: hourId },
+    data: {
+      status,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+export async function getRecentVolunteerHourActions(limit: number = 50) {
+  return await db.volunteerTimetable.findMany({
+    where: {
+      updatedAt: {
+        not: undefined,
+      },
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      updatedAt: "desc",
+    },
+    take: limit,
+  });
 }
