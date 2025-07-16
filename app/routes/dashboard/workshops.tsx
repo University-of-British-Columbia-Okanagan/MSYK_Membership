@@ -1,20 +1,23 @@
-// workshops.tsx
 import { useLoaderData } from "react-router";
 import { Outlet } from "react-router-dom";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
 import WorkshopList from "@/components/ui/Dashboard/workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { Link } from "react-router-dom";
 import {
   getWorkshops,
   getUserWorkshopRegistrations,
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
+import { getPastWorkshopVisibility } from "~/models/admin.server";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import { FiPlus } from "react-icons/fi";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
   const workshops = await getWorkshops();
+  const pastVisibilityDays = await getPastWorkshopVisibility();
 
   // First, attach a default isRegistered property (false) for every workshop.
   let workshopsWithRegistration = workshops.map((workshop) => ({
@@ -38,11 +41,11 @@ export async function loader({ request }: { request: Request }) {
     }));
   }
 
-  return { roleUser, workshops: workshopsWithRegistration };
+  return { roleUser, workshops: workshopsWithRegistration, pastVisibilityDays };
 }
 
 export default function UserDashboard() {
-  const { roleUser, workshops } = useLoaderData<{
+  const { roleUser, workshops, pastVisibilityDays } = useLoaderData<{
     roleUser: {
       roleId: number;
       roleName: string;
@@ -57,9 +60,13 @@ export default function UserDashboard() {
       occurrences: { id: number; startDate: string; endDate: string }[];
       isRegistered: boolean;
     }[];
+    pastVisibilityDays: number;
   }>();
 
+  // New filtering logic based on current date and past visibility setting
   const now = new Date();
+  const pastCutoffDate = new Date();
+  pastCutoffDate.setDate(pastCutoffDate.getDate() - pastVisibilityDays);
 
   const activeWorkshops = workshops.filter(
     (event) =>
@@ -77,9 +84,20 @@ export default function UserDashboard() {
       )
   );
 
-  const pastEvents = workshops.filter((event) =>
-    event.occurrences.every((occurrence) => new Date(occurrence.endDate) < now)
-  );
+  // Use the past visibility setting to filter past events - EXACT SAME LOGIC AS ADMIN DASHBOARD
+  const pastEvents = workshops.filter((event) => {
+    // Check if all occurrences are in the past
+    const allOccurrencesPast = event.occurrences.every(
+      (occurrence) => new Date(occurrence.endDate) < now
+    );
+
+    // Check if any occurrence date falls within the past visibility window
+    const hasRecentOccurrence = event.occurrences.some(
+      (occurrence) => new Date(occurrence.startDate) >= pastCutoffDate
+    );
+
+    return allOccurrencesPast && hasRecentOccurrence;
+  });
 
   const isAdmin =
     roleUser &&
@@ -100,14 +118,23 @@ export default function UserDashboard() {
           <AppSidebar />
         )}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">All Workshops</h1>
+          {/* Add Workshop Button - Only show for admins */}
+          {isAdmin && (
+            <div className="flex justify-end mb-6 pr-4">
+              <Link to="/dashboard/addworkshop">
+                <button className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+                  <FiPlus size={18} /> Add Workshop
+                </button>
+              </Link>
+            </div>
+          )}
 
           {/* Active Workshops Section */}
           {activeWorkshops.length > 0 ? (
             <WorkshopList
               title="Active Workshops"
               workshops={activeWorkshops}
-              isAdmin={false}
+              isAdmin={isAdmin}
             />
           ) : (
             <p className="text-gray-600 mt-4">No active workshops available.</p>
@@ -118,12 +145,10 @@ export default function UserDashboard() {
             <WorkshopList
               title="Active Orientations"
               workshops={activeOrientations}
-              isAdmin={false}
+              isAdmin={isAdmin}
             />
           ) : (
-            <p className="text-gray-600 mt-4">
-              No active orientations available.
-            </p>
+            <p className="text-gray-600 mt-4">No active orientations available.</p>
           )}
 
           {/* Past Events Section */}
@@ -131,7 +156,7 @@ export default function UserDashboard() {
             <WorkshopList
               title="Past Events"
               workshops={pastEvents}
-              isAdmin={false}
+              isAdmin={isAdmin}
             />
           ) : (
             <p className="text-gray-600 mt-4">No past events available.</p>

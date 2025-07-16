@@ -105,8 +105,10 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  logger.info(`[User: ${userId}] Fetched add workshop page`, { url: request.url });
-  
+  logger.info(`[User: ${userId}] Fetched add workshop page`, {
+    url: request.url,
+  });
+
   return {
     workshops,
     equipments: equipmentsRaw,
@@ -391,6 +393,14 @@ function getSlotStringsForOccurrences(
 }
 
 export async function action({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add workshop`, {
+      url: request.url,
+    });
+    throw new Response("Not Authorized", { status: 419 });
+  }
+
   const formData = await request.formData();
 
   const rawValues = Object.fromEntries(formData.entries());
@@ -398,7 +408,9 @@ export async function action({ request }: { request: Request }) {
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing selected slots: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing selected slots: ${error}`, {
+      url: request.url,
+    });
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
@@ -411,7 +423,9 @@ export async function action({ request }: { request: Request }) {
   try {
     prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing prerequisites: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing prerequisites: ${error}`, {
+      url: request.url,
+    });
     return { errors: { prerequisites: ["Invalid prerequisites format"] } };
   }
 
@@ -420,7 +434,9 @@ export async function action({ request }: { request: Request }) {
   try {
     equipments = JSON.parse(rawValues.equipments as string).map(Number);
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing equipments: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing equipments: ${error}`, {
+      url: request.url,
+    });
     return { errors: { equipments: ["Invalid equipments format"] } };
   }
 
@@ -439,7 +455,10 @@ export async function action({ request }: { request: Request }) {
 
         // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
-          logger.error(`[Add workshop] End date must be later than start date`, { url: request.url });
+          logger.error(
+            `[Add workshop] End date must be later than start date`,
+            { url: request.url }
+          );
           throw new Error("End date must be later than start date");
         }
 
@@ -457,7 +476,9 @@ export async function action({ request }: { request: Request }) {
       }
     );
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing occurrences: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing occurrences: ${error}`, {
+      url: request.url,
+    });
     return {
       errors: {
         occurrences: [
@@ -470,12 +491,6 @@ export async function action({ request }: { request: Request }) {
     };
   }
 
-  const roleUser = await getRoleUser(request);
-  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add workshop`, { url: request.url });
-    throw new Response("Not Authorized", { status: 419 });
-  }
-
   // Fetch up-to-date available equipment to avoid conflicts
   const availableEquipments = await getAvailableEquipmentForAdmin();
   const availableEquipmentIds = new Set(availableEquipments.map((e) => e.id));
@@ -485,7 +500,10 @@ export async function action({ request }: { request: Request }) {
     (id) => !availableEquipmentIds.has(id)
   );
   if (unavailableEquipments.length > 0) {
-    logger.warn(`[Add workshop] One or more selected equipment are no longer available`, { url: request.url });
+    logger.warn(
+      `[Add workshop] One or more selected equipment are no longer available`,
+      { url: request.url }
+    );
     return {
       errors: {
         equipments: ["One or more selected equipment are no longer available."],
@@ -509,7 +527,10 @@ export async function action({ request }: { request: Request }) {
         );
 
         if (conflict) {
-          logger.warn(`[Add workshop] The equipment ${conflictingEquipment.name} is booked during your workshop time.`, { url: request.url });
+          logger.warn(
+            `[Add workshop] The equipment ${conflictingEquipment.name} is booked during your workshop time.`,
+            { url: request.url }
+          );
           return {
             errors: {
               equipments: [
@@ -551,7 +572,10 @@ export async function action({ request }: { request: Request }) {
                 hour12: true,
               }
             );
-            logger.warn(`[Add workshop] The equipment "${conflictingEquipment.name}" is already booked at ${formattedTime}. Please choose different dates or equipment.`, { url: request.url });
+            logger.warn(
+              `[Add workshop] The equipment "${conflictingEquipment.name}" is already booked at ${formattedTime}. Please choose different dates or equipment.`,
+              { url: request.url }
+            );
             return {
               errors: {
                 equipments: [
@@ -582,7 +606,10 @@ export async function action({ request }: { request: Request }) {
   });
 
   if (!parsed.success) {
-    logger.error(`[Add workshop] Validation Errors: ${parsed.error.flatten().fieldErrors}`, { url: request.url });
+    logger.error(
+      `[Add workshop] Validation Errors: ${parsed.error.flatten().fieldErrors}`,
+      { url: request.url }
+    );
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
@@ -605,23 +632,12 @@ export async function action({ request }: { request: Request }) {
       request
     );
 
-    logger.info(`[User: ${roleUser?.userId}] Created workshop ${parsed.data.name} successfully.`, { url: request.url });
+    logger.info(
+      `[User: ${roleUser?.userId}] Created workshop ${parsed.data.name} successfully.`,
+      { url: request.url }
+    );
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
 
-    // try {
-    //   await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
-    //   return redirect("/dashboard/admin");
-    // } catch (error) {
-    //   logger.error("Failed to reserve equipment slots:", error);
-    //   return {
-    //     errors: {
-    //       slots: ["Failed to reserve equipment slots. Please try again."],
-    //     },
-    //   };
-    // }
-    // Process workshop time slots for equipment
-    // Process workshop time slots for equipment
-    // Process workshop time slots for equipment
     try {
       // Get the current user ID
       const user = await getUser(request);
@@ -639,11 +655,16 @@ export async function action({ request }: { request: Request }) {
             userId
           );
         } catch (error) {
-          logger.error(`[Add workshop] Error in bulkBookEquipment: ${error}`, { url: request.url });
+          logger.error(`[Add workshop] Error in bulkBookEquipment: ${error}`, {
+            url: request.url,
+          });
           // Continue with the rest of the process instead of failing
         }
       } else {
-        logger.warn(`[Add workshop] No valid equipment slots selected, skipping bulkBookEquipment`, { url: request.url });
+        logger.warn(
+          `[Add workshop] No valid equipment slots selected, skipping bulkBookEquipment`,
+          { url: request.url }
+        );
       }
 
       // Create slots for all workshop occurrences
@@ -658,7 +679,10 @@ export async function action({ request }: { request: Request }) {
               userId
             );
           } catch (error) {
-            logger.error(`[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`, { url: request.url });
+            logger.error(
+              `[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`,
+              { url: request.url }
+            );
             // Continue with other equipment instead of failing the whole operation
           }
         }
@@ -666,7 +690,10 @@ export async function action({ request }: { request: Request }) {
 
       return redirect("/dashboard/admin");
     } catch (error) {
-      logger.error(`[Add workshop] Failed to reserve equipment slots: ${error}`, { url: request.url });
+      logger.error(
+        `[Add workshop] Failed to reserve equipment slots: ${error}`,
+        { url: request.url }
+      );
       return {
         errors: {
           slots: ["Failed to reserve equipment slots. Please try again."],
@@ -674,7 +701,9 @@ export async function action({ request }: { request: Request }) {
       };
     }
   } catch (error) {
-    logger.error(`[Add workshop] Failed to add workshops: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Failed to add workshops: ${error}`, {
+      url: request.url,
+    });
     return { errors: { database: ["Failed to add workshop"] } };
   }
 }
@@ -724,7 +753,6 @@ export default function AddWorkshop() {
     "custom" | "weekly" | "monthly"
   >("custom");
 
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
   // This will track the selected prerequisites
@@ -804,7 +832,7 @@ export default function AddWorkshop() {
 
     // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
     if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
       updatedOccurrences[index].endDate = endDate;
     }
 
@@ -853,21 +881,6 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
-  // const handleFormSubmit = (e: React.FormEvent) => {
-  //   e.preventDefault();
-
-  //   // First check if any dates are in the past
-  //   if (hasOccurrencesInPast(occurrences)) {
-  //     setIsConfirmDialogOpen(true);
-  //     return; // Important: prevent the normal form submission flow
-  //   } else {
-  //     // No past dates, submit directly
-  //     setFormSubmitting(true);
-  //     const form = e.currentTarget as HTMLFormElement;
-  //     form.submit();
-  //   }
-  // };
-
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -889,16 +902,10 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
-    // Then check if any dates are in the past (your existing code)
-    if (hasOccurrencesInPast(occurrences)) {
-      setIsConfirmDialogOpen(true);
-      return;
-    } else {
-      // No past dates, submit directly
-      setFormSubmitting(true);
-      const form = e.currentTarget as HTMLFormElement;
-      form.submit();
-    }
+    // REMOVED: Past date check - just submit directly now
+    setFormSubmitting(true);
+    const form = e.currentTarget as HTMLFormElement;
+    form.submit();
   };
 
   {
@@ -1659,58 +1666,18 @@ export default function AddWorkshop() {
                 </AlertDialog>
 
                 {/* Submit Button */}
-                <AlertDialog
-                  open={isConfirmDialogOpen}
-                  onOpenChange={setIsConfirmDialogOpen}
-                ></AlertDialog>
-                {/* Submit Button */}
-                <AlertDialog
-                  open={isConfirmDialogOpen}
-                  onOpenChange={setIsConfirmDialogOpen}
-                >
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        Warning: Past Workshop Dates
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Some of your workshop dates are in the past. Are you
-                        sure you want to create a workshop with past dates?
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => {
-                          // Close the dialog
-                          setIsConfirmDialogOpen(false);
-                          // Set the form as submitting
-                          setFormSubmitting(true);
-                          // Use the native form submission to trigger the action function's redirect
-                          const form = document.querySelector(
-                            "form"
-                          ) as HTMLFormElement;
-                          if (form) form.submit();
-                        }}
-                      >
-                        Proceed Anyway
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-
-                  <div className="flex justify-center mt-6">
-                    <Button
-                      type="submit"
-                      className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
-                      onClick={() => {
-                        console.log("Final Form Data:", form.getValues());
-                      }}
-                      disabled={formSubmitting}
-                    >
-                      Add Workshop
-                    </Button>
-                  </div>
-                </AlertDialog>
+                <div className="flex justify-center mt-6">
+                  <Button
+                    type="submit"
+                    className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                    onClick={() => {
+                      console.log("Final Form Data:", form.getValues());
+                    }}
+                    disabled={formSubmitting}
+                  >
+                    Add Workshop
+                  </Button>
+                </div>
               </form>
             </Form>
           </div>
