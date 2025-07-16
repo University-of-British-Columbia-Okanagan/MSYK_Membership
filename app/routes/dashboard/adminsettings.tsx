@@ -1173,6 +1173,27 @@ export default function AdminSettings() {
     appliedActionsToTime,
   ]);
 
+  // Helper function to calculate total hours from volunteer hour entries
+  const calculateTotalHours = (hours: any[]) => {
+    return hours.reduce((total, entry) => {
+      const start = new Date(entry.startTime);
+      const end = new Date(entry.endTime);
+      const durationMs = end.getTime() - start.getTime();
+      const hoursDecimal = durationMs / (1000 * 60 * 60);
+      return total + hoursDecimal;
+    }, 0);
+  };
+
+  // Calculate total hours for filtered volunteer hours
+  const totalVolunteerHours = useMemo(() => {
+    return calculateTotalHours(filteredVolunteerHours);
+  }, [filteredVolunteerHours]);
+
+  // Calculate total hours for filtered recent actions
+  const totalRecentActionHours = useMemo(() => {
+    return calculateTotalHours(filteredRecentActions);
+  }, [filteredRecentActions]);
+
   // PAGINATION LOGIC
   const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
   const startIndex = (currentPage - 1) * usersPerPage;
@@ -2937,32 +2958,52 @@ export default function AdminSettings() {
 
                       {/* Stats */}
                       <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex items-center justify-between text-sm text-gray-600">
-                          <span>
-                            Showing {volunteerStartIndex + 1}-
-                            {Math.min(
-                              volunteerEndIndex,
-                              sortedVolunteerHours.length
-                            )}{" "}
-                            of {sortedVolunteerHours.length} volunteer hour
-                            entries
-                            {appliedVolunteerFromDate &&
-                              appliedVolunteerFromTime &&
-                              appliedVolunteerToDate &&
-                              appliedVolunteerToTime && (
-                                <span className="ml-2 text-yellow-600">
-                                  (filtered from{" "}
-                                  {new Date(
-                                    `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
-                                  ).toLocaleString()}{" "}
-                                  to{" "}
-                                  {new Date(
-                                    `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
-                                  ).toLocaleString()}
+                        <div className="flex flex-col space-y-2">
+                          <div className="flex items-center justify-between text-sm text-gray-600">
+                            <span>
+                              Showing {volunteerStartIndex + 1}-
+                              {Math.min(
+                                volunteerEndIndex,
+                                sortedVolunteerHours.length
+                              )}{" "}
+                              of {sortedVolunteerHours.length} volunteer hour
+                              entries
+                              {appliedVolunteerFromDate &&
+                                appliedVolunteerFromTime &&
+                                appliedVolunteerToDate &&
+                                appliedVolunteerToTime && (
+                                  <span className="ml-2 text-yellow-600">
+                                    (filtered from{" "}
+                                    {new Date(
+                                      `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+                                    ).toLocaleString()}{" "}
+                                    to{" "}
+                                    {new Date(
+                                      `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+                                    ).toLocaleString()}
+                                    )
+                                  </span>
+                                )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-4 text-sm">
+                              <span className="text-blue-700 font-medium">
+                                Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
+                                hours
+                              </span>
+                              {volunteerStatusFilter !== "all" && (
+                                <span className="text-gray-600">
+                                  (Status:{" "}
+                                  {volunteerStatusFilter
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                    volunteerStatusFilter.slice(1)}
                                   )
                                 </span>
                               )}
-                          </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -3227,31 +3268,49 @@ export default function AdminSettings() {
 
                     {/* Stats */}
                     <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between text-sm text-gray-600">
-                        <span>
-                          Showing {actionsStartIndex + 1}-
-                          {Math.min(
-                            actionsEndIndex,
-                            sortedRecentActions.length
-                          )}{" "}
-                          of {sortedRecentActions.length} recent actions
-                          {appliedActionsFromDate &&
-                            appliedActionsFromTime &&
-                            appliedActionsToDate &&
-                            appliedActionsToTime && (
-                              <span className="ml-2 text-yellow-600">
-                                (filtered from{" "}
-                                {new Date(
-                                  `${appliedActionsFromDate}T${appliedActionsFromTime}`
-                                ).toLocaleString()}{" "}
-                                to{" "}
-                                {new Date(
-                                  `${appliedActionsToDate}T${appliedActionsToTime}`
-                                ).toLocaleString()}
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <span>
+                            Showing {actionsStartIndex + 1}-
+                            {Math.min(
+                              actionsEndIndex,
+                              sortedRecentActions.length
+                            )}{" "}
+                            of {sortedRecentActions.length} recent actions
+                            {appliedActionsFromDate &&
+                              appliedActionsFromTime &&
+                              appliedActionsToDate &&
+                              appliedActionsToTime && (
+                                <span className="ml-2 text-yellow-600">
+                                  (filtered from{" "}
+                                  {new Date(
+                                    `${appliedActionsFromDate}T${appliedActionsFromTime}`
+                                  ).toLocaleString()}{" "}
+                                  to{" "}
+                                  {new Date(
+                                    `${appliedActionsToDate}T${appliedActionsToTime}`
+                                  ).toLocaleString()}
+                                  )
+                                </span>
+                              )}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4 text-sm">
+                            <span className="text-blue-700 font-medium">
+                              Total Hours: {totalRecentActionHours.toFixed(1)}{" "}
+                              hours
+                            </span>
+                            {actionsStatusFilter !== "all" && (
+                              <span className="text-gray-600">
+                                (Status:{" "}
+                                {actionsStatusFilter.charAt(0).toUpperCase() +
+                                  actionsStatusFilter.slice(1)}
                                 )
                               </span>
                             )}
-                        </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
