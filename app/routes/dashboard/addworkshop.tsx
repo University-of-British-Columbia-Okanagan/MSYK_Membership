@@ -753,7 +753,6 @@ export default function AddWorkshop() {
     "custom" | "weekly" | "monthly"
   >("custom");
 
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
   // This will track the selected prerequisites
