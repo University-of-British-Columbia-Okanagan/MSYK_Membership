@@ -709,9 +709,15 @@ function VolunteerHourStatusControl({
   hour: {
     id: number;
     status: string;
+    user: {
+      firstName: string;
+      lastName: string;
+    };
   };
 }) {
   const [status, setStatus] = useState<string>(hour.status);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingNewStatus, setPendingNewStatus] = useState<string>("");
   const submit = useSubmit();
 
   const updateStatus = (newStatus: string) => {
@@ -721,6 +727,18 @@ function VolunteerHourStatusControl({
     formData.append("newStatus", newStatus);
     submit(formData, { method: "post" });
     setStatus(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    // If the status is the same, no confirmation needed
+    if (newStatus === status) {
+      return;
+    }
+
+    // Show confirmation for any status change
+    setPendingNewStatus(newStatus);
+    setShowConfirmDialog(true);
   };
 
   const getStatusColor = (status: string) => {
@@ -736,19 +754,83 @@ function VolunteerHourStatusControl({
     }
   };
 
+  const getStatusDisplayName = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getConfirmationMessage = (newStatus: string) => {
+    const userName = `${hour.user.firstName} ${hour.user.lastName}`;
+    const currentStatusName = getStatusDisplayName(status);
+    const newStatusName = getStatusDisplayName(newStatus);
+
+    switch (newStatus) {
+      case "approved":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Approved? This will mark their submission as approved.`;
+      case "denied":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Denied? This will reject their submission.`;
+      case "resolved":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Resolved? This typically means the issue has been addressed.`;
+      case "pending":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Pending? This will mark their submission as pending review.`;
+      default:
+        return `Are you sure you want to change the status from ${currentStatusName} to ${newStatusName}?`;
+    }
+  };
+
+  const getActionButtonColor = (newStatus: string) => {
+    switch (newStatus) {
+      case "denied":
+        return "bg-red-600 hover:bg-red-700";
+      case "approved":
+        return "bg-green-600 hover:bg-green-700";
+      case "resolved":
+        return "bg-purple-600 hover:bg-purple-700";
+      case "pending":
+        return "bg-yellow-600 hover:bg-yellow-700";
+      default:
+        return "bg-blue-600 hover:bg-blue-700";
+    }
+  };
+
   return (
-    <select
-      value={status}
-      onChange={(e) => updateStatus(e.target.value)}
-      className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${getStatusColor(
-        status
-      )}`}
-    >
-      <option value="pending">Pending</option>
-      <option value="approved">Approved</option>
-      <option value="denied">Denied</option>
-      <option value="resolved">Resolved</option>
-    </select>
+    <>
+      <select
+        value={status}
+        onChange={(e) => handleStatusChange(e.target.value)}
+        className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${getStatusColor(
+          status
+        )}`}
+      >
+        <option value="pending">Pending</option>
+        <option value="approved">Approved</option>
+        <option value="denied">Denied</option>
+        <option value="resolved">Resolved</option>
+      </select>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Confirm Status Change to {getStatusDisplayName(pendingNewStatus)}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {getConfirmationMessage(pendingNewStatus)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateStatus(pendingNewStatus)}
+              className={getActionButtonColor(pendingNewStatus)}
+            >
+              Change to {getStatusDisplayName(pendingNewStatus)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
@@ -3371,7 +3453,8 @@ export default function AdminSettings() {
                                       : "bg-yellow-100 text-yellow-800"
                                   }`}
                                 >
-                                  {currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}
+                                  {currentStatus.charAt(0).toUpperCase() +
+                                    currentStatus.slice(1)}
                                 </span>
                               );
                             }
@@ -3390,7 +3473,8 @@ export default function AdminSettings() {
                                       : "bg-yellow-100 text-yellow-800"
                                   }`}
                                 >
-                                  {previousStatus.charAt(0).toUpperCase() + previousStatus.slice(1)}
+                                  {previousStatus.charAt(0).toUpperCase() +
+                                    previousStatus.slice(1)}
                                 </span>
                                 <span className="text-gray-400">→</span>
                                 <span
@@ -3404,7 +3488,8 @@ export default function AdminSettings() {
                                       : "bg-yellow-100 text-yellow-800"
                                   }`}
                                 >
-                                  {currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}
+                                  {currentStatus.charAt(0).toUpperCase() +
+                                    currentStatus.slice(1)}
                                 </span>
                               </div>
                             );
@@ -3412,7 +3497,8 @@ export default function AdminSettings() {
                         },
                         {
                           header: "Last Modified",
-                          render: (action: any) => new Date(action.updatedAt).toLocaleString(),
+                          render: (action: any) =>
+                            new Date(action.updatedAt).toLocaleString(),
                         },
                       ]}
                       data={paginatedRecentActions}
