@@ -828,6 +828,7 @@ export default function AdminSettings() {
       endTime: string;
       description: string | null;
       status: string;
+      previousStatus: string | null;
       createdAt: string;
       updatedAt: string;
       user: {
@@ -3351,44 +3352,67 @@ export default function AdminSettings() {
                           },
                         },
                         {
-                          header: "Hours",
+                          header: "Status History",
                           render: (action: any) => {
-                            const start = new Date(action.startTime);
-                            const end = new Date(action.endTime);
-                            const durationMs = end.getTime() - start.getTime();
-                            const hours =
-                              Math.round((durationMs / (1000 * 60 * 60)) * 10) /
-                              10;
-                            return `${hours} hours`;
+                            const currentStatus = action.status;
+                            const previousStatus = action.previousStatus;
+
+                            // If no previous status, just show current status
+                            if (!previousStatus) {
+                              return (
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    currentStatus === "approved"
+                                      ? "bg-green-100 text-green-800"
+                                      : currentStatus === "denied"
+                                      ? "bg-red-100 text-red-800"
+                                      : currentStatus === "resolved"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}
+                                </span>
+                              );
+                            }
+
+                            // Show previous -> current status
+                            return (
+                              <div className="flex items-center space-x-2">
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    previousStatus === "approved"
+                                      ? "bg-green-100 text-green-800"
+                                      : previousStatus === "denied"
+                                      ? "bg-red-100 text-red-800"
+                                      : previousStatus === "resolved"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {previousStatus.charAt(0).toUpperCase() + previousStatus.slice(1)}
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    currentStatus === "approved"
+                                      ? "bg-green-100 text-green-800"
+                                      : currentStatus === "denied"
+                                      ? "bg-red-100 text-red-800"
+                                      : currentStatus === "resolved"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-yellow-100 text-yellow-800"
+                                  }`}
+                                >
+                                  {currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}
+                                </span>
+                              </div>
+                            );
                           },
                         },
                         {
-                          header: "Description",
-                          render: (action: any) => action.description || "—",
-                        },
-                        {
-                          header: "Status",
-                          render: (action: any) => (
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                action.status === "approved"
-                                  ? "bg-green-100 text-green-800"
-                                  : action.status === "denied"
-                                  ? "bg-red-100 text-red-800"
-                                  : action.status === "resolved"
-                                  ? "bg-purple-100 text-purple-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
-                            >
-                              {action.status.charAt(0).toUpperCase() +
-                                action.status.slice(1)}
-                            </span>
-                          ),
-                        },
-                        {
                           header: "Last Modified",
-                          render: (action: any) =>
-                            new Date(action.updatedAt).toLocaleString(),
+                          render: (action: any) => new Date(action.updatedAt).toLocaleString(),
                         },
                       ]}
                       data={paginatedRecentActions}

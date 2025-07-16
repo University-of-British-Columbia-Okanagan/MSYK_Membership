@@ -160,14 +160,20 @@ export async function getAllVolunteerHours() {
   });
 }
 
-export async function updateVolunteerHourStatus(
-  hourId: number,
-  status: string
-) {
+export async function updateVolunteerHourStatus(hourId: number, status: string) {
+  // Get the current status before updating
+  const currentEntry = await db.volunteerTimetable.findUnique({
+    where: { id: hourId },
+    select: { status: true }
+  });
+
+  const previousStatus = currentEntry?.status || "pending";
+
   return await db.volunteerTimetable.update({
     where: { id: hourId },
-    data: {
+    data: { 
       status,
+      previousStatus: previousStatus,
       updatedAt: new Date(),
     },
   });
