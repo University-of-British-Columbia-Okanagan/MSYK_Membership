@@ -1446,10 +1446,7 @@ export default function EditWorkshop() {
                                   const isEndDatePast = isDateInPast(
                                     occ.endDate
                                   );
-                                  const hasWarning =
-                                    (isStartDatePast || isEndDatePast) &&
-                                    occ.status !== "past" &&
-                                    occ.status !== "cancelled";
+                                  const hasWarning = isStartDatePast || isEndDatePast;
 
                                   return (
                                     <div key={index} style={{ width: "100%" }}>
