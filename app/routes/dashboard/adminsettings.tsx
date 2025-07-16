@@ -912,6 +912,17 @@ export default function AdminSettings() {
   const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
   const [actionsPerPage] = useState(5);
 
+  // Recent actions filters state
+  const [actionsSearchName, setActionsSearchName] = useState("");
+  const [actionsFromDate, setActionsFromDate] = useState("");
+  const [actionsFromTime, setActionsFromTime] = useState("");
+  const [actionsToDate, setActionsToDate] = useState("");
+  const [actionsToTime, setActionsToTime] = useState("");
+  const [appliedActionsFromDate, setAppliedActionsFromDate] = useState("");
+  const [appliedActionsFromTime, setAppliedActionsFromTime] = useState("");
+  const [appliedActionsToDate, setAppliedActionsToDate] = useState("");
+  const [appliedActionsToTime, setAppliedActionsToTime] = useState("");
+
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -999,15 +1010,76 @@ export default function AdminSettings() {
     volunteerEndIndex
   );
 
+  // Filter recent actions
+  const filteredRecentActions = useMemo(() => {
+    return recentVolunteerActions.filter((action) => {
+      // Name filter
+      const fullName =
+        `${action.user.firstName} ${action.user.lastName}`.toLowerCase();
+      const nameMatch =
+        actionsSearchName === "" ||
+        fullName.includes(actionsSearchName.toLowerCase());
+
+      // Date/time range filtering
+      let dateTimeMatch = true;
+      if (
+        appliedActionsFromDate &&
+        appliedActionsFromTime &&
+        appliedActionsToDate &&
+        appliedActionsToTime
+      ) {
+        const entryStartDate = new Date(action.startTime);
+        const fromDateTime = new Date(
+          `${appliedActionsFromDate}T${appliedActionsFromTime}`
+        );
+        const toDateTime = new Date(
+          `${appliedActionsToDate}T${appliedActionsToTime}`
+        );
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return nameMatch && dateTimeMatch;
+    });
+  }, [
+    recentVolunteerActions,
+    actionsSearchName,
+    appliedActionsFromDate,
+    appliedActionsFromTime,
+    appliedActionsToDate,
+    appliedActionsToTime,
+  ]);
+
+  // Handle recent actions search
+  const handleActionsSearch = () => {
+    setAppliedActionsFromDate(actionsFromDate);
+    setAppliedActionsFromTime(actionsFromTime);
+    setAppliedActionsToDate(actionsToDate);
+    setAppliedActionsToTime(actionsToTime);
+  };
+
+  // Handle clear actions filters
+  const handleClearActionsFilters = () => {
+    setActionsSearchName("");
+    setActionsFromDate("");
+    setActionsFromTime("");
+    setActionsToDate("");
+    setActionsToTime("");
+    setAppliedActionsFromDate("");
+    setAppliedActionsFromTime("");
+    setAppliedActionsToDate("");
+    setAppliedActionsToTime("");
+  };
+
   // Sort and paginate recent actions
   const sortedRecentActions = useMemo(() => {
-    return recentVolunteerActions
+    return filteredRecentActions
       .slice()
       .sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
-  }, [recentVolunteerActions]);
+  }, [filteredRecentActions]);
 
   const actionsTotalPages = Math.ceil(
     sortedRecentActions.length / actionsPerPage
@@ -1054,6 +1126,17 @@ export default function AdminSettings() {
   React.useEffect(() => {
     setActionsCurrentPage(1);
   }, [recentVolunteerActions]);
+
+  // Reset actions pagination when filters change
+  React.useEffect(() => {
+    setActionsCurrentPage(1);
+  }, [
+    actionsSearchName,
+    appliedActionsFromDate,
+    appliedActionsFromTime,
+    appliedActionsToDate,
+    appliedActionsToTime,
+  ]);
 
   // PAGINATION LOGIC
   const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
@@ -2637,8 +2720,8 @@ export default function AdminSettings() {
                   <CardHeader>
                     <CardTitle>Manage Volunteer Hours</CardTitle>
                     <CardDescription>
-                      Review and approve/deny/resolve/pending volunteer hour submissions from
-                      all users
+                      Review and approve/deny/resolve/pending volunteer hour
+                      submissions from all users
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -2912,6 +2995,152 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {/* Search and Filter Controls for Recent Actions */}
+                    <div className="space-y-4 mb-6">
+                      {/* Name Search - Full Width Row */}
+                      <div className="w-full">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Search by volunteer name
+                        </label>
+                        <div className="relative">
+                          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                          <Input
+                            placeholder="Enter first name or last name to search..."
+                            value={actionsSearchName}
+                            onChange={(e) =>
+                              setActionsSearchName(e.target.value)
+                            }
+                            className="pl-10 h-10 text-base"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Date and Time Filters - Two Rows */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* From Date and Time */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                            Filter From
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                Start Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={actionsFromDate}
+                                onChange={(e) =>
+                                  setActionsFromDate(e.target.value)
+                                }
+                                className="w-full h-10"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                Start Time
+                              </label>
+                              <select
+                                value={actionsFromTime}
+                                onChange={(e) =>
+                                  setActionsFromTime(e.target.value)
+                                }
+                                disabled={!actionsFromDate}
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                              >
+                                <option value="">
+                                  {!actionsFromDate
+                                    ? "Select start date first"
+                                    : "Choose start time"}
+                                </option>
+                                {generateVolunteerTimeOptions().map((time) => (
+                                  <option key={time} value={time}>
+                                    {time}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* To Date and Time */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                            Filter To
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                End Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={actionsToDate}
+                                onChange={(e) =>
+                                  setActionsToDate(e.target.value)
+                                }
+                                className="w-full h-10"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                End Time
+                              </label>
+                              <select
+                                value={actionsToTime}
+                                onChange={(e) =>
+                                  setActionsToTime(e.target.value)
+                                }
+                                disabled={!actionsToDate}
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                              >
+                                <option value="">
+                                  {!actionsToDate
+                                    ? "Select end date first"
+                                    : "Choose end time"}
+                                </option>
+                                {generateVolunteerTimeOptions().map((time) => (
+                                  <option key={time} value={time}>
+                                    {time}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <Button
+                          onClick={handleActionsSearch}
+                          disabled={
+                            !actionsFromDate ||
+                            !actionsFromTime ||
+                            !actionsToDate ||
+                            !actionsToTime
+                          }
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                        >
+                          Apply Date/Time Filter
+                        </Button>
+
+                        {(actionsSearchName ||
+                          appliedActionsFromDate ||
+                          appliedActionsFromTime ||
+                          appliedActionsToDate ||
+                          appliedActionsToTime) && (
+                          <Button
+                            variant="outline"
+                            onClick={handleClearActionsFilters}
+                            className="h-10 px-6"
+                          >
+                            Clear All Filters
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Stats */}
                     <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between text-sm text-gray-600">
@@ -2922,6 +3151,22 @@ export default function AdminSettings() {
                             sortedRecentActions.length
                           )}{" "}
                           of {sortedRecentActions.length} recent actions
+                          {appliedActionsFromDate &&
+                            appliedActionsFromTime &&
+                            appliedActionsToDate &&
+                            appliedActionsToTime && (
+                              <span className="ml-2 text-yellow-600">
+                                (filtered from{" "}
+                                {new Date(
+                                  `${appliedActionsFromDate}T${appliedActionsFromTime}`
+                                ).toLocaleString()}{" "}
+                                to{" "}
+                                {new Date(
+                                  `${appliedActionsToDate}T${appliedActionsToTime}`
+                                ).toLocaleString()}
+                                )
+                              </span>
+                            )}
                         </span>
                       </div>
                     </div>
