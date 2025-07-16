@@ -936,6 +936,13 @@ export default function AdminSettings() {
   const [appliedActionsToDate, setAppliedActionsToDate] = useState("");
   const [appliedActionsToTime, setAppliedActionsToTime] = useState("");
 
+  // Status filters for volunteer hours
+  const [volunteerStatusFilter, setVolunteerStatusFilter] =
+    useState<string>("pending");
+
+  // Status filters for recent actions
+  const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
+
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -972,6 +979,11 @@ export default function AdminSettings() {
         volunteerSearchName === "" ||
         fullName.includes(volunteerSearchName.toLowerCase());
 
+      // Status filter
+      const statusMatch =
+        volunteerStatusFilter === "all" ||
+        hour.status === volunteerStatusFilter;
+
       // Date/time range filtering
       let dateTimeMatch = true;
       if (
@@ -991,11 +1003,12 @@ export default function AdminSettings() {
           entryStartDate >= fromDateTime && entryStartDate < toDateTime;
       }
 
-      return nameMatch && dateTimeMatch;
+      return nameMatch && statusMatch && dateTimeMatch;
     });
   }, [
     volunteerHours,
     volunteerSearchName,
+    volunteerStatusFilter,
     appliedVolunteerFromDate,
     appliedVolunteerFromTime,
     appliedVolunteerToDate,
@@ -1033,6 +1046,10 @@ export default function AdminSettings() {
         actionsSearchName === "" ||
         fullName.includes(actionsSearchName.toLowerCase());
 
+      // Status filter
+      const statusMatch =
+        actionsStatusFilter === "all" || action.status === actionsStatusFilter;
+
       // Date/time range filtering
       let dateTimeMatch = true;
       if (
@@ -1052,11 +1069,12 @@ export default function AdminSettings() {
           entryStartDate >= fromDateTime && entryStartDate < toDateTime;
       }
 
-      return nameMatch && dateTimeMatch;
+      return nameMatch && statusMatch && dateTimeMatch;
     });
   }, [
     recentVolunteerActions,
     actionsSearchName,
+    actionsStatusFilter,
     appliedActionsFromDate,
     appliedActionsFromTime,
     appliedActionsToDate,
@@ -1074,6 +1092,7 @@ export default function AdminSettings() {
   // Handle clear actions filters
   const handleClearActionsFilters = () => {
     setActionsSearchName("");
+    setActionsStatusFilter("all"); // Reset to default
     setActionsFromDate("");
     setActionsFromTime("");
     setActionsToDate("");
@@ -1115,6 +1134,7 @@ export default function AdminSettings() {
   // Handle clear volunteer filters
   const handleClearVolunteerFilters = () => {
     setVolunteerSearchName("");
+    setVolunteerStatusFilter("pending"); // Reset to default
     setVolunteerFromDate("");
     setVolunteerFromTime("");
     setVolunteerToDate("");
@@ -1130,6 +1150,7 @@ export default function AdminSettings() {
     setVolunteerCurrentPage(1);
   }, [
     volunteerSearchName,
+    volunteerStatusFilter,
     appliedVolunteerFromDate,
     appliedVolunteerFromTime,
     appliedVolunteerToDate,
@@ -1145,6 +1166,7 @@ export default function AdminSettings() {
     setActionsCurrentPage(1);
   }, [
     actionsSearchName,
+    actionsStatusFilter,
     appliedActionsFromDate,
     appliedActionsFromTime,
     appliedActionsToDate,
@@ -2741,21 +2763,44 @@ export default function AdminSettings() {
                     <div className="space-y-6">
                       {/* Search and Filter Controls */}
                       <div className="space-y-4 mb-6">
-                        {/* Name Search - Full Width Row */}
-                        <div className="w-full">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Search by volunteer name
-                          </label>
-                          <div className="relative">
-                            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                            <Input
-                              placeholder="Enter first name or last name to search..."
-                              value={volunteerSearchName}
+                        {/* Name Search and Status Filter Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Name Search */}
+                          <div className="w-full">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Search by volunteer name
+                            </label>
+                            <div className="relative">
+                              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                              <Input
+                                placeholder="Enter first name or last name to search..."
+                                value={volunteerSearchName}
+                                onChange={(e) =>
+                                  setVolunteerSearchName(e.target.value)
+                                }
+                                className="pl-10 h-10 text-base"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Status Filter */}
+                          <div className="w-full">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Filter by status
+                            </label>
+                            <select
+                              value={volunteerStatusFilter}
                               onChange={(e) =>
-                                setVolunteerSearchName(e.target.value)
+                                setVolunteerStatusFilter(e.target.value)
                               }
-                              className="pl-10 h-10 text-base"
-                            />
+                              className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                            >
+                              <option value="all">All Status</option>
+                              <option value="pending">Pending</option>
+                              <option value="approved">Approved</option>
+                              <option value="denied">Denied</option>
+                              <option value="resolved">Resolved</option>
+                            </select>
                           </div>
                         </div>
 
@@ -2874,6 +2919,7 @@ export default function AdminSettings() {
                           </Button>
 
                           {(volunteerSearchName ||
+                            volunteerStatusFilter !== "pending" ||
                             appliedVolunteerFromDate ||
                             appliedVolunteerFromTime ||
                             appliedVolunteerToDate ||
@@ -2922,6 +2968,7 @@ export default function AdminSettings() {
 
                       {/* Volunteer Hours Table */}
                       <ShadTable
+                        key={`volunteer-table-${volunteerStatusFilter}-${volunteerSearchName}-${volunteerCurrentPage}`}
                         columns={[
                           {
                             header: "User",
@@ -3010,21 +3057,44 @@ export default function AdminSettings() {
                   <CardContent>
                     {/* Search and Filter Controls for Recent Actions */}
                     <div className="space-y-4 mb-6">
-                      {/* Name Search - Full Width Row */}
-                      <div className="w-full">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Search by volunteer name
-                        </label>
-                        <div className="relative">
-                          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                          <Input
-                            placeholder="Enter first name or last name to search..."
-                            value={actionsSearchName}
+                      {/* Name Search and Status Filter Row */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Name Search */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Search by volunteer name
+                          </label>
+                          <div className="relative">
+                            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <Input
+                              placeholder="Enter first name or last name to search..."
+                              value={actionsSearchName}
+                              onChange={(e) =>
+                                setActionsSearchName(e.target.value)
+                              }
+                              className="pl-10 h-10 text-base"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Filter by status
+                          </label>
+                          <select
+                            value={actionsStatusFilter}
                             onChange={(e) =>
-                              setActionsSearchName(e.target.value)
+                              setActionsStatusFilter(e.target.value)
                             }
-                            className="pl-10 h-10 text-base"
-                          />
+                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                          >
+                            <option value="all">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="denied">Denied</option>
+                            <option value="resolved">Resolved</option>
+                          </select>
                         </div>
                       </div>
 
@@ -3139,6 +3209,7 @@ export default function AdminSettings() {
                         </Button>
 
                         {(actionsSearchName ||
+                          actionsStatusFilter !== "all" ||
                           appliedActionsFromDate ||
                           appliedActionsFromTime ||
                           appliedActionsToDate ||
@@ -3186,6 +3257,7 @@ export default function AdminSettings() {
 
                     {/* Recent Actions Table */}
                     <ShadTable
+                      key={`actions-table-${actionsStatusFilter}-${actionsSearchName}-${actionsCurrentPage}`}
                       columns={[
                         {
                           header: "User",
