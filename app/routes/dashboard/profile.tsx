@@ -614,9 +614,20 @@ export default function ProfilePage() {
                   <>
                     {/* Add Hours Form */}
                     <div className="bg-blue-50 rounded-lg p-4 mb-6">
-                      <h4 className="font-medium text-blue-900 mb-4">
+                      <h4 className="font-bold text-blue-900 mb-4">
                         Log New Hours
                       </h4>
+
+                      {/* Description/Instructions */}
+                      <div className="bg-blue-100 border border-blue-200 rounded-md p-3 mb-4">
+                        <p className="text-sm text-blue-800">
+                          <strong>How to log volunteer hours:</strong> Select
+                          the start and end time for your volunteer session. You
+                          can optionally add a brief description of what you
+                          worked on. Your hours will be reviewed and approved by
+                          an administrator.
+                        </p>
+                      </div>
 
                       {/* Success/Error Messages */}
                       {actionData?.success && showSuccessMessage && (
@@ -696,6 +707,18 @@ export default function ProfilePage() {
                         <h4 className="font-semibold text-gray-900">
                           Recent Hours
                         </h4>
+                      </div>
+
+                      {/* Description/Instructions for Recent Hours */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-md p-3 mb-4">
+                        <p className="text-sm text-gray-700">
+                          <strong>Your volunteer history:</strong> View all your
+                          logged volunteer hours below. You can filter by status
+                          (pending, approved, denied) or search by date range.
+                          Hours show as "pending" until reviewed by an
+                          administrator. Use the filters below to find specific
+                          volunteer sessions.
+                        </p>
                       </div>
 
                       {/* Collapsible Denied Hours Notice */}
@@ -919,7 +942,7 @@ export default function ProfilePage() {
                                 </span>
                               )}
                           </span>
-                          <span>
+                          <span className="font-bold">
                             Total:{" "}
                             {filteredVolunteerHours
                               .reduce((total, entry) => {
