@@ -1755,7 +1755,7 @@ export default function AdminSettings() {
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="pastWorkshopVisibility">
-                          Past Workshop Visibility Days
+                          Past Workshop Visibility (In Days)
                         </Label>
                         <Input
                           id="pastWorkshopVisibility"
