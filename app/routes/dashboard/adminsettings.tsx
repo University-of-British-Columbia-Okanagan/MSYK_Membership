@@ -620,13 +620,20 @@ function Pagination({
   currentPage,
   totalPages,
   onPageChange,
+  maxVisiblePages = 10,
 }: {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  maxVisiblePages?: number;
 }) {
   const getVisiblePageNumbers = () => {
-    const delta = 2;
+    // If total pages is less than or equal to max visible, show all
+    if (totalPages <= maxVisiblePages) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const delta = Math.floor(maxVisiblePages / 2) - 1;
     const range = [];
     const rangeWithDots = [];
 
@@ -1009,9 +1016,9 @@ export default function AdminSettings() {
   const [appliedVolunteerToDate, setAppliedVolunteerToDate] = useState("");
   const [appliedVolunteerToTime, setAppliedVolunteerToTime] = useState("");
   const [volunteerCurrentPage, setVolunteerCurrentPage] = useState(1);
-  const [volunteerHoursPerPage] = useState(5);
+  const [volunteerHoursPerPage] = useState(10);
   const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
-  const [actionsPerPage] = useState(5);
+  const [actionsPerPage] = useState(10);
 
   // Recent actions filters state
   const [actionsSearchName, setActionsSearchName] = useState("");
@@ -2855,6 +2862,7 @@ export default function AdminSettings() {
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
+                      maxVisiblePages={10}
                     />
                   </CardContent>
                 </Card>
@@ -3170,6 +3178,7 @@ export default function AdminSettings() {
                         currentPage={volunteerCurrentPage}
                         totalPages={volunteerTotalPages}
                         onPageChange={setVolunteerCurrentPage}
+                        maxVisiblePages={10}
                       />
                     </div>
                   </CardContent>
@@ -3516,6 +3525,7 @@ export default function AdminSettings() {
                       currentPage={actionsCurrentPage}
                       totalPages={actionsTotalPages}
                       onPageChange={setActionsCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
