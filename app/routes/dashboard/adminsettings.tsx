@@ -716,6 +716,11 @@ function VolunteerHourStatusControl({
   };
 }) {
   const [status, setStatus] = useState<string>(hour.status);
+  // Sync local state with prop changes from server
+  React.useEffect(() => {
+    setStatus(hour.status);
+  }, [hour.status]);
+
   const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
   const [pendingNewStatus, setPendingNewStatus] = useState<string>("");
   const submit = useSubmit();
@@ -726,7 +731,7 @@ function VolunteerHourStatusControl({
     formData.append("hourId", hour.id.toString());
     formData.append("newStatus", newStatus);
     submit(formData, { method: "post" });
-    setStatus(newStatus);
+    // Don't update local state immediately - let the server response handle it
     setShowConfirmDialog(false);
   };
 
@@ -3175,7 +3180,8 @@ export default function AdminSettings() {
                   <CardHeader>
                     <CardTitle>Recently Managed Volunteer Actions</CardTitle>
                     <CardDescription>
-                      Recently modified volunteer hour statuses and number of total hours per filter
+                      Recently modified volunteer hour statuses and number of
+                      total hours per filter
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
