@@ -620,13 +620,20 @@ function Pagination({
   currentPage,
   totalPages,
   onPageChange,
+  maxVisiblePages = 10,
 }: {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  maxVisiblePages?: number;
 }) {
   const getVisiblePageNumbers = () => {
-    const delta = 2;
+    // If total pages is less than or equal to max visible, show all
+    if (totalPages <= maxVisiblePages) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const delta = Math.floor(maxVisiblePages / 2) - 1;
     const range = [];
     const rangeWithDots = [];
 
@@ -716,6 +723,11 @@ function VolunteerHourStatusControl({
   };
 }) {
   const [status, setStatus] = useState<string>(hour.status);
+  // Sync local state with prop changes from server
+  React.useEffect(() => {
+    setStatus(hour.status);
+  }, [hour.status]);
+
   const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
   const [pendingNewStatus, setPendingNewStatus] = useState<string>("");
   const submit = useSubmit();
@@ -726,7 +738,7 @@ function VolunteerHourStatusControl({
     formData.append("hourId", hour.id.toString());
     formData.append("newStatus", newStatus);
     submit(formData, { method: "post" });
-    setStatus(newStatus);
+    // Don't update local state immediately - let the server response handle it
     setShowConfirmDialog(false);
   };
 
@@ -991,7 +1003,7 @@ export default function AdminSettings() {
 
   const [searchName, setSearchName] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage] = useState(5);
+  const [usersPerPage] = useState(10);
 
   // Volunteer hours management state
   const [volunteerSearchName, setVolunteerSearchName] = useState("");
@@ -1004,9 +1016,9 @@ export default function AdminSettings() {
   const [appliedVolunteerToDate, setAppliedVolunteerToDate] = useState("");
   const [appliedVolunteerToTime, setAppliedVolunteerToTime] = useState("");
   const [volunteerCurrentPage, setVolunteerCurrentPage] = useState(1);
-  const [volunteerHoursPerPage] = useState(5);
+  const [volunteerHoursPerPage] = useState(10);
   const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
-  const [actionsPerPage] = useState(5);
+  const [actionsPerPage] = useState(10);
 
   // Recent actions filters state
   const [actionsSearchName, setActionsSearchName] = useState("");
@@ -1755,7 +1767,7 @@ export default function AdminSettings() {
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="pastWorkshopVisibility">
-                          Past Workshop Visibility Days
+                          Past Workshop Visibility (In Days)
                         </Label>
                         <Input
                           id="pastWorkshopVisibility"
@@ -2130,19 +2142,32 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center gap-2 mb-6">
-                      <FiSearch className="text-gray-500" />
-                      <Input
-                        placeholder="Search by first or last name"
-                        value={searchName}
-                        onChange={(e) => setSearchName(e.target.value)}
-                        className="w-full md:w-64"
-                      />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="Search by first or last name"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          className="w-full md:w-64"
+                        />
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Showing {startIndex + 1}-
+                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
+                        {sortedFilteredUsers.length} users
+                      </div>
                     </div>
                     <ShadTable
                       columns={columns}
-                      data={sortedFilteredUsers}
+                      data={paginatedUsers}
                       emptyMessage="No users found"
+                    />
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
@@ -2850,6 +2875,7 @@ export default function AdminSettings() {
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
+                      maxVisiblePages={10}
                     />
                   </CardContent>
                 </Card>
@@ -3165,6 +3191,7 @@ export default function AdminSettings() {
                         currentPage={volunteerCurrentPage}
                         totalPages={volunteerTotalPages}
                         onPageChange={setVolunteerCurrentPage}
+                        maxVisiblePages={10}
                       />
                     </div>
                   </CardContent>
@@ -3175,7 +3202,8 @@ export default function AdminSettings() {
                   <CardHeader>
                     <CardTitle>Recently Managed Volunteer Actions</CardTitle>
                     <CardDescription>
-                      Recently modified volunteer hour statuses and number of total hours per filter
+                      Recently modified volunteer hour statuses and number of
+                      total hours per filter
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -3510,6 +3538,7 @@ export default function AdminSettings() {
                       currentPage={actionsCurrentPage}
                       totalPages={actionsTotalPages}
                       onPageChange={setActionsCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
