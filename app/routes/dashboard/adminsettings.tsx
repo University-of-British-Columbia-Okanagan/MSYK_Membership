@@ -1003,7 +1003,7 @@ export default function AdminSettings() {
 
   const [searchName, setSearchName] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage] = useState(5);
+  const [usersPerPage] = useState(10);
 
   // Volunteer hours management state
   const [volunteerSearchName, setVolunteerSearchName] = useState("");
@@ -2142,19 +2142,32 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center gap-2 mb-6">
-                      <FiSearch className="text-gray-500" />
-                      <Input
-                        placeholder="Search by first or last name"
-                        value={searchName}
-                        onChange={(e) => setSearchName(e.target.value)}
-                        className="w-full md:w-64"
-                      />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="Search by first or last name"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          className="w-full md:w-64"
+                        />
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Showing {startIndex + 1}-
+                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
+                        {sortedFilteredUsers.length} users
+                      </div>
                     </div>
                     <ShadTable
                       columns={columns}
-                      data={sortedFilteredUsers}
+                      data={paginatedUsers}
                       emptyMessage="No users found"
+                    />
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
