@@ -84,7 +84,7 @@ export default function UserDashboard() {
       )
   );
 
-  // Use the past visibility setting to filter past events - EXACT SAME LOGIC AS ADMIN DASHBOARD
+  // Use the past visibility setting to filter past events
   const pastEvents = workshops.filter((event) => {
     // Check if all occurrences are in the past
     const allOccurrencesPast = event.occurrences.every(
@@ -148,7 +148,9 @@ export default function UserDashboard() {
               isAdmin={isAdmin}
             />
           ) : (
-            <p className="text-gray-600 mt-4">No active orientations available.</p>
+            <p className="text-gray-600 mt-4">
+              No active orientations available.
+            </p>
           )}
 
           {/* Past Events Section */}
