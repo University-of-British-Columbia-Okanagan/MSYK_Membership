@@ -24,8 +24,6 @@ interface WorkshopProps {
   type: "workshop" | "orientation" | string;
   isAdmin: boolean;
   imageUrl?: string;
-  isPast?: boolean;
-  isRegistered?: boolean;
 }
 
 export default function WorkshopCard({
@@ -36,8 +34,6 @@ export default function WorkshopCard({
   type,
   isAdmin,
   imageUrl,
-  isPast,
-  isRegistered,
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
