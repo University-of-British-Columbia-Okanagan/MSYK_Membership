@@ -59,7 +59,15 @@ export async function action({ request }: { request: Request }) {
       await cancelEquipmentBooking(bookingId);
       return json({ success: "Booking cancelled successfully!" });
     } catch (error) {
-      return json({ errors: { message: error.message } }, { status: 400 });
+      return json(
+        {
+          errors: {
+            message:
+              error instanceof Error ? error.message : "An error occurred",
+          },
+        },
+        { status: 400 }
+      );
     }
   }
 
@@ -83,8 +91,8 @@ export default function MyEquipments() {
                   key={booking.id}
                   id={booking.id}
                   name={booking.name}
-                  description={booking.description}
-                  imageUrl={booking.imageUrl}
+                  description={booking.description || ""}
+                  imageUrl={booking.imageUrl || undefined}
                   status="booked" // Always "booked" in MyEquipments.tsx
                   bookingId={booking.bookingId} // Required for cancel button
                 />
