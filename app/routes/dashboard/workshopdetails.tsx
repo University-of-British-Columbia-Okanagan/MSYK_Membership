@@ -151,7 +151,9 @@ export async function loader({
       prerequisiteWorkshops = await Promise.all(
         workshop.prerequisites.map(async (prereq) => {
           const id =
-            typeof prereq === "object" ? prereq.prerequisiteId : prereq;
+            typeof prereq === "object"
+              ? (prereq as any).prerequisiteId
+              : prereq;
           const prereqWorkshop = await getWorkshopById(id);
 
           // Check if the user has completed this prerequisite
@@ -177,7 +179,9 @@ export async function loader({
       prerequisiteWorkshops = await Promise.all(
         workshop.prerequisites.map(async (prereq) => {
           const id =
-            typeof prereq === "object" ? prereq.prerequisiteId : prereq;
+            typeof prereq === "object"
+              ? (prereq as any).prerequisiteId
+              : prereq;
           const prereqWorkshop = await getWorkshopById(id);
           return prereqWorkshop
             ? { id, name: prereqWorkshop.name, completed: false }
