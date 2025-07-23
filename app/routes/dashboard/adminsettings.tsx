@@ -19,7 +19,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Settings, Save, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -48,25 +47,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Edit2, Check, X } from "lucide-react";
 import { FiSearch } from "react-icons/fi";
 import {
-  getAllUsers,
   updateUserRole,
   updateUserAllowLevel,
   getAllUsersWithVolunteerStatus,
   updateUserVolunteerStatus,
 } from "~/models/user.server";
-import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
+import {
+  ShadTable,
+  type ColumnDefinition,
+} from "~/components/ui/Dashboard/ShadTable";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   AlertDialog,
@@ -158,7 +150,7 @@ export async function loader({ request }: { request: Request }) {
       level4UnavailableHours,
       plannedClosures,
       maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
-      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
+      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10),
       gstPercentage: parseFloat(gstPercentage),
     },
     workshops,
@@ -528,6 +520,7 @@ function RoleControl({
   );
 }
 
+// For volunteer control, this component allows toggling volunteer status
 function VolunteerControl({
   user,
 }: {
@@ -616,6 +609,7 @@ function VolunteerControl({
   );
 }
 
+// For settings that need pagination, this component provides a simple pagination UI
 function Pagination({
   currentPage,
   totalPages,
@@ -710,6 +704,7 @@ function Pagination({
   );
 }
 
+// For volunteer hour status control, this component allows changing the status of volunteer hours
 function VolunteerHourStatusControl({
   hour,
 }: {
@@ -847,91 +842,84 @@ function VolunteerHourStatusControl({
 }
 
 export default function AdminSettings() {
-  const {
-    roleUser,
-    settings,
-    workshops,
-    users,
-    volunteerHours,
-    recentVolunteerActions,
-  } = useLoaderData<{
-    roleUser: { roleId: number; roleName: string };
-    settings: {
-      workshopVisibilityDays: number;
-      pastWorkshopVisibility: number;
-      equipmentVisibilityDays: number;
-      level3Schedule: {
-        [day: string]: { start: number; end: number; closed?: boolean };
+  const { settings, workshops, users, volunteerHours, recentVolunteerActions } =
+    useLoaderData<{
+      settings: {
+        workshopVisibilityDays: number;
+        pastWorkshopVisibility: number;
+        equipmentVisibilityDays: number;
+        level3Schedule: {
+          [day: string]: { start: number; end: number; closed?: boolean };
+        };
+        level4UnavailableHours: {
+          start: number;
+          end: number;
+        };
+        plannedClosures: Array<{
+          id: number;
+          startDate: string;
+          endDate: string;
+        }>;
+        maxEquipmentSlotsPerDay: number;
+        maxEquipmentSlotsPerWeek: number;
+        gstPercentage: number;
       };
-      level4UnavailableHours: {
-        start: number;
-        end: number;
-      };
-      plannedClosures: Array<{
+      workshops: Array<{
         id: number;
-        startDate: string;
-        endDate: string;
+        name: string;
+        price: number;
+        registrationCutoff: number;
+        hasActiveOccurrences: boolean;
       }>;
-      maxEquipmentSlotsPerDay: number;
-      maxEquipmentSlotsPerWeek: number;
-      gstPercentage: number;
-    };
-    workshops: Array<{
-      id: number;
-      name: string;
-      price: number;
-      registrationCutoff: number;
-      hasActiveOccurrences: boolean;
-    }>;
-    users: Array<{
-      id: number;
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
-      trainingCardUserNumber: string;
-      roleLevel: number;
-      allowLevel4: boolean;
-      isVolunteer: boolean;
-      volunteerSince: Date | null;
-      volunteerHistory?: Array<{
+      users: Array<{
         id: number;
-        volunteerStart: Date;
-        volunteerEnd: Date | null;
-      }>;
-    }>;
-    volunteerHours: Array<{
-      id: number;
-      userId: number;
-      startTime: string;
-      endTime: string;
-      description: string | null;
-      status: string;
-      createdAt: string;
-      updatedAt: string;
-      user: {
         firstName: string;
         lastName: string;
         email: string;
-      };
-    }>;
-    recentVolunteerActions: Array<{
-      id: number;
-      userId: number;
-      startTime: string;
-      endTime: string;
-      description: string | null;
-      status: string;
-      previousStatus: string | null;
-      createdAt: string;
-      updatedAt: string;
-      user: {
-        firstName: string;
-        lastName: string;
-        email: string;
-      };
-    }>;
-  }>();
+        phone: string;
+        trainingCardUserNumber: string;
+        roleLevel: number;
+        allowLevel4: boolean;
+        isVolunteer: boolean;
+        volunteerSince: Date | null;
+        volunteerHistory?: Array<{
+          id: number;
+          volunteerStart: Date;
+          volunteerEnd: Date | null;
+        }>;
+      }>;
+      volunteerHours: Array<{
+        id: number;
+        userId: number;
+        startTime: string;
+        endTime: string;
+        description: string | null;
+        status: string;
+        createdAt: string;
+        updatedAt: string;
+        user: {
+          firstName: string;
+          lastName: string;
+          email: string;
+        };
+      }>;
+      recentVolunteerActions: Array<{
+        id: number;
+        userId: number;
+        startTime: string;
+        endTime: string;
+        description: string | null;
+        status: string;
+        previousStatus: string | null;
+        createdAt: string;
+        updatedAt: string;
+        user: {
+          firstName: string;
+          lastName: string;
+          email: string;
+        };
+      }>;
+    }>();
 
   const actionData = useActionData<{
     success?: boolean;
@@ -1459,7 +1447,6 @@ export default function AdminSettings() {
   };
 
   // Function to add a new planned closure
-  // Function to add a new planned closure
   const handleAddClosure = () => {
     // Create dates from user input, preserving the selected day
     const startDateInput = newClosure.startDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
@@ -1610,14 +1597,7 @@ export default function AdminSettings() {
     return true;
   };
 
-  // Keep the old function name for compatibility but call the new one
-  const validateWeeklyLimit = (
-    weeklyValue: number,
-    weeklyUnit: string
-  ): boolean => {
-    return validateLimits();
-  };
-
+  // Validate limits on initial load and when limits change
   React.useEffect(() => {
     validateLimits();
   }, [
@@ -2263,7 +2243,7 @@ export default function AdminSettings() {
                         </Alert>
                       )}
 
-                      {/* ADD ERROR DISPLAY FOR DAILY FORM TOO */}
+                      {/* ADD ERROR DISPLAY FOR DAILY FORM  */}
                       {weeklyLimitError && (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
@@ -2277,7 +2257,6 @@ export default function AdminSettings() {
                         <Label htmlFor="maxEquipmentSlotsPerDay">
                           Maximum Equipment Booking Time Per Day
                         </Label>
-                        {/* CHANGE: Simplified to only handle slots */}
                         <div className="flex items-center space-x-2">
                           <Input
                             id="maxEquipmentSlotsPerDay"
@@ -2367,11 +2346,6 @@ export default function AdminSettings() {
                   <input
                     type="hidden"
                     name="maxEquipmentSlotsPerWeek"
-                    // value={
-                    //   maxEquipmentSlotsPerWeek.unit === "hours"
-                    //     ? maxEquipmentSlotsPerWeek.value * 2 // Convert hours to 30-min slots
-                    //     : maxEquipmentSlotsPerWeek.value
-                    // }
                     value={maxEquipmentSlotsPerWeek.value}
                   />
                   <Card>
@@ -3064,57 +3038,6 @@ export default function AdminSettings() {
                           )}
                         </div>
                       </div>
-
-                      {/* Stats */}
-                      {/* <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex flex-col space-y-2">
-                          <div className="flex items-center justify-between text-sm text-gray-600">
-                            <span>
-                              Showing {volunteerStartIndex + 1}-
-                              {Math.min(
-                                volunteerEndIndex,
-                                sortedVolunteerHours.length
-                              )}{" "}
-                              of {sortedVolunteerHours.length} volunteer hour
-                              entries
-                              {appliedVolunteerFromDate &&
-                                appliedVolunteerFromTime &&
-                                appliedVolunteerToDate &&
-                                appliedVolunteerToTime && (
-                                  <span className="ml-2 text-yellow-600">
-                                    (filtered from{" "}
-                                    {new Date(
-                                      `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
-                                    ).toLocaleString()}{" "}
-                                    to{" "}
-                                    {new Date(
-                                      `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
-                                    ).toLocaleString()}
-                                    )
-                                  </span>
-                                )}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4 text-sm">
-                              <span className="text-blue-700 font-medium">
-                                Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
-                                hours
-                              </span>
-                              {volunteerStatusFilter !== "all" && (
-                                <span className="text-gray-600">
-                                  (Status:{" "}
-                                  {volunteerStatusFilter
-                                    .charAt(0)
-                                    .toUpperCase() +
-                                    volunteerStatusFilter.slice(1)}
-                                  )
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div> */}
 
                       {/* Volunteer Hours Table */}
                       <ShadTable
@@ -3845,7 +3768,7 @@ export default function AdminSettings() {
                 </Form>
               </TabsContent>
 
-              {/* Tab 2: Placeholder for Future Settings */}
+              {/* Tabb Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
                   <CardHeader>
