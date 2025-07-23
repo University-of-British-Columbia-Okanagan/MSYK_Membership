@@ -67,16 +67,15 @@ export async function action({ request }: { request: Request }) {
   if (!parsed.success) {
     return { errors: parsed.error.flatten().fieldErrors };
   }
-  
+
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(
-      `[User: ${roleUser?.userId}] Not authorized to add equipment`,
-      { url: request.url }
-    );
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add equipment`, {
+      url: request.url,
+    });
     throw new Response("Not Authorized", { status: 401 });
   }
-  
+
   // Check if equipment name already exists
   const existingEquipment = await getEquipmentByName(parsed.data.name);
   if (existingEquipment) {
@@ -84,7 +83,9 @@ export async function action({ request }: { request: Request }) {
       `[User: ${roleUser?.userId}] Equipment with this name already exists`,
       { url: request.url }
     );
-    throw new Response("Equipment with this name already exists", { status: 409 });
+    throw new Response("Equipment with this name already exists", {
+      status: 409,
+    });
   }
 
   try {
