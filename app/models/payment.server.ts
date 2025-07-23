@@ -16,6 +16,15 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
 
+/**
+ * Creates a payment intent using a user's saved card with automatic GST calculation
+ * @param userId - The ID of the user making the payment
+ * @param amount - The base amount to charge (before GST)
+ * @param description - Description for the payment intent
+ * @param metadata - Additional metadata to attach to the payment
+ * @returns Promise<Stripe.PaymentIntent> - The created and confirmed payment intent
+ * @throws Error if no saved payment method is found
+ */
 export async function createPaymentIntentWithSavedCard(
   userId: number,
   amount: number,
@@ -40,7 +49,7 @@ export async function createPaymentIntentWithSavedCard(
 
   const paymentIntent = await stripe.paymentIntents.create({
     amount: Math.round(amountWithGST * 100), // Convert to cents with GST included
-    currency: "cad", // Changed from "usd" to "cad"
+    currency: "cad",
     customer: savedPayment.stripeCustomerId,
     payment_method: savedPayment.stripePaymentMethodId,
     description: `${description} (Includes ${gstPercentage}% GST)`,
@@ -59,6 +68,13 @@ export async function createPaymentIntentWithSavedCard(
   return paymentIntent;
 }
 
+/**
+ * Processes a quick checkout for various service types using saved payment methods
+ * @param userId - The ID of the user making the purchase
+ * @param checkoutData - Object containing checkout details including type, IDs, and pricing
+ * @returns Promise<Object> - Payment result with success status and details
+ * @throws Error if payment processing fails
+ */
 export async function quickCheckout(
   userId: number,
   checkoutData: {
@@ -243,6 +259,12 @@ export async function quickCheckout(
   }
 }
 
+/**
+ * Deletes a user's saved payment method from both Stripe and the database
+ * @param userId - The ID of the user whose payment method should be deleted
+ * @returns Promise<Object> - Success object with deletion confirmation
+ * @throws Error if payment method deletion fails
+ */
 export async function deletePaymentMethod(userId: number) {
   try {
     const savedPayment = await db.userPaymentInformation.findUnique({
@@ -266,6 +288,13 @@ export async function deletePaymentMethod(userId: number) {
   }
 }
 
+/**
+ * Creates or updates a payment method for a user in Stripe and stores it in the database
+ * @param userId - The ID of the user
+ * @param data - Payment method data including card details and billing information
+ * @returns Promise<Object> - Success object with payment method details
+ * @throws Error if payment method creation/update fails
+ */
 export async function createOrUpdatePaymentMethod(
   userId: number,
   data: {
@@ -391,6 +420,12 @@ export async function createOrUpdatePaymentMethod(
   }
 }
 
+/**
+ * Creates a Stripe checkout session for different payment scenarios (workshops, memberships, equipment)
+ * @param request - The HTTP request containing payment data in JSON format
+ * @returns Promise<Response> - JSON response with checkout session URL or error
+ * @throws Error if required payment data is missing or Stripe session creation fails
+ */
 export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
@@ -461,7 +496,7 @@ export async function createCheckoutSession(request: Request) {
       }.`;
     }
 
-    // Calculate GST (5% for Canada)
+    // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
     const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
@@ -475,7 +510,7 @@ export async function createCheckoutSession(request: Request) {
       line_items: [
         {
           price_data: {
-            currency: "cad", // Changed from "usd" to "cad"
+            currency: "cad",
             product_data: {
               name: membershipPlan.title,
               description: `${finalDescription} (Includes ${gstPercentage}% GST)`,
@@ -520,7 +555,7 @@ export async function createCheckoutSession(request: Request) {
       throw new Error("Workshop or Occurrence not found");
     }
 
-    // Calculate GST (5% for Canada)
+    // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
     const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
@@ -531,7 +566,7 @@ export async function createCheckoutSession(request: Request) {
       line_items: [
         {
           price_data: {
-            currency: "cad", // Changed from "usd" to "cad"
+            currency: "cad",
             product_data: {
               name: workshop.name,
               description: `${`Occurrence on ${new Date(
@@ -592,7 +627,7 @@ export async function createCheckoutSession(request: Request) {
       line_items: [
         {
           price_data: {
-            currency: "cad", // Changed from "usd" to "cad"
+            currency: "cad",
             product_data: {
               name: workshop.name,
               description: `${description} (Includes ${gstPercentage}% GST)`,
@@ -617,7 +652,7 @@ export async function createCheckoutSession(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  // Equipment Booking Payment (NEW BRANCH)
+  // Equipment Booking Payment
   else if (
     body.equipmentId &&
     body.slotCount &&
@@ -635,7 +670,7 @@ export async function createCheckoutSession(request: Request) {
       slotsDataKey,
     } = body;
 
-    // Calculate GST (5% for Canada)
+    // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
     const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
@@ -646,7 +681,7 @@ export async function createCheckoutSession(request: Request) {
       line_items: [
         {
           price_data: {
-            currency: "cad", // Changed from "usd" to "cad"
+            currency: "cad",
             product_data: {
               name: `Equipment Booking (ID: ${equipmentId})`,
               description: `Booking for ${slotCount} slots (Includes ${gstPercentage}% GST)`,
