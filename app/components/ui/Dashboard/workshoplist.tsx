@@ -1,4 +1,3 @@
-import React from "react";
 import WorkshopCard from "./workshopcard";
 
 interface Workshop {

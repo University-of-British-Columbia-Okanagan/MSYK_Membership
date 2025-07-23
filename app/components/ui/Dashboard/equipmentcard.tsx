@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Card,
   CardContent,
@@ -8,13 +7,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useFetcher } from "react-router-dom";
-import {
-  MoreVertical,
-  Edit,
-  Trash,
-  Copy,
-  Image as ImageIcon,
-} from "lucide-react";
+import { MoreVertical, Edit, Trash, Copy } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -65,6 +58,7 @@ export default function EquipmentCard({
       { method: "post" }
     );
   };
+
   const handleCancel = async () => {
     const confirmCancel = window.confirm(
       `Are you sure you want to cancel booking for "${name}"?`
@@ -73,6 +67,7 @@ export default function EquipmentCard({
       fetcher.submit({ bookingId, action: "cancel" }, { method: "post" });
     }
   };
+
   return (
     <Card
       className={`w-full md:w-80 rounded-lg shadow-md flex flex-col overflow-hidden relative ${
