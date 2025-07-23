@@ -183,7 +183,12 @@ export async function action({ request }: { request: Request }) {
     });
 
     const response = await createCheckoutSession(fakeRequest);
-    const sessionRes = await response.json();
+    let sessionRes;
+    if (response instanceof Response) {
+      sessionRes = await response.json();
+    } else {
+      sessionRes = response;
+    }
 
     if (sessionRes?.url) {
       logger.info(`[User: ${user.id}] Checkout session created successfully`, {
@@ -318,13 +323,18 @@ export default function EquipmentBookingForm() {
                           Account Required
                         </h3>
                         <p className="text-blue-700 mb-4">
-                          You need an account to book equipment. Please sign in or create an account to continue.
+                          You need an account to book equipment. Please sign in
+                          or create an account to continue.
                         </p>
                         <div className="flex gap-3 justify-center">
                           <button
                             onClick={() => {
-                              const currentUrl = window.location.pathname + window.location.search;
-                              window.location.href = `/login?redirect=${encodeURIComponent(currentUrl)}`;
+                              const currentUrl =
+                                window.location.pathname +
+                                window.location.search;
+                              window.location.href = `/login?redirect=${encodeURIComponent(
+                                currentUrl
+                              )}`;
                             }}
                             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-medium transition-colors"
                           >
@@ -332,8 +342,12 @@ export default function EquipmentBookingForm() {
                           </button>
                           <button
                             onClick={() => {
-                              const currentUrl = window.location.pathname + window.location.search;
-                              window.location.href = `/register?redirect=${encodeURIComponent(currentUrl)}`;
+                              const currentUrl =
+                                window.location.pathname +
+                                window.location.search;
+                              window.location.href = `/register?redirect=${encodeURIComponent(
+                                currentUrl
+                              )}`;
                             }}
                             className="bg-white hover:bg-blue-50 text-blue-500 border border-blue-500 px-6 py-2 rounded-lg font-medium transition-colors"
                           >
@@ -347,7 +361,7 @@ export default function EquipmentBookingForm() {
                   <label className="block text-gray-700 font-bold mt-4 mb-2">
                     Select Time Slots
                   </label>
-                  
+
                   <EquipmentBookingGrid
                     slotsByDay={selectedEquip?.slotsByDay || {}}
                     onSelectSlots={setSelectedSlots}
