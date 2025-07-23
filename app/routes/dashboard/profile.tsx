@@ -1,5 +1,5 @@
 import React from "react";
-import { useLoaderData, Form, useActionData, redirect } from "react-router-dom";
+import { useLoaderData, Form, useActionData } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import {
   getProfileDetails,
@@ -12,8 +12,7 @@ import type { LoaderFunction } from "react-router-dom";
 import Sidebar from "../../components/ui/Dashboard/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
-import { CreditCard, User, Calendar, Medal, Clock, Plus } from "lucide-react";
-import { FiSearch } from "react-icons/fi";
+import { CreditCard, Medal, Clock, Plus } from "lucide-react";
 import {
   Select,
   SelectTrigger,
@@ -21,7 +20,10 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
+import {
+  ShadTable,
+  type ColumnDefinition,
+} from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
@@ -599,7 +601,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Volunteer Hours Section - Always show */}
+            {/* Volunteer Hours Section */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center gap-2">
@@ -769,7 +771,7 @@ export default function ProfilePage() {
                             </div>
                           </div>
 
-                          {/* Expanded State - The full message */}
+                          {/* Expanded State */}
                           {showDeniedMessage && (
                             <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                               <p className="text-sm text-orange-700">
