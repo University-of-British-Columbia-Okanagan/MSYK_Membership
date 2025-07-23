@@ -62,7 +62,11 @@ export default function MyWorkshops() {
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           {workshops.length > 0 ? (
-            <WorkshopList title="My Workshops" workshops={workshops} isAdmin={false} />
+            <WorkshopList
+              title="My Workshops"
+              workshops={workshops}
+              isAdmin={false}
+            />
           ) : (
             <p className="text-gray-600 mt-4">
               You are not registered for any workshops.
