@@ -103,7 +103,7 @@ export async function action({ request }: { request: Request }) {
       { url: request.url }
     );
 
-    return redirect("/dashboard/admin");
+    return redirect("/dashboard/equipments");
   } catch (error: any) {
     logger.error(`Error adding new equipment ${error}`, { url: request.url });
 
