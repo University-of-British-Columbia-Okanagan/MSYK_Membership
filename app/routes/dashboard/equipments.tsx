@@ -1,5 +1,4 @@
 import { useLoaderData, useNavigate, useFetcher } from "react-router-dom";
-import EquipmentList from "~/components/ui/Dashboard/EquipmentList";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
