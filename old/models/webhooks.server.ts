@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { db } from "../utils/db.server";
+import { db } from "../../app/utils/db.server";
 import { json } from "react-router";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
