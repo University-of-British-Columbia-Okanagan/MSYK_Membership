@@ -17,7 +17,7 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
 import { FiPlus } from "react-icons/fi";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { logger } from "~/logging/logger";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
 

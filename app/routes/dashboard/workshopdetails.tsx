@@ -33,7 +33,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Link as RouterLink } from "react-router-dom";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   DropdownMenu,
   DropdownMenuContent,

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { redirect } from "react-router";
-import GenericFormField from "@/components/ui/GenericFormField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 

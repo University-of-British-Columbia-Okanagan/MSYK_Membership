@@ -31,7 +31,7 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 import { getWorkshops } from "~/models/workshop.server";
-import MultiSelectField from "@/components/ui/MultiSelectField";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import { useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";

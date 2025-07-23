@@ -66,8 +66,8 @@ import {
   getAllUsersWithVolunteerStatus,
   updateUserVolunteerStatus,
 } from "~/models/user.server";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   AlertDialog,
   AlertDialogAction,

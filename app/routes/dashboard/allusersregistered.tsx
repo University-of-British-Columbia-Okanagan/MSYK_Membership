@@ -5,10 +5,10 @@ import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getRoleUser } from "~/utils/session.server";
 import { getAllUsers, updateUserRole, updateUserAllowLevel } from "~/models/user.server";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { FiSearch } from "react-icons/fi";
 import { Input } from "@/components/ui/input";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {

@@ -14,9 +14,9 @@ import {
   SelectContent, 
   SelectItem 
 } from "@/components/ui/select";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { getAllRegistrations } from "~/models/workshop.server";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 
 interface LoaderData {
   roleUser: {

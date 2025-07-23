@@ -25,7 +25,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
-import GenericFormField from "@/components/ui/GenericFormField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 
 const prisma = new PrismaClient();
 

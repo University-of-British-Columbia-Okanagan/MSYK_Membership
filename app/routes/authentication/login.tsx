@@ -16,7 +16,7 @@ import { loginSchema } from "../../schemas/loginSchema";
 import type { LoginFormValues } from "../../schemas/loginSchema";
 import type { Route } from "./+types/login";
 import { login, createUserSession, getUser } from "~/utils/session.server";
-import GenericFormField from "@/components/ui/GenericFormField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);

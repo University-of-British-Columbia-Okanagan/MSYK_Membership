@@ -21,7 +21,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";

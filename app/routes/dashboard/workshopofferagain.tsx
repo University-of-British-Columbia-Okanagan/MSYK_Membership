@@ -5,9 +5,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Form, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
-import OccurrenceRow from "~/components/ui/OccurrenceRow";
-import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
-import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
+import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
+import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
+import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import { getWorkshopById, offerWorkshopAgain } from "~/models/workshop.server";
 import { Badge } from "@/components/ui/badge";
 import {

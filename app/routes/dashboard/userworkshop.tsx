@@ -5,7 +5,7 @@ import { getUserWorkshopRegistrationsByWorkshopId } from "~/models/workshop.serv
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "@/components/ui/Dashboard/sidebar";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { FiSearch } from "react-icons/fi";
 import { Input } from "@/components/ui/input";
 import { 
@@ -15,7 +15,7 @@ import {
   SelectContent, 
   SelectItem 
 } from "@/components/ui/select";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 
 interface LoaderData {
   roleUser: {

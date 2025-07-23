@@ -28,7 +28,7 @@ import {
   getWorkshops,
   getWorkshopContinuationUserCount,
 } from "~/models/workshop.server";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   Select,
   SelectContent,
@@ -37,14 +37,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import GenericFormField from "~/components/ui/GenericFormField";
-import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
-import OccurrenceRow from "~/components/ui/OccurrenceRow";
-import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
-import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
-import PrerequisitesField from "@/components/ui/PrerequisitesField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
+import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
+import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
+import OccurrencesTabs from "~/components/ui/Dashboard/OccurrenceTabs";
+import PrerequisitesField from "~/components/ui/Dashboard/PrerequisitesField";
 import { getAvailableEquipment } from "~/models/equipment.server";
-import MultiSelectField from "@/components/ui/MultiSelectField";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import {
   Calendar as CalendarIcon,
   CalendarDays as CalendarDaysIcon,

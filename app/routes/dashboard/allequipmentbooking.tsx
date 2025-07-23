@@ -1,7 +1,7 @@
 import { useLoaderData, Form } from "react-router-dom";
 import { getAllEquipmentWithBookings, toggleEquipmentAvailability } from "~/models/equipment.server";
 import { Button } from "@/components/ui/button";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { format } from "date-fns";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
