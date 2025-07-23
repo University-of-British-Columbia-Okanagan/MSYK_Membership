@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { Outlet, redirect } from "react-router-dom";
+import { useState, useMemo } from "react";
+import { Outlet } from "react-router-dom";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -7,14 +7,17 @@ import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
 import { FiSearch } from "react-icons/fi";
 import { Input } from "@/components/ui/input";
-import { 
-  Select, 
-  SelectTrigger, 
-  SelectValue, 
-  SelectContent, 
-  SelectItem 
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
 } from "@/components/ui/select";
-import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
+import {
+  ShadTable,
+  type ColumnDefinition,
+} from "~/components/ui/Dashboard/ShadTable";
 import { getAllRegistrations } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 
@@ -68,13 +71,17 @@ export default function AllUserWorkshop() {
       const matchesUser =
         searchUser === "" ||
         (reg.user.firstName &&
-          reg.user.firstName.toLowerCase().includes(searchUser.toLowerCase())) ||
+          reg.user.firstName
+            .toLowerCase()
+            .includes(searchUser.toLowerCase())) ||
         (reg.user.lastName &&
           reg.user.lastName.toLowerCase().includes(searchUser.toLowerCase()));
       const matchesWorkshop =
         searchWorkshop === "" ||
         (reg.workshop.name &&
-          reg.workshop.name.toLowerCase().includes(searchWorkshop.toLowerCase()));
+          reg.workshop.name
+            .toLowerCase()
+            .includes(searchWorkshop.toLowerCase()));
       return matchesType && matchesUser && matchesWorkshop;
     });
   }, [registrations, workshopTypeFilter, searchUser, searchWorkshop]);
@@ -98,7 +105,7 @@ export default function AllUserWorkshop() {
     window.location.reload();
   };
 
-  // Define columns for the ShadTable.
+  // Define columns for the ShadTable
   type RegistrationRow = LoaderData["registrations"][number];
   const columns: ColumnDefinition<RegistrationRow>[] = [
     {
@@ -151,8 +158,7 @@ export default function AllUserWorkshop() {
     },
     {
       header: "Registration Date",
-      render: (reg) =>
-        reg.date ? new Date(reg.date).toLocaleString() : "N/A",
+      render: (reg) => (reg.date ? new Date(reg.date).toLocaleString() : "N/A"),
     },
     {
       header: "Occurrence Start Time",
@@ -175,7 +181,9 @@ export default function AllUserWorkshop() {
       <div className="flex h-screen">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">User Workshop Registrations</h1>
+          <h1 className="text-2xl font-bold mb-4">
+            User Workshop Registrations
+          </h1>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             {/* Workshop Type Filter */}
             <div className="flex items-center gap-2">
