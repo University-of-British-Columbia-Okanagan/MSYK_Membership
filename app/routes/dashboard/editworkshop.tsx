@@ -1,12 +1,6 @@
 import React, { useState } from "react";
-import {
-  redirect,
-  useNavigation,
-  useActionData,
-  useLoaderData,
-} from "react-router";
+import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
@@ -29,20 +23,12 @@ import {
   getWorkshopContinuationUserCount,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
 import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/Dashboard/OccurrenceTabs";
-import PrerequisitesField from "~/components/ui/Dashboard/PrerequisitesField";
 import { getAvailableEquipment } from "~/models/equipment.server";
 import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import {
@@ -67,7 +53,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import {
   getEquipmentSlotsWithStatus,
   bulkBookEquipment,
@@ -94,12 +79,9 @@ interface Occurrence {
   status?: string;
   userCount?: number;
   connectId?: number | null;
-  offerId?: number | null; // Add this line
+  offerId?: number | null;
 }
 
-/* ──────────────────────────────────────────────────────────────────────────────
-   1) Loader: fetch the Workshop + its WorkshopOccurrences
-   ---------------------------------------------------------------------------*/
 /* ──────────────────────────────────────────────────────────────────────────────
    1) Loader: fetch the Workshop + its WorkshopOccurrences
    ---------------------------------------------------------------------------*/
@@ -175,8 +157,7 @@ export async function loader({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
-   2) Action: convert local occurrences to UTC, then update both Workshop + 
-      WorkshopOccurrences in the DB.
+   2) Action
    ---------------------------------------------------------------------------*/
 export async function action({
   request,
@@ -190,9 +171,14 @@ export async function action({
   const roleUser = await getRoleUser(request);
 
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to update workshop`, {
-      url: request.url,
-    });
+    logger.warn(
+      `[User: ${
+        roleUser?.userId ?? "unknown"
+      }] Not authorized to update workshop`,
+      {
+        url: request.url,
+      }
+    );
     throw new Response("Not Authorized", { status: 419 });
   }
 
@@ -248,7 +234,9 @@ export async function action({
   // Convert price & capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
-  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
+  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
+    Number
+  );
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
 
   const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
@@ -335,7 +323,7 @@ export async function action({
     // Get the current workshop data to compare with changes
     const currentWorkshop = await getWorkshopById(Number(params.workshopId));
     const currentOccurrences = currentWorkshop.occurrences || [];
-    
+
     // Get the current user ID
     const user = await getUser(request);
     const userId = user?.id || 1;
@@ -346,7 +334,7 @@ export async function action({
       for (const occurrence of currentOccurrences) {
         if (occurrence.id) {
           try {
-              // Delete old equipment bookings for this occurrence
+            // Delete old equipment bookings for this occurrence
             await db.equipmentBooking.deleteMany({
               where: {
                 workshopId: Number(params.workshopId),
@@ -375,7 +363,7 @@ export async function action({
         }
       }
 
-      // COPY PASTE: Additional cleanup - remove any orphaned bookings for this workshop
+      // Remove any orphaned bookings for this workshop
       try {
         await db.equipmentBooking.deleteMany({
           where: {
@@ -406,7 +394,7 @@ export async function action({
       userId, // Pass the user ID
     });
 
-    // COPY PASTE: Process equipment bookings for the NEW occurrences
+    // Process equipment bookings for the NEW occurrences
     if (parsed.data.equipments && parsed.data.equipments.length > 0) {
       // Get the updated workshop with new occurrence IDs
       const updatedWorkshop = await getWorkshopById(Number(params.workshopId));
@@ -438,7 +426,11 @@ export async function action({
 
     if (validSelectedSlotIds.length > 0) {
       try {
-        await bulkBookEquipment(Number(params.workshopId), validSelectedSlotIds, userId);
+        await bulkBookEquipment(
+          Number(params.workshopId),
+          validSelectedSlotIds,
+          userId
+        );
       } catch (error: any) {
         logger.error(
           `[User: ${roleUser.userId}] Error updating manually selected equipment bookings: ${error.message}`,
@@ -454,9 +446,12 @@ export async function action({
     return { errors: { database: ["Failed to update workshop"] } };
   }
 
-  logger.info(`[User: ${roleUser.userId}] Successfully updated workshop ${params.workshopId}`, {
-    url: request.url,
-  });
+  logger.info(
+    `[User: ${roleUser.userId}] Successfully updated workshop ${params.workshopId}`,
+    {
+      url: request.url,
+    }
+  );
 
   return redirect("/dashboard/admin");
 }
@@ -488,23 +483,6 @@ function formatLocalDatetime(date: Date): string {
 function isDateInPast(date: Date): boolean {
   const now = new Date();
   return date < now && !isNaN(date.getTime());
-}
-
-/**
- * Check if any occurrence dates are in the past
- */
-function hasOccurrencesInPast(occurrences: Occurrence[]): boolean {
-  // Only check active occurrences with valid dates
-  const activeOccurrences = occurrences.filter(
-    (occ) => occ.status === "active" || !occ.status // Include new occurrences with no status
-  );
-
-  return activeOccurrences.some(
-    (occ) =>
-      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
-      !isNaN(occ.startDate.getTime()) &&
-      !isNaN(occ.endDate.getTime())
-  );
 }
 
 const getOfferIdColor = (offerId: number | null | undefined): string => {
@@ -734,7 +712,6 @@ function handleCancelOccurrence(occurrenceId?: number) {
    ---------------------------------------------------------------------------*/
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
-  // const workshop = useLoaderData<typeof loader>();
   const {
     workshop,
     availableWorkshops,
@@ -745,23 +722,23 @@ export default function EditWorkshop() {
 
   const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
 
-  // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
   const initialOccurrences =
-    workshop.occurrences?.map((occ: any) => {
-      const localStart = new Date(occ.startDate);
-      const localEnd = new Date(occ.endDate);
-      return {
-        id: occ.id,
-        startDate: localStart,
-        endDate: localEnd,
-        status: occ.status,
-        userCount: occ.userWorkshops?.length ?? 0,
-        connectId: occ.connectId,
-        offerId: occ.offerId, // Add this line
-      };
-    })
-    // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
-    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
+    workshop.occurrences
+      ?.map((occ: any) => {
+        const localStart = new Date(occ.startDate);
+        const localEnd = new Date(occ.endDate);
+        return {
+          id: occ.id,
+          startDate: localStart,
+          endDate: localEnd,
+          status: occ.status,
+          userCount: occ.userWorkshops?.length ?? 0,
+          connectId: occ.connectId,
+          offerId: occ.offerId,
+        };
+      })
+      // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
 
   const defaultContinuation =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
@@ -816,12 +793,6 @@ export default function EditWorkshop() {
       : workshop.prerequisites || []
   );
 
-  // const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
-  //   Array.isArray(workshop.equipments) &&
-  //     typeof workshop.equipments[0] === "object"
-  //     ? workshop.equipments.map((e: any) => e.equipmentId)
-  //     : workshop.equipments || []
-  // );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
     Array.isArray(workshop.equipments) &&
       typeof workshop.equipments[0] === "object"
@@ -852,8 +823,8 @@ export default function EditWorkshop() {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // Let's track the date selection approach (custom, weekly, monthly).
-  // Default to "custom" if we already have occurrences, but you can tweak if desired.
+  // Track the date selection approach (custom, weekly, monthly).
+  // Default to "custom" if we already have occurrences
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
   >(occurrences.length ? "custom" : "custom");
@@ -870,7 +841,6 @@ export default function EditWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  // For custom approach, add an empty row
   // For custom approach, add an empty row
   const addOccurrence = () => {
     // Check if any users are registered
@@ -950,7 +920,7 @@ export default function EditWorkshop() {
 
     // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
     if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
       updatedOccurrences[index].endDate = endDate;
     }
 
@@ -1009,9 +979,8 @@ export default function EditWorkshop() {
   }
 
   // Remove a row
-  // Remove a row
   const removeOccurrence = (index: number) => {
-    // COPY PASTE: Clean up equipment slots for the removed occurrence
+    // Clean up equipment slots for the removed occurrence
     const occurrenceToRemove = occurrences[index];
     if (
       selectedEquipments.length > 0 &&
@@ -1104,18 +1073,10 @@ export default function EditWorkshop() {
     setSelectedEquipments(updated);
     form.setValue("equipments", updated);
 
-    // COPY PASTE: Also remove this equipment from selectedSlotsMap
+    // Remove this equipment from selectedSlotsMap
     const newSlotsMap = { ...selectedSlotsMap };
     delete newSlotsMap[id];
     setSelectedSlotsMap(newSlotsMap);
-  };
-
-  const getTotalUsersForContinuation = () => {
-    return userCounts.totalUsers;
-  };
-
-  const getUniqueUsersCount = () => {
-    return userCounts.uniqueUsers;
   };
 
   function getSlotStringsForOccurrences(
@@ -1157,7 +1118,7 @@ export default function EditWorkshop() {
       const overlaps = checkForEquipmentOverlaps(
         occurrences,
         selectedEquipments,
-        equipmentsWithSlots, // FIXED: Use the equipmentsWithSlots variable
+        equipmentsWithSlots,
         workshop.name
       );
 
@@ -1186,15 +1147,12 @@ export default function EditWorkshop() {
         // We found active occurrences with past dates, show confirmation dialog
         console.log("Found past dates, showing confirmation dialog");
         setIsConfirmDialogOpen(true);
-        return; // Important: prevent form submission until user confirms
+        return; // Prevent form submission until user confirms
       }
 
       // No issues, proceed with submission
       console.log("Proceeding with form submission");
       setFormSubmitting(true);
-
-      // Use DOM to submit the form
-      // document.forms[0].submit();
 
       const formElement = e.currentTarget as HTMLFormElement;
       formElement.submit();
@@ -1213,7 +1171,7 @@ export default function EditWorkshop() {
     );
 
     if (validOccurrences.length > 0 && selectedEquipments.length > 0) {
-      // COPY PASTE: Completely regenerate the slots map to ensure accuracy
+      // Completely regenerate the slots map to ensure accuracy
       const newSlotsMap: Record<number, number[]> = {};
 
       // For each equipment, add the slots from the occurrences
@@ -1243,7 +1201,7 @@ export default function EditWorkshop() {
       // Update the selected slots map
       setSelectedSlotsMap(newSlotsMap);
     } else if (selectedEquipments.length === 0) {
-      // COPY PASTE: Clear all slots if no equipment is selected
+      // Clear all slots if no equipment is selected
       setSelectedSlotsMap({});
     }
   }, [occurrences, selectedEquipments]); // Remove selectedSlotsMap from dependencies to prevent infinite loop
@@ -1291,18 +1249,6 @@ export default function EditWorkshop() {
                     required
                     error={actionData?.errors?.name}
                   />
-
-                  {/* <GenericFormField
-            control={form.control}
-            name="description"
-            label="Description"
-            placeholder="Workshop Description"
-            required
-            error={actionData?.errors?.description}
-            component={Textarea}
-            className="w-full" // override if needed
-            rows={5}
-          /> */}
 
                   <GenericFormField
                     control={form.control}
@@ -1396,7 +1342,7 @@ export default function EditWorkshop() {
                       </div>
                       <FormControl>
                         <div className="flex flex-col items-start space-y-6 w-full">
-                          {/* Radio Buttons for selecting date input type - enhanced version */}
+                          {/* Radio Buttons for selecting date input type */}
                           <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                             <DateTypeRadioGroup
                               options={[
@@ -1428,7 +1374,7 @@ export default function EditWorkshop() {
                             />
                           </div>
 
-                          {/* Custom Dates Input - keep the implementation but wrapped in a better card */}
+                          {/* Custom Dates Input */}
                           {dateSelectionType === "custom" && (
                             <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               {occurrences.length === 0 ? (
@@ -1446,7 +1392,8 @@ export default function EditWorkshop() {
                                   const isEndDatePast = isDateInPast(
                                     occ.endDate
                                   );
-                                  const hasWarning = isStartDatePast || isEndDatePast;
+                                  const hasWarning =
+                                    isStartDatePast || isEndDatePast;
 
                                   return (
                                     <div key={index} style={{ width: "100%" }}>
@@ -2193,13 +2140,16 @@ export default function EditWorkshop() {
                     }))
                   )}
                 />
+
                 <input type="hidden" name="type" value={workshop.type} />
+
                 <input
                   type="hidden"
                   id="cancelOccurrenceId"
                   name="cancelOccurrenceId"
                   value=""
                 />
+
                 <input
                   type="hidden"
                   name="prerequisites"
@@ -2207,11 +2157,13 @@ export default function EditWorkshop() {
                     [...selectedPrerequisites].sort((a, b) => a - b)
                   )}
                 />
+
                 <input
                   type="hidden"
                   name="equipments"
                   value={JSON.stringify(selectedEquipments || [])}
                 />
+
                 <input
                   type="hidden"
                   name="isWorkshopContinuation"
@@ -2245,7 +2197,6 @@ export default function EditWorkshop() {
                               className="border-l-4 border-red-500 pl-3 py-2 bg-red-50"
                             >
                               <p className="font-medium">{overlap.name}</p>
-                              {/* COPY PASTE: Replace the existing list with this enhanced version */}
                               <div className="text-sm mt-1 space-y-1">
                                 {overlap.overlappingTimes
                                   .slice(0, 3)
@@ -2320,7 +2271,7 @@ export default function EditWorkshop() {
                           );
                           setFormSubmitting(true);
                           setIsConfirmDialogOpen(false);
-                          // FIXED: Use setTimeout to ensure dialog closes and then submit
+                          // Use setTimeout to ensure dialog closes and then submit
                           setTimeout(() => {
                             const formElement = document.querySelector(
                               "form"
@@ -2328,7 +2279,10 @@ export default function EditWorkshop() {
                             if (formElement) {
                               console.log("Submitting form after confirmation");
                               // Create and dispatch a submit event to trigger the action
-                              const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                              const submitEvent = new Event("submit", {
+                                bubbles: true,
+                                cancelable: true,
+                              });
                               formElement.dispatchEvent(submitEvent);
                             }
                           }, 100);
@@ -2339,25 +2293,6 @@ export default function EditWorkshop() {
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-
-                {/* <Button
-            type="submit"
-            className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
-            disabled={formSubmitting}
-            onClick={() => {
-              console.log("Submit button clicked");
-              console.log(
-                "Occurrences with past dates:",
-                occurrences.filter(
-                  (occ) =>
-                    occ.status === "active" &&
-                    (isDateInPast(occ.startDate) || isDateInPast(occ.endDate))
-                )
-              );
-            }}
-          >
-            Update Workshop
-          </Button> */}
 
                 <div className="flex justify-center mt-6">
                   <Button
