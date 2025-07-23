@@ -2,7 +2,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminSidebar from "~/components/ui/Dashboard/adminsidebar"; 
 import Footer from "@/components/ui/Home/Footer";
-import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
+import MembershipCard from "~/components/ui/Dashboard/membershipcard";
 import {
   getMembershipPlans,
   deleteMembershipPlan,
