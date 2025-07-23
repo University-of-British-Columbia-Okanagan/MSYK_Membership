@@ -31,7 +31,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 
@@ -173,7 +172,7 @@ export async function action({
       }
     );
   } catch (error) {
-    logger.error(`Error parsing occurrences: ${error}`, {url: request.url,});
+    logger.error(`Error parsing occurrences: ${error}`, { url: request.url });
     return {
       errors: {
         occurrences: [
