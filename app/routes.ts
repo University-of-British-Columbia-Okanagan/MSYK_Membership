@@ -64,10 +64,7 @@ export default [
   route("dashboard/paymentprocess", "routes/api/paymentprocess.tsx"),
   route("dashboard/payment/success", "routes/dashboard/paymentsuccess.tsx"),
   route("dashboard/payment/downgrade", "routes/api/paymentdowngrade.tsx"),
-  route(
-    "dashboard/payment/resubscribe",
-    "routes/dashboard/paymentresubscribe.tsx"
-  ),
+  route("dashboard/payment/resubscribe", "routes/api/paymentresubscribe.tsx"),
   route(
     "/dashboard/equipmentbooking/:id",
     "routes/dashboard/equipmentbooking.tsx"
