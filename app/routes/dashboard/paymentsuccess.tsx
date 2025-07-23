@@ -109,9 +109,7 @@ export async function loader({ request }: { request: Request }) {
     membershipPlanId,
     userId,
     connectId,
-    compensationPrice,
     equipmentId,
-    slotCount,
     slotsDataKey,
     isEquipmentBooking,
   } = metadata;
