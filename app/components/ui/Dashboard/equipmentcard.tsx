@@ -59,6 +59,7 @@ export default function EquipmentCard({
     );
   };
 
+  // Handle Cancel Equipment Booking
   const handleCancel = async () => {
     const confirmCancel = window.confirm(
       `Are you sure you want to cancel booking for "${name}"?`
