@@ -20,7 +20,12 @@ async function sendConfirmationEmail(
   startDate: Date,
   endDate: Date
 ) {
-  const domain = process.env.MAILGUN_DOMAIN; // Ensure this is set in your .env file
+  const domain = process.env.MAILGUN_DOMAIN;
+
+  if (!domain) {
+    console.error("MAILGUN_DOMAIN environment variable is not set");
+    throw new Error("Mailgun domain is not configured");
+  }
 
   const emailData = {
     from: `Makerspace YK <info@${domain}>`,
