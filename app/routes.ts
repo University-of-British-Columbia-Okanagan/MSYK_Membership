@@ -44,7 +44,7 @@ export default [
     "/dashboard/editworkshop/:workshopId",
     "routes/dashboard/editworkshop.tsx"
   ),
-  route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
+  route("/dashboard/register/:id", "routes/api/register.tsx"),
   route(
     "/dashboard/workshops/offer/:id",
     "routes/dashboard/workshopofferagain.tsx"
