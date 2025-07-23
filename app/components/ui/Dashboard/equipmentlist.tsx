@@ -5,6 +5,9 @@ interface Equipment {
   name: string;
   description: string;
   availability: boolean;
+  status: "available" | "booked" | "unavailable";
+  imageUrl?: string;
+  bookingId?: number;
 }
 
 export default function EquipmentList({
