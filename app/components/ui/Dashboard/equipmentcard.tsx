@@ -19,7 +19,6 @@ interface EquipmentProps {
   id: number;
   name: string;
   description: string;
-  availability: boolean;
   imageUrl?: string;
   status: "available" | "booked" | "unavailable";
   bookingId?: number;
@@ -32,7 +31,6 @@ export default function EquipmentCard({
   id,
   name,
   description,
-  availability,
   status,
   imageUrl,
   bookingId,
