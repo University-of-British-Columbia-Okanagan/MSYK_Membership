@@ -2,7 +2,10 @@ import React, { useState, useEffect } from "react";
 import { useLoaderData, redirect, useActionData } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import {
+  workshopOfferSchema,
+  type WorkshopOfferValues,
+} from "../../schemas/workshopOfferAgainSchema";
 import { Form, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
@@ -33,26 +36,6 @@ import {
 } from "@/components/ui/tooltip";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
-
-// Schema for workshop offer form
-const workshopOfferSchema = z.object({
-  occurrences: z
-    .array(
-      z.object({
-        startDate: z.date().refine((date) => !isNaN(date.getTime()), {
-          message: "Start date is required",
-        }),
-        endDate: z.date().refine((date) => !isNaN(date.getTime()), {
-          message: "End date is required",
-        }),
-        startDatePST: z.date().optional(),
-        endDatePST: z.date().optional(),
-      })
-    )
-    .min(1, "At least one date is required"),
-});
-
-type WorkshopOfferValues = z.infer<typeof workshopOfferSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  1) Helper: format a Date as "YYYY-MM-DDTHH:mm" for datetime-local
