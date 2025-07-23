@@ -2,15 +2,7 @@ import React, { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { Form } from "@/components/ui/form";
 import { useLoaderData, Form as RouterForm } from "react-router";
 import { loginSchema } from "../../schemas/loginSchema";
 import type { LoginFormValues } from "../../schemas/loginSchema";
@@ -42,9 +34,10 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Use redirect parameter if provided, otherwise use default
-  const redirectTo = redirectParam || 
+  const redirectTo =
+    redirectParam ||
     (result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user");
-  
+
   return createUserSession(result.id, result.password, redirectTo);
 }
 
