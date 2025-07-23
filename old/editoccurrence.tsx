@@ -2,8 +2,8 @@ import React from "react";
 import { useLoaderData, useActionData } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { editOccurrenceSchema } from "../../schemas/editOccurrenceSchema";
-import type { OccurrenceEditValues } from "../../schemas/editOccurrenceSchema";
+import { editOccurrenceSchema } from "./editOccurrenceSchema";
+import type { OccurrenceEditValues } from "./editOccurrenceSchema";
 import { getWorkshopOccurrence, duplicateOccurrence } from "~/models/workshop.server";
 import {
   Form,
