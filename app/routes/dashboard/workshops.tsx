@@ -134,7 +134,7 @@ export default function UserDashboard() {
             <WorkshopList
               title="Active Workshops"
               workshops={activeWorkshops}
-              isAdmin={isAdmin}
+              isAdmin={Boolean(isAdmin)}
             />
           ) : (
             <p className="text-gray-600 mt-4">No active workshops available.</p>
@@ -145,7 +145,7 @@ export default function UserDashboard() {
             <WorkshopList
               title="Active Orientations"
               workshops={activeOrientations}
-              isAdmin={isAdmin}
+              isAdmin={Boolean(isAdmin)}
             />
           ) : (
             <p className="text-gray-600 mt-4">
@@ -158,7 +158,7 @@ export default function UserDashboard() {
             <WorkshopList
               title="Past Events"
               workshops={pastEvents}
-              isAdmin={isAdmin}
+              isAdmin={Boolean(isAdmin)}
             />
           ) : (
             <p className="text-gray-600 mt-4">No past events available.</p>
