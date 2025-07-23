@@ -30,6 +30,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
   const savedPaymentMethod = await getSavedPaymentMethod(user.id);
 
+  // Membership branch
   if (params.membershipPlanId) {
     const membershipPlanId = Number(params.membershipPlanId);
     if (isNaN(membershipPlanId))
@@ -54,14 +55,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const oldPrice = userActiveMembership.membershipPlan.price;
       const newPrice = membershipPlan.price;
 
-      // Calculate the time portions
-      // const A = now.getTime() - new Date(userActiveMembership.date).getTime();
-      // const B =
-      //   new Date(userActiveMembership.nextPaymentDate).getTime() -
-      //   now.getTime();
-      // const total = A + B;
-
-      const oneMonthMs = 30 * 24 * 60 * 60 * 1000; // Approx one month in milliseconds
       // Instead of using the original signup date for A, use a date exactly one month before the next payment
       const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
       const effectiveStartDate = new Date(nextPaymentDate);
@@ -82,7 +75,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       oldMembershipTitle = userActiveMembership.membershipPlan.title;
       oldMembershipPrice = oldPrice;
       oldMembershipNextPaymentDate = userActiveMembership.nextPaymentDate
-        ? new Date(userActiveMembership.nextPaymentDate).toISOString() // NEW: Convert to ISO string
+        ? new Date(userActiveMembership.nextPaymentDate).toISOString() // Convert to ISO string
         : null;
     }
 
@@ -96,7 +89,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       upgradeFee = 0; // No payment needed for resubscription
     }
 
-    // NEW: Override isResubscription flag if query parameter "resubscribe" is present
+    // Override isResubscription flag if query parameter "resubscribe" is present
     const searchParams = new URL(request.url).searchParams;
     if (searchParams.get("resubscribe") === "true") {
       isResubscription = true;
@@ -118,6 +111,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       gstPercentage: parseFloat(gstPercentage),
     };
   }
+
   // Workshop branch: either single occurrence or continuation
   else if (params.workshopId && params.occurrenceId) {
     const workshopId = Number(params.workshopId);
@@ -140,8 +134,10 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
     };
-  } else if (params.workshopId && params.connectId) {
-    // New branch for continuation workshops using connectId
+  }
+
+  // Branch for multi-day workshops using connectId
+  else if (params.workshopId && params.connectId) {
     const workshopId = Number(params.workshopId);
     const connectId = Number(params.connectId);
     if (isNaN(workshopId) || isNaN(connectId))
@@ -217,7 +213,7 @@ export async function action({ request }: { request: Request }) {
         line_items: [
           {
             price_data: {
-              currency: "cad", // Changed from "usd" to "cad"
+              currency: "cad",
               product_data: {
                 name: membershipPlan.title,
                 // ▼ use upgradeFee for description ▼
@@ -250,6 +246,7 @@ export async function action({ request }: { request: Request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
     // Workshop branch: standard single occurrence registration
     else if (body.workshopId && body.occurrenceId) {
       const { workshopId, occurrenceId, price, userId } = body;
@@ -278,20 +275,20 @@ export async function action({ request }: { request: Request }) {
       const gstRate = parseFloat(gstPercentage) / 100;
       const priceWithGST = price * (1 + gstRate);
 
-       const session = await stripe.checkout.sessions.create({
+      const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "cad", // Changed from "usd" to "cad"
+              currency: "cad",
               product_data: {
                 name: workshop.name,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
                 ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
               },
-              unit_amount: Math.round(priceWithGST * 100),// Price with GST included
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -311,7 +308,8 @@ export async function action({ request }: { request: Request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
-    // NEW: Workshop continuation branch: using connectId
+
+    // Workshop continuation branch: using connectId
     else if (body.workshopId && body.connectId) {
       const { workshopId, connectId, price, userId } = body;
       if (!workshopId || !connectId || !price || !userId) {
@@ -350,7 +348,7 @@ export async function action({ request }: { request: Request }) {
         line_items: [
           {
             price_data: {
-              currency: "cad", // Changed from "usd" to "cad"
+              currency: "cad",
               product_data: {
                 name: workshop.name,
                 description: `Occurrences starting on ${new Date(
@@ -454,8 +452,10 @@ export default function Payment() {
           } else {
             console.error("Downgrade error:", json.error);
           }
-        } else {
-          // ▼ use `upgradeFee` for upgrades, otherwise full price ▼
+        }
+
+        // use `upgradeFee` for upgrades, otherwise full price
+        else {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -466,7 +466,7 @@ export default function Payment() {
                 : data.membershipPlan.price,
               userId: data.user.id,
               oldMembershipNextPaymentDate: data.oldMembershipNextPaymentDate,
-              // ▼ send upgradeFee here ▼
+              // send upgradeFee here
               upgradeFee: data.upgradeFee,
               currentMembershipId: data.userActiveMembership?.id || null,
             }),
@@ -481,7 +481,7 @@ export default function Payment() {
         }
       }
 
-      // Workshop branch (unchanged)
+      // Workshop branch
       else {
         if (data.isContinuation) {
           const response = await fetch("/dashboard/paymentprocess", {
@@ -634,7 +634,11 @@ export default function Payment() {
             <p className="mt-2 text-gray-700">
               Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
               (CA$
-              {(data.oldMembershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}/month incl. GST)
+              {(
+                data.oldMembershipPrice *
+                (1 + data.gstPercentage / 100)
+              ).toFixed(2)}
+              /month incl. GST)
             </p>
           )}
 
@@ -658,7 +662,10 @@ export default function Payment() {
               <p className="text-gray-700">
                 You will continue at your current rate of CA$
                 {data.oldMembershipPrice
-                  ? (data.oldMembershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)
+                  ? (
+                      data.oldMembershipPrice *
+                      (1 + data.gstPercentage / 100)
+                    ).toFixed(2)
                   : "0.00"}
                 /month until your next payment date at{" "}
                 {data.oldMembershipNextPaymentDate
@@ -667,19 +674,29 @@ export default function Payment() {
                     ).toLocaleDateString()
                   : "N/A"}
                 , then switch to CA$
-                {(data.membershipPlan.price * (1 + data.gstPercentage / 100)).toFixed(2)}/month (incl.
-                GST).
+                {(
+                  data.membershipPlan.price *
+                  (1 + data.gstPercentage / 100)
+                ).toFixed(2)}
+                /month (incl. GST).
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
             </div>
           ) : data.upgradeFee > 0 ? (
             <p className="mt-2 text-gray-700">
               You'll pay a prorated amount of CA$
-              {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(2)} now (incl. GST) to enjoy the
-              benefits of <strong>{data.membershipPlan.title}</strong>. Then,
-              you will pay{" "}
+              {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                2
+              )}{" "}
+              now (incl. GST) to enjoy the benefits of{" "}
+              <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
               <strong>
-                CA${(data.membershipPlan.price * (1 + data.gstPercentage / 100)).toFixed(2)}/month
+                CA$
+                {(
+                  data.membershipPlan.price *
+                  (1 + data.gstPercentage / 100)
+                ).toFixed(2)}
+                /month
               </strong>{" "}
               starting from{" "}
               {data.oldMembershipNextPaymentDate
@@ -705,21 +722,29 @@ export default function Payment() {
               <p className="text-lg font-semibold">
                 Total due now: CA$
                 {data.userActiveMembership
-                  ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(2)
-                  : (data.membershipPlan.price * (1 + data.gstPercentage / 100)).toFixed(2)}
+                  ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                      2
+                    )
+                  : (
+                      data.membershipPlan.price *
+                      (1 + data.gstPercentage / 100)
+                    ).toFixed(2)}
               </p>
               <p className="text-sm text-gray-600">
                 (Includes CA$
                 {data.userActiveMembership
                   ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
-                  : (data.membershipPlan.price * (data.gstPercentage / 100)).toFixed(2)}{" "}
+                  : (
+                      data.membershipPlan.price *
+                      (data.gstPercentage / 100)
+                    ).toFixed(2)}{" "}
                 GST)
               </p>
             </div>
           )}
         </>
       ) : (
-        // Workshop Payment UI (unchanged)
+        // Workshop Payment UI
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
@@ -735,7 +760,12 @@ export default function Payment() {
           <div className="mt-2">
             <p className="text-lg font-semibold">
               Total: CA$
-              {data.workshop ? (data.workshop.price * (1 + data.gstPercentage / 100)).toFixed(2) : "0.00"}
+              {data.workshop
+                ? (
+                    data.workshop.price *
+                    (1 + data.gstPercentage / 100)
+                  ).toFixed(2)
+                : "0.00"}
             </p>
             <p className="text-sm text-gray-600">
               (Includes CA$
