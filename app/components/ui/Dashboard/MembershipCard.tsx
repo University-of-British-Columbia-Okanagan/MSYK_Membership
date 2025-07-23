@@ -27,7 +27,6 @@ interface MembershipCardProps {
   price: number;
   feature: string[];
   isAdmin: boolean;
-  isSubscribed?: boolean;
   membershipStatus?: "active" | "cancelled" | "inactive";
   userRecord?: {
     id: number;
@@ -37,7 +36,6 @@ interface MembershipCardProps {
   hasActiveSubscription?: boolean;
   hasCancelledSubscription?: boolean;
   highestActivePrice?: number;
-  highestCanceledPrice?: number;
   nextPaymentDate?: Date;
   membershipRecordId?: number;
   needAdminPermission?: boolean;
@@ -55,13 +53,11 @@ export default function MembershipCard({
   price,
   feature,
   isAdmin,
-  isSubscribed = false,
   membershipStatus,
   userRecord,
   hasCancelledSubscription = false,
   hasActiveSubscription = false,
   highestActivePrice = 0,
-  highestCanceledPrice = 0,
   nextPaymentDate,
   membershipRecordId,
   needAdminPermission,

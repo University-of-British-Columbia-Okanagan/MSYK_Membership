@@ -178,7 +178,6 @@ export default function MembershipPage() {
     hasCancelledSubscription,
     hasActiveSubscription,
     highestActivePrice,
-    highestCanceledPrice,
   } = useLoaderData<{
     roleUser: any;
     membershipPlans: any[];
@@ -232,7 +231,6 @@ return (
               const membership = userMemberships.find(
                 (m) => m.membershipPlanId === plan.id
               );
-              const isSubscribed = Boolean(membership);
               const membershipStatus = membership?.status;
 
               return (
@@ -245,13 +243,11 @@ return (
                   isAdmin={!!isAdmin}
                   planId={plan.id}
                   needAdminPermission={plan.needAdminPermission}
-                  isSubscribed={isSubscribed}
                   membershipStatus={membershipStatus}
                   userRecord={userRecord}
                   hasActiveSubscription={hasActiveSubscription}
                   hasCancelledSubscription={hasCancelledSubscription}
                   highestActivePrice={highestActivePrice}
-                  highestCanceledPrice={highestCanceledPrice}
                   nextPaymentDate={membership?.nextPaymentDate}
                   roleUser={roleUser}
                 />
