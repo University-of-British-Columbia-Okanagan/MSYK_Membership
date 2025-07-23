@@ -1,7 +1,6 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminSidebar from "~/components/ui/Dashboard/AdminSidebar"; 
-import Footer from "@/components/ui/Home/Footer";
+import AdminSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
   getMembershipPlans,
@@ -15,12 +14,6 @@ import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -85,7 +78,7 @@ export async function loader({ request }: { request: Request }) {
     (m) => m.status === "cancelled"
   );
 
-  // NEW: Add a flag to check if the user has any active membership.
+  // Add a flag to check if the user has any active membership.
   const hasActiveSubscription = userMemberships.some(
     (m) => m.status === "active"
   );
@@ -137,7 +130,12 @@ export async function action({ request }: { request: Request }) {
     if (!roleUser?.userId) return null;
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
-      logger.info(`[User: ${roleUser?.userId ?? "unknown"}] Membership for plan ${planId} cancelled successfully.`, {url: request.url,});
+      logger.info(
+        `[User: ${
+          roleUser?.userId ?? "unknown"
+        }] Membership for plan ${planId} cancelled successfully.`,
+        { url: request.url }
+      );
     }
     return redirect("/dashboard/memberships");
   }
@@ -150,7 +148,10 @@ export async function action({ request }: { request: Request }) {
       }
       const result = await deleteMembershipPlan(Number(planId));
       if (confirmationDelete !== "confirmed") {
-        logger.warn(`Deletion of membership plan was not confirmed. Plan id ${planId}`, {url: request.url,});
+        logger.warn(
+          `Deletion of membership plan was not confirmed. Plan id ${planId}`,
+          { url: request.url }
+        );
         return null;
       }
 
@@ -158,7 +159,9 @@ export async function action({ request }: { request: Request }) {
         return redirect("/dashboard/memberships");
       }
     } catch (error) {
-      logger.error(`Error deleting membership plan: ${error}`, {url: request.url,});
+      logger.error(`Error deleting membership plan: ${error}`, {
+        url: request.url,
+      });
     }
   }
 
@@ -194,20 +197,20 @@ export default function MembershipPage() {
   }>();
 
   const isAdmin =
-  roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
-const isGuest = !roleUser || !roleUser.userId;
+    roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+  const isGuest = !roleUser || !roleUser.userId;
 
-return (
-  <SidebarProvider>
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
-      {isGuest ? (
-        <GuestAppSidebar />
-      ) : isAdmin ? (
-        <AdminSidebar />
-      ) : (
-        <AppSidebar />
-      )}
+  return (
+    <SidebarProvider>
+      <div className="flex min-h-screen">
+        {/* Sidebar */}
+        {isGuest ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminSidebar />
+        ) : (
+          <AppSidebar />
+        )}
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
