@@ -61,7 +61,7 @@ export default [
   route("dashboard/payment/:membershipPlanId", "routes/dashboard/payment.tsx", {
     id: "dashboard/payment/membership",
   }),
-  route("dashboard/paymentprocess", "routes/dashboard/paymentprocess.tsx"),
+  route("dashboard/paymentprocess", "routes/api/paymentprocess.tsx"),
   route("dashboard/payment/success", "routes/dashboard/paymentsuccess.tsx"),
   route("dashboard/payment/downgrade", "routes/api/paymentdowngrade.tsx"),
   route(
