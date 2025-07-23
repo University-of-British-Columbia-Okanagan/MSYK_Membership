@@ -36,6 +36,12 @@ import {
 } from "@/components/ui/tooltip";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import { ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  1) Helper: format a Date as "YYYY-MM-DDTHH:mm" for datetime-local
@@ -87,8 +93,15 @@ function hasOccurrencesInPast(
 // ─────────────────────────────────────────────────────────────────────────────
 //  3) Loader
 // ─────────────────────────────────────────────────────────────────────────────
-export async function loader({ params }: { params: { id: string } }) {
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id: string };
+}) {
   const workshopId = Number(params.id);
+  const roleUser = await getRoleUser(request);
 
   // Get workshop details including existing occurrences
   const workshop = await getWorkshopById(workshopId);
@@ -96,7 +109,7 @@ export async function loader({ params }: { params: { id: string } }) {
     throw new Response("Workshop not found", { status: 404 });
   }
 
-  return { workshopId, workshop };
+  return { workshopId, workshop, roleUser };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,11 +207,13 @@ export async function action({
 //  5) WorkshopOfferAgain Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WorkshopOfferAgain() {
-  const { workshopId, workshop } = useLoaderData() as {
+  const { workshopId, workshop, roleUser } = useLoaderData() as {
     workshopId: number;
     workshop: any;
+    roleUser: any;
   };
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const navigate = useNavigate();
 
   // Store original workshop dates for reference
   const [originalOccurrences, setOriginalOccurrences] = useState<
@@ -366,382 +381,431 @@ export default function WorkshopOfferAgain() {
     }
   };
 
+  const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
+
   return (
-    <div className="max-w-4xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-8 text-center">
-        Create New Offering: {workshop.name}
-      </h1>
+    <SidebarProvider>
+      <div className="flex h-screen">
+        {!roleUser ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
+        <main className="flex-grow overflow-auto">
+          <div className="max-w-4xl mx-auto p-8">
+            {/* Back Button */}
+            <div className="mb-6">
+              <Button
+                variant="outline"
+                onClick={() =>
+                  navigate(
+                    isAdmin ? "/dashboard/workshops" : "/dashboard/workshops"
+                  )
+                }
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Workshops
+              </Button>
+            </div>
+            <h1 className="text-2xl font-bold mb-8 text-center">
+              Create New Offering: {workshop.name}
+            </h1>
 
-      {actionData?.errors && Object.keys(actionData.errors).length > 0 && (
-        <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-          There are some errors in your form. Please review the highlighted
-          fields below.
-        </div>
-      )}
+            {actionData?.errors &&
+              Object.keys(actionData.errors).length > 0 && (
+                <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
+                  There are some errors in your form. Please review the
+                  highlighted fields below.
+                </div>
+              )}
 
-      <div className="mb-8 bg-yellow-50 p-4 border border-yellow-200 rounded-md">
-        <h2 className="text-lg font-semibold mb-2">Offering Workshop Again</h2>
-        <p className="text-sm text-gray-700 mb-2">
-          You can view the current workshop dates below as a reference. Add new
-          dates for this workshop offering.
-        </p>
-        <p className="text-sm text-gray-700">
-          When you submit this form, a new set of workshop occurrences will be
-          created with the dates you add.
-        </p>
-      </div>
+            <div className="mb-8 bg-yellow-50 p-4 border border-yellow-200 rounded-md">
+              <h2 className="text-lg font-semibold mb-2">
+                Offering Workshop Again
+              </h2>
+              <p className="text-sm text-gray-700 mb-2">
+                You can view the current workshop dates below as a reference.
+                Add new dates for this workshop offering.
+              </p>
+              <p className="text-sm text-gray-700">
+                When you submit this form, a new set of workshop occurrences
+                will be created with the dates you add.
+              </p>
+            </div>
 
-      <Form {...form}>
-        <form method="post" className="space-y-6" onSubmit={handleFormSubmit}>
-          {/* Workshop Dates Section */}
+            <Form {...form}>
+              <form
+                method="post"
+                className="space-y-6"
+                onSubmit={handleFormSubmit}
+              >
+                {/* Workshop Dates Section */}
 
-          {/* Display Reference Occurrences if they exist */}
-          {originalOccurrences.length > 0 && (
-            <div className="w-full mb-6">
-              <h3 className="font-medium mb-4 flex items-center">
-                <CalendarIcon className="w-5 h-5 mr-2 text-gray-500" />
-                Most Recent Workshop Dates (Reference)
-              </h3>
-              <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
-                {originalOccurrences.map((occ, index) => (
-                  <div
-                    key={index}
-                    className="flex justify-between items-center p-3 border-b last:border-b-0"
-                  >
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-700">
-                        {formatDisplayDate(occ.startDate)}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        to {formatDisplayDate(occ.endDate)}
-                      </div>
+                {/* Display Reference Occurrences if they exist */}
+                {originalOccurrences.length > 0 && (
+                  <div className="w-full mb-6">
+                    <h3 className="font-medium mb-4 flex items-center">
+                      <CalendarIcon className="w-5 h-5 mr-2 text-gray-500" />
+                      Most Recent Workshop Dates (Reference)
+                    </h3>
+                    <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
+                      {originalOccurrences.map((occ, index) => (
+                        <div
+                          key={index}
+                          className="flex justify-between items-center p-3 border-b last:border-b-0"
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-700">
+                              {formatDisplayDate(occ.startDate)}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              to {formatDisplayDate(occ.endDate)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                )}
 
-          <FormItem className="mt-6">
-            <div className="flex items-center mb-2">
-              <FormLabel
-                htmlFor="occurrences"
-                className="text-lg font-medium mb-0"
-              >
-                Workshop Dates <span className="text-red-500">*</span>
-              </FormLabel>
-              {occurrences.length > 0 && (
-                <Badge
-                  variant="outline"
-                  className="ml-2 bg-yellow-100 border-yellow-200"
-                >
-                  {occurrences.length} date
-                  {occurrences.length !== 1 ? "s" : ""} added
-                </Badge>
-              )}
-            </div>
+                <FormItem className="mt-6">
+                  <div className="flex items-center mb-2">
+                    <FormLabel
+                      htmlFor="occurrences"
+                      className="text-lg font-medium mb-0"
+                    >
+                      Workshop Dates <span className="text-red-500">*</span>
+                    </FormLabel>
+                    {occurrences.length > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="ml-2 bg-yellow-100 border-yellow-200"
+                      >
+                        {occurrences.length} date
+                        {occurrences.length !== 1 ? "s" : ""} added
+                      </Badge>
+                    )}
+                  </div>
 
-            <div className="flex flex-col items-start space-y-6 w-full">
-              {/* Radio Buttons for selecting date input type */}
-              <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
-                <DateTypeRadioGroup
-                  options={[
-                    {
-                      value: "custom",
-                      label: "Manage dates",
-                      icon: CalendarIcon,
-                    },
-                    {
-                      value: "weekly",
-                      label: "Append weekly dates",
-                      icon: CalendarDaysIcon,
-                    },
-                    {
-                      value: "monthly",
-                      label: "Append monthly dates",
-                      icon: CalendarRangeIcon,
-                    },
-                  ]}
-                  selectedValue={dateSelectionType}
-                  onChange={(val) =>
-                    setDateSelectionType(val as "custom" | "weekly" | "monthly")
-                  }
-                  name="dateType"
-                  className="grid grid-cols-1 md:grid-cols-3 gap-3"
-                  itemClassName="flex-1"
-                />
-              </div>
-
-              {/* Custom Dates Input */}
-              {dateSelectionType === "custom" && (
-                <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
-                  {occurrences.length === 0 ? (
-                    <div className="text-center py-6 text-gray-500">
-                      <p className="text-sm">
-                        No new dates added yet. Please use the button below to
-                        add workshop dates for the new offering.
-                      </p>
+                  <div className="flex flex-col items-start space-y-6 w-full">
+                    {/* Radio Buttons for selecting date input type */}
+                    <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                      <DateTypeRadioGroup
+                        options={[
+                          {
+                            value: "custom",
+                            label: "Manage dates",
+                            icon: CalendarIcon,
+                          },
+                          {
+                            value: "weekly",
+                            label: "Append weekly dates",
+                            icon: CalendarDaysIcon,
+                          },
+                          {
+                            value: "monthly",
+                            label: "Append monthly dates",
+                            icon: CalendarRangeIcon,
+                          },
+                        ]}
+                        selectedValue={dateSelectionType}
+                        onChange={(val) =>
+                          setDateSelectionType(
+                            val as "custom" | "weekly" | "monthly"
+                          )
+                        }
+                        name="dateType"
+                        className="grid grid-cols-1 md:grid-cols-3 gap-3"
+                        itemClassName="flex-1"
+                      />
                     </div>
-                  ) : (
-                    occurrences.map((occ, index) => {
-                      const isStartDatePast = isDateInPast(occ.startDate);
-                      const isEndDatePast = isDateInPast(occ.endDate);
-                      const hasWarning = isStartDatePast || isEndDatePast;
 
-                      return (
-                        <TooltipProvider key={index}>
-                          <Tooltip open={hasWarning ? undefined : false}>
-                            <TooltipTrigger asChild>
+                    {/* Custom Dates Input */}
+                    {dateSelectionType === "custom" && (
+                      <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        {occurrences.length === 0 ? (
+                          <div className="text-center py-6 text-gray-500">
+                            <p className="text-sm">
+                              No new dates added yet. Please use the button
+                              below to add workshop dates for the new offering.
+                            </p>
+                          </div>
+                        ) : (
+                          occurrences.map((occ, index) => {
+                            const isStartDatePast = isDateInPast(occ.startDate);
+                            const isEndDatePast = isDateInPast(occ.endDate);
+                            const hasWarning = isStartDatePast || isEndDatePast;
+
+                            return (
+                              <TooltipProvider key={index}>
+                                <Tooltip open={hasWarning ? undefined : false}>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className={`w-full ${
+                                        hasWarning
+                                          ? "border-l-4 border-amber-500 pl-2"
+                                          : ""
+                                      }`}
+                                    >
+                                      <OccurrenceRow
+                                        key={index}
+                                        index={index}
+                                        occurrence={occ}
+                                        updateOccurrence={updateOccurrence}
+                                        formatLocalDatetime={
+                                          formatLocalDatetime
+                                        }
+                                      />
+                                    </div>
+                                  </TooltipTrigger>
+                                  {hasWarning && (
+                                    <TooltipContent
+                                      side="right"
+                                      className="bg-amber-100 text-amber-800 border border-amber-300"
+                                    >
+                                      <p className="text-sm font-medium">
+                                        {isStartDatePast && isEndDatePast
+                                          ? "Both start and end dates are in the past"
+                                          : isStartDatePast
+                                          ? "Start date is in the past"
+                                          : "End date is in the past"}
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          })
+                        )}
+                        <Button
+                          type="button"
+                          onClick={addOccurrence}
+                          className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
+                        >
+                          <span className="mr-1">+</span> Add Date
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Weekly Dates Input */}
+                    {dateSelectionType === "weekly" && (
+                      <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        <RepetitionScheduleInputs
+                          scheduleType="weekly"
+                          startDate={weeklyStartDate}
+                          setStartDate={setWeeklyStartDate}
+                          endDate={weeklyEndDate}
+                          setEndDate={setWeeklyEndDate}
+                          interval={weeklyInterval}
+                          setInterval={setWeeklyInterval}
+                          count={weeklyCount}
+                          setCount={setWeeklyCount}
+                          occurrences={occurrences}
+                          setOccurrences={setOccurrences}
+                          updateFormOccurrences={(updatedOccurrences) => {
+                            form.setValue("occurrences", updatedOccurrences);
+                          }}
+                          parseDateTimeAsLocal={parseDateTimeAsLocal}
+                          isDuplicateDate={isDuplicateDate}
+                          onRevert={() => setDateSelectionType("weekly")}
+                        />
+                      </div>
+                    )}
+
+                    {/* Monthly Dates Input */}
+                    {dateSelectionType === "monthly" && (
+                      <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                        <RepetitionScheduleInputs
+                          scheduleType="monthly"
+                          startDate={monthlyStartDate}
+                          setStartDate={setMonthlyStartDate}
+                          endDate={monthlyEndDate}
+                          setEndDate={setMonthlyEndDate}
+                          interval={monthlyInterval}
+                          setInterval={setMonthlyInterval}
+                          count={monthlyCount}
+                          setCount={setMonthlyCount}
+                          occurrences={occurrences}
+                          setOccurrences={setOccurrences}
+                          updateFormOccurrences={(updatedOccurrences) => {
+                            form.setValue("occurrences", updatedOccurrences);
+                          }}
+                          parseDateTimeAsLocal={parseDateTimeAsLocal}
+                          isDuplicateDate={isDuplicateDate}
+                          onRevert={() => setDateSelectionType("monthly")}
+                        />
+                      </div>
+                    )}
+
+                    {/* Display of added occurrences */}
+                    {occurrences.length > 0 && (
+                      <div className="w-full">
+                        <h3 className="font-medium mb-4 flex items-center">
+                          <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                          Your New Workshop Dates
+                        </h3>
+                        <div className="border border-gray-200 rounded-lg overflow-hidden">
+                          {occurrences.map((occ, index) => {
+                            const isStartDatePast = isDateInPast(occ.startDate);
+                            const isEndDatePast = isDateInPast(occ.endDate);
+                            const hasWarning = isStartDatePast || isEndDatePast;
+
+                            return (
                               <div
-                                className={`w-full ${
+                                key={index}
+                                className={`flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150 ${
                                   hasWarning
-                                    ? "border-l-4 border-amber-500 pl-2"
+                                    ? "border-l-4 border-amber-500"
                                     : ""
                                 }`}
                               >
-                                <OccurrenceRow
-                                  key={index}
-                                  index={index}
-                                  occurrence={occ}
-                                  updateOccurrence={updateOccurrence}
-                                  formatLocalDatetime={formatLocalDatetime}
-                                />
+                                <div className="flex-1">
+                                  <div className="font-medium flex items-center">
+                                    {formatDisplayDate(occ.startDate)}
+                                    {isStartDatePast && (
+                                      <Badge
+                                        variant="outline"
+                                        className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                      >
+                                        Past Date
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-gray-600 flex items-center">
+                                    to {formatDisplayDate(occ.endDate)}
+                                    {isEndDatePast && !isStartDatePast && (
+                                      <Badge
+                                        variant="outline"
+                                        className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
+                                      >
+                                        Past Date
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => removeOccurrence(index)}
+                                  className="text-sm text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
+                                >
+                                  Remove
+                                </Button>
                               </div>
-                            </TooltipTrigger>
-                            {hasWarning && (
-                              <TooltipContent
-                                side="right"
-                                className="bg-amber-100 text-amber-800 border border-amber-300"
-                              >
-                                <p className="text-sm font-medium">
-                                  {isStartDatePast && isEndDatePast
-                                    ? "Both start and end dates are in the past"
-                                    : isStartDatePast
-                                    ? "Start date is in the past"
-                                    : "End date is in the past"}
-                                </p>
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
-                        </TooltipProvider>
-                      );
-                    })
-                  )}
-                  <Button
-                    type="button"
-                    onClick={addOccurrence}
-                    className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
-                  >
-                    <span className="mr-1">+</span> Add Date
-                  </Button>
-                </div>
-              )}
-
-              {/* Weekly Dates Input */}
-              {dateSelectionType === "weekly" && (
-                <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
-                  <RepetitionScheduleInputs
-                    scheduleType="weekly"
-                    startDate={weeklyStartDate}
-                    setStartDate={setWeeklyStartDate}
-                    endDate={weeklyEndDate}
-                    setEndDate={setWeeklyEndDate}
-                    interval={weeklyInterval}
-                    setInterval={setWeeklyInterval}
-                    count={weeklyCount}
-                    setCount={setWeeklyCount}
-                    occurrences={occurrences}
-                    setOccurrences={setOccurrences}
-                    updateFormOccurrences={(updatedOccurrences) => {
-                      form.setValue("occurrences", updatedOccurrences);
-                    }}
-                    parseDateTimeAsLocal={parseDateTimeAsLocal}
-                    isDuplicateDate={isDuplicateDate}
-                    onRevert={() => setDateSelectionType("weekly")}
-                  />
-                </div>
-              )}
-
-              {/* Monthly Dates Input */}
-              {dateSelectionType === "monthly" && (
-                <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
-                  <RepetitionScheduleInputs
-                    scheduleType="monthly"
-                    startDate={monthlyStartDate}
-                    setStartDate={setMonthlyStartDate}
-                    endDate={monthlyEndDate}
-                    setEndDate={setMonthlyEndDate}
-                    interval={monthlyInterval}
-                    setInterval={setMonthlyInterval}
-                    count={monthlyCount}
-                    setCount={setMonthlyCount}
-                    occurrences={occurrences}
-                    setOccurrences={setOccurrences}
-                    updateFormOccurrences={(updatedOccurrences) => {
-                      form.setValue("occurrences", updatedOccurrences);
-                    }}
-                    parseDateTimeAsLocal={parseDateTimeAsLocal}
-                    isDuplicateDate={isDuplicateDate}
-                    onRevert={() => setDateSelectionType("monthly")}
-                  />
-                </div>
-              )}
-
-              {/* Display of added occurrences */}
-              {occurrences.length > 0 && (
-                <div className="w-full">
-                  <h3 className="font-medium mb-4 flex items-center">
-                    <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
-                    Your New Workshop Dates
-                  </h3>
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    {occurrences.map((occ, index) => {
-                      const isStartDatePast = isDateInPast(occ.startDate);
-                      const isEndDatePast = isDateInPast(occ.endDate);
-                      const hasWarning = isStartDatePast || isEndDatePast;
-
-                      return (
-                        <div
-                          key={index}
-                          className={`flex justify-between items-center p-3 bg-white border-b last:border-b-0 hover:bg-gray-50 transition-colors duration-150 ${
-                            hasWarning ? "border-l-4 border-amber-500" : ""
-                          }`}
-                        >
-                          <div className="flex-1">
-                            <div className="font-medium flex items-center">
-                              {formatDisplayDate(occ.startDate)}
-                              {isStartDatePast && (
-                                <Badge
-                                  variant="outline"
-                                  className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
-                                >
-                                  Past Date
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-600 flex items-center">
-                              to {formatDisplayDate(occ.endDate)}
-                              {isEndDatePast && !isStartDatePast && (
-                                <Badge
-                                  variant="outline"
-                                  className="ml-2 bg-amber-100 text-amber-800 border-amber-300 text-xs"
-                                >
-                                  Past Date
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => removeOccurrence(index)}
-                            className="text-sm text-red-500 hover:bg-red-50 hover:text-red-600 border border-red-300 py-1 px-3 rounded"
-                          >
-                            Remove
-                          </Button>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
 
-            <FormMessage>{actionData?.errors?.occurrences}</FormMessage>
-          </FormItem>
+                  <FormMessage>{actionData?.errors?.occurrences}</FormMessage>
+                </FormItem>
 
-          {/* Hidden input for occurrences */}
-          <input
-            type="hidden"
-            name="occurrences"
-            value={JSON.stringify(
-              occurrences
-                .filter(
-                  (occ) =>
-                    !isNaN(occ.startDate.getTime()) &&
-                    !isNaN(occ.endDate.getTime())
-                )
-                .map((occ) => {
-                  // Calculate PST dates for any entries missing them
-                  const startOffset = occ.startDate.getTimezoneOffset();
-                  const startDatePST =
-                    occ.startDatePST ||
-                    new Date(occ.startDate.getTime() - startOffset * 60000);
+                {/* Hidden input for occurrences */}
+                <input
+                  type="hidden"
+                  name="occurrences"
+                  value={JSON.stringify(
+                    occurrences
+                      .filter(
+                        (occ) =>
+                          !isNaN(occ.startDate.getTime()) &&
+                          !isNaN(occ.endDate.getTime())
+                      )
+                      .map((occ) => {
+                        // Calculate PST dates for any entries missing them
+                        const startOffset = occ.startDate.getTimezoneOffset();
+                        const startDatePST =
+                          occ.startDatePST ||
+                          new Date(
+                            occ.startDate.getTime() - startOffset * 60000
+                          );
 
-                  const endOffset = occ.endDate.getTimezoneOffset();
-                  const endDatePST =
-                    occ.endDatePST ||
-                    new Date(occ.endDate.getTime() - endOffset * 60000);
+                        const endOffset = occ.endDate.getTimezoneOffset();
+                        const endDatePST =
+                          occ.endDatePST ||
+                          new Date(occ.endDate.getTime() - endOffset * 60000);
 
-                  return {
-                    startDate: occ.startDate.toISOString(),
-                    endDate: occ.endDate.toISOString(),
-                    startDatePST: startDatePST.toISOString(),
-                    endDatePST: endDatePST.toISOString(),
-                  };
-                })
-            )}
-          />
+                        return {
+                          startDate: occ.startDate.toISOString(),
+                          endDate: occ.endDate.toISOString(),
+                          startDatePST: startDatePST.toISOString(),
+                          endDatePST: endDatePST.toISOString(),
+                        };
+                      })
+                  )}
+                />
 
-          {/* Confirmation Dialog for Past Dates */}
-          <AlertDialog
-            open={isConfirmDialogOpen}
-            onOpenChange={(open) => {
-              setIsConfirmDialogOpen(open);
-              // If dialog is closed without submitting, reset the submitting state
-              if (!open) {
-                setFormSubmitting(false);
-              }
-            }}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Warning: Past Workshop Dates
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Some of your workshop dates are in the past. Are you sure you
-                  want to create a new offering with past dates?
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setFormSubmitting(false)}>
-                  Cancel
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    console.log("User confirmed to proceed with past dates");
-                    setFormSubmitting(true);
-                    // Use setTimeout to ensure React state updates before form submission
-                    setTimeout(() => {
-                      const formElement = document.querySelector(
-                        "form"
-                      ) as HTMLFormElement;
-                      if (formElement) {
-                        console.log("Submitting form after confirmation");
-                        formElement.submit();
-                      }
-                    }, 50);
+                {/* Confirmation Dialog for Past Dates */}
+                <AlertDialog
+                  open={isConfirmDialogOpen}
+                  onOpenChange={(open) => {
+                    setIsConfirmDialogOpen(open);
+                    // If dialog is closed without submitting, reset the submitting state
+                    if (!open) {
+                      setFormSubmitting(false);
+                    }
                   }}
                 >
-                  Proceed Anyway
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        Warning: Past Workshop Dates
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Some of your workshop dates are in the past. Are you
+                        sure you want to create a new offering with past dates?
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel
+                        onClick={() => setFormSubmitting(false)}
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          console.log(
+                            "User confirmed to proceed with past dates"
+                          );
+                          setFormSubmitting(true);
+                          // Use setTimeout to ensure React state updates before form submission
+                          setTimeout(() => {
+                            const formElement = document.querySelector(
+                              "form"
+                            ) as HTMLFormElement;
+                            if (formElement) {
+                              console.log("Submitting form after confirmation");
+                              formElement.submit();
+                            }
+                          }, 50);
+                        }}
+                      >
+                        Proceed Anyway
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
 
-          {/* Submit Button */}
-          <div className="flex justify-center">
-            <Button
-              type="submit"
-              className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
-              disabled={occurrences.length === 0 || formSubmitting}
-            >
-              Create New Offering
-            </Button>
+                {/* Submit Button */}
+                <div className="flex justify-center">
+                  <Button
+                    type="submit"
+                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+                    disabled={occurrences.length === 0 || formSubmitting}
+                  >
+                    Create New Offering
+                  </Button>
+                </div>
+              </form>
+            </Form>
           </div>
-        </form>
-      </Form>
-    </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }
