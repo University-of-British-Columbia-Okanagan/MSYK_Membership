@@ -24,7 +24,7 @@ export async function loader({
   if (currentUserRole?.roleName !== "Admin") {
     logger.warn(
       `[User: ${
-        roleUser?.userId ?? "unknown"
+        currentUserRole?.userId ?? "unknown"
       }] Not authorized to edit equipment`,
       { url: request.url }
     );
