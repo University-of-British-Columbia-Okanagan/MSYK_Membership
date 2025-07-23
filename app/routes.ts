@@ -85,7 +85,7 @@ export default [
   route("/dashboard/admin/reports", "routes/dashboard/adminreports.tsx"),
   route("/report", "routes/dashboard/issue.tsx"),
   route("/logs", "routes/dashboard/serverlogs.tsx"),
-  route("/dashboard/equipments/book-slot", "routes/dashboard/bookequipmentslot.tsx"),
+  route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
 
