@@ -23,14 +23,16 @@ export async function action({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
 
   if (!roleUser) {
-    logger.warn(`User must be logged in to submit an issue.`, {url: request.url,});
+    logger.warn(`User must be logged in to submit an issue.`, {
+      url: request.url,
+    });
     throw new Response("Not Authorized", { status: 401 });
   }
 
   const title = form.get("title") as string;
   const description = form.get("description") as string;
   const priority = form.get("severity") as string;
-//   const screenshots = form.getAll("screenshots") as string[];
+  // const screenshots = form.getAll("screenshots") as string[];
 
   if (!title || !description || !priority) {
     return json({ success: false, error: "Please fill all required fields." });
@@ -42,12 +44,14 @@ export async function action({ request }: { request: Request }) {
       description,
       priority,
       reportedById: roleUser.userId,
-    //   screenshots, // TODO
+      //   screenshots, // TODO
     });
-    logger.info(`[User: ${roleUser?.userId ?? "unknown"}] New issue created`, {url: request.url,});
+    logger.info(`[User: ${roleUser?.userId ?? "unknown"}] New issue created`, {
+      url: request.url,
+    });
     return json({ success: true });
   } catch (err) {
-    logger.error(`Error creating new issue ${err}`, {url: request.url});
+    logger.error(`Error creating new issue ${err}`, { url: request.url });
     logger.error(err);
     return json({ success: false, error: "Failed to submit issue." });
   }
@@ -79,74 +83,88 @@ export default function SubmitIssue() {
 
   return (
     <SidebarProvider>
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
-        <div className="w-full p-10">
+      {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+      <div className="w-full p-10">
         {showPopup && (
-            <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
+          <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
             {popupMessage}
-            </div>
+          </div>
         )}
 
         <h1 className="text-2xl font-bold mb-10">Submit Issue</h1>
 
-        <fetcher.Form method="post" encType="multipart/form-data" className="space-y-5 max-w-2xl">
-            <div className="space-y-1">
-            <Label htmlFor="title" className="pl-1 text-lg">Issue Title</Label>
+        <fetcher.Form
+          method="post"
+          encType="multipart/form-data"
+          className="space-y-5 max-w-2xl"
+        >
+          <div className="space-y-1">
+            <Label htmlFor="title" className="pl-1 text-lg">
+              Issue Title
+            </Label>
             <Input
-                id="title"
-                name="title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
+              id="title"
+              name="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
             />
-            </div>
+          </div>
 
-            <div className="space-y-1">
-            <Label htmlFor="description" className="pl-1 text-lg">Description / Steps to Reproduce</Label>
+          <div className="space-y-1">
+            <Label htmlFor="description" className="pl-1 text-lg">
+              Description / Steps to Reproduce
+            </Label>
             <Textarea
-                id="description"
-                name="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                required
+              id="description"
+              name="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
             />
-            </div>
+          </div>
 
-            <div className="space-y-1">
-            <Label htmlFor="severity" className="pl-1 text-lg">Severity / Priority (1 = Low, 5 = High)</Label>
+          <div className="space-y-1">
+            <Label htmlFor="severity" className="pl-1 text-lg">
+              Severity / Priority (1 = Low, 5 = High)
+            </Label>
             <select
-                name="severity"
-                id="severity"
-                value={severity}
-                onChange={(e) => setSeverity(e.target.value)}
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+              name="severity"
+              id="severity"
+              value={severity}
+              onChange={(e) => setSeverity(e.target.value)}
+              className="w-full border border-gray-300 rounded-md px-3 py-2"
             >
-                {[1, 2, 3, 4, 5].map((level) => (
-                <option key={level} value={level}>{level}</option>
-                ))}
+              {[1, 2, 3, 4, 5].map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
             </select>
-            </div>
+          </div>
 
-            <div className="space-y-1">
-            <Label htmlFor="screenshots" className="pl-1 text-lg">Attach Screenshots (optional)</Label>
+          <div className="space-y-1">
+            <Label htmlFor="screenshots" className="pl-1 text-lg">
+              Attach Screenshots (optional)
+            </Label>
             <Input
-                id="screenshots"
-                name="screenshots"
-                type="file"
-                multiple
-                accept="image/*"
+              id="screenshots"
+              name="screenshots"
+              type="file"
+              multiple
+              accept="image/*"
             />
-            </div>
+          </div>
 
-            <Separator />
+          <Separator />
 
-            <div className="flex justify-end gap-4">
+          <div className="flex justify-end gap-4">
             <Button type="submit" className="bg-yellow-500 text-white">
-                Submit Issue
+              Submit Issue
             </Button>
-            </div>
+          </div>
         </fetcher.Form>
-        </div>
+      </div>
     </SidebarProvider>
   );
 }
