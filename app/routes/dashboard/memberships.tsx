@@ -1,8 +1,8 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminSidebar from "~/components/ui/Dashboard/adminsidebar"; 
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminSidebar from "~/components/ui/Dashboard/AdminSidebar"; 
 import Footer from "@/components/ui/Home/Footer";
-import MembershipCard from "~/components/ui/Dashboard/membershipcard";
+import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
   getMembershipPlans,
   deleteMembershipPlan,
@@ -14,7 +14,7 @@ import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import {
   Tooltip,
   TooltipContent,

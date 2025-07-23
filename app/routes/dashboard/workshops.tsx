@@ -1,7 +1,7 @@
 import { useLoaderData } from "react-router";
 import { Outlet } from "react-router-dom";
-import AppSidebar from "@/components/ui/Dashboard/sidebar";
-import WorkshopList from "@/components/ui/Dashboard/workshoplist";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import WorkshopList from "~/components/ui/Dashboard/WorkshopList";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Link } from "react-router-dom";
 import {
@@ -10,8 +10,8 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { FiPlus } from "react-icons/fi";
 
 export async function loader({ request }: { request: Request }) {

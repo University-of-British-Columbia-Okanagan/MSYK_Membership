@@ -1,10 +1,10 @@
 import { useLoaderData, redirect } from "react-router-dom";
 import { getUserBookedEquipments } from "~/models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
-import AppSidebar from "@/components/ui/Dashboard/sidebar";
-import EquipmentCard from "@/components/ui/Dashboard/equipmentcard";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import EquipmentCard from "~/components/ui/Dashboard/EquipmentCard";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
 import { json } from "@remix-run/node";
 import { logger } from "~/logging/logger";

@@ -7,7 +7,7 @@ import {
 } from "react-router-dom";
 import type { ActionFunction, LoaderFunction } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import Sidebar from "../../components/ui/Dashboard/sidebar";
+import Sidebar from "../../components/ui/Dashboard/Sidebar";
 import { getUserId } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
 import { getSavedPaymentMethod } from "~/models/user.server";

@@ -9,7 +9,7 @@ import {
   checkVolunteerHourOverlap,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
-import Sidebar from "../../components/ui/Dashboard/sidebar";
+import Sidebar from "../../components/ui/Dashboard/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
 import { CreditCard, User, Calendar, Medal, Clock, Plus } from "lucide-react";
@@ -23,8 +23,8 @@ import {
 } from "@/components/ui/select";
 import { ShadTable, type ColumnDefinition } from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {

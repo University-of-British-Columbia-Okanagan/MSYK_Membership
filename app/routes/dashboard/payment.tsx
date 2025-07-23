@@ -14,7 +14,7 @@ import { getUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
 import { getSavedPaymentMethod } from "../../models/user.server";
-import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
 import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
 
