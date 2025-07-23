@@ -18,44 +18,44 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  firstName              String
-  lastName               String
-  email                  String  @unique
-  password               String
-  phone                  String
-  over18                 Boolean
-  parentGuardianName     String?
-  parentGuardianPhone    String?
-  parentGuardianEmail    String?
-  photoRelease           Boolean
-  dataPrivacy            Boolean
-  emergencyContactName   String
-  emergencyContactPhone  String
-  emergencyContactEmail  String
+  firstName             String
+  lastName              String
+  email                 String  @unique
+  password              String
+  phone                 String
+  over18                Boolean
+  parentGuardianName    String?
+  parentGuardianPhone   String?
+  parentGuardianEmail   String?
+  photoRelease          Boolean
+  dataPrivacy           Boolean
+  emergencyContactName  String
+  emergencyContactPhone String
+  emergencyContactEmail String
 
   // Role Connection
-  roleUserId Int      @default(1)
-  roleUser   RoleUser @relation(fields: [roleUserId], references: [id])
-  roleLevel Int @default(1)
-  allowLevel4 Boolean @default(false)
+  roleUserId  Int      @default(1)
+  roleUser    RoleUser @relation(fields: [roleUserId], references: [id])
+  roleLevel   Int      @default(1)
+  allowLevel4 Boolean  @default(false)
 
-  avatarUrl              String? 
-  guardianSignedConsent  String? // This will store the base64 image data
+  avatarUrl             String?
+  guardianSignedConsent String? // This will store the base64 image data
 
   // Relationships
-  userWorkshops     UserWorkshop[]
-  equipmentbookings EquipmentBooking[]
-  userMemberships UserMembership[] 
-  paymentInformation  UserPaymentInformation?
-  issuesReported Issue[]
-  volunteers Volunteer[]
-  volunteerHours VolunteerTimetable[]
-} 
+  userWorkshops      UserWorkshop[]
+  equipmentbookings  EquipmentBooking[]
+  userMemberships    UserMembership[]
+  paymentInformation UserPaymentInformation?
+  issuesReported     Issue[]
+  volunteers         Volunteer[]
+  volunteerHours     VolunteerTimetable[]
+}
 
 model Volunteer {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   userId         Int
-  volunteerStart DateTime @default(now())
+  volunteerStart DateTime  @default(now())
   volunteerEnd   DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -64,15 +64,15 @@ model Volunteer {
 }
 
 model VolunteerTimetable {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  startTime   DateTime
-  endTime     DateTime
-  description String?
-  status      String   @default("pending") // "pending", "approved", "denied", "resolved"
-  previousStatus String? 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  startTime      DateTime
+  endTime        DateTime
+  description    String?
+  status         String   @default("pending") // "pending", "approved", "denied", "resolved"
+  previousStatus String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -125,18 +125,18 @@ model Workshop {
   type               String // "workshop" or "orientation"
   imageUrl           String?
   cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.")
-  registrationCutoff Int @default(60) // Registration cut-off in minutes before the workshop starts
+  registrationCutoff Int      @default(60) // Registration cut-off in minutes before the workshop starts
 
   // Relationships
-  occurrences    WorkshopOccurrence[] // Relationship to occurrences
-  userWorkshops  UserWorkshop[] // Many-to-many relationship with User
-  equipmentBookings   EquipmentBooking[]
+  occurrences       WorkshopOccurrence[] // Relationship to occurrences
+  userWorkshops     UserWorkshop[] // Many-to-many relationship with User
+  equipmentBookings EquipmentBooking[]
 
   // Prerequisite relationships
   prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
   prerequisites   WorkshopPrerequisite[] @relation("WorkshopWithPrerequisite")
 
-  equipmentPrerequisites EquipmentPrerequisite[] @relation("EquipmentPrerequisiteWorkshop")   
+  equipmentPrerequisites EquipmentPrerequisite[] @relation("EquipmentPrerequisiteWorkshop")
 }
 
 model WorkshopOccurrence {
@@ -148,62 +148,61 @@ model WorkshopOccurrence {
   endDatePST   DateTime?
   status       String    @default("active") // "open", "closed", "cancelled"
   connectId    Int? // For workshop continuation tracking
-  offerId     Int @default(1)
+  offerId      Int       @default(1)
 
   // Relationships
-  workshop     Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  userWorkshops UserWorkshop[]
+  workshop       Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  userWorkshops  UserWorkshop[]
   equipmentSlots EquipmentSlot[] // This ensures each workshop occurrence can have multiple equipment slots.
 
   @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
 }
 
 model Equipment {
-  id          Int     @id @default(autoincrement())
-  name        String
-  description String?
-  price       Float
-  availability Boolean @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  imageUrl    String?
-slots       EquipmentSlot[]
-  bookings    EquipmentBooking[]
+  id           Int                @id @default(autoincrement())
+  name         String
+  description  String?
+  price        Float
+  availability Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  imageUrl     String?
+  slots        EquipmentSlot[]
+  bookings     EquipmentBooking[]
 
   prerequisites EquipmentPrerequisite[] @relation("EquipmentWithPrerequisite")
 }
 
 model EquipmentSlot {
-  id           Int      @id @default(autoincrement())
-  equipmentId  Int
-  equipment    Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  id          Int       @id @default(autoincrement())
+  equipmentId Int
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
-  startTime    DateTime
-  endTime      DateTime
-  isAvailable  Boolean  @default(true)
-  isBooked     Boolean  @default(false)
+  startTime   DateTime
+  endTime     DateTime
+  isAvailable Boolean  @default(true)
+  isBooked    Boolean  @default(false)
 
   // Link to Workshops
   workshopOccurrenceId Int?
   workshopOccurrence   WorkshopOccurrence? @relation(fields: [workshopOccurrenceId], references: [id], onDelete: SetNull)
 
-  bookings     EquipmentBooking[] @relation("EquipmentSlotToBooking")
+  bookings EquipmentBooking[] @relation("EquipmentSlotToBooking")
 }
-
 
 model EquipmentBooking {
   id          Int    @id @default(autoincrement())
   userId      Int
   equipmentId Int
   slotId      Int
-  workshopId  Int? 
+  workshopId  Int?
   status      String @default("pending")
   bookedFor   String @default("user") // "user" or "workshop"
 
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  slot        EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking") 
-  workshop    Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking")
+  workshop  Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
 
   @@unique([slotId]) // Prevents double booking of slots
 }
@@ -216,91 +215,88 @@ model UserWorkshop {
   result       String   @default("passed")
   date         DateTime @default(now())
 
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workshop     Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  occurrence   WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop   Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  occurrence WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, occurrenceId]) // Prevents duplicate registrations for the same occurrence
 }
-
 
 model MembershipPlan {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  title       String
-  description String
-  price       Float
+  title               String
+  description         String
+  price               Float
   needAdminPermission Boolean @default(false)
-  feature     Json
-  accessHours Json // Example: {"start": "09:00", "end": "18:00"}
+  feature             Json
+  accessHours         Json // Example: {"start": "09:00", "end": "18:00"}
 
   type String // "monthly", "one-time", "limited", "24/7"
 
-  userMemberships UserMembership[] 
+  userMemberships UserMembership[]
 }
 
 model UserMembership {
-  id               Int             @id @default(autoincrement())
-  userId           Int             
+  id               Int      @id @default(autoincrement())
+  userId           Int
   membershipPlanId Int
   date             DateTime @default(now())
   nextPaymentDate  DateTime
-  status           String @default("active") // "active", "cancelled"
+  status           String   @default("active") // "active", "cancelled"
 
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  membershipPlan   MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
-
-  // @@unique([userId, membershipPlanId], name: "uniqueUserMembershipPlan")
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
 }
 
 model UserPaymentInformation {
-  id                  Int       @id @default(autoincrement())
-  userId              Int       @unique
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stripeCustomerId    String?   // Stripe customer ID for payment processing
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stripeCustomerId      String? // Stripe customer ID for payment processing
   stripePaymentMethodId String? // Stripe payment method ID
-  cardholderName      String?   // Name on card
-  cardLast4           String?   // Last 4 digits of the card
-  cardExpiry          String?   // Card expiry date in MM/YY format
-  expMonth            Int?      // Expiry month
-  expYear             Int?      // Expiry year
-  billingAddressLine1 String?
-  billingAddressLine2 String?
-  billingCity         String?
-  billingState        String?
-  billingZip          String?
-  billingCountry      String?
-  email               String?   // Email associated with the payment method
-  isDefault           Boolean   @default(true)
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  cardholderName        String? // Name on card
+  cardLast4             String? // Last 4 digits of the card
+  cardExpiry            String? // Card expiry date in MM/YY format
+  expMonth              Int? // Expiry month
+  expYear               Int? // Expiry year
+  billingAddressLine1   String?
+  billingAddressLine2   String?
+  billingCity           String?
+  billingState          String?
+  billingZip            String?
+  billingCountry        String?
+  email                 String? // Email associated with the payment method
+  isDefault             Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@index([userId])
   @@index([stripeCustomerId])
 }
 
 model AdminSettings {
-  id                     Int      @id @default(autoincrement())
-  key                    String   @unique
-  value                  String
-  description            String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Issue {
-  id          Int       @id @default(autoincrement())
-  createdAt   DateTime  @default(now())
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
 
   title       String
   description String
-  status      String    @default("open") // "open", "in_progress", "resolved"
-  priority    String    @default("medium") // 1 to 5
+  status      String @default("open") // "open", "in_progress", "resolved"
+  priority    String @default("medium") // 1 to 5
 
   reportedById Int
-  reportedBy   User     @relation(fields: [reportedById], references: [id], onDelete: Cascade)
+  reportedBy   User @relation(fields: [reportedById], references: [id], onDelete: Cascade)
 
   screenshots IssueScreenshot[]
 
@@ -308,11 +304,11 @@ model Issue {
 }
 
 model IssueScreenshot {
-  id       Int    @id @default(autoincrement())
-  issueId  Int
-  url      String
+  id      Int    @id @default(autoincrement())
+  issueId Int
+  url     String
 
-  issue    Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
   @@index([issueId])
 }
