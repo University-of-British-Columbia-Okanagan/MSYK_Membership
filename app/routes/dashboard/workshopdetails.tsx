@@ -1,5 +1,4 @@
 import {
-  useParams,
   useLoaderData,
   useFetcher,
   useNavigate,
@@ -25,14 +24,13 @@ import {
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
 import { useState, useEffect } from "react";
-import { AlertCircle, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Link as RouterLink } from "react-router-dom";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   DropdownMenu,
@@ -245,9 +243,6 @@ export async function action({ request }: { request: Request }) {
     }
 
     try {
-      // Call your duplicate function here
-      // This should be implemented in your models/workshop.server
-      // await duplicateWorkshop(Number(workshopId));
       await duplicateWorkshop(Number(workshopId));
 
       // Redirect to admin dashboard after duplication
@@ -416,11 +411,6 @@ export default function WorkshopDetails() {
     );
   };
 
-  // Get list of incomplete prerequisites
-  const incompletePrerequisites = prerequisiteWorkshops.filter(
-    (prereq: PrerequisiteWorkshop) => !prereq.completed
-  );
-
   // Gather the earliest registration date for cancellation window
   const userRegistrationDates = workshop.occurrences
     .filter((occ: any) => registrations[occ.id]?.registered)
@@ -499,7 +489,7 @@ export default function WorkshopDetails() {
   );
 
   // If user is registered for ANY occurrence in a continuation workshop,
-  // consider them registered for the entire workshop.
+  // Consider them registered for the entire workshop.
   const isUserRegisteredForAny = sortedOccurrences.some(
     (occ: any) => registrations[occ.id]?.registered
   );
@@ -640,13 +630,6 @@ export default function WorkshopDetails() {
                           <div
                             key={occ.id}
                             className="flex items-center p-3 rounded-md bg-gray-50 border border-gray-200"
-                            // className={`flex items-center p-3 rounded-md ${
-                            //   occ.status === "cancelled"
-                            //     ? "bg-red-50 border border-red-200"
-                            //     : occ.status === "past"
-                            //     ? "bg-gray-50 border border-gray-200"
-                            //     : "bg-green-50 border border-green-200"
-                            // }`}
                           >
                             <div className="flex-1">
                               <div className="flex items-center">
@@ -683,16 +666,6 @@ export default function WorkshopDetails() {
                                 )}
                               </p>
                             </div>
-
-                            {/* <div>
-              {occ.status === "cancelled" ? (
-                <Badge className="bg-red-500 text-white">Cancelled</Badge>
-              ) : occ.status === "past" ? (
-                <Badge className="bg-gray-500 text-white">Past</Badge>
-              ) : (
-                <Badge className="bg-green-500 text-white">Active</Badge>
-              )}
-            </div> */}
                           </div>
                         ))}
                       </div>
@@ -776,7 +749,6 @@ export default function WorkshopDetails() {
                             </div>
                           );
                         } else {
-                          // CHANGE 2: Replace the Register button with a Confirm button
                           // This shows number of sessions being registered for
                           const activeOccurrences = sortedOccurrences.filter(
                             (occ: any) =>
@@ -963,7 +935,7 @@ export default function WorkshopDetails() {
                     )}
                   </>
                 ) : (
-                  // Non-continuation workshop: existing per-occurrence UI
+                  // Regular workshop
                   <>
                     <h2 className="text-lg font-semibold mb-4">
                       Available Dates
