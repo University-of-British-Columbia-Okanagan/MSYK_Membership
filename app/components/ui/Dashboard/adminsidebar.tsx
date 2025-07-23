@@ -97,14 +97,14 @@ export function AdminAppSidebar() {
             Admin Reports
           </Link>
           <Link
-            to="/report"
+            to="/dashboard/report"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <BugIcon className="w-5 h-5" />
             Report Issue
           </Link>
           <Link
-            to="/logs"
+            to="/dashboard/logs"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <FileTextIcon className="w-5 h-5" />
