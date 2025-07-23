@@ -7,17 +7,14 @@ export const workshopFormSchema = z.object({
   location: z.string().min(1, "Location is required"),
   capacity: z.number().int().min(1, "Capacity must be at least 1"),
   type: z.enum(["workshop", "orientation"]),
- 
-  
+
   occurrences: z
     .array(
       z.object({
-        // New optional fields:
         id: z.number().optional(),
         status: z.string().optional(),
         userCount: z.number().optional(),
 
-        // Existing fields:
         startDate: z.coerce.date().refine((date) => !isNaN(date.getTime()), {
           message: "Invalid start date format",
         }),
@@ -36,12 +33,12 @@ export const workshopFormSchema = z.object({
         ),
       {
         message: "End date must be later than start date",
-        path: ["occurrences"], // this error appears on the occurrences field
+        path: ["occurrences"], // This error appears on the occurrences field
       }
     ),
-    prerequisites: z.array(z.number()).optional(),
-    equipments: z.array(z.number()).optional(),
-    isWorkshopContinuation: z.boolean().optional().default(false)
+  prerequisites: z.array(z.number()).optional(),
+  equipments: z.array(z.number()).optional(),
+  isWorkshopContinuation: z.boolean().optional().default(false),
 });
 
 export type WorkshopFormValues = z.infer<typeof workshopFormSchema>;
