@@ -18,10 +18,8 @@ import {
 import {
   CreditCard,
   CheckCircle,
-  User,
   Lock,
   AlertCircle,
-  Calendar,
   MapPin,
   Trash2,
 } from "lucide-react";
@@ -40,7 +38,6 @@ export const loader: LoaderFunction = async ({ request }) => {
   return { user, savedPaymentMethod };
 };
 
-// Action - Handle form submission and card deletion
 // Action - Handle form submission and card deletion
 export const action: ActionFunction = async ({ request }) => {
   const userId = await getUserId(request);
@@ -123,11 +120,15 @@ export const action: ActionFunction = async ({ request }) => {
       billingCountry,
       email,
     });
-    logger.info(`Payment method saved successfully for ${userId}`, {url: request.url,});
+    logger.info(`Payment method saved successfully for ${userId}`, {
+      url: request.url,
+    });
 
     return { success: true };
   } catch (error: any) {
-    logger.error(`Failed to save payment method: ${error}`, {url: request.url,});
+    logger.error(`Failed to save payment method: ${error}`, {
+      url: request.url,
+    });
     return {
       errors: {
         form:
@@ -497,9 +498,6 @@ export default function PaymentInformationPage() {
                               {actionData.errors.cardNumber}
                             </p>
                           )}
-                          {/* <p className="mt-1 text-xs text-gray-500">
-                            For testing, use: 4242 4242 4242 4242
-                          </p> */}
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -793,7 +791,7 @@ export default function PaymentInformationPage() {
                                 <option value="FR">France</option>
                                 <option value="DE">Germany</option>
                                 <option value="IT">Italy</option>
-                                {/* Add more countries as needed */}
+                                {/* Add more countries later as needed */}
                               </select>
                               {actionData?.errors?.billingCountry && (
                                 <p className="mt-1 text-sm text-red-600">
