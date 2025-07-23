@@ -2,7 +2,7 @@ import { logger } from "~/logging/logger";
 import { createCheckoutSession } from "../../models/payment.server";
 import { getUser } from "~/utils/session.server";
 
-export async function action({ request }) {
+export async function action({ request }: { request: Request }) {
   try {
     const user = await getUser(request);
     if (!user) {
