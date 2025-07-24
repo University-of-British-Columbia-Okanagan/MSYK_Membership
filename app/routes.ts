@@ -52,7 +52,7 @@ export default [
   route(
     "dashboard/payment/:workshopId/connect/:connectId",
     "routes/dashboard/payment.tsx",
-    { id: "dashboard/payment/workshopContinuation" }
+    { id: "dashboard/payment/multiDayWorkshop" }
   ),
   route(
     "dashboard/payment/:workshopId/:occurrenceId",

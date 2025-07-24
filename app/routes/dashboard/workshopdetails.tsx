@@ -429,7 +429,7 @@ export default function WorkshopDetails() {
       ? new Date(Math.min(...userRegistrationDates.map((d) => d.getTime())))
       : null;
 
-  // For continuation workshops: single registration/cancellation handling
+  // For multi-day workshop: single registration/cancellation handling
   function handleRegisterAll() {
     if (!user) {
       setPopupMessage("Please log in to register for this workshop.");
@@ -487,12 +487,12 @@ export default function WorkshopDetails() {
     return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
   });
 
-  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
-  const isContinuation = sortedOccurrences.some(
+  // Check if this workshop is a multi-day workshop (any occurrence has a non-null connectId)
+  const isMultiDayWorkshop = sortedOccurrences.some(
     (occ: any) => occ.connectId !== null
   );
 
-  // If user is registered for ANY occurrence in a continuation workshop,
+  // If user is registered for ANY occurrence in a multi-day workshop,
   // Consider them registered for the entire workshop.
   const isUserRegisteredForAny = sortedOccurrences.some(
     (occ: any) => registrations[occ.id]?.registered
@@ -555,7 +555,7 @@ export default function WorkshopDetails() {
                       View Users ({workshop.userCount})
                     </Button>
 
-                    {isContinuation ? (
+                    {isMultiDayWorkshop ? (
                       <ConfirmButton
                         confirmTitle="Duplicate Workshop"
                         confirmDescription="This will open the Add Workshop form with the current workshop's details pre-filled. You can then add new dates and make any other changes before saving."
@@ -574,7 +574,7 @@ export default function WorkshopDetails() {
                               prerequisites: workshop.prerequisites || [],
                               equipments: workshop.equipments || [],
                               // Exclude occurrences/dates
-                              isContinuation: isContinuation,
+                              isMultiDayWorkshop: isMultiDayWorkshop,
                             })
                           );
                           // Navigate to the add workshop page
@@ -613,8 +613,8 @@ export default function WorkshopDetails() {
 
                 <Separator className="my-6" />
 
-                {/* Continuation Workshop Block */}
-                {isContinuation ? (
+                {/* Multi-day Workshop Block */}
+                {isMultiDayWorkshop ? (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-lg font-semibold">

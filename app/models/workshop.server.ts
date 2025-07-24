@@ -17,7 +17,7 @@ interface WorkshopData {
     startDatePST?: Date;
     endDatePST?: Date;
   }[];
-  isWorkshopContinuation?: boolean;
+  isMultiDayWorkshop?: boolean;
   selectedSlots: Record<number, number[]>;
 }
 
@@ -41,7 +41,7 @@ interface UpdateWorkshopData {
   prerequisites?: number[];
   equipments?: number[];
   occurrences: OccurrenceData[];
-  isWorkshopContinuation: boolean;
+  isMultiDayWorkshop: boolean;
 }
 
 /**
@@ -136,9 +136,9 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
       });
     }
 
-    // Step 2: Generate continuation ID if it's a multi-day workshop
+    // Step 2: Generate new connect id ID if it's a multi-day workshop
     let newConnectId: number | null = null;
-    if (data.isWorkshopContinuation) {
+    if (data.isMultiDayWorkshop) {
       const maxResult = await db.workshopOccurrence.aggregate({
         _max: { connectId: true },
       });
@@ -477,11 +477,11 @@ export async function updateWorkshopWithOccurrences(
     });
   }
 
-  let isWorkshopContinuation = data.isWorkshopContinuation;
+  let isMultiDayWorkshop = data.isMultiDayWorkshop;
   let currentConnectId = null;
 
-  if (typeof data.isWorkshopContinuation === "boolean") {
-    if (data.isWorkshopContinuation) {
+  if (typeof data.isMultiDayWorkshop === "boolean") {
+    if (data.isMultiDayWorkshop) {
       // If user CHECKED the box, assign a new connectId for all occurrences
       // First check if there's already a connectId assigned to existing occurrences
       const existingConnectId = await db.workshopOccurrence.findFirst({
@@ -516,21 +516,21 @@ export async function updateWorkshopWithOccurrences(
       });
     }
   } else {
-    // Check if this is a workshop continuation by looking at existing occurrences
+    // Check if this is a multi-day workshop by looking at existing occurrences
     const existingConnectId = await db.workshopOccurrence.findFirst({
       where: { workshopId, connectId: { not: null } },
       select: { connectId: true },
     });
 
     if (existingConnectId && existingConnectId.connectId) {
-      isWorkshopContinuation = true;
+      isMultiDayWorkshop = true;
       currentConnectId = existingConnectId.connectId;
     }
   }
 
-  // Handle auto-registration of existing users to new occurrences for workshop continuations
-  if (isWorkshopContinuation && newOccurrenceIds.length > 0) {
-    // Only proceed if there are new occurrences and this is a workshop continuation
+  // Handle auto-registration of existing users to new occurrences for multi-day workshops
+  if (isMultiDayWorkshop && newOccurrenceIds.length > 0) {
+    // Only proceed if there are new occurrences and this is a multi-day workshop
 
     // 1. Find all unique users who are registered to any occurrence of this workshop
     const existingRegistrations = await db.userWorkshop.findMany({
@@ -1460,11 +1460,11 @@ export async function registerUserForAllOccurrences(
 }
 
 /**
- * Calculates user count statistics for workshop continuations vs regular workshops
+ * Calculates user count statistics for multi-day workshops vs regular workshops
  * @param workshopId - The ID of the workshop to analyze
  * @returns Promise<Object> - Object with totalUsers and uniqueUsers counts
  */
-export async function getWorkshopContinuationUserCount(workshopId: number) {
+export async function getMultiDayWorkshopUserCount(workshopId: number) {
   // Get the workshop with all occurrences and userWorkshops
   const workshop = await db.workshop.findUnique({
     where: { id: workshopId },
@@ -1485,12 +1485,12 @@ export async function getWorkshopContinuationUserCount(workshopId: number) {
     return { totalUsers: 0, uniqueUsers: 0 };
   }
 
-  // Check if this is a workshop continuation by looking at connectId in occurrences
-  const isWorkshopContinuation = workshop.occurrences.some(
+  // Check if this is a multi day workshop by looking at connectId in occurrences
+  const isMultiDayWorkshop = workshop.occurrences.some(
     (occ) => occ.connectId === workshopId
   );
 
-  if (!isWorkshopContinuation) {
+  if (!isMultiDayWorkshop) {
     // For regular workshops, just count total registrations and unique users
     const totalUsers = workshop.occurrences.reduce(
       (sum, occ) => sum + occ.userWorkshops.length,
@@ -1505,7 +1505,7 @@ export async function getWorkshopContinuationUserCount(workshopId: number) {
 
     return { totalUsers, uniqueUsers };
   } else {
-    // For workshop continuations, calculate differently
+    // For multi-day workshops, calculate differently
     // Get unique users
     const allUserIds = workshop.occurrences.flatMap((occ) =>
       occ.userWorkshops.map((uw) => uw.userId)
@@ -1513,7 +1513,7 @@ export async function getWorkshopContinuationUserCount(workshopId: number) {
     const uniqueUserIds = [...new Set(allUserIds)];
     const uniqueUsers = uniqueUserIds.length;
 
-    // For continuations, total users is unique users × number of occurrences
+    // For multi-day workshops, total users is unique users × number of occurrences
     // This represents what would be shown after auto-registration
     const activeOccurrences = workshop.occurrences.filter(
       (occ) => occ.status === "active"

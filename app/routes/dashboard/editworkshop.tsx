@@ -20,7 +20,7 @@ import {
   updateWorkshopWithOccurrences,
   cancelWorkshopOccurrence,
   getWorkshops,
-  getWorkshopContinuationUserCount,
+  getMultiDayWorkshopUserCount,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -103,7 +103,7 @@ export async function loader({
 
   const availableWorkshops = await getWorkshops();
   const availableEquipments = await getAvailableEquipment();
-  const userCounts = await getWorkshopContinuationUserCount(workshopId);
+  const userCounts = await getMultiDayWorkshopUserCount(workshopId);
 
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
@@ -185,10 +185,10 @@ export async function action({
   // Check if this submission is a cancellation request.
   if (rawValues.cancelOccurrenceId) {
     const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
-    const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+    const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
     try {
-      if (isWorkshopContinuation) {
+      if (isMultiDayWorkshop) {
         const workshop = await getWorkshopById(Number(params.workshopId));
         const activeOccurrences = workshop.occurrences.filter(
           (occ: any) => occ.status === "active"
@@ -199,7 +199,7 @@ export async function action({
         }
 
         logger.info(
-          `[User: ${roleUser.userId}] Cancelled all active occurrences for workshop ${params.workshopId} (continuation)`,
+          `[User: ${roleUser.userId}] Cancelled all active occurrences for workshop ${params.workshopId} (multi-day workshop)`,
           { url: request.url }
         );
       } else {
@@ -239,7 +239,7 @@ export async function action({
   );
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
 
-  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+  const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
   let occurrences: {
     id?: number;
@@ -306,7 +306,7 @@ export async function action({
     occurrences,
     prerequisites,
     equipments,
-    isWorkshopContinuation,
+    isMultiDayWorkshop,
   });
 
   if (!parsed.success) {
@@ -389,7 +389,7 @@ export async function action({
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
       equipments: parsed.data.equipments,
-      isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+      isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
       selectedSlots, // Pass the selected slots
       userId, // Pass the user ID
     });
@@ -740,7 +740,7 @@ export default function EditWorkshop() {
       // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
       .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
 
-  const defaultContinuation =
+  const isMultiDay =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
 
   const navigate = useNavigate();
@@ -767,7 +767,7 @@ export default function EditWorkshop() {
         typeof workshop.equipments[0] === "object"
           ? workshop.equipments.map((e: any) => e.equipmentId)
           : workshop.equipments || [],
-      isWorkshopContinuation: defaultContinuation,
+      isMultiDayWorkshop: isMultiDay,
     },
   });
 
@@ -817,8 +817,8 @@ export default function EditWorkshop() {
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
   const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
 
-  const [isWorkshopContinuation, setIsWorkshopContinuation] =
-    useState<boolean>(defaultContinuation);
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
+    useState<boolean>(isMultiDay);
 
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -846,8 +846,8 @@ export default function EditWorkshop() {
     // Check if any users are registered
     let hasUsers = false;
 
-    if (isWorkshopContinuation) {
-      // For workshop continuation, check total users across all occurrences
+    if (isMultiDayWorkshop) {
+      // For multi-day workshop, check total users across all occurrences
       hasUsers = userCounts.totalUsers > 0;
     } else {
       // For regular workshops, check each occurrence
@@ -1294,15 +1294,15 @@ export default function EditWorkshop() {
                   />
                 </div>
 
-                {/* "Is Workshop Continuation" Checkbox */}
+                {/* "Multi-day Workshop" Checkbox */}
                 <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <div className="relative">
                       <input
                         type="checkbox"
-                        checked={isWorkshopContinuation}
+                        checked={isMultiDayWorkshop}
                         onChange={(e) =>
-                          setIsWorkshopContinuation(e.target.checked)
+                          setIsMultiDayWorkshop(e.target.checked)
                         }
                         className="sr-only peer"
                         disabled={true}
@@ -1562,14 +1562,14 @@ export default function EditWorkshop() {
                                                 occ.userCount &&
                                                 occ.userCount > 0;
 
-                                              // For workshop continuations, we'll display user count and cancel button only on the first occurrence
+                                              // For multi-day workshops, we'll display user count and cancel button only on the first occurrence
                                               const isFirstActiveOccurrence =
                                                 index === 0;
                                               const shouldShowUserCount =
-                                                !isWorkshopContinuation ||
+                                                !isMultiDayWorkshop ||
                                                 isFirstActiveOccurrence;
                                               const shouldShowCancelButton =
-                                                !isWorkshopContinuation ||
+                                                !isMultiDayWorkshop ||
                                                 isFirstActiveOccurrence;
 
                                               return (
@@ -1619,7 +1619,7 @@ export default function EditWorkshop() {
                                                               d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                                                             />
                                                           </svg>
-                                                          {isWorkshopContinuation
+                                                          {isMultiDayWorkshop
                                                             ? `${
                                                                 userCounts.totalUsers
                                                               } ${
@@ -1644,25 +1644,25 @@ export default function EditWorkshop() {
                                                     )}
                                                     {shouldShowCancelButton ? (
                                                       hasUsers ||
-                                                      (isWorkshopContinuation &&
+                                                      (isMultiDayWorkshop &&
                                                         userCounts.totalUsers >
                                                           0) ? (
                                                         <ConfirmButton
                                                           confirmTitle={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Cancel All Occurrences"
                                                               : "Cancel Occurrence"
                                                           }
                                                           confirmDescription={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
                                                               : "Are you sure you want to cancel this occurrence? This action cannot be undone."
                                                           }
                                                           onConfirm={() => {
                                                             if (
-                                                              isWorkshopContinuation
+                                                              isMultiDayWorkshop
                                                             ) {
-                                                              // Cancel all active occurrences for workshop continuations
+                                                              // Cancel all active occurrences for multi-day workshops
                                                               activeOccurrences.forEach(
                                                                 (
                                                                   occurrence
@@ -1684,7 +1684,7 @@ export default function EditWorkshop() {
                                                             }
                                                           }}
                                                           buttonLabel={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Cancel All"
                                                               : "Cancel"
                                                           }
@@ -1693,18 +1693,18 @@ export default function EditWorkshop() {
                                                       ) : (
                                                         <ConfirmButton
                                                           confirmTitle={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Delete All Occurrences"
                                                               : "Delete Occurrence"
                                                           }
                                                           confirmDescription={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
                                                               : "Are you sure you want to delete this occurrence?"
                                                           }
                                                           onConfirm={() => {
                                                             if (
-                                                              isWorkshopContinuation
+                                                              isMultiDayWorkshop
                                                             ) {
                                                               // Create a new array without any of the active occurrences
                                                               const remainingOccurrences =
@@ -1729,9 +1729,9 @@ export default function EditWorkshop() {
                                                             }
                                                           }}
                                                           buttonLabel={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Delete All"
-                                                              : "X"
+                                                              : "Delete"
                                                           }
                                                           buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
                                                         />
@@ -2166,8 +2166,8 @@ export default function EditWorkshop() {
 
                 <input
                   type="hidden"
-                  name="isWorkshopContinuation"
-                  value={isWorkshopContinuation ? "true" : "false"}
+                  name="isMultiDayWorkshop"
+                  value={isMultiDayWorkshop ? "true" : "false"}
                 />
 
                 <input

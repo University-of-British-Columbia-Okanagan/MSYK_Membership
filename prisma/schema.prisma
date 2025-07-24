@@ -147,7 +147,7 @@ model WorkshopOccurrence {
   startDatePST DateTime?
   endDatePST   DateTime?
   status       String    @default("active") // "open", "closed", "cancelled"
-  connectId    Int? // For workshop continuation tracking
+  connectId    Int? // For multi-day workshop tracking
   offerId      Int       @default(1)
 
   // Relationships

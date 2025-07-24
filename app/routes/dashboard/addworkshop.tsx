@@ -568,7 +568,7 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+   const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
   //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
@@ -578,7 +578,7 @@ export async function action({ request }: { request: Request }) {
     occurrences,
     prerequisites,
     equipments,
-    isWorkshopContinuation,
+    isMultiDayWorkshop,
   });
 
   if (!parsed.success) {
@@ -602,7 +602,7 @@ export async function action({ request }: { request: Request }) {
         occurrences: parsed.data.occurrences,
         prerequisites: parsed.data.prerequisites,
         equipments: parsed.data.equipments,
-        isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+        isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
         selectedSlots,
       },
       request
@@ -776,7 +776,7 @@ export default function AddWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  const [isWorkshopContinuation, setIsWorkshopContinuation] = useState(false);
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] = useState(false);
 
   // Function for adding occurences
   const addOccurrence = () => {
@@ -914,8 +914,8 @@ export default function AddWorkshop() {
           form.setValue("equipments", uniqueEquipments);
         }
 
-        // Set continuation flag
-        setIsWorkshopContinuation(!!workshopData.isContinuation);
+        // Set flag
+        setIsMultiDayWorkshop(!!workshopData.isMultiDayWorkshop);
 
         // Clear the localStorage to prevent pre-filling again on refresh
         localStorage.removeItem("duplicateWorkshopData");
@@ -927,7 +927,7 @@ export default function AddWorkshop() {
     form,
     setSelectedPrerequisites,
     setSelectedEquipments,
-    setIsWorkshopContinuation,
+    setIsMultiDayWorkshop,
   ]); // Include dependencies
 
   // Updates the selected slots when occurrences change
@@ -1053,15 +1053,15 @@ export default function AddWorkshop() {
                   />
                 </div>
 
-                {/* New "Is Workshop Continuation" (Multi-day Workshop) Checkbox */}
+                {/* (Multi-day Workshop) Checkbox */}
                 <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <div className="relative">
                       <input
                         type="checkbox"
-                        checked={isWorkshopContinuation}
+                        checked={isMultiDayWorkshop}
                         onChange={(e) =>
-                          setIsWorkshopContinuation(e.target.checked)
+                          setIsMultiDayWorkshop(e.target.checked)
                         }
                         className="sr-only peer"
                       />
@@ -1555,11 +1555,11 @@ export default function AddWorkshop() {
                   value={JSON.stringify(selectedSlotsMap)}
                 />
 
-                {/* Hidden input for is workshop continuation (multi-day workshop) */}
+                {/* Hidden input for multi-day workshop */}
                 <input
                   type="hidden"
-                  name="isWorkshopContinuation"
-                  value={isWorkshopContinuation ? "true" : "false"}
+                  name="isMultiDayWorkshop"
+                  value={isMultiDayWorkshop ? "true" : "false"}
                 />
 
                 <AlertDialog

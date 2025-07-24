@@ -112,7 +112,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     };
   }
 
-  // Workshop branch: either single occurrence or continuation
+  // Workshop branch: either single occurrence or multi-day workshop
   else if (params.workshopId && params.occurrenceId) {
     const workshopId = Number(params.workshopId);
     const occurrenceId = Number(params.occurrenceId);
@@ -130,7 +130,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       workshop,
       occurrence,
       user,
-      isContinuation: false,
+      isMultiDayWorkshop: false,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
     };
@@ -159,7 +159,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       workshop,
       occurrence: occurrences[0],
       user,
-      isContinuation: true,
+      isMultiDayWorkshop: true,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
     };
@@ -309,7 +309,7 @@ export async function action({ request }: { request: Request }) {
       });
     }
 
-    // Workshop continuation branch: using connectId
+    // Multi-day workshop branch: using connectId
     else if (body.workshopId && body.connectId) {
       const { workshopId, connectId, price, userId } = body;
       if (!workshopId || !connectId || !price || !userId) {
@@ -401,7 +401,7 @@ export default function Payment() {
     oldMembershipPrice?: number | null;
     workshop?: any;
     occurrence?: any;
-    isContinuation?: boolean;
+    isMultiDayWorkshop?: boolean;
     userActiveMembership?: any;
     isDowngrade?: boolean;
     isResubscription?: boolean;
@@ -483,7 +483,7 @@ export default function Payment() {
 
       // Workshop branch
       else {
-        if (data.isContinuation) {
+        if (data.isMultiDayWorkshop) {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -537,10 +537,10 @@ export default function Payment() {
             checkoutData={{
               type: "workshop",
               workshopId: data.workshop.id,
-              occurrenceId: data.isContinuation
+              occurrenceId: data.isMultiDayWorkshop
                 ? undefined
                 : data.occurrence.id,
-              connectId: data.isContinuation
+              connectId: data.isMultiDayWorkshop
                 ? data.occurrence.connectId
                 : undefined,
             }}
@@ -748,7 +748,7 @@ export default function Payment() {
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
-          {data.isContinuation ? (
+          {data.isMultiDayWorkshop ? (
             <p className="text-gray-700">
               Occurrence Group: {data.occurrence?.connectId}
             </p>

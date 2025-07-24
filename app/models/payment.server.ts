@@ -592,7 +592,7 @@ export async function createCheckoutSession(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  // Workshop Continuation Payment
+  // Multi-day Workshop Payment
   else if (body.workshopId && body.connectId) {
     const { workshopId, connectId, price, userId, userEmail } = body;
     if (!workshopId || !connectId || !price || !userId) {
