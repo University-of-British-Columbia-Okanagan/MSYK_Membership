@@ -316,13 +316,23 @@ export default function WorkshopOfferAgain() {
     const updatedOccurrences = [...occurrences];
     updatedOccurrences[index][field] = localDate;
 
-    // Calculate PST dates when updating
+    // If updating start date and it's valid, automatically set end date to 2 hours later
     if (field === "startDate" && !isNaN(localDate.getTime())) {
+      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
+      updatedOccurrences[index].endDate = endDate;
+
+      // Calculate PST dates for both start and end when updating start date
       const startOffset = localDate.getTimezoneOffset();
       updatedOccurrences[index].startDatePST = new Date(
         localDate.getTime() - startOffset * 60000
       );
+
+      const endOffset = endDate.getTimezoneOffset();
+      updatedOccurrences[index].endDatePST = new Date(
+        endDate.getTime() - endOffset * 60000
+      );
     } else if (field === "endDate" && !isNaN(localDate.getTime())) {
+      // Calculate PST date when updating end date only
       const endOffset = localDate.getTimezoneOffset();
       updatedOccurrences[index].endDatePST = new Date(
         localDate.getTime() - endOffset * 60000
