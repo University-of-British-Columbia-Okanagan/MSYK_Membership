@@ -22,6 +22,11 @@ export type VolunteerHourEntry = {
   updatedAt: Date;
 };
 
+/**
+ * Retrieves comprehensive profile details for a user including membership and payment info
+ * @param request - The HTTP request object to extract user ID from session
+ * @returns Promise<Object|null> - User profile data with membership and payment details, or null if user not found
+ */
 export async function getProfileDetails(request: Request) {
   const userId = await getUserId(request);
   if (!userId) return null;
@@ -65,6 +70,11 @@ export async function getProfileDetails(request: Request) {
   };
 }
 
+/**
+ * Checks if a user is currently an active volunteer
+ * @param userId - The ID of the user to check volunteer status for
+ * @returns Promise<boolean> - True if user is an active volunteer, false otherwise
+ */
 export async function checkActiveVolunteerStatus(userId: number) {
   const activeVolunteer = await db.volunteer.findFirst({
     where: {
@@ -75,6 +85,12 @@ export async function checkActiveVolunteerStatus(userId: number) {
   return activeVolunteer !== null;
 }
 
+/**
+ * Retrieves volunteer hours entries for a specific user
+ * @param userId - The ID of the user whose volunteer hours to retrieve
+ * @param limit - Maximum number of entries to return (default: 10)
+ * @returns Promise<VolunteerHourEntry[]> - Array of volunteer hour entries sorted by most recent
+ */
 export async function getVolunteerHours(
   userId: number,
   limit: number = 10
@@ -86,6 +102,14 @@ export async function getVolunteerHours(
   });
 }
 
+/**
+ * Logs new volunteer hours for a user
+ * @param userId - The ID of the user logging volunteer hours
+ * @param startTime - The start time of the volunteer session
+ * @param endTime - The end time of the volunteer session
+ * @param description - Optional description of the volunteer work performed
+ * @returns Promise<VolunteerHourEntry> - The created volunteer hour entry
+ */
 export async function logVolunteerHours(
   userId: number,
   startTime: Date,
@@ -102,6 +126,13 @@ export async function logVolunteerHours(
   });
 }
 
+/**
+ * Checks if proposed volunteer hours overlap with existing logged hours for a user
+ * @param userId - The ID of the user to check for overlaps
+ * @param startTime - The proposed start time of the new volunteer session
+ * @param endTime - The proposed end time of the new volunteer session
+ * @returns Promise<boolean> - True if there's an overlap, false otherwise
+ */
 export async function checkVolunteerHourOverlap(
   userId: number,
   startTime: Date,
@@ -143,6 +174,10 @@ export async function checkVolunteerHourOverlap(
   return overlappingHours !== null;
 }
 
+/**
+ * Retrieves all volunteer hours entries across all users (admin function)
+ * @returns Promise<Array> - Array of all volunteer hour entries with user information, ordered by creation date
+ */
 export async function getAllVolunteerHours() {
   return await db.volunteerTimetable.findMany({
     include: {
@@ -160,6 +195,12 @@ export async function getAllVolunteerHours() {
   });
 }
 
+/**
+ * Updates the status of a volunteer hour entry and tracks the previous status
+ * @param hourId - The ID of the volunteer hour entry to update
+ * @param status - The new status to set (e.g., "approved", "denied", "pending")
+ * @returns Promise<VolunteerHourEntry> - The updated volunteer hour entry
+ */
 export async function updateVolunteerHourStatus(hourId: number, status: string) {
   // Get the current status before updating
   const currentEntry = await db.volunteerTimetable.findUnique({
@@ -179,6 +220,11 @@ export async function updateVolunteerHourStatus(hourId: number, status: string) 
   });
 }
 
+/**
+ * Retrieves recent volunteer hour actions/updates for admin monitoring
+ * @param limit - Maximum number of recent actions to return (default: 50)
+ * @returns Promise<Array> - Array of recently updated volunteer hour entries with user information
+ */
 export async function getRecentVolunteerHourActions(limit: number = 50) {
   return await db.volunteerTimetable.findMany({
     where: {

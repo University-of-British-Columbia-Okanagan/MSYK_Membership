@@ -1,9 +1,8 @@
-import React from "react";
 import { Outlet, redirect } from "react-router-dom";
-import AppSidebar from "@/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
-import WorkshopList from "@/components/ui/Dashboard/workshoplist";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import WorkshopList from "~/components/ui/Dashboard/WorkshopList";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getWorkshops } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
@@ -76,7 +75,7 @@ export default function UserDashboard() {
   const isAdmin = roleUser && roleUser.roleName?.toLowerCase() === "admin";
   const isGuest = !roleUser || !roleUser.userId;
 
-  // New filtering logic based on current date and past visibility setting - EXACT SAME AS ADMIN DASHBOARD
+  // New filtering logic based on current date and past visibility setting
   const now = new Date();
   const pastCutoffDate = new Date();
   pastCutoffDate.setDate(pastCutoffDate.getDate() - pastVisibilityDays);
@@ -97,7 +96,7 @@ export default function UserDashboard() {
       )
   );
 
-  // Use the past visibility setting to filter past events - EXACT SAME LOGIC AS ADMIN DASHBOARD
+  // Use the past visibility setting to filter past events
   const pastEvents = workshops.filter((event) => {
     // Check if all occurrences are in the past
     const allOccurrencesPast = event.occurrences.every(
@@ -136,7 +135,7 @@ export default function UserDashboard() {
 
           <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
 
-          {/* Active Workshops Section - EXACT SAME DESIGN AS ADMIN DASHBOARD */}
+          {/* Active Workshops Section */}
           {activeWorkshops.length > 0 ? (
             <WorkshopList
               title="Active Workshops"
@@ -147,7 +146,7 @@ export default function UserDashboard() {
             <p className="text-gray-600 mt-4">No active workshops available.</p>
           )}
 
-          {/* Active Orientations Section - EXACT SAME DESIGN AS ADMIN DASHBOARD */}
+          {/* Active Orientations Section */}
           {activeOrientations.length > 0 ? (
             <WorkshopList
               title="Active Orientations"
@@ -160,7 +159,7 @@ export default function UserDashboard() {
             </p>
           )}
 
-          {/* Past Events Section - EXACT SAME DESIGN AS ADMIN DASHBOARD */}
+          {/* Past Events Section */}
           {pastEvents.length > 0 ? (
             <WorkshopList
               title="Past Events"

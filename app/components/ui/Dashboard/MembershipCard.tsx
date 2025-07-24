@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFetcher } from "react-router";
 import { Button } from "@/components/ui/button";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   TooltipProvider,
   Tooltip,
@@ -27,7 +27,6 @@ interface MembershipCardProps {
   price: number;
   feature: string[];
   isAdmin: boolean;
-  isSubscribed?: boolean;
   membershipStatus?: "active" | "cancelled" | "inactive";
   userRecord?: {
     id: number;
@@ -37,7 +36,6 @@ interface MembershipCardProps {
   hasActiveSubscription?: boolean;
   hasCancelledSubscription?: boolean;
   highestActivePrice?: number;
-  highestCanceledPrice?: number;
   nextPaymentDate?: Date;
   membershipRecordId?: number;
   needAdminPermission?: boolean;
@@ -55,13 +53,11 @@ export default function MembershipCard({
   price,
   feature,
   isAdmin,
-  isSubscribed = false,
   membershipStatus,
   userRecord,
   hasCancelledSubscription = false,
   hasActiveSubscription = false,
   highestActivePrice = 0,
-  highestCanceledPrice = 0,
   nextPaymentDate,
   membershipRecordId,
   needAdminPermission,

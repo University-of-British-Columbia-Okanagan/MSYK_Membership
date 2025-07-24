@@ -1,12 +1,11 @@
-import React from "react";
 import { useLoaderData } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "@/components/ui/Dashboard/sidebar"; // User sidebar
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar"; // Admin sidebar
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar"; // Guest sidebar
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { getRoleUser } from "~/utils/session.server";
 import {
   Mail,

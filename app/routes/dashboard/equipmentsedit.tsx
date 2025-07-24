@@ -5,75 +5,101 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useState, useEffect } from "react";
-
-import  { updateEquipment, getEquipmentById } from "../../models/equipment.server";
+import {
+  updateEquipment,
+  getEquipmentById,
+} from "../../models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 
-export async function action({ request }: { request: Request }) {
-    const roleUser = await getRoleUser(request);
-    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to edit equipment`, {url: request.url});
-      throw new Response("Not Authorized", { status: 419 });
-    }
-
-    const form = await request.formData();
-    const id = parseInt(form.get("equipmentId") as string);
-    const name = form.get("name") as string;
-    const description = form.get("description") as string;
-    const availability = form.get("availability") === "on";
-    const price = parseFloat(form.get("price") as string);
-
-    try {
-      await updateEquipment(id, {
-        name,
-        description,
-        availability,
-        price,
-      });
-      logger.info(`[User: ${roleUser?.userId ?? "unknown"}] Equipment ${id} updated successfully`, {
-            url: request.url,
-            });
-  
-      return { success: true };
-    } catch (error) {
-      logger.error(`Failed to update equipment: ${error}`, {
-            url: request.url,
-            });
-      return { success: false, error: "Failed to update equipment." };
-    }
-}
-
-export async function loader({ request, params }: { request: Request; params: { id: string } }) {
+export async function loader({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id: string };
+}) {
   const currentUserRole = await getRoleUser(request);
   const equipment = await getEquipmentById(parseInt(params.id));
   if (currentUserRole?.roleName !== "Admin") {
-    logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to edit equipment`, {url: request.url});
+    logger.warn(
+      `[User: ${
+        currentUserRole?.userId ?? "unknown"
+      }] Not authorized to edit equipment`,
+      { url: request.url }
+    );
     throw new Response("Access Denied", { status: 409 });
   }
   if (!equipment) {
-    logger.warn(`Equipment ${parseInt(params.id)} not found and was tried to be updated.`, {url: request.url});
+    logger.warn(
+      `Equipment ${parseInt(params.id)} not found and was tried to be updated.`,
+      { url: request.url }
+    );
     throw new Response("Equipment not found", { status: 404 });
   }
   return { equipment, currentUserRole };
 }
 
+export async function action({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(
+      `[User: ${
+        roleUser?.userId ?? "unknown"
+      }] Not authorized to edit equipment`,
+      { url: request.url }
+    );
+    throw new Response("Not Authorized", { status: 419 });
+  }
+
+  const form = await request.formData();
+  const id = parseInt(form.get("equipmentId") as string);
+  const name = form.get("name") as string;
+  const description = form.get("description") as string;
+  const availability = form.get("availability") === "on";
+  const price = parseFloat(form.get("price") as string);
+
+  try {
+    await updateEquipment(id, {
+      name,
+      description,
+      availability,
+      price,
+    });
+    logger.info(
+      `[User: ${
+        roleUser?.userId ?? "unknown"
+      }] Equipment ${id} updated successfully`,
+      {
+        url: request.url,
+      }
+    );
+
+    return { success: true };
+  } catch (error) {
+    logger.error(`Failed to update equipment: ${error}`, {
+      url: request.url,
+    });
+    return { success: false, error: "Failed to update equipment." };
+  }
+}
+
 export default function EquipmentEdit() {
-    const { equipment } = useLoaderData();
-    const fetcher = useFetcher();
-    const navigate = useNavigate();
+  const { equipment } = useLoaderData();
+  const fetcher = useFetcher();
+  const navigate = useNavigate();
 
-    const [name, setName] = useState(equipment.name);
-    const [description, setDescription] = useState(equipment.description);
-    const [availability, setAvailability] = useState(equipment.availability);
-    const [price, setPrice] = useState(equipment.price);
+  const [name, setName] = useState(equipment.name);
+  const [description, setDescription] = useState(equipment.description);
+  const [availability, setAvailability] = useState(equipment.availability);
+  const [price, setPrice] = useState(equipment.price);
 
-    useEffect(() => {
-        if (fetcher.data?.success) {
-          navigate(-1);
-        }
-      }, [fetcher.data]);
-      
+  useEffect(() => {
+    if (fetcher.data?.success) {
+      navigate(-1);
+    }
+  }, [fetcher.data]);
+
   const [showPopup, setShowPopup] = useState(false);
   const [popupMessage, setPopupMessage] = useState("");
 
@@ -98,12 +124,21 @@ export default function EquipmentEdit() {
       <h1 className="text-2xl font-bold mb-10">Edit Equipment</h1>
       <fetcher.Form method="post" className="space-y-5">
         <div className="space-y-1 w-1/2">
-          <Label htmlFor="name" className="pl-1 text-lg">Name</Label>
-          <Input id="name" name="name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Label htmlFor="name" className="pl-1 text-lg">
+            Name
+          </Label>
+          <Input
+            id="name"
+            name="name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
 
         <div className="space-y-1 w-1/2">
-          <Label htmlFor="description" className="pl-1 text-lg">Description</Label>
+          <Label htmlFor="description" className="pl-1 text-lg">
+            Description
+          </Label>
           <Textarea
             id="description"
             name="description"
@@ -113,7 +148,9 @@ export default function EquipmentEdit() {
         </div>
 
         <div className="space-y-1 w-1/2">
-          <Label htmlFor="price" className="pl-1 text-lg">Price</Label>
+          <Label htmlFor="price" className="pl-1 text-lg">
+            Price
+          </Label>
           <Input
             id="price"
             name="price"
@@ -125,15 +162,17 @@ export default function EquipmentEdit() {
         </div>
 
         <div className="flex items-center space-x-4">
-            <Label htmlFor="availability" className="pl-1 text-lg">Available</Label>
-            <input
-                type="checkbox"
-                id="availability"
-                name="availability"
-                checked={availability}
-                onChange={(e) => setAvailability(e.target.checked)}
-                className="w-4 h-4 accent-yellow-500 "
-            />
+          <Label htmlFor="availability" className="pl-1 text-lg">
+            Available
+          </Label>
+          <input
+            type="checkbox"
+            id="availability"
+            name="availability"
+            checked={availability}
+            onChange={(e) => setAvailability(e.target.checked)}
+            className="w-4 h-4 accent-yellow-500 "
+          />
         </div>
 
         <input type="hidden" name="equipmentId" value={equipment.id} />

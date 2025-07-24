@@ -1,7 +1,7 @@
 import { useLoaderData } from "react-router";
 import { Outlet } from "react-router-dom";
-import AppSidebar from "@/components/ui/Dashboard/sidebar";
-import WorkshopList from "@/components/ui/Dashboard/workshoplist";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import WorkshopList from "~/components/ui/Dashboard/WorkshopList";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Link } from "react-router-dom";
 import {
@@ -10,8 +10,8 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { FiPlus } from "react-icons/fi";
 
 export async function loader({ request }: { request: Request }) {
@@ -84,7 +84,7 @@ export default function UserDashboard() {
       )
   );
 
-  // Use the past visibility setting to filter past events - EXACT SAME LOGIC AS ADMIN DASHBOARD
+  // Use the past visibility setting to filter past events
   const pastEvents = workshops.filter((event) => {
     // Check if all occurrences are in the past
     const allOccurrencesPast = event.occurrences.every(
@@ -134,7 +134,7 @@ export default function UserDashboard() {
             <WorkshopList
               title="Active Workshops"
               workshops={activeWorkshops}
-              isAdmin={isAdmin}
+              isAdmin={Boolean(isAdmin)}
             />
           ) : (
             <p className="text-gray-600 mt-4">No active workshops available.</p>
@@ -145,10 +145,12 @@ export default function UserDashboard() {
             <WorkshopList
               title="Active Orientations"
               workshops={activeOrientations}
-              isAdmin={isAdmin}
+              isAdmin={Boolean(isAdmin)}
             />
           ) : (
-            <p className="text-gray-600 mt-4">No active orientations available.</p>
+            <p className="text-gray-600 mt-4">
+              No active orientations available.
+            </p>
           )}
 
           {/* Past Events Section */}
@@ -156,7 +158,7 @@ export default function UserDashboard() {
             <WorkshopList
               title="Past Events"
               workshops={pastEvents}
-              isAdmin={isAdmin}
+              isAdmin={Boolean(isAdmin)}
             />
           ) : (
             <p className="text-gray-600 mt-4">No past events available.</p>

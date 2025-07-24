@@ -31,11 +31,11 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 import { getWorkshops } from "~/models/workshop.server";
-import MultiSelectField from "@/components/ui/MultiSelectField";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import { useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -67,16 +67,15 @@ export async function action({ request }: { request: Request }) {
   if (!parsed.success) {
     return { errors: parsed.error.flatten().fieldErrors };
   }
-  
+
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(
-      `[User: ${roleUser?.userId}] Not authorized to add equipment`,
-      { url: request.url }
-    );
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add equipment`, {
+      url: request.url,
+    });
     throw new Response("Not Authorized", { status: 401 });
   }
-  
+
   // Check if equipment name already exists
   const existingEquipment = await getEquipmentByName(parsed.data.name);
   if (existingEquipment) {
@@ -84,7 +83,9 @@ export async function action({ request }: { request: Request }) {
       `[User: ${roleUser?.userId}] Equipment with this name already exists`,
       { url: request.url }
     );
-    throw new Response("Equipment with this name already exists", { status: 409 });
+    throw new Response("Equipment with this name already exists", {
+      status: 409,
+    });
   }
 
   try {
@@ -102,7 +103,7 @@ export async function action({ request }: { request: Request }) {
       { url: request.url }
     );
 
-    return redirect("/dashboard/admin");
+    return redirect("/dashboard/equipments");
   } catch (error: any) {
     logger.error(`Error adding new equipment ${error}`, { url: request.url });
 

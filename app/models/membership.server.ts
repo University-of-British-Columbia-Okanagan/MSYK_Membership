@@ -1,8 +1,6 @@
 import { db } from "../utils/db.server";
 import cron from "node-cron";
 import Stripe from "stripe";
-import bcrypt from "bcryptjs";
-// import { getLatestUserPaymentInfo } from "./user.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -21,6 +19,10 @@ function incrementMonth(date: Date): Date {
   return newDate;
 }
 
+/**
+ * Retrieve all membership plans ordered by ID
+ * @returns Array of all membership plans ordered by ascending ID
+ */
 export async function getMembershipPlans() {
   const membershipPlans = await db.membershipPlan.findMany({
     orderBy: {
@@ -30,6 +32,15 @@ export async function getMembershipPlans() {
   return membershipPlans;
 }
 
+/**
+ * Create a new membership plan with features (Admin only)
+ * @param data Membership plan data including title, description, price, and features array
+ * @param data.title The title/name of the membership plan
+ * @param data.description Detailed description of the membership plan
+ * @param data.price Monthly price of the membership plan
+ * @param data.features Array of feature strings that will be converted to JSON object
+ * @returns Created membership plan record
+ */
 export async function addMembershipPlan(data: MembershipPlanData) {
   try {
     // Convert the features array into a JSON object
@@ -55,6 +66,11 @@ export async function addMembershipPlan(data: MembershipPlanData) {
   }
 }
 
+/**
+ * Delete a membership plan (Admin only)
+ * @param planId The ID of the membership plan to delete
+ * @returns Object with success status
+ */
 export async function deleteMembershipPlan(planId: number) {
   try {
     await db.membershipPlan.delete({
@@ -69,6 +85,11 @@ export async function deleteMembershipPlan(planId: number) {
   }
 }
 
+/**
+ * Get a single membership plan by ID (alias for getMembershipPlanById)
+ * @param planId The ID of the membership plan to retrieve
+ * @returns Membership plan record or null if not found
+ */
 export async function getMembershipPlan(planId: number) {
   const plan = await db.membershipPlan.findUnique({
     where: { id: planId },
@@ -79,6 +100,16 @@ export async function getMembershipPlan(planId: number) {
   return plan;
 }
 
+/**
+ * Update an existing membership plan (Admin only)
+ * @param planId The ID of the membership plan to update
+ * @param data Updated membership plan data
+ * @param data.title New title for the membership plan
+ * @param data.description New description for the membership plan
+ * @param data.price New monthly price for the membership plan
+ * @param data.features Updated features as a Record object
+ * @returns Updated membership plan record
+ */
 export async function updateMembershipPlan(
   planId: number,
   data: {
@@ -100,14 +131,27 @@ export async function updateMembershipPlan(
   });
 }
 
+/**
+ * Get a membership plan by its ID
+ * @param planId The ID of the membership plan to retrieve
+ * @returns Membership plan record or null if not found
+ */
 export async function getMembershipPlanById(planId: number) {
   return db.membershipPlan.findUnique({
     where: { id: planId },
   });
 }
 
-/*
- * This function handles roleLevels
+/**
+ * Register a new membership subscription with role level management
+ * Handles new subscriptions, upgrades, downgrades, and resubscriptions
+ * This function deals with role levels
+ * @param userId The ID of the user subscribing
+ * @param membershipPlanId The ID of the membership plan to subscribe to
+ * @param currentMembershipId The ID of current membership (for upgrades/downgrades)
+ * @param isDowngrade Flag indicating if this is a downgrade (cheaper plan)
+ * @param isResubscription Flag indicating if this is reactivating a cancelled membership
+ * @returns Created or updated membership subscription record
  */
 export async function registerMembershipSubscription(
   userId: number,
@@ -124,8 +168,8 @@ export async function registerMembershipSubscription(
   });
   if (!plan) throw new Error("Plan not found");
 
-  // NEW: Handle resubscription - if a membership is cancelled and the user resubscribes,
-  // simply update the cancelled membership's status to "active" without any payment.
+  // Handle resubscription - if a membership is cancelled and the user resubscribes,
+  // Simply update the cancelled membership's status to "active" without any payment.
   if (isResubscription) {
     console.log("Entering resubscription branch");
     let cancelledMembership;
@@ -173,7 +217,7 @@ export async function registerMembershipSubscription(
     });
 
     // 2) Find if there's already an "active" or "ending" record for this user/plan
-    //    (we only want 1 record in active or ending for the cheaper plan).
+    // (we only want 1 record in active or ending for the cheaper plan).
     let newMembership = await db.userMembership.findFirst({
       where: {
         userId,
@@ -210,7 +254,7 @@ export async function registerMembershipSubscription(
     return subscription;
   }
 
-  // Continue with existing upgrade/change logic
+  // Continue with upgrade/change logic
   else if (currentMembershipId) {
     console.log("hello world3");
     const currentMembership = await db.userMembership.findUnique({
@@ -351,8 +395,14 @@ export async function registerMembershipSubscription(
   return subscription;
 }
 
-/*
+/**
+ * Cancel a user's active membership subscription with intelligent role level management
  * This function handles roleLevels
+ * If cancelled before the billing cycle ends, marks as 'cancelled' but preserves access until next payment date
+ * If cancelled after the billing cycle ends, deletes the membership and recalculates user role level based on completed orientations
+ * @param userId The ID of the user cancelling their membership
+ * @param membershipPlanId The ID of the membership plan to cancel
+ * @returns Updated membership record if cancelled before cycle end, deleted record if cancelled after cycle end, or null if no active membership found
  */
 export async function cancelMembership(
   userId: number,
@@ -363,14 +413,14 @@ export async function cancelMembership(
     where: { userId, membershipPlanId, status: "active" },
   });
 
-  // nothing active? no change
+  // Nothing active? no change
   if (!activeRecord) return null;
 
   const now = new Date();
 
   if (now < activeRecord.nextPaymentDate) {
     // 2a) Cancelling *before* the cycle ends → just mark this row 'cancelled'
-    //     **NO** role‐level update here (you stay at level 3/4 until the cycle lapses)
+    // **NO** role‐level update here (you stay at level 3/4 until the cycle lapses)
     return db.userMembership.update({
       where: { id: activeRecord.id },
       data: { status: "cancelled" },
@@ -382,7 +432,7 @@ export async function cancelMembership(
     });
 
     // 3) Now that the membership is gone, recalc roleLevel:
-    //    level 2 if they passed orientation, else level 1
+    // level 2 if they passed orientation, else level 1
     const passedOrientationCount = await db.userWorkshop.count({
       where: {
         userId,
@@ -400,12 +450,23 @@ export async function cancelMembership(
   }
 }
 
+/**
+ * Get all membership records for a specific user
+ * @param userId The ID of the user whose memberships to retrieve
+ * @returns Array of user membership records
+ */
 export async function getUserMemberships(userId: number) {
   return db.userMembership.findMany({
     where: { userId },
   });
 }
 
+/**
+ * Get the most recent cancelled membership that hasn't expired yet
+ * Used for resubscription functionality
+ * @param userId The ID of the user to check for cancelled memberships
+ * @returns Cancelled membership record with plan details, or null if none found
+ */
 export async function getCancelledMembership(userId: number) {
   return await db.userMembership.findFirst({
     where: {
@@ -421,6 +482,11 @@ export async function getCancelledMembership(userId: number) {
   });
 }
 
+/**
+ * Get the user's currently active membership with plan details
+ * @param userId The ID of the user whose active membership to retrieve
+ * @returns Active membership record with plan details, or null if no active membership
+ */
 export async function getUserActiveMembership(userId: number) {
   return await db.userMembership.findFirst({
     where: {
@@ -433,8 +499,11 @@ export async function getUserActiveMembership(userId: number) {
   });
 }
 
-/*
+/**
+ * Start the automated monthly membership billing and role level management cron job
  * This function handles roleLevels
+ * Runs daily at midnight to process membership renewals, cancellations, and user role updates
+ * Handles payment processing via Stripe and updates user role levels based on membership status
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)

@@ -1,11 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import React, { useState, useRef, useEffect } from "react";
-import {
-  redirect,
-  useNavigation,
-  useLoaderData,
-  Form as RouterForm,
-} from "react-router";
+import { redirect, useLoaderData, Form as RouterForm } from "react-router";
 import { registerSchema } from "../../schemas/registrationSchema";
 import type { RegisterFormValues } from "../../schemas/registrationSchema";
 import { Button } from "@/components/ui/button";
@@ -20,14 +14,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
-import GenericFormField from "@/components/ui/GenericFormField";
-
-const prisma = new PrismaClient();
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -37,9 +28,7 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
 
-  // Debug: Log guardian signature data
   const guardianSignedConsent = formData.get("guardianSignedConsent");
-
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
   rawValues.over18 = rawValues.over18 === "true";
@@ -248,14 +237,6 @@ const SignatureCanvas: React.FC<{
         >
           Clear
         </Button>
-        {/* <Button
-          type="button"
-          onClick={saveSignature}
-          variant="outline"
-          size="sm"
-        >
-          Save Signature
-        </Button> */}
       </div>
       <p className="text-xs text-gray-500 mt-1">
         Click and drag to sign. Signature is auto-saved when you finish drawing.
@@ -263,26 +244,6 @@ const SignatureCanvas: React.FC<{
       {hasSignature && (
         <p className="text-xs text-green-600 mt-1">✓ Signature captured</p>
       )}
-    </div>
-  );
-};
-
-const SignatureDisplay: React.FC<{ signature: string; className?: string }> = ({
-  signature,
-  className = "max-w-md mx-auto border border-gray-300 rounded-lg p-2",
-}) => {
-  if (!signature || !signature.startsWith("data:image/")) {
-    return <div className="text-gray-500 text-sm">No signature available</div>;
-  }
-
-  return (
-    <div className={className}>
-      <img
-        src={signature}
-        alt="Digital Signature"
-        className="w-full h-auto"
-        style={{ maxHeight: "200px" }}
-      />
     </div>
   );
 };
@@ -526,20 +487,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                         className="w-full"
                       />
 
-                      {/* <div
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      margin: "10px 0",
-                    }}
-                  >
-                    <h3>Test Signature Display:</h3>
-                    <img
-                      src=""
-                      alt="Signature"
-                      style={{ maxWidth: "300px", height: "auto" }}
-                    />
-                  </div> */}
                       <FormField
                         control={form.control}
                         name="guardianSignedConsent"

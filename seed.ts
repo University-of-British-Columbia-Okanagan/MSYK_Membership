@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
-// run npx tsx seed.ts
+// Run npx tsx seed.ts
 async function main() {
   await prisma.adminSettings.deleteMany();
   await prisma.userMembership.deleteMany();
@@ -46,7 +46,6 @@ async function main() {
         emergencyContactName: "Jane Doe",
         emergencyContactPhone: "5551234567",
         emergencyContactEmail: "emergency1@example.com",
-        // roleUser and roleLevel default to 1 but will put roleUser 2 to make admin
         roleUserId: 2,
       },
       {
