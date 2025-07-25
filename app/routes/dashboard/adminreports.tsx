@@ -245,6 +245,7 @@ export default function AdminReports() {
         registrationCount: number;
       }>;
     }>;
+    issues: Issue[];
   }>();
 
   const [searchTerm, setSearchTerm] = useState("");
