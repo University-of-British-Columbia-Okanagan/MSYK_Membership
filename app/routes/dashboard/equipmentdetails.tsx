@@ -20,9 +20,9 @@ import { getUser } from "~/utils/session.server";
 import { getWorkshopById } from "../../models/workshop.server";
 import { Link } from "react-router";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { ArrowLeft } from "lucide-react";
 import { logger } from "~/logging/logger";
 
@@ -53,7 +53,6 @@ export async function loader({
   }
 
   let prerequisiteWorkshops: PrerequisiteWorkshop[] = [];
-  let hasCompletedAllPrerequisites = true;
 
   if (user && equipment.prerequisites && equipment.prerequisites.length > 0) {
     // Get completed prerequisites for this user
@@ -77,10 +76,6 @@ export async function loader({
             };
       })
     );
-
-    hasCompletedAllPrerequisites = prerequisiteWorkshops.every(
-      (prereq) => prereq.completed
-    );
   } else if (equipment.prerequisites && equipment.prerequisites.length > 0) {
     // User not logged in, show prerequisites as not completed
     prerequisiteWorkshops = await Promise.all(
@@ -91,7 +86,6 @@ export async function loader({
           : { id: prereqId, name: `Workshop #${prereqId}`, completed: false };
       })
     );
-    hasCompletedAllPrerequisites = false;
   }
 
   logger.info(
@@ -104,24 +98,17 @@ export async function loader({
     currentUserRole,
     user,
     prerequisiteWorkshops,
-    hasCompletedAllPrerequisites,
   };
 }
 
 export default function EquipmentDetails() {
-  const {
-    equipment,
-    currentUserRole,
-    user,
-    prerequisiteWorkshops,
-    hasCompletedAllPrerequisites,
-  } = useLoaderData() as {
-    equipment: any;
-    currentUserRole: any;
-    user: any;
-    prerequisiteWorkshops: PrerequisiteWorkshop[];
-    hasCompletedAllPrerequisites: boolean;
-  };
+  const { equipment, currentUserRole, user, prerequisiteWorkshops } =
+    useLoaderData() as {
+      equipment: any;
+      currentUserRole: any;
+      user: any;
+      prerequisiteWorkshops: PrerequisiteWorkshop[];
+    };
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);

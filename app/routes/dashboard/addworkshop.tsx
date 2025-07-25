@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { Input } from "@/components/ui/input";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
@@ -18,43 +17,31 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
 import { addWorkshop, getWorkshops } from "~/models/workshop.server";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Badge } from "~/components/ui/badge";
-import GenericFormField from "~/components/ui/GenericFormField";
-import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
-import OccurrenceRow from "~/components/ui/OccurrenceRow";
-import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
-import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
-import PrerequisitesField from "@/components/ui/PrerequisitesField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
+import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
+import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import {
   getAvailableEquipmentForAdmin,
   getEquipmentSlotsWithStatus,
 } from "~/models/equipment.server";
-import MultiSelectField from "~/components/ui/MultiSelectField";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import {
   Calendar as CalendarIcon,
   CalendarDays as CalendarDaysIcon,
   CalendarRange as CalendarRangeIcon,
   Check as CheckIcon,
 } from "lucide-react";
-import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
-import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/EquipmentBookingGrid";
 import {
   bulkBookEquipment,
   createEquipmentSlotsForOccurrence,
 } from "../../models/equipment.server";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -72,8 +59,8 @@ import { getEquipmentVisibilityDays } from "../../models/admin.server";
 import { getUser, getRoleUser } from "../../utils/session.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -158,8 +145,9 @@ function formatLocalDatetime(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+// Helper for formatting display dates
+// Format example: Thu, Feb 27, 2025, 01:24 AM
 function formatDisplayDate(date: Date): string {
-  // Format example: Thu, Feb 27, 2025, 01:24 AM
   return date.toLocaleString(undefined, {
     weekday: "short",
     month: "short",
@@ -171,25 +159,13 @@ function formatDisplayDate(date: Date): string {
   });
 }
 
+// Helper for checking if a date is in the past
 function isDateInPast(date: Date): boolean {
   const now = new Date();
   return date < now && !isNaN(date.getTime());
 }
 
-/**
- * Check if any occurrence dates are in the past
- */
-function hasOccurrencesInPast(
-  occurrences: { startDate: Date; endDate: Date }[]
-): boolean {
-  return occurrences.some(
-    (occ) =>
-      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
-      !isNaN(occ.startDate.getTime()) &&
-      !isNaN(occ.endDate.getTime())
-  );
-}
-
+// Helper function to check for equipment overlaps
 function checkForEquipmentOverlaps(
   currentOccurrences: { startDate: Date; endDate: Date }[],
   currentSelectedEquipments: number[],
@@ -317,7 +293,7 @@ function checkForEquipmentOverlaps(
   return overlaps;
 }
 
-// Add this function after your other helper functions
+// Helper function for getting equipment slots for occurrences
 function getEquipmentSlotsForOccurrences(
   occurrences: { startDate: Date; endDate: Date }[]
 ): { [day: string]: string[] } {
@@ -361,7 +337,7 @@ function getEquipmentSlotsForOccurrences(
   return slotsForOccurrences;
 }
 
-// Add this function to help with auto-selecting workshop slots
+// Helper with auto-selecting workshop slots
 function getSlotStringsForOccurrences(
   equipmentId: number,
   occurrences: { startDate: Date; endDate: Date }[]
@@ -495,7 +471,7 @@ export async function action({ request }: { request: Request }) {
   const availableEquipments = await getAvailableEquipmentForAdmin();
   const availableEquipmentIds = new Set(availableEquipments.map((e) => e.id));
 
-  //Ensure selected equipment is still available
+  // Ensure selected equipment is still available
   const unavailableEquipments = equipments.filter(
     (id) => !availableEquipmentIds.has(id)
   );
@@ -511,7 +487,7 @@ export async function action({ request }: { request: Request }) {
     };
   }
 
-  //  Ensure no selected equipment conflicts with workshop occurrences
+  // Ensure no selected equipment conflicts with workshop occurrences
   for (const equipmentId of equipments) {
     const conflictingEquipment = availableEquipments.find(
       (e) => e.id === equipmentId
@@ -592,7 +568,7 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+   const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
   //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
@@ -602,7 +578,7 @@ export async function action({ request }: { request: Request }) {
     occurrences,
     prerequisites,
     equipments,
-    isWorkshopContinuation,
+    isMultiDayWorkshop,
   });
 
   if (!parsed.success) {
@@ -613,7 +589,7 @@ export async function action({ request }: { request: Request }) {
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  //  Save the workshop to the database
+  // Save the workshop to the database
   try {
     const savedWorkshop = await addWorkshop(
       {
@@ -626,7 +602,7 @@ export async function action({ request }: { request: Request }) {
         occurrences: parsed.data.occurrences,
         prerequisites: parsed.data.prerequisites,
         equipments: parsed.data.equipments,
-        isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+        isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
         selectedSlots,
       },
       request
@@ -759,15 +735,8 @@ export default function AddWorkshop() {
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
     []
   );
-  const sortedSelectedPrerequisites = [...selectedPrerequisites].sort(
-    (a, b) => a - b
-  );
 
-  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
-    null
-  );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const { selectedSlotsMap: initialSelectedSlotsMap } = useLoaderData() as {
     workshops: { id: number; name: string; type: string }[];
     equipments: {
@@ -807,9 +776,9 @@ export default function AddWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  const [isWorkshopContinuation, setIsWorkshopContinuation] = useState(false);
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] = useState(false);
 
-  // For custom dates, add an empty occurrence.
+  // Function for adding occurences
   const addOccurrence = () => {
     const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
     const updatedOccurrences = [...occurrences, newOccurrence];
@@ -859,7 +828,7 @@ export default function AddWorkshop() {
     );
   };
 
-  // Add this function to handle prerequisite selection
+  // Function to handle prerequisite selection
   const handlePrerequisiteSelect = (workshopId: number) => {
     if (selectedPrerequisites.includes(workshopId)) {
       // Remove if already selected
@@ -902,7 +871,6 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
-    // REMOVED: Past date check - just submit directly now
     setFormSubmitting(true);
     const form = e.currentTarget as HTMLFormElement;
     form.submit();
@@ -946,8 +914,8 @@ export default function AddWorkshop() {
           form.setValue("equipments", uniqueEquipments);
         }
 
-        // Set continuation flag
-        setIsWorkshopContinuation(!!workshopData.isContinuation);
+        // Set flag
+        setIsMultiDayWorkshop(!!workshopData.isMultiDayWorkshop);
 
         // Clear the localStorage to prevent pre-filling again on refresh
         localStorage.removeItem("duplicateWorkshopData");
@@ -959,10 +927,10 @@ export default function AddWorkshop() {
     form,
     setSelectedPrerequisites,
     setSelectedEquipments,
-    setIsWorkshopContinuation,
+    setIsMultiDayWorkshop,
   ]); // Include dependencies
 
-  // Add this useEffect to update the selected slots when occurrences change
+  // Updates the selected slots when occurrences change
   React.useEffect(() => {
     // Only process valid occurrences
     const validOccurrences = occurrences.filter(
@@ -1043,17 +1011,6 @@ export default function AddWorkshop() {
                     required
                     error={actionData?.errors?.name}
                   />
-                  {/* <GenericFormField
-                  control={form.control}
-                  name="description"
-                  label="Description"
-                  placeholder="Workshop Description"
-                  required
-                  error={actionData?.errors?.description}
-                  component={Textarea} // use Textarea instead of Input
-                  className="w-full" // override default if needed
-                  rows={5}
-                /> */}
                   <GenericFormField
                     control={form.control}
                     name="price"
@@ -1096,15 +1053,15 @@ export default function AddWorkshop() {
                   />
                 </div>
 
-                {/* New "Is Workshop Continuation" Checkbox */}
+                {/* (Multi-day Workshop) Checkbox */}
                 <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <div className="relative">
                       <input
                         type="checkbox"
-                        checked={isWorkshopContinuation}
+                        checked={isMultiDayWorkshop}
                         onChange={(e) =>
-                          setIsWorkshopContinuation(e.target.checked)
+                          setIsMultiDayWorkshop(e.target.checked)
                         }
                         className="sr-only peer"
                       />
@@ -1142,7 +1099,7 @@ export default function AddWorkshop() {
                       </div>
                       <FormControl>
                         <div className="flex flex-col items-start space-y-6 w-full">
-                          {/* Radio Buttons for selecting date input type - enhanced version */}
+                          {/* Radio Buttons for selecting date input type */}
                           <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                             <DateTypeRadioGroup
                               options={[
@@ -1174,7 +1131,7 @@ export default function AddWorkshop() {
                             />
                           </div>
 
-                          {/* Custom Dates Input - keep the implementation but wrapped in a better card */}
+                          {/* Custom Dates Input */}
                           {dateSelectionType === "custom" && (
                             <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               {occurrences.length === 0 ? (
@@ -1250,9 +1207,8 @@ export default function AddWorkshop() {
                             </div>
                           )}
 
-                          {/* Keep the existing code for weekly and monthly options */}
+                          {/* For weekly options */}
                           {dateSelectionType === "weekly" && (
-                            // Existing code for weekly
                             <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               <RepetitionScheduleInputs
                                 scheduleType="weekly"
@@ -1283,7 +1239,7 @@ export default function AddWorkshop() {
                             </div>
                           )}
 
-                          {/* Similar wrapping for monthly option */}
+                          {/* For monthly options */}
                           {dateSelectionType === "monthly" && (
                             <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               <RepetitionScheduleInputs
@@ -1315,7 +1271,7 @@ export default function AddWorkshop() {
                             </div>
                           )}
 
-                          {/* Improved display of occurrences */}
+                          {/* Display of occurrences */}
                           {occurrences.length > 0 && (
                             <div className="w-full">
                               <h3 className="font-medium mb-4 flex items-center">
@@ -1466,7 +1422,6 @@ export default function AddWorkshop() {
                 />
 
                 {/* Equipment Slot Pickers */}
-                {/* Equipment Slot Pickers */}
                 {selectedEquipments.length > 0 && (
                   <div className="mt-6">
                     <h3 className="font-semibold mb-2">
@@ -1554,7 +1509,7 @@ export default function AddWorkshop() {
                   label="Workshop Type"
                   required
                   error={actionData?.errors?.type}
-                  component="select" // Render a native select element
+                  component="select" // Render native select element
                   className="w-full border rounded-md p-2"
                 >
                   <option value="workshop">Workshop</option>
@@ -1585,11 +1540,14 @@ export default function AddWorkshop() {
                   name="prerequisites"
                   value={JSON.stringify(selectedPrerequisites || [])}
                 />
+
+                {/* Hidden input for equipments */}
                 <input
                   type="hidden"
                   name="equipments"
                   value={JSON.stringify(selectedEquipments)}
                 />
+
                 {/* Hidden input for selected slots */}
                 <input
                   type="hidden"
@@ -1597,10 +1555,11 @@ export default function AddWorkshop() {
                   value={JSON.stringify(selectedSlotsMap)}
                 />
 
+                {/* Hidden input for multi-day workshop */}
                 <input
                   type="hidden"
-                  name="isWorkshopContinuation"
-                  value={isWorkshopContinuation ? "true" : "false"}
+                  name="isMultiDayWorkshop"
+                  value={isMultiDayWorkshop ? "true" : "false"}
                 />
 
                 <AlertDialog
@@ -1625,7 +1584,6 @@ export default function AddWorkshop() {
                             >
                               <p className="font-medium">{overlap.name}</p>
                               <div className="text-sm mt-1 space-y-1">
-                                {/* COPY PASTE: Replace the existing list with this updated version */}
                                 {overlap.overlappingTimes
                                   .slice(0, 3)
                                   .map((conflict, idx) => (

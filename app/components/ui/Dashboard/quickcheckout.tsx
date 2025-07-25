@@ -4,7 +4,6 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  Shield,
   Clock,
 } from "lucide-react";
 
@@ -69,7 +68,6 @@ export default function QuickCheckout({
       if (result.success) {
         setStatus("success");
         onSuccess?.();
-
         // Redirect to success page after a brief delay
         setTimeout(() => {
           if (checkoutData.type === "equipment") {
@@ -114,8 +112,8 @@ export default function QuickCheckout({
               Payment Successful!
             </h3>
             <p className="text-green-700">
-              Charged CA${(itemPrice * (1 + gstPercentage / 100)).toFixed(2)} to card ending in{" "}
-              {savedCard.cardLast4}
+              Charged CA${(itemPrice * (1 + gstPercentage / 100)).toFixed(2)} to
+              card ending in {savedCard.cardLast4}
             </p>
             <p className="text-sm text-green-600 mt-1">
               Redirecting you to confirmation page...
@@ -180,7 +178,8 @@ export default function QuickCheckout({
         <div className="flex justify-between items-center mb-2">
           <span className="text-sm font-medium text-gray-600">Amount:</span>
           <span className="text-lg font-bold text-green-600">
-            CA${(itemPrice * (1 + gstPercentage / 100)).toFixed(2)} {/* Display price with dynamic GST */}
+            CA${(itemPrice * (1 + gstPercentage / 100)).toFixed(2)}{" "}
+            {/* Display price with dynamic GST */}
           </span>
         </div>
         <div className="flex justify-between items-center mb-2">

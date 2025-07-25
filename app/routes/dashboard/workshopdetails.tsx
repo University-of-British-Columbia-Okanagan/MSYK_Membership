@@ -1,5 +1,4 @@
 import {
-  useParams,
   useLoaderData,
   useFetcher,
   useNavigate,
@@ -25,15 +24,14 @@ import {
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
 import { useState, useEffect } from "react";
-import { AlertCircle, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Link as RouterLink } from "react-router-dom";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,9 +41,9 @@ import {
 import { duplicateWorkshop } from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 
 interface Occurrence {
   id: number;
@@ -153,7 +151,9 @@ export async function loader({
       prerequisiteWorkshops = await Promise.all(
         workshop.prerequisites.map(async (prereq) => {
           const id =
-            typeof prereq === "object" ? prereq.prerequisiteId : prereq;
+            typeof prereq === "object"
+              ? (prereq as any).prerequisiteId
+              : prereq;
           const prereqWorkshop = await getWorkshopById(id);
 
           // Check if the user has completed this prerequisite
@@ -179,7 +179,9 @@ export async function loader({
       prerequisiteWorkshops = await Promise.all(
         workshop.prerequisites.map(async (prereq) => {
           const id =
-            typeof prereq === "object" ? prereq.prerequisiteId : prereq;
+            typeof prereq === "object"
+              ? (prereq as any).prerequisiteId
+              : prereq;
           const prereqWorkshop = await getWorkshopById(id);
           return prereqWorkshop
             ? { id, name: prereqWorkshop.name, completed: false }
@@ -245,9 +247,6 @@ export async function action({ request }: { request: Request }) {
     }
 
     try {
-      // Call your duplicate function here
-      // This should be implemented in your models/workshop.server
-      // await duplicateWorkshop(Number(workshopId));
       await duplicateWorkshop(Number(workshopId));
 
       // Redirect to admin dashboard after duplication
@@ -416,11 +415,6 @@ export default function WorkshopDetails() {
     );
   };
 
-  // Get list of incomplete prerequisites
-  const incompletePrerequisites = prerequisiteWorkshops.filter(
-    (prereq: PrerequisiteWorkshop) => !prereq.completed
-  );
-
   // Gather the earliest registration date for cancellation window
   const userRegistrationDates = workshop.occurrences
     .filter((occ: any) => registrations[occ.id]?.registered)
@@ -435,7 +429,7 @@ export default function WorkshopDetails() {
       ? new Date(Math.min(...userRegistrationDates.map((d) => d.getTime())))
       : null;
 
-  // For continuation workshops: single registration/cancellation handling
+  // For multi-day workshop: single registration/cancellation handling
   function handleRegisterAll() {
     if (!user) {
       setPopupMessage("Please log in to register for this workshop.");
@@ -493,13 +487,13 @@ export default function WorkshopDetails() {
     return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
   });
 
-  // Check if this workshop is a continuation (any occurrence has a non-null connectId)
-  const isContinuation = sortedOccurrences.some(
+  // Check if this workshop is a multi-day workshop (any occurrence has a non-null connectId)
+  const isMultiDayWorkshop = sortedOccurrences.some(
     (occ: any) => occ.connectId !== null
   );
 
-  // If user is registered for ANY occurrence in a continuation workshop,
-  // consider them registered for the entire workshop.
+  // If user is registered for ANY occurrence in a multi-day workshop,
+  // Consider them registered for the entire workshop.
   const isUserRegisteredForAny = sortedOccurrences.some(
     (occ: any) => registrations[occ.id]?.registered
   );
@@ -561,7 +555,7 @@ export default function WorkshopDetails() {
                       View Users ({workshop.userCount})
                     </Button>
 
-                    {isContinuation ? (
+                    {isMultiDayWorkshop ? (
                       <ConfirmButton
                         confirmTitle="Duplicate Workshop"
                         confirmDescription="This will open the Add Workshop form with the current workshop's details pre-filled. You can then add new dates and make any other changes before saving."
@@ -580,7 +574,7 @@ export default function WorkshopDetails() {
                               prerequisites: workshop.prerequisites || [],
                               equipments: workshop.equipments || [],
                               // Exclude occurrences/dates
-                              isContinuation: isContinuation,
+                              isMultiDayWorkshop: isMultiDayWorkshop,
                             })
                           );
                           // Navigate to the add workshop page
@@ -619,8 +613,8 @@ export default function WorkshopDetails() {
 
                 <Separator className="my-6" />
 
-                {/* Continuation Workshop Block */}
-                {isContinuation ? (
+                {/* Multi-day Workshop Block */}
+                {isMultiDayWorkshop ? (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-lg font-semibold">
@@ -640,13 +634,6 @@ export default function WorkshopDetails() {
                           <div
                             key={occ.id}
                             className="flex items-center p-3 rounded-md bg-gray-50 border border-gray-200"
-                            // className={`flex items-center p-3 rounded-md ${
-                            //   occ.status === "cancelled"
-                            //     ? "bg-red-50 border border-red-200"
-                            //     : occ.status === "past"
-                            //     ? "bg-gray-50 border border-gray-200"
-                            //     : "bg-green-50 border border-green-200"
-                            // }`}
                           >
                             <div className="flex-1">
                               <div className="flex items-center">
@@ -683,16 +670,6 @@ export default function WorkshopDetails() {
                                 )}
                               </p>
                             </div>
-
-                            {/* <div>
-              {occ.status === "cancelled" ? (
-                <Badge className="bg-red-500 text-white">Cancelled</Badge>
-              ) : occ.status === "past" ? (
-                <Badge className="bg-gray-500 text-white">Past</Badge>
-              ) : (
-                <Badge className="bg-green-500 text-white">Active</Badge>
-              )}
-            </div> */}
                           </div>
                         ))}
                       </div>
@@ -776,7 +753,6 @@ export default function WorkshopDetails() {
                             </div>
                           );
                         } else {
-                          // CHANGE 2: Replace the Register button with a Confirm button
                           // This shows number of sessions being registered for
                           const activeOccurrences = sortedOccurrences.filter(
                             (occ: any) =>
@@ -963,7 +939,7 @@ export default function WorkshopDetails() {
                     )}
                   </>
                 ) : (
-                  // Non-continuation workshop: existing per-occurrence UI
+                  // Regular workshop
                   <>
                     <h2 className="text-lg font-semibold mb-4">
                       Available Dates

@@ -11,21 +11,12 @@ import {
   Calendar,
   User,
   LogOut,
-  ClipboardList,
   Package,
-  BookOpen,
   LayoutDashboard,
-  Users,
-  UserSearch,
-  Settings,
-  BarChart3,
-  BugIcon,
-  FileTextIcon,
   Heart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Form as RouterForm } from "react-router";
 
 export function GuestAppSidebar() {
   return (

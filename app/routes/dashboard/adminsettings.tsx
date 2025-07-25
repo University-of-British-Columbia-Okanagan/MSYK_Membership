@@ -7,7 +7,7 @@ import {
   useSubmit,
 } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import {
   Card,
   CardContent,
@@ -19,7 +19,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Settings, Save, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -48,26 +47,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Edit2, Check, X } from "lucide-react";
 import { FiSearch } from "react-icons/fi";
 import {
-  getAllUsers,
   updateUserRole,
   updateUserAllowLevel,
   getAllUsersWithVolunteerStatus,
   updateUserVolunteerStatus,
 } from "~/models/user.server";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import {
+  ShadTable,
+  type ColumnDefinition,
+} from "~/components/ui/Dashboard/ShadTable";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -158,7 +150,7 @@ export async function loader({ request }: { request: Request }) {
       level4UnavailableHours,
       plannedClosures,
       maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
-      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
+      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10),
       gstPercentage: parseFloat(gstPercentage),
     },
     workshops,
@@ -528,6 +520,7 @@ function RoleControl({
   );
 }
 
+// For volunteer control, this component allows toggling volunteer status
 function VolunteerControl({
   user,
 }: {
@@ -616,17 +609,25 @@ function VolunteerControl({
   );
 }
 
+// For settings that need pagination, this component provides a simple pagination UI
 function Pagination({
   currentPage,
   totalPages,
   onPageChange,
+  maxVisiblePages = 10,
 }: {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  maxVisiblePages?: number;
 }) {
   const getVisiblePageNumbers = () => {
-    const delta = 2;
+    // If total pages is less than or equal to max visible, show all
+    if (totalPages <= maxVisiblePages) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const delta = Math.floor(maxVisiblePages / 2) - 1;
     const range = [];
     const rangeWithDots = [];
 
@@ -703,6 +704,7 @@ function Pagination({
   );
 }
 
+// For volunteer hour status control, this component allows changing the status of volunteer hours
 function VolunteerHourStatusControl({
   hour,
 }: {
@@ -716,6 +718,11 @@ function VolunteerHourStatusControl({
   };
 }) {
   const [status, setStatus] = useState<string>(hour.status);
+  // Sync local state with prop changes from server
+  React.useEffect(() => {
+    setStatus(hour.status);
+  }, [hour.status]);
+
   const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
   const [pendingNewStatus, setPendingNewStatus] = useState<string>("");
   const submit = useSubmit();
@@ -726,7 +733,7 @@ function VolunteerHourStatusControl({
     formData.append("hourId", hour.id.toString());
     formData.append("newStatus", newStatus);
     submit(formData, { method: "post" });
-    setStatus(newStatus);
+    // Don't update local state immediately - let the server response handle it
     setShowConfirmDialog(false);
   };
 
@@ -835,91 +842,84 @@ function VolunteerHourStatusControl({
 }
 
 export default function AdminSettings() {
-  const {
-    roleUser,
-    settings,
-    workshops,
-    users,
-    volunteerHours,
-    recentVolunteerActions,
-  } = useLoaderData<{
-    roleUser: { roleId: number; roleName: string };
-    settings: {
-      workshopVisibilityDays: number;
-      pastWorkshopVisibility: number;
-      equipmentVisibilityDays: number;
-      level3Schedule: {
-        [day: string]: { start: number; end: number; closed?: boolean };
+  const { settings, workshops, users, volunteerHours, recentVolunteerActions } =
+    useLoaderData<{
+      settings: {
+        workshopVisibilityDays: number;
+        pastWorkshopVisibility: number;
+        equipmentVisibilityDays: number;
+        level3Schedule: {
+          [day: string]: { start: number; end: number; closed?: boolean };
+        };
+        level4UnavailableHours: {
+          start: number;
+          end: number;
+        };
+        plannedClosures: Array<{
+          id: number;
+          startDate: string;
+          endDate: string;
+        }>;
+        maxEquipmentSlotsPerDay: number;
+        maxEquipmentSlotsPerWeek: number;
+        gstPercentage: number;
       };
-      level4UnavailableHours: {
-        start: number;
-        end: number;
-      };
-      plannedClosures: Array<{
+      workshops: Array<{
         id: number;
-        startDate: string;
-        endDate: string;
+        name: string;
+        price: number;
+        registrationCutoff: number;
+        hasActiveOccurrences: boolean;
       }>;
-      maxEquipmentSlotsPerDay: number;
-      maxEquipmentSlotsPerWeek: number;
-      gstPercentage: number;
-    };
-    workshops: Array<{
-      id: number;
-      name: string;
-      price: number;
-      registrationCutoff: number;
-      hasActiveOccurrences: boolean;
-    }>;
-    users: Array<{
-      id: number;
-      firstName: string;
-      lastName: string;
-      email: string;
-      phone: string;
-      trainingCardUserNumber: string;
-      roleLevel: number;
-      allowLevel4: boolean;
-      isVolunteer: boolean;
-      volunteerSince: Date | null;
-      volunteerHistory?: Array<{
+      users: Array<{
         id: number;
-        volunteerStart: Date;
-        volunteerEnd: Date | null;
-      }>;
-    }>;
-    volunteerHours: Array<{
-      id: number;
-      userId: number;
-      startTime: string;
-      endTime: string;
-      description: string | null;
-      status: string;
-      createdAt: string;
-      updatedAt: string;
-      user: {
         firstName: string;
         lastName: string;
         email: string;
-      };
-    }>;
-    recentVolunteerActions: Array<{
-      id: number;
-      userId: number;
-      startTime: string;
-      endTime: string;
-      description: string | null;
-      status: string;
-      previousStatus: string | null;
-      createdAt: string;
-      updatedAt: string;
-      user: {
-        firstName: string;
-        lastName: string;
-        email: string;
-      };
-    }>;
-  }>();
+        phone: string;
+        trainingCardUserNumber: string;
+        roleLevel: number;
+        allowLevel4: boolean;
+        isVolunteer: boolean;
+        volunteerSince: Date | null;
+        volunteerHistory?: Array<{
+          id: number;
+          volunteerStart: Date;
+          volunteerEnd: Date | null;
+        }>;
+      }>;
+      volunteerHours: Array<{
+        id: number;
+        userId: number;
+        startTime: string;
+        endTime: string;
+        description: string | null;
+        status: string;
+        createdAt: string;
+        updatedAt: string;
+        user: {
+          firstName: string;
+          lastName: string;
+          email: string;
+        };
+      }>;
+      recentVolunteerActions: Array<{
+        id: number;
+        userId: number;
+        startTime: string;
+        endTime: string;
+        description: string | null;
+        status: string;
+        previousStatus: string | null;
+        createdAt: string;
+        updatedAt: string;
+        user: {
+          firstName: string;
+          lastName: string;
+          email: string;
+        };
+      }>;
+    }>();
 
   const actionData = useActionData<{
     success?: boolean;
@@ -991,7 +991,7 @@ export default function AdminSettings() {
 
   const [searchName, setSearchName] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage] = useState(5);
+  const [usersPerPage] = useState(10);
 
   // Volunteer hours management state
   const [volunteerSearchName, setVolunteerSearchName] = useState("");
@@ -1004,9 +1004,9 @@ export default function AdminSettings() {
   const [appliedVolunteerToDate, setAppliedVolunteerToDate] = useState("");
   const [appliedVolunteerToTime, setAppliedVolunteerToTime] = useState("");
   const [volunteerCurrentPage, setVolunteerCurrentPage] = useState(1);
-  const [volunteerHoursPerPage] = useState(5);
+  const [volunteerHoursPerPage] = useState(10);
   const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
-  const [actionsPerPage] = useState(5);
+  const [actionsPerPage] = useState(10);
 
   // Recent actions filters state
   const [actionsSearchName, setActionsSearchName] = useState("");
@@ -1447,7 +1447,6 @@ export default function AdminSettings() {
   };
 
   // Function to add a new planned closure
-  // Function to add a new planned closure
   const handleAddClosure = () => {
     // Create dates from user input, preserving the selected day
     const startDateInput = newClosure.startDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
@@ -1598,14 +1597,7 @@ export default function AdminSettings() {
     return true;
   };
 
-  // Keep the old function name for compatibility but call the new one
-  const validateWeeklyLimit = (
-    weeklyValue: number,
-    weeklyUnit: string
-  ): boolean => {
-    return validateLimits();
-  };
-
+  // Validate limits on initial load and when limits change
   React.useEffect(() => {
     validateLimits();
   }, [
@@ -1755,7 +1747,7 @@ export default function AdminSettings() {
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="pastWorkshopVisibility">
-                          Past Workshop Visibility Days
+                          Past Workshop Visibility (In Days)
                         </Label>
                         <Input
                           id="pastWorkshopVisibility"
@@ -2130,19 +2122,32 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center gap-2 mb-6">
-                      <FiSearch className="text-gray-500" />
-                      <Input
-                        placeholder="Search by first or last name"
-                        value={searchName}
-                        onChange={(e) => setSearchName(e.target.value)}
-                        className="w-full md:w-64"
-                      />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="Search by first or last name"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          className="w-full md:w-64"
+                        />
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Showing {startIndex + 1}-
+                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
+                        {sortedFilteredUsers.length} users
+                      </div>
                     </div>
                     <ShadTable
                       columns={columns}
-                      data={sortedFilteredUsers}
+                      data={paginatedUsers}
                       emptyMessage="No users found"
+                    />
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
@@ -2238,7 +2243,7 @@ export default function AdminSettings() {
                         </Alert>
                       )}
 
-                      {/* ADD ERROR DISPLAY FOR DAILY FORM TOO */}
+                      {/* ADD ERROR DISPLAY FOR DAILY FORM  */}
                       {weeklyLimitError && (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
@@ -2252,7 +2257,6 @@ export default function AdminSettings() {
                         <Label htmlFor="maxEquipmentSlotsPerDay">
                           Maximum Equipment Booking Time Per Day
                         </Label>
-                        {/* CHANGE: Simplified to only handle slots */}
                         <div className="flex items-center space-x-2">
                           <Input
                             id="maxEquipmentSlotsPerDay"
@@ -2342,11 +2346,6 @@ export default function AdminSettings() {
                   <input
                     type="hidden"
                     name="maxEquipmentSlotsPerWeek"
-                    // value={
-                    //   maxEquipmentSlotsPerWeek.unit === "hours"
-                    //     ? maxEquipmentSlotsPerWeek.value * 2 // Convert hours to 30-min slots
-                    //     : maxEquipmentSlotsPerWeek.value
-                    // }
                     value={maxEquipmentSlotsPerWeek.value}
                   />
                   <Card>
@@ -2850,6 +2849,7 @@ export default function AdminSettings() {
                       currentPage={currentPage}
                       totalPages={totalPages}
                       onPageChange={setCurrentPage}
+                      maxVisiblePages={10}
                     />
                   </CardContent>
                 </Card>
@@ -3039,57 +3039,6 @@ export default function AdminSettings() {
                         </div>
                       </div>
 
-                      {/* Stats */}
-                      {/* <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <div className="flex flex-col space-y-2">
-                          <div className="flex items-center justify-between text-sm text-gray-600">
-                            <span>
-                              Showing {volunteerStartIndex + 1}-
-                              {Math.min(
-                                volunteerEndIndex,
-                                sortedVolunteerHours.length
-                              )}{" "}
-                              of {sortedVolunteerHours.length} volunteer hour
-                              entries
-                              {appliedVolunteerFromDate &&
-                                appliedVolunteerFromTime &&
-                                appliedVolunteerToDate &&
-                                appliedVolunteerToTime && (
-                                  <span className="ml-2 text-yellow-600">
-                                    (filtered from{" "}
-                                    {new Date(
-                                      `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
-                                    ).toLocaleString()}{" "}
-                                    to{" "}
-                                    {new Date(
-                                      `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
-                                    ).toLocaleString()}
-                                    )
-                                  </span>
-                                )}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4 text-sm">
-                              <span className="text-blue-700 font-medium">
-                                Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
-                                hours
-                              </span>
-                              {volunteerStatusFilter !== "all" && (
-                                <span className="text-gray-600">
-                                  (Status:{" "}
-                                  {volunteerStatusFilter
-                                    .charAt(0)
-                                    .toUpperCase() +
-                                    volunteerStatusFilter.slice(1)}
-                                  )
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div> */}
-
                       {/* Volunteer Hours Table */}
                       <ShadTable
                         key={`volunteer-table-${volunteerStatusFilter}-${volunteerSearchName}-${volunteerCurrentPage}`}
@@ -3165,6 +3114,7 @@ export default function AdminSettings() {
                         currentPage={volunteerCurrentPage}
                         totalPages={volunteerTotalPages}
                         onPageChange={setVolunteerCurrentPage}
+                        maxVisiblePages={10}
                       />
                     </div>
                   </CardContent>
@@ -3175,7 +3125,8 @@ export default function AdminSettings() {
                   <CardHeader>
                     <CardTitle>Recently Managed Volunteer Actions</CardTitle>
                     <CardDescription>
-                      Recently modified volunteer hour statuses and number of total hours per filter
+                      Recently modified volunteer hour statuses and number of
+                      total hours per filter
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -3510,6 +3461,7 @@ export default function AdminSettings() {
                       currentPage={actionsCurrentPage}
                       totalPages={actionsTotalPages}
                       onPageChange={setActionsCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
@@ -3816,7 +3768,7 @@ export default function AdminSettings() {
                 </Form>
               </TabsContent>
 
-              {/* Tab 2: Placeholder for Future Settings */}
+              {/* Tabb Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
                   <CardHeader>

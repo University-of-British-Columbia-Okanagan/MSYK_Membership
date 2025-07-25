@@ -4,11 +4,16 @@ import fs from "fs/promises";
 import path from "path";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { getRoleUser } from "~/utils/session.server";
 export type LoaderData = {
   logs: string;
@@ -16,9 +21,9 @@ export type LoaderData = {
 export async function loader({ request }: { request: Request }) {
     const roleUser = await getRoleUser(request);
     if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    throw new Response("Not Authorized", { status: 419 });
+      throw new Response("Not Authorized", { status: 419 });
     }
-      
+
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.toLowerCase() || "";
   const levels = url.searchParams.getAll("level"); // e.g., ['info', 'error']
@@ -54,25 +59,24 @@ export async function loader({ request }: { request: Request }) {
   }
 }
 
-
 export default function LogsTab() {
-const { logs } = useLoaderData<LoaderData>();
+  const { logs } = useLoaderData<LoaderData>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(searchParams.get("start") || "");
-const [end, setEnd] = useState(searchParams.get("end") || "");
-
+  const [end, setEnd] = useState(searchParams.get("end") || "");
 
   const [query, setQuery] = useState(searchParams.get("q") || "");
-  const [levels, setLevels] = useState<string[]>(searchParams.getAll("level") || []);
-function updateParams() {
-  const newParams = new URLSearchParams();
-  if (query) newParams.set("q", query);
-  if (start) newParams.set("start", start);
-  if (end) newParams.set("end", end);
-  levels.forEach((lvl) => newParams.append("level", lvl));
-  setSearchParams(newParams);
-}
-
+  const [levels, setLevels] = useState<string[]>(
+    searchParams.getAll("level") || []
+  );
+  function updateParams() {
+    const newParams = new URLSearchParams();
+    if (query) newParams.set("q", query);
+    if (start) newParams.set("start", start);
+    if (end) newParams.set("end", end);
+    levels.forEach((lvl) => newParams.append("level", lvl));
+    setSearchParams(newParams);
+  }
 
   function toggleLevel(level: string) {
     setLevels((prev) =>
@@ -80,15 +84,14 @@ function updateParams() {
     );
   }
 
-useEffect(() => {
-  const delay = setTimeout(updateParams, 300);
-  return () => clearTimeout(delay);
-}, [query, levels, start, end]); // ✅ Now updates when date range changes
-
+  useEffect(() => {
+    const delay = setTimeout(updateParams, 300);
+    return () => clearTimeout(delay);
+  }, [query, levels, start, end]); // ✅ Now updates when date range changes
 
   return (
-        <SidebarProvider>
-            <AdminAppSidebar />
+    <SidebarProvider>
+      <AdminAppSidebar />
       <Card>
         <CardHeader>
           <CardTitle>Server Logs</CardTitle>
@@ -121,22 +124,21 @@ useEffect(() => {
             </div>
 
             <div className="flex gap-2 items-center">
-  <label className="text-sm text-muted-foreground">Start</label>
-  <Input
-    type="datetime-local"
-    value={start}
-    onChange={(e) => setStart(e.target.value)}
-    className="w-[220px]"
-  />
-  <label className="text-sm text-muted-foreground">End</label>
-  <Input
-    type="datetime-local"
-    value={end}
-    onChange={(e) => setEnd(e.target.value)}
-    className="w-[220px]"
-  />
-</div>
-
+              <label className="text-sm text-muted-foreground">Start</label>
+              <Input
+                type="datetime-local"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+                className="w-[220px]"
+              />
+              <label className="text-sm text-muted-foreground">End</label>
+              <Input
+                type="datetime-local"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+                className="w-[220px]"
+              />
+            </div>
 
             {/* (Optional) Date range filter goes here */}
             {/* Use react-datepicker or another lib if desired */}
@@ -144,44 +146,55 @@ useEffect(() => {
 
           {/* Log Output */}
           <div className="space-y-1 font-mono text-sm max-h-[600px] overflow-auto">
-  {logs
-    .split("\n")
-    .filter(Boolean)
-    .map((line, i) => {
-      try {
-        const log = JSON.parse(line);
-        const time = new Date(log.timestamp).toLocaleString();
-        const level = log.level?.toUpperCase() ?? "INFO";
+            {logs
+              .split("\n")
+              .filter(Boolean)
+              .map((line, i) => {
+                try {
+                  const log = JSON.parse(line);
+                  const time = new Date(log.timestamp).toLocaleString();
+                  const level = log.level?.toUpperCase() ?? "INFO";
 
-        let color = "text-green-400";
-        if (level === "WARN") color = "text-yellow-400";
-        if (level === "ERROR") color = "text-red-400";
+                  let color = "text-green-400";
+                  if (level === "WARN") color = "text-yellow-400";
+                  if (level === "ERROR") color = "text-red-400";
 
-        return (
-          <div key={i} className="flex gap-2 whitespace-pre-wrap break-words">
-            <span className={`font-bold ${color}`}>[{level}]</span>
-            <span className="text-muted-foreground">{time}</span>
-            <span>{typeof log.message === "object" ? JSON.stringify(log.message) : log.message}</span>
-            {log.url && (
-              <a href={log.url} className="underline text-blue-400" target="_blank" rel="noreferrer">
-                {log.url}
-              </a>
-            )}
+                  return (
+                    <div
+                      key={i}
+                      className="flex gap-2 whitespace-pre-wrap break-words"
+                    >
+                      <span className={`font-bold ${color}`}>[{level}]</span>
+                      <span className="text-muted-foreground">{time}</span>
+                      <span>
+                        {typeof log.message === "object"
+                          ? JSON.stringify(log.message)
+                          : log.message}
+                      </span>
+                      {log.url && (
+                        <a
+                          href={log.url}
+                          className="underline text-blue-400"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {log.url}
+                        </a>
+                      )}
+                    </div>
+                  );
+                } catch {
+                  // Fallback if line isn't valid JSON
+                  return (
+                    <div key={i} className="text-gray-400">
+                      {line}
+                    </div>
+                  );
+                }
+              })}
           </div>
-        );
-      } catch {
-        // Fallback if line isn't valid JSON
-        return (
-          <div key={i} className="text-gray-400">
-            {line}
-          </div>
-        );
-      }
-    })}
-</div>
-
         </CardContent>
       </Card>
-          </SidebarProvider>
+    </SidebarProvider>
   );
 }

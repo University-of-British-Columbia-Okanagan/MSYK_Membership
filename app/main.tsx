@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import MainLayout from "./layouts/MainLayout"; // Now using layouts
 import DashboardLayout from "./routes/dashboard/admindashboardlayout";
 import HomePage from "./routes/home";
 import About from "./routes/about/about";
@@ -31,6 +30,7 @@ import Membership from "./routes/dashboard/memberships";
 import WorkshopDetails from "./routes/dashboard/workshopdetails";
 import Payment from "./routes/dashboard/payment";
 import EquipmentDetails from "./routes/dashboard/equipmentdetails";
+import EquipmentBookingForm from "./routes/dashboard/equipmentbooking";
 
 const App = () => (
   <Router>
@@ -60,7 +60,7 @@ const App = () => (
         <Route path="membership" element={<MembershipPage />} />
         <Route path="jobopportunities" element={<JobOpportunities />} />
         <Route path="payment" element={<Payment />} />
-        <Route path = "equipmentbooking" element = {<EquipmentBookingForm />} />
+        <Route path="equipmentbooking" element={<EquipmentBookingForm />} />
       </Route>
       <Route path="dashboardlayout" element={<DashboardLayout />}>
         <Route path="workshops" element={<Workshops />} />
@@ -68,9 +68,8 @@ const App = () => (
         <Route path="membership" element={<Membership />} />
         <Route path="workshopdetails" element={<WorkshopDetails />} />
         <Route path="payment" element={<Payment />} />
-        <Route path = "equipmentbooking" element = {<EquipmentBookingForm />} />
-        <Route path = "equipmentdetails" element = {<EquipmentDetails />} />
-       
+        <Route path="equipmentbooking" element={<EquipmentBookingForm />} />
+        <Route path="equipmentdetails" element={<EquipmentDetails />} />
       </Route>
     </Routes>
   </Router>

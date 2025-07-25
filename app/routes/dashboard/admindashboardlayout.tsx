@@ -1,9 +1,8 @@
-import React from "react";
 import { Outlet, Link, redirect } from "react-router-dom";
-import AppSidebar from "@/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
-import WorkshopList from "@/components/ui/Dashboard/workshoplist";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import WorkshopList from "~/components/ui/Dashboard/WorkshopList";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   getWorkshops,
@@ -17,7 +16,6 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
 import { FiPlus } from "react-icons/fi";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
 import { logger } from "~/logging/logger";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
 
@@ -72,6 +70,7 @@ export async function action({ request }: { request: Request }) {
   const action = formData.get("action");
   const workshopId = formData.get("workshopId");
   const roleUser = await getRoleUser(request);
+
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
     logger.warn(
       `[User: ${roleUser?.userId}] Not authorized to access admin dashboard`,
@@ -171,32 +170,23 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function AdminDashboard() {
-  const { roleUser, workshops, registrations, pastVisibilityDays } =
-    useLoaderData() as {
-      roleUser: {
-        roleId: number;
-        roleName: string;
-        userId: number;
-      } | null;
-      workshops: {
-        id: number;
-        name: string;
-        description: string;
-        price: number;
-        type: string;
-        occurrences: { id: number; startDate: string; endDate: string }[];
-        isRegistered: boolean;
-      }[];
-      registrations: {
-        id: number;
-        result: string;
-        date: string | Date;
-        user: { firstName: string; lastName: string };
-        workshop: { name: string; type: string };
-        occurrence: { startDate: string | Date; endDate: string | Date };
-      }[];
-      pastVisibilityDays: number;
-    };
+  const { roleUser, workshops, pastVisibilityDays } = useLoaderData() as {
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    } | null;
+    workshops: {
+      id: number;
+      name: string;
+      description: string;
+      price: number;
+      type: string;
+      occurrences: { id: number; startDate: string; endDate: string }[];
+      isRegistered: boolean;
+    }[];
+    pastVisibilityDays: number;
+  };
 
   const isAdmin =
     roleUser &&
@@ -206,7 +196,7 @@ export default function AdminDashboard() {
   // Check if user is not logged in (guest)
   const isGuest = !roleUser || !roleUser.userId;
 
-  // New filtering logic based on current date and past visibility setting
+  // Filtering logic based on current date and past visibility setting
   const now = new Date();
   const pastCutoffDate = new Date();
   pastCutoffDate.setDate(pastCutoffDate.getDate() - pastVisibilityDays);

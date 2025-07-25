@@ -1,12 +1,11 @@
-import React from "react";
 import { useLoaderData } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "@/components/ui/Dashboard/sidebar"; // User sidebar
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar"; // Admin sidebar
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar"; // Guest sidebar
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { getRoleUser } from "~/utils/session.server";
 import {
   Mail,
@@ -166,7 +165,12 @@ export default function VolunteerPage() {
                     <p className="text-gray-600 mb-4">
                       Send us an email with your interests and availability
                     </p>
-                    <Button className="bg-yellow-500 hover:bg-yellow-600 text-white">
+                    <Button
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      onClick={() =>
+                        window.open("mailto:info@makerspaceyk.com", "_blank")
+                      }
+                    >
                       info@makerspaceyk.com
                     </Button>
                   </CardContent>
@@ -185,6 +189,12 @@ export default function VolunteerPage() {
                     <Button
                       variant="outline"
                       className="border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                      onClick={() =>
+                        window.open(
+                          "https://www.google.com/maps/place/Makerspace+YK/@62.4457716,-114.3921434,17z/data=!3m1!4b1!4m6!3m5!1s0x53d1f793bd5706f1:0xf9c85b974c229a12!8m2!3d62.4457691!4d-114.3895685!16s%2Fg%2F11tjfg42z0?entry=ttu&g_ep=EgoyMDI1MDcyMC4wIKXMDSoASAFQAw%3D%3D",
+                          "_blank"
+                        )
+                      }
                     >
                       <Clock className="h-4 w-4 mr-2" />
                       See Our Hours
@@ -270,6 +280,9 @@ export default function VolunteerPage() {
                     <Button
                       size="lg"
                       className="bg-yellow-500 hover:bg-yellow-600 text-white px-8 py-3"
+                      onClick={() =>
+                        window.open("mailto:info@makerspaceyk.com", "_blank")
+                      }
                     >
                       <Mail className="h-5 w-5 mr-2" />
                       Contact Us Today
@@ -278,6 +291,12 @@ export default function VolunteerPage() {
                       variant="outline"
                       size="lg"
                       className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 px-8 py-3"
+                      onClick={() =>
+                        window.open(
+                          "https://www.google.com/maps/place/Makerspace+YK/@62.4457716,-114.3921434,17z/data=!3m1!4b1!4m6!3m5!1s0x53d1f793bd5706f1:0xf9c85b974c229a12!8m2!3d62.4457691!4d-114.3895685!16s%2Fg%2F11tjfg42z0?entry=ttu&g_ep=EgoyMDI1MDcyMC4wIKXMDSoASAFQAw%3D%3D",
+                          "_blank"
+                        )
+                      }
                     >
                       <MapPin className="h-5 w-5 mr-2" />
                       Visit Our Space

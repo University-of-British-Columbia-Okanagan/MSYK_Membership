@@ -1,5 +1,5 @@
 import React from "react";
-import { useLoaderData, Form, useActionData, redirect } from "react-router-dom";
+import { useLoaderData, Form, useActionData } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import {
   getProfileDetails,
@@ -9,11 +9,10 @@ import {
   checkVolunteerHourOverlap,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
-import Sidebar from "../../components/ui/Dashboard/sidebar";
+import Sidebar from "../../components/ui/Dashboard/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
-import { CreditCard, User, Calendar, Medal, Clock, Plus } from "lucide-react";
-import { FiSearch } from "react-icons/fi";
+import { CreditCard, Medal, Clock, Plus } from "lucide-react";
 import {
   Select,
   SelectTrigger,
@@ -21,10 +20,13 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
+import {
+  ShadTable,
+  type ColumnDefinition,
+} from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "@/components/ui/Dashboard/guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {
@@ -599,7 +601,7 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Volunteer Hours Section - Always show */}
+            {/* Volunteer Hours Section */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center gap-2">
@@ -614,9 +616,20 @@ export default function ProfilePage() {
                   <>
                     {/* Add Hours Form */}
                     <div className="bg-blue-50 rounded-lg p-4 mb-6">
-                      <h4 className="font-medium text-blue-900 mb-4">
+                      <h4 className="font-bold text-blue-900 mb-4">
                         Log New Hours
                       </h4>
+
+                      {/* Description/Instructions */}
+                      <div className="bg-blue-100 border border-blue-200 rounded-md p-3 mb-4">
+                        <p className="text-sm text-blue-800">
+                          <strong>How to log volunteer hours:</strong> Select
+                          the start and end time for your volunteer session. You
+                          can optionally add a brief description of what you
+                          worked on. Your hours will be reviewed and approved by
+                          an administrator.
+                        </p>
+                      </div>
 
                       {/* Success/Error Messages */}
                       {actionData?.success && showSuccessMessage && (
@@ -698,6 +711,18 @@ export default function ProfilePage() {
                         </h4>
                       </div>
 
+                      {/* Description/Instructions for Recent Hours */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-md p-3 mb-4">
+                        <p className="text-sm text-gray-700">
+                          <strong>Your volunteer history:</strong> View all your
+                          logged volunteer hours below. You can filter by status
+                          (pending, approved, denied) or search by date range.
+                          Hours show as "pending" until reviewed by an
+                          administrator. Use the filters below to find specific
+                          volunteer sessions.
+                        </p>
+                      </div>
+
                       {/* Collapsible Denied Hours Notice */}
                       {isActiveVolunteer && hasDeniedHours && (
                         <div className="mb-4">
@@ -746,7 +771,7 @@ export default function ProfilePage() {
                             </div>
                           </div>
 
-                          {/* Expanded State - The full message */}
+                          {/* Expanded State */}
                           {showDeniedMessage && (
                             <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                               <p className="text-sm text-orange-700">
@@ -919,7 +944,7 @@ export default function ProfilePage() {
                                 </span>
                               )}
                           </span>
-                          <span>
+                          <span className="font-bold">
                             Total:{" "}
                             {filteredVolunteerHours
                               .reduce((total, entry) => {

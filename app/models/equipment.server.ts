@@ -2,15 +2,10 @@ import { db } from "../utils/db.server";
 import { getUserId } from "../utils/session.server";
 import { getAdminSetting } from "../models/admin.server";
 
-interface EquipmentData {
-  name: string;
-  description: string;
-  availability: boolean;
-  price: number;
-}
-
 /**
  * Get equipment with prerequisites by ID
+ * @param equipmentId The ID of the equipment to retrieve
+ * @returns Equipment object with flattened prerequisites array
  */
 export async function getEquipmentById(equipmentId: number) {
   try {
@@ -19,7 +14,7 @@ export async function getEquipmentById(equipmentId: number) {
       include: {
         prerequisites: {
           select: {
-            workshopPrerequisiteId: true, // CHANGED: from prerequisiteId to workshopPrerequisiteId
+            workshopPrerequisiteId: true,
           },
         },
       },
@@ -32,7 +27,7 @@ export async function getEquipmentById(equipmentId: number) {
     // Flatten prerequisite workshop IDs
     const prerequisites = equipment.prerequisites.map(
       (p) => p.workshopPrerequisiteId
-    ); // CHANGED
+    );
 
     return {
       ...equipment,
@@ -45,7 +40,8 @@ export async function getEquipmentById(equipmentId: number) {
 }
 
 /**
- * Fetch all available equipment
+ * Fetch all available equipment with slot status information
+ * @returns Array of available equipment with slot counts and status
  */
 export async function getAvailableEquipment() {
   return await db.equipment
@@ -76,7 +72,12 @@ export async function getAvailableEquipment() {
 }
 
 /**
- * Book equipment using a predefined slot
+ * Book equipment using a predefined slot with role-based restrictions
+ * @param request The HTTP request object for authentication
+ * @param equipmentId The ID of the equipment to book
+ * @param startTime Start time of the booking slot as ISO string
+ * @param endTime End time of the booking slot as ISO string
+ * @returns Created equipment booking record
  */
 export async function bookEquipment(
   request: Request,
@@ -154,7 +155,9 @@ export async function bookEquipment(
 }
 
 /**
- * Cancel a booking
+ * Cancel an equipment booking and free up the associated slot
+ * @param bookingId The ID of the booking to cancel
+ * @returns Deleted booking record
  */
 export async function cancelEquipmentBooking(bookingId: number) {
   const booking = await db.equipmentBooking.findUnique({
@@ -179,7 +182,9 @@ export async function cancelEquipmentBooking(bookingId: number) {
 }
 
 /**
- * Approve a booking (Admin only)
+ * Approve an equipment booking (Admin only)
+ * @param bookingId The ID of the booking to approve
+ * @returns Updated booking record with approved status
  */
 export async function approveEquipmentBooking(bookingId: number) {
   return await db.equipmentBooking.update({
@@ -189,7 +194,9 @@ export async function approveEquipmentBooking(bookingId: number) {
 }
 
 /**
- * Add new equipment (Admin only)
+ * Add new equipment with optional workshop prerequisites (Admin only)
+ * @param data Equipment data including name, description, price, availability, and prerequisites
+ * @returns Created equipment record
  */
 export async function addEquipment(data: {
   name: string;
@@ -225,9 +232,6 @@ export async function addEquipment(data: {
   }
 }
 
-/**
- * Create an equipment slot (Admin only)
- */
 export async function createEquipmentSlot(
   equipmentId: number,
   startTime: Date
@@ -282,7 +286,9 @@ export async function createEquipmentSlotForWorkshop(
 }
 
 /**
- * Fetch available slots for a particular equipment
+ * Get available slots for a specific equipment that are not booked or assigned to workshops
+ * @param equipmentId The ID of the equipment to get slots for
+ * @returns Array of available equipment slots ordered by start time
  */
 export async function getAvailableSlots(equipmentId: number) {
   return await db.equipmentSlot.findMany({
@@ -294,12 +300,22 @@ export async function getAvailableSlots(equipmentId: number) {
     orderBy: { startTime: "asc" },
   });
 }
+
+/**
+ * Find equipment by exact name match
+ * @param name The exact name of the equipment to find
+ * @returns Equipment record or null if not found
+ */
 export async function getEquipmentByName(name: string) {
   return await db.equipment.findFirst({
     where: { name },
   });
 }
 
+/**
+ * Get available equipment for admin view with unbooked slots
+ * @returns Array of available equipment with their unbooked slots
+ */
 export async function getAvailableEquipmentForAdmin() {
   const equipment = await db.equipment.findMany({
     where: { availability: true },
@@ -322,122 +338,12 @@ export async function getAvailableEquipmentForAdmin() {
   return equipment;
 }
 
-// export async function getEquipmentSlotsWithStatus(
-//   userId?: number,
-//   onlyAvailable: boolean = false
-// ) {
-//   const equipment = await db.equipment.findMany({
-//     where: onlyAvailable ? { availability: true } : undefined,
-//     include: {
-//       slots: {
-//         include: {
-//           // bookings: true,
-//           bookings: {
-//             // COPY PASTE: Add user data to the bookings include
-//             include: {
-//               user: {
-//                 select: {
-//                   firstName: true,
-//                   lastName: true,
-//                 },
-//               },
-//             },
-//           },
-//           workshopOccurrence: {
-//             select: {
-//               workshop: {
-//                 select: { name: true },
-//               },
-//             },
-//           },
-//         },
-//         orderBy: { startTime: "asc" },
-//       },
-//     },
-//   });
-
-//   // Helper function to generate all possible slots for the calendar
-//   const generate24_7Slots = async () => {
-//     // Get the equipment_visible_registrable_days setting
-//     const visibleDaysStr = await getAdminSetting(
-//       "equipment_visible_registrable_days",
-//       "7"
-//     );
-//     const visibleDays = parseInt(visibleDaysStr, 10);
-
-//     const times = Array.from({ length: 48 }, (_, i) => {
-//       const hours = Math.floor(i / 2);
-//       const minutes = i % 2 === 0 ? "00" : "30";
-//       return `${hours.toString().padStart(2, "0")}:${minutes}`;
-//     });
-
-//     const fullSlots: { [day: string]: { [time: string]: any } } = {};
-//     const today = new Date();
-
-//     for (let i = 0; i < visibleDays; i++) {
-//       const date = new Date();
-//       date.setDate(today.getDate() + i);
-//       const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-//       const dayNumber = date.getDate();
-//       const dayKey = `${dayName} ${dayNumber}`;
-
-//       fullSlots[dayKey] = {};
-//       for (const time of times) {
-//         fullSlots[dayKey][time] = {
-//           id: null,
-//           isBooked: false,
-//           isAvailable: true,
-//           bookedByMe: false,
-//           workshopName: null,
-//         };
-//       }
-//     }
-//     return fullSlots;
-//   };
-
-//   // Map each equipment to add slot status information
-//   return Promise.all(
-//     equipment.map(async (eq) => {
-//       const fullSlots = await generate24_7Slots();
-
-//       eq.slots.forEach((slot) => {
-//         const date = new Date(slot.startTime);
-//         const hours = String(date.getHours()).padStart(2, "0");
-//         const minutes = String(date.getMinutes()).padStart(2, "0");
-//         const time = `${hours}:${minutes}`;
-
-//         // Format the day key to match our new format: "Day #"
-//         const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-//         const dayNumber = date.getDate();
-//         const dayKey = `${dayName} ${dayNumber}`;
-
-//         const bookedByMe = userId
-//           ? slot.bookings?.some((booking) => booking.userId === userId)
-//           : false;
-
-//         if (fullSlots[dayKey] && fullSlots[dayKey][time]) {
-//           fullSlots[dayKey][time] = {
-//             id: slot.id,
-//             isBooked: slot.isBooked,
-//             isAvailable: !slot.isBooked && !slot.workshopOccurrenceId,
-//             bookedByMe,
-//             workshopName: slot.workshopOccurrence?.workshop?.name || null,
-//             reservedForWorkshop: !!slot.workshopOccurrenceId,
-//           };
-//         }
-//       });
-
-//       return {
-//         id: eq.id,
-//         name: eq.name,
-//         price: eq.price,
-//         slotsByDay: fullSlots,
-//       };
-//     })
-//   );
-// }
-// Find the getEquipmentSlotsWithStatus function (around line 270) and replace the equipment query:
-
+/**
+ * Get equipment with comprehensive slot status information for booking interface
+ * @param userId Optional user ID for personalized slot information
+ * @param onlyAvailable Whether to filter for only available equipment
+ * @returns Array of equipment with detailed slot information organized by day and time
+ */
 export async function getEquipmentSlotsWithStatus(
   userId?: number,
   onlyAvailable: boolean = false
@@ -448,7 +354,6 @@ export async function getEquipmentSlotsWithStatus(
       slots: {
         include: {
           bookings: {
-            // COPY PASTE: Enhanced bookings include with user data
             include: {
               user: {
                 select: {
@@ -532,7 +437,6 @@ export async function getEquipmentSlotsWithStatus(
           ? slot.bookings?.some((booking) => booking.userId === userId)
           : false;
 
-        // COPY PASTE: Enhanced user data extraction from bookings
         // Get user data from the first booking for this slot (if any)
         const userBooking = slot.bookings?.find(
           (booking) =>
@@ -566,7 +470,10 @@ export async function getEquipmentSlotsWithStatus(
 }
 
 /**
- * Update existing equipment (Admin only)
+ * Update existing equipment properties (Admin only)
+ * @param equipmentId The ID of the equipment to update
+ * @param data Partial equipment data to update
+ * @returns Updated equipment record
  */
 export async function updateEquipment(
   equipmentId: number,
@@ -589,7 +496,9 @@ export async function updateEquipment(
 }
 
 /**
- * Delete equipment (Admin only)
+ * Delete equipment and all associated slots (Admin only)
+ * @param equipmentId The ID of the equipment to delete
+ * @returns Deleted equipment record
  */
 export async function deleteEquipment(equipmentId: number) {
   try {
@@ -618,7 +527,9 @@ export async function deleteEquipment(equipmentId: number) {
 }
 
 /**
- * Duplicate existing equipment (Admin only)
+ * Create a duplicate of existing equipment with "(Copy)" suffix (Admin only)
+ * @param equipmentId The ID of the equipment to duplicate
+ * @returns Created duplicate equipment record
  */
 export async function duplicateEquipment(equipmentId: number) {
   try {
@@ -646,7 +557,12 @@ export async function duplicateEquipment(equipmentId: number) {
     throw new Error("Failed to duplicate equipment.");
   }
 }
-// Fetch booked equipment for a user
+
+/**
+ * Fetch all equipment bookings for a specific user
+ * @param userId The ID of the user whose bookings to fetch
+ * @returns Array of booked equipment with booking details and status
+ */
 export async function getUserBookedEquipments(userId: number) {
   const bookings = await db.equipmentBooking.findMany({
     where: { userId },
@@ -673,81 +589,13 @@ export async function getUserBookedEquipments(userId: number) {
   }));
 }
 
-// export async function bulkBookEquipment(workshopId: number, slots: number[]) {
-//   const availableSlots = await db.equipmentSlot.findMany({
-//     where: {
-//       id: { in: slots },
-//       isBooked: false,
-//     },
-//   });
-
-//   if (availableSlots.length !== slots.length) {
-//     throw new Error("One or more slots are already booked.");
-//   }
-
-//   return await db.equipmentSlot.updateMany({
-//     where: { id: { in: slots } },
-//     data: {
-//       isBooked: true,
-//       workshopOccurrenceId: workshopId,
-//     },
-//   });
-// }
-// In equipment.server.ts
-// Find the bulkBookEquipment function and modify it:
-
-// export async function bulkBookEquipment(
-//   workshopId: number,
-//   slots: number[],
-//   userId: number
-// ) {
-//   // Filter out negative IDs (these are the temporary IDs for workshop slots)
-//   const validSlots = slots.filter((id) => id > 0);
-
-//   // If no valid slots, just return success
-//   if (validSlots.length === 0) {
-//     return { count: 0 };
-//   }
-
-//   const availableSlots = await db.equipmentSlot.findMany({
-//     where: {
-//       id: { in: validSlots },
-//       isBooked: false,
-//     },
-//   });
-
-//   if (availableSlots.length !== validSlots.length) {
-//     throw new Error("One or more slots are already booked.");
-//   }
-
-//   // Update the slots to be booked and associated with the workshop
-//   await db.equipmentSlot.updateMany({
-//     where: { id: { in: validSlots } },
-//     data: {
-//       isBooked: true,
-//       workshopOccurrenceId: workshopId,
-//     },
-//   });
-
-//   // Create equipment booking records for each slot
-//   const bookings = await Promise.all(
-//     availableSlots.map((slot) =>
-//       db.equipmentBooking.create({
-//         data: {
-//           userId: userId,
-//           equipmentId: slot.equipmentId,
-//           slotId: slot.id,
-//           status: "pending", // Keep default status as pending
-//           bookedFor: "workshop", // Set the new bookedFor field
-//           workshopId: workshopId, // Connect to the workshop
-//         },
-//       })
-//     )
-//   );
-
-//   return { count: bookings.length };
-// }
-
+/**
+ * Book multiple equipment slots for a workshop occurrence
+ * @param workshopId The workshop occurrence ID to book equipment for
+ * @param slots Array of slot IDs to book (negative IDs are filtered out)
+ * @param userId The user ID making the booking
+ * @returns Object with count of successfully booked slots
+ */
 export async function bulkBookEquipment(
   workshopId: number,
   slots: number[],
@@ -814,6 +662,12 @@ export async function bulkBookEquipment(
   return { count: bookings.length };
 }
 
+/**
+ * Update the availability status of an equipment slot
+ * @param slotId The ID of the slot to update
+ * @param isAvailable Whether the slot should be available for booking
+ * @returns Updated equipment slot record
+ */
 export async function setSlotAvailability(
   slotId: number,
   isAvailable: boolean
@@ -826,6 +680,12 @@ export async function setSlotAvailability(
   });
 }
 
+/**
+ * Get available equipment slots within a specific date range for workshop booking
+ * @param startDate Start date of the range to search
+ * @param endDate End date of the range to search
+ * @returns Array of available equipment slots within the date range
+ */
 export async function getAvailableEquipmentSlotsForWorkshopRange(
   startDate: Date,
   endDate: Date
@@ -860,7 +720,11 @@ export async function getAvailableEquipmentSlotsForWorkshopRange(
     throw new Error("Failed to fetch available slots");
   }
 }
-// Fetch all equipment with slot details and disabled status
+
+/**
+ * Fetch all equipment with detailed slot and booking information for admin view
+ * @returns Array of all equipment with slots, bookings, and user details
+ */
 export async function getAllEquipmentWithBookings() {
   return await db.equipment.findMany({
     include: {
@@ -893,7 +757,12 @@ export async function getAllEquipmentWithBookings() {
   });
 }
 
-// Toggle availability
+/**
+ * Toggle the availability status of equipment (Admin only)
+ * @param equipmentId The ID of the equipment to update
+ * @param availability New availability status (true = available, false = disabled)
+ * @returns Updated equipment record
+ */
 export async function toggleEquipmentAvailability(
   equipmentId: number,
   availability: boolean
@@ -904,6 +773,10 @@ export async function toggleEquipmentAvailability(
   });
 }
 
+/**
+ * Get schedule restrictions for level 3 users from admin settings
+ * @returns Object containing daily schedule restrictions with start/end hours
+ */
 export async function getLevel3ScheduleRestrictions() {
   try {
     const settingStr = await getAdminSetting("level3_start_end_hours", "");
@@ -936,6 +809,10 @@ export async function getLevel3ScheduleRestrictions() {
   }
 }
 
+/**
+ * Get unavailable hours configuration for level 4 users from admin settings
+ * @returns Object with start and end hours when level 4 users cannot book equipment
+ */
 export async function getLevel4UnavailableHours() {
   try {
     const setting = await db.adminSettings.findUnique({
@@ -962,133 +839,14 @@ export async function getLevel4UnavailableHours() {
 }
 
 /**
- * Create equipment slots for workshop occurrences
- * This ensures that equipment is reserved during workshop times
+ * Create equipment slots for a workshop occurrence within the specified time range
+ * @param equipmentId The ID of the equipment to create slots for
+ * @param startTime Start time of the workshop occurrence
+ * @param endTime End time of the workshop occurrence
+ * @param workshopId The workshop occurrence ID to associate with slots
+ * @param userId The user ID creating the slots (usually admin)
+ * @returns Boolean indicating success of slot creation
  */
-export async function createEquipmentSlotsForWorkshop(
-  workshopOccurrenceId: number,
-  equipmentIds: number[],
-  occurrences: { startDate: Date; endDate: Date }[]
-) {
-  try {
-    console.log("Creating equipment slots for workshop", {
-      workshopOccurrenceId,
-      equipmentIds,
-      occurrences: occurrences.length,
-    });
-
-    // Process each equipment and occurrence
-    for (const equipmentId of equipmentIds) {
-      for (const occurrence of occurrences) {
-        // Skip invalid dates
-        if (
-          isNaN(occurrence.startDate.getTime()) ||
-          isNaN(occurrence.endDate.getTime())
-        ) {
-          console.warn("Skipping invalid date in occurrence", occurrence);
-          continue;
-        }
-
-        const startTime = new Date(occurrence.startDate);
-        const endTime = new Date(occurrence.endDate);
-
-        // Create 30-minute slots for the workshop duration
-        const currentTime = new Date(startTime);
-        while (currentTime < endTime) {
-          try {
-            // Check if slot already exists
-            const existingSlot = await db.equipmentSlot.findFirst({
-              where: {
-                equipmentId,
-                startTime: new Date(currentTime),
-              },
-            });
-
-            let slotId: number;
-
-            if (existingSlot) {
-              // Update existing slot if not already booked for another workshop
-              if (
-                !existingSlot.workshopOccurrenceId ||
-                existingSlot.workshopOccurrenceId === workshopOccurrenceId
-              ) {
-                await db.equipmentSlot.update({
-                  where: { id: existingSlot.id },
-                  data: {
-                    isBooked: true,
-                    workshopOccurrenceId,
-                  },
-                });
-                slotId = existingSlot.id;
-              } else {
-                console.warn(
-                  `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`
-                );
-                // Move to next slot
-                currentTime.setTime(currentTime.getTime() + 30 * 60000);
-                continue;
-              }
-            } else {
-              // Create new slot
-              const newSlot = await db.equipmentSlot.create({
-                data: {
-                  equipmentId,
-                  startTime: new Date(currentTime),
-                  endTime: new Date(currentTime.getTime() + 30 * 60000),
-                  isBooked: true,
-                  workshopOccurrenceId,
-                },
-              });
-              slotId = newSlot.id;
-            }
-
-            // Now create a booking record in EquipmentBooking table
-            // We'll create this with a special userId of -1 to indicate it's a workshop booking
-            // You can adjust this based on your schema requirements
-            try {
-              // Check if booking already exists for this slot
-              const existingBooking = await db.equipmentBooking.findFirst({
-                where: {
-                  slotId: slotId,
-                  status: "workshop", // Use "workshop" status to differentiate
-                },
-              });
-
-              if (!existingBooking) {
-                await db.equipmentBooking.create({
-                  data: {
-                    userId: -1, // Special user ID for workshop (adjust as needed)
-                    equipmentId,
-                    slotId,
-                    status: "workshop", // Use special status for workshop bookings
-                  },
-                });
-              }
-            } catch (bookingError) {
-              console.error("Error creating equipment booking:", bookingError);
-              // Continue even if booking creation fails
-            }
-          } catch (error) {
-            console.error("Error creating/updating equipment slot:", error, {
-              equipmentId,
-              startTime: currentTime,
-            });
-            // Continue to next slot even if this one fails
-          }
-
-          // Move to next 30-minute slot
-          currentTime.setTime(currentTime.getTime() + 30 * 60000);
-        }
-      }
-    }
-
-    return true;
-  } catch (error) {
-    console.error("Failed to create equipment slots for workshop:", error);
-    throw new Error("Failed to create equipment slots for workshop");
-  }
-}
-
 export async function createEquipmentSlotsForOccurrence(
   occurrenceId: number,
   equipmentId: number,
@@ -1207,12 +965,15 @@ export async function createEquipmentSlotsForOccurrence(
 }
 
 /**
- * Check if a slot is available for booking
+ * Check if a specific equipment slot is available for booking
+ * @param equipmentId The ID of the equipment
+ * @param startTime Start time of the slot to check
+ * @param endTime End time of the slot to check
+ * @returns Boolean indicating if the slot is available (true = available, false = conflicting)
  */
 export async function checkSlotAvailability(
   equipmentId: number,
-  startTime: Date,
-  endTime: Date
+  startTime: Date
 ) {
   // Check if there's any existing slot that matches the criteria and is already booked
   const conflictingSlot = await db.equipmentSlot.findFirst({
@@ -1227,7 +988,8 @@ export async function checkSlotAvailability(
 }
 
 /**
- * Fetch all equipment regardless of availability status
+ * Fetch all equipment regardless of availability status with slot information
+ * @returns Array of all equipment with slot counts and calculated status
  */
 export async function getAllEquipment() {
   return await db.equipment
@@ -1253,7 +1015,10 @@ export async function getAllEquipment() {
 }
 
 /**
- * Get the list of prerequisite workshop IDs that a user has successfully completed for equipment
+ * Get the list of prerequisite workshop IDs that a user has successfully completed for specific equipment
+ * @param userId The ID of the user to check prerequisites for
+ * @param equipmentId The ID of the equipment to check prerequisites for
+ * @returns Array of completed prerequisite workshop IDs
  */
 export async function getUserCompletedEquipmentPrerequisites(
   userId: number,
@@ -1295,7 +1060,10 @@ export async function getUserCompletedEquipmentPrerequisites(
 }
 
 /**
- * Check if user has completed all prerequisites for equipment
+ * Check if a user has completed all required prerequisites for specific equipment
+ * @param userId The ID of the user to check
+ * @param equipmentId The ID of the equipment to check prerequisites for
+ * @returns Boolean indicating if all prerequisites are completed
  */
 export async function hasUserCompletedEquipmentPrerequisites(
   userId: number,

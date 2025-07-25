@@ -109,9 +109,7 @@ export async function loader({ request }: { request: Request }) {
     membershipPlanId,
     userId,
     connectId,
-    compensationPrice,
     equipmentId,
-    slotCount,
     slotsDataKey,
     isEquipmentBooking,
   } = metadata;
@@ -164,7 +162,7 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  // Workshop continuation
+  // Multi-day workshop
   else if (workshopId && connectId && userId) {
     try {
       await registerUserForAllOccurrences(
@@ -186,7 +184,7 @@ export async function loader({ request }: { request: Request }) {
         JSON.stringify({
           success: false,
           isMembership: false,
-          message: "Registration (continuation) failed: " + error.message,
+          message: "Registration (multi-day) failed: " + error.message,
         }),
         { headers: { "Content-Type": "application/json" } }
       );
