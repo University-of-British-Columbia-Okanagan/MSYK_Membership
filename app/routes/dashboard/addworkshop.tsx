@@ -374,7 +374,7 @@ export async function action({ request }: { request: Request }) {
     logger.warn(`[User: ${roleUser?.userId}] Not authorized to add workshop`, {
       url: request.url,
     });
-    throw new Response("Not Authorized", { status: 419 });
+    throw new Response("Not Authorized", { status: 401 });
   }
 
   const formData = await request.formData();

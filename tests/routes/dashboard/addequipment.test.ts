@@ -1,5 +1,5 @@
 import { getWorkshopsFixture } from 'tests/fixtures/workshop/getWorkshops';
-import { getUserFixture, getAdminFixture } from 'tests/fixtures/session/getRoleUser';
+import { getRoleUserFixture, getRoleUserAdminFixture } from 'tests/fixtures/session/getRoleUser';
 import { newEquipmentFixture } from 'tests/fixtures/equipments/addEquimentForm';
 import { getEquipmentByName, addEquipment } from '~/models/equipment.server';
 import { loader, action } from '~/routes/dashboard/addequipment';
@@ -29,7 +29,7 @@ describe('loader', () => {
 
   it('returns workshops and roleUser', async () => {
     mockGetWorkshops.mockResolvedValue(getWorkshopsFixture);
-    mockGetRoleUser.mockResolvedValue(getUserFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
     const request = new Request('http://localhost:5173/dashboard/addequipment', {
       method: 'GET',
     });
@@ -40,7 +40,7 @@ describe('loader', () => {
     expect(mockGetRoleUser).toHaveBeenCalledWith(request);
     expect(result).toEqual({
       workshops: getWorkshopsFixture,
-      roleUser: getUserFixture,
+      roleUser: getRoleUserFixture,
     });
   });
 });
@@ -60,7 +60,7 @@ describe('action', () => {
 
   it('successfully adds a new equipment', async () => {
     const request = createRequestWithForm(newEquipmentFixture);
-    mockGetRoleUser.mockResolvedValue(getAdminFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     mockGetEquipmentByName.mockResolvedValue(null);
     mockAddEquipment.mockResolvedValue(true);
 
@@ -82,7 +82,7 @@ describe('action', () => {
 
   it('throws 401 if user is not admin', async () => {
     const request = createRequestWithForm(newEquipmentFixture);
-    mockGetRoleUser.mockResolvedValue(getUserFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
 
     try {
       await action({ request });
@@ -97,7 +97,7 @@ describe('action', () => {
 
   it('fails when adding an equipment with the same name', async () => {
     const request = createRequestWithForm(newEquipmentFixture);
-    mockGetRoleUser.mockResolvedValue(getAdminFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     mockGetEquipmentByName.mockResolvedValue(true);
     mockAddEquipment.mockResolvedValue(true);
 
