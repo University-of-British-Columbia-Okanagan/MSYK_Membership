@@ -38,8 +38,8 @@ export default function WorkshopList({
               key={workshop.id}
               {...workshop}
               isAdmin={isAdmin}
-              isPast={isPast}
-              isRegistered={workshop.isRegistered}
+              // isPast={isPast}
+              // isRegistered={workshop.isRegistered}
             />
           );
         })}
