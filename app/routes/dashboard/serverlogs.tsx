@@ -15,12 +15,14 @@ import { useEffect, useState } from "react";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { getRoleUser } from "~/utils/session.server";
-
-export async function loader({ request }) {
-  const roleUser = await getRoleUser(request);
-  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    throw new Response("Not Authorized", { status: 419 });
-  }
+export type LoaderData = {
+  logs: string;
+};
+export async function loader({ request }: { request: Request }) {
+    const roleUser = await getRoleUser(request);
+    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+      throw new Response("Not Authorized", { status: 419 });
+    }
 
   const url = new URL(request.url);
   const query = url.searchParams.get("q")?.toLowerCase() || "";
@@ -58,7 +60,7 @@ export async function loader({ request }) {
 }
 
 export default function LogsTab() {
-  const { logs } = useLoaderData<typeof loader>();
+  const { logs } = useLoaderData<LoaderData>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(searchParams.get("start") || "");
   const [end, setEnd] = useState(searchParams.get("end") || "");
