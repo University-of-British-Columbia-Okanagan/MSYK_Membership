@@ -1074,15 +1074,19 @@ export default function AdminSettings() {
         fullName.includes(volunteerSearchName.toLowerCase());
 
       // Status filter
-      const statusMatch =
-        volunteerStatusFilter === "all" ||
-        hour.status === volunteerStatusFilter;
-
-      // Resubmission filter
-      const resubmissionMatch =
-        !showResubmissionsOnly ||
-        hour.isResubmission ||
-        hour.status === "denied";
+      let statusMatch = true;
+      if (showResubmissionsOnly) {
+        // When "Show resubmissions and denied hours only" is checked,
+        // only show pending resubmissions and denied hours
+        statusMatch =
+          (hour.status === "pending" && hour.isResubmission) ||
+          hour.status === "denied";
+      } else {
+        // Normal status filtering when checkbox is unchecked
+        statusMatch =
+          volunteerStatusFilter === "all" ||
+          hour.status === volunteerStatusFilter;
+      }
 
       // Date/time range filtering
       let dateTimeMatch = true;
@@ -1103,7 +1107,7 @@ export default function AdminSettings() {
           entryStartDate >= fromDateTime && entryStartDate < toDateTime;
       }
 
-      return nameMatch && statusMatch && resubmissionMatch && dateTimeMatch;
+      return nameMatch && statusMatch && dateTimeMatch;
     });
   }, [
     volunteerHours,
@@ -1236,6 +1240,7 @@ export default function AdminSettings() {
   const handleClearVolunteerFilters = () => {
     setVolunteerSearchName("");
     setVolunteerStatusFilter("pending"); // Reset to default
+    setShowResubmissionsOnly(false);
     setVolunteerFromDate("");
     setVolunteerFromTime("");
     setVolunteerToDate("");
@@ -2918,7 +2923,12 @@ export default function AdminSettings() {
                               onChange={(e) =>
                                 setVolunteerStatusFilter(e.target.value)
                               }
-                              className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                              disabled={showResubmissionsOnly}
+                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base ${
+                                showResubmissionsOnly
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : ""
+                              }`}
                             >
                               <option value="all">All Status</option>
                               <option value="pending">Pending</option>
@@ -2926,6 +2936,12 @@ export default function AdminSettings() {
                               <option value="denied">Denied</option>
                               <option value="resolved">Resolved</option>
                             </select>
+                            {showResubmissionsOnly && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Status filter is disabled when showing
+                                resubmissions and denied hours only
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -2947,10 +2963,18 @@ export default function AdminSettings() {
                               Show resubmissions and denied hours only
                             </label>
                             <span className="text-xs text-gray-500">
-                              (Filter to see denied hours and their
-                              resubmissions for review)
+                              (Shows only pending resubmissions and denied hours
+                              - overrides status filter)
                             </span>
                           </div>
+                          {showResubmissionsOnly && (
+                            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                              <strong>Active:</strong> Showing only pending
+                              hours marked as resubmissions and denied hours.
+                              Status filter is disabled. Uncheck to use normal
+                              filtering.
+                            </div>
+                          )}
                         </div>
 
                         {/* Date and Time Filters - Two Rows */}
@@ -3069,6 +3093,7 @@ export default function AdminSettings() {
 
                           {(volunteerSearchName ||
                             volunteerStatusFilter !== "pending" ||
+                            showResubmissionsOnly ||
                             appliedVolunteerFromDate ||
                             appliedVolunteerFromTime ||
                             appliedVolunteerToDate ||
@@ -3357,24 +3382,29 @@ export default function AdminSettings() {
                       <div className="flex flex-col space-y-2">
                         <div className="flex items-center justify-between text-sm text-gray-600">
                           <span>
-                            Showing {actionsStartIndex + 1}-
+                            Showing {volunteerStartIndex + 1}-
                             {Math.min(
-                              actionsEndIndex,
-                              sortedRecentActions.length
+                              volunteerEndIndex,
+                              sortedVolunteerHours.length
                             )}{" "}
-                            of {sortedRecentActions.length} entries
-                            {appliedActionsFromDate &&
-                              appliedActionsFromTime &&
-                              appliedActionsToDate &&
-                              appliedActionsToTime && (
+                            of {sortedVolunteerHours.length} entries
+                            {showResubmissionsOnly && (
+                              <span className="ml-2 text-blue-600 font-medium">
+                                (Pending Resubmissions + Denied Hours Only)
+                              </span>
+                            )}
+                            {appliedVolunteerFromDate &&
+                              appliedVolunteerFromTime &&
+                              appliedVolunteerToDate &&
+                              appliedVolunteerToTime && (
                                 <span className="ml-2 text-yellow-600">
                                   (filtered from{" "}
                                   {new Date(
-                                    `${appliedActionsFromDate}T${appliedActionsFromTime}`
+                                    `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
                                   ).toLocaleString()}{" "}
                                   to{" "}
                                   {new Date(
-                                    `${appliedActionsToDate}T${appliedActionsToTime}`
+                                    `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
                                   ).toLocaleString()}
                                   )
                                 </span>
@@ -3384,17 +3414,20 @@ export default function AdminSettings() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-sm">
                             <span className="text-blue-700 font-medium">
-                              Total Hours: {totalRecentActionHours.toFixed(1)}{" "}
+                              Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
                               hours
                             </span>
-                            {actionsStatusFilter !== "all" && (
-                              <span className="text-gray-600">
-                                (Status:{" "}
-                                {actionsStatusFilter.charAt(0).toUpperCase() +
-                                  actionsStatusFilter.slice(1)}
-                                )
-                              </span>
-                            )}
+                            {!showResubmissionsOnly &&
+                              volunteerStatusFilter !== "all" && (
+                                <span className="text-gray-600">
+                                  (Status:{" "}
+                                  {volunteerStatusFilter
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                    volunteerStatusFilter.slice(1)}
+                                  )
+                                </span>
+                              )}
                           </div>
                         </div>
                       </div>
