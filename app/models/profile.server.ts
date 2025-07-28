@@ -107,14 +107,14 @@ export async function getVolunteerHours(
  * @param userId - The ID of the user logging volunteer hours
  * @param startTime - The start time of the volunteer session
  * @param endTime - The end time of the volunteer session
- * @param description - Optional description of the volunteer work performed
+ * @param description - Description of the volunteer work performed
  * @returns Promise<VolunteerHourEntry> - The created volunteer hour entry
  */
 export async function logVolunteerHours(
   userId: number,
   startTime: Date,
   endTime: Date,
-  description?: string
+  description: string
 ) {
   return await db.volunteerTimetable.create({
     data: {
@@ -201,18 +201,21 @@ export async function getAllVolunteerHours() {
  * @param status - The new status to set (e.g., "approved", "denied", "pending")
  * @returns Promise<VolunteerHourEntry> - The updated volunteer hour entry
  */
-export async function updateVolunteerHourStatus(hourId: number, status: string) {
+export async function updateVolunteerHourStatus(
+  hourId: number,
+  status: string
+) {
   // Get the current status before updating
   const currentEntry = await db.volunteerTimetable.findUnique({
     where: { id: hourId },
-    select: { status: true }
+    select: { status: true },
   });
 
   const previousStatus = currentEntry?.status || "pending";
 
   return await db.volunteerTimetable.update({
     where: { id: hourId },
-    data: { 
+    data: {
       status,
       previousStatus: previousStatus,
       updatedAt: new Date(),

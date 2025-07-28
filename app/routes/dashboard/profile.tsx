@@ -67,11 +67,16 @@ export async function action({ request }: { request: Request }) {
   if (action === "logHours") {
     const startTimeStr = formData.get("startTime") as string;
     const endTimeStr = formData.get("endTime") as string;
-    const description = (formData.get("description") as string) || undefined;
+    const description = formData.get("description") as string;
 
     // Validate the data
     if (!startTimeStr || !endTimeStr) {
       return { error: "Start time and end time are required" };
+    }
+
+    // Add description validation
+    if (!description || description.trim() === "") {
+      return { error: "Description is required" };
     }
 
     const startTime = new Date(startTimeStr);
@@ -112,7 +117,12 @@ export async function action({ request }: { request: Request }) {
     }
 
     try {
-      await logVolunteerHours(roleUser.userId, startTime, endTime, description);
+      await logVolunteerHours(
+        roleUser.userId,
+        startTime,
+        endTime,
+        description.trim()
+      );
       return { success: "Volunteer hours logged successfully!" };
       // return redirect("/dashboard/profile?success=hours-logged");
     } catch (error) {
@@ -625,9 +635,9 @@ export default function ProfilePage() {
                         <p className="text-sm text-blue-800">
                           <strong>How to log volunteer hours:</strong> Select
                           the start and end time for your volunteer session. You
-                          can optionally add a brief description of what you
-                          worked on. Your hours will be reviewed and approved by
-                          an administrator.
+                          must add a brief description of what you worked on.
+                          Your hours will be reviewed and approved by an
+                          administrator.
                         </p>
                       </div>
 
@@ -679,7 +689,7 @@ export default function ProfilePage() {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description (Optional)
+                            Description
                           </label>
                           <input
                             type="text"
@@ -687,6 +697,7 @@ export default function ProfilePage() {
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="What did you work on?"
+                            required
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                           />
                         </div>
