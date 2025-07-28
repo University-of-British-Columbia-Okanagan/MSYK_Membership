@@ -68,7 +68,7 @@ model VolunteerTimetable {
   userId         Int
   startTime      DateTime
   endTime        DateTime
-  description    String?
+  description    String
   status         String   @default("pending") // "pending", "approved", "denied", "resolved"
   previousStatus String?
   createdAt      DateTime @default(now())
