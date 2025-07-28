@@ -71,6 +71,7 @@ model VolunteerTimetable {
   description    String
   status         String   @default("pending") // "pending", "approved", "denied", "resolved"
   previousStatus String?
+  isResubmission Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
