@@ -40,7 +40,7 @@ model User {
   allowLevel4 Boolean  @default(false)
 
   avatarUrl             String?
-  guardianSignedConsent String? // This will store the base64 image data
+  waiverSignature       String?
 
   // Relationships
   userWorkshops      UserWorkshop[]
