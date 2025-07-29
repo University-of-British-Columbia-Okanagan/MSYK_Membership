@@ -41,7 +41,15 @@ A comprehensive membership management platform built with React Router, TypeScri
    
    Create a `.env` file in the root directory:
    ```env
+   POSTGRES_USER=
+   POSTGRES_PASSWORD=
+   POSTGRES_DB=
    DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA"
+   SESSION_SECRET=
+   STRIPE_SECRET_KEY=
+   STRIPE_PUBLIC_KEY=
+   BASE_URL=
+   WAIVER_ENCRYPTION_KEY=
    ```
    
    Replace the placeholders with your pgAdmin 4 credentials:
@@ -54,6 +62,7 @@ A comprehensive membership management platform built with React Router, TypeScri
 
 4. **Database migration**
    ```bash
+   npx prisma generate --schema prisma/schema.prisma
    npx prisma migrate dev
    ```
 
@@ -66,9 +75,8 @@ A comprehensive membership management platform built with React Router, TypeScri
 
 ### Additional Development Commands
 
-- **Build for production:** `npm run build`
-- **Database seeding:** `npx tsx seed.ts`
-- **Prisma studio:** `npx prisma studio`
+- **Database Seeding:** `npx tsx seed.ts`
+- **Prisma Studio:** `npx prisma studio`
 
 ## System Architecture & Database Schema
 
@@ -146,7 +154,6 @@ The schema implements several key relationship patterns:
 **Backend:**
 - **Prisma ORM**: Type-safe database access and migrations
 - **PostgreSQL**: Primary database with ACID compliance
-- **Express.js**: API server framework
 
 **Frontend:**
 - **React Router**: Modern full-stack React framework with SSR
@@ -155,8 +162,6 @@ The schema implements several key relationship patterns:
 
 **External Integrations:**
 - **Stripe**: Payment processing and subscription management
-- **Mailgun**: Transactional email delivery
-- **SendGrid**: Alternative email service provider
 
 ## API Documentation
 
