@@ -12,7 +12,14 @@ import type { LoaderFunction } from "react-router-dom";
 import Sidebar from "../../components/ui/Dashboard/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
-import { CreditCard, Medal, Clock, Plus } from "lucide-react";
+import {
+  CreditCard,
+  Medal,
+  Clock,
+  Plus,
+  FileText,
+  Download,
+} from "lucide-react";
 import {
   Select,
   SelectTrigger,
@@ -49,6 +56,9 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
 }
 
 export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const action = formData.get("_action");
+
   const roleUser = await getRoleUser(request);
 
   if (!roleUser?.userId) {
@@ -60,9 +70,6 @@ export async function action({ request }: { request: Request }) {
   if (!isActiveVolunteer) {
     return { error: "You must be an active volunteer to log hours" };
   }
-
-  const formData = await request.formData();
-  const action = formData.get("_action");
 
   if (action === "logHours") {
     const startTimeStr = formData.get("startTime") as string;
@@ -600,6 +607,45 @@ export default function ProfilePage() {
                             : "Add Payment Method"}
                         </a>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div className="p-6 sm:p-8 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="h-5 w-5 text-yellow-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Documents
+                  </h3>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-medium text-gray-900">
+                        Waiver and Hold Harmless Agreement
+                      </span>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Your signed liability waiver document
+                      </p>
+                    </div>
+                    <div>
+                      {user.waiverSignature &&
+                      !user.waiverSignature.includes("Placeholder") ? (
+                        <a
+                          href="/dashboard/profile/download-waiver"
+                          className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download
+                        </a>
+                      ) : (
+                        <span className="text-sm text-gray-500 italic">
+                          Waiver document unavailable for download
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

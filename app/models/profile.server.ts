@@ -9,6 +9,7 @@ export type UserProfileData = {
   membershipType: string;
   nextBillingDate: string | null;
   cardLast4: string;
+  waiverSignature: string | null;
 };
 
 export type VolunteerHourEntry = {
@@ -39,24 +40,19 @@ export async function getProfileDetails(request: Request) {
       lastName: true,
       avatarUrl: true,
       email: true,
+      waiverSignature: true,
     },
   });
-
-  console.log("User:", user);
 
   const membership = await db.userMembership.findFirst({
     where: { userId: parseInt(userId), status: "active" },
     include: { membershipPlan: true },
   });
 
-  console.log("Membership:", membership);
-
   const payment = await db.userPaymentInformation.findFirst({
     where: { userId: parseInt(userId) },
     select: { cardLast4: true, createdAt: true },
   });
-
-  console.log("Payment:", payment);
 
   if (!user) return null;
 
@@ -68,6 +64,7 @@ export async function getProfileDetails(request: Request) {
     membershipType: membership?.membershipPlan.type ?? "N/A",
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
+    waiverSignature: user.waiverSignature,
   };
 }
 
