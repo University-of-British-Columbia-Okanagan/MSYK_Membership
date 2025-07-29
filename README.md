@@ -1,124 +1,174 @@
-# MYSK Membership
+# MYSK Membership Management System
 
-## Local Host Steps
+A comprehensive membership management platform built with React Router, TypeScript, and Prisma, designed to manage makerspace memberships, workshops, equipment bookings, and volunteer coordination.
 
-Need minimum requirements:
-1. node@20
-2. react@18
-3. react-dom@18
+## Table of Contents
 
-For this project, have these requirements to minimize errors by being on the latest version as of 1/13/2025:
-1. node@22
-2. react@19
-3. react-dom@19
-4. npm@11
-5. postgres@17 w/ pgadmin@4
+- [Local Development Setup](#local-development-setup)
+- [System Architecture & Database Schema](#system-architecture--database-schema)
+- [API Documentation](#api-documentation)
 
-Steps to run local host:
-1. Clone the repository
-2. cd to the repository
-3. npm install
-4. Create a .env file, if you don't already have, and add DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA" and change values using pgadmin 4 credentials
-5. npx prisma migrate dev
-6. npm run dev
+## Local Development Setup
 
-# Welcome to React Router!
+### Prerequisites
 
-A modern, production-ready template for building full-stack React applications using React Router.
+**Minimum Requirements:**
+- Node.js 20+
+- React 18+
+- React DOM 18+
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+**Recommended (Latest as of January 2025):**
+- Node.js 22
+- React 19
+- React DOM 19
+- npm 11
+- PostgreSQL 17 with pgAdmin 4
 
-## Features
+### Installation & Setup
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd mysk-membership
+   ```
 
-## Getting Started
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-### Installation
+3. **Database configuration**
+   
+   Create a `.env` file in the root directory:
+   ```env
+   DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA"
+   ```
+   
+   Replace the placeholders with your pgAdmin 4 credentials:
+   - `USER`: Your PostgreSQL username
+   - `PASSWORD`: Your PostgreSQL password
+   - `HOST`: Database host (typically `localhost`)
+   - `PORT`: Database port (typically `5432`)
+   - `DATABASE`: Your database name
+   - `SCHEMA`: Database schema (typically `public`)
 
-Install the dependencies:
+4. **Database migration**
+   ```bash
+   npx prisma migrate dev
+   ```
 
-```bash
-npm install
-```
+5. **Start development server**
+   ```bash
+   npm run dev
+   ```
 
-### Development
+   The application will be available at `http://localhost:5173`
 
-Start the development server with HMR:
+### Additional Development Commands
 
-```bash
-npm run dev
-```
+- **Build for production:** `npm run build`
+- **Database seeding:** `npx tsx seed.ts`
+- **Prisma studio:** `npx prisma studio`
 
-Your application will be available at `http://localhost:5173`.
+## System Architecture & Database Schema
 
-## Building for Production
+The MYSK Membership system is built on a robust PostgreSQL database with the following core entities and relationships:
 
-Create a production build:
+### Core Models
 
-```bash
-npm run build
-```
+#### User Management
+- **User**: Central user entity storing personal information, contact details, emergency contacts, and consent records
+- **RoleUser**: Role-based access control with User and Admin roles
+- **UserPaymentInformation**: Stripe integration for payment processing with encrypted card details
 
-## Deployment
+#### Membership System
+- **MembershipPlan**: Flexible membership plans with JSON-stored features and access hours
+- **UserMembership**: Active membership tracking with payment schedules and status management
 
-### Docker Deployment
+#### Workshop & Training System
+- **Workshop**: Workshop definitions with pricing, capacity, and cancellation policies
+- **WorkshopOccurrence**: Specific workshop instances with date/time scheduling
+- **UserWorkshop**: Workshop enrollment tracking with completion results
+- **WorkshopPrerequisite**: Prerequisite chain management for advanced workshops
 
-This template includes three Dockerfiles optimized for different package managers:
+#### Equipment Management
+- **Equipment**: Equipment inventory with descriptions and availability status
+- **EquipmentSlot**: Time-based booking slots for equipment usage
+- **EquipmentBooking**: Booking management with user and workshop allocation
+- **EquipmentPrerequisite**: Workshop prerequisites required for equipment access
 
-- `Dockerfile` - for npm
-- `Dockerfile.pnpm` - for pnpm
-- `Dockerfile.bun` - for bun
+#### Volunteer Management
+- **Volunteer**: Volunteer registration with start/end date tracking
+- **VolunteerTimetable**: Time logging system with approval workflow
 
-To build and run using Docker:
+#### Administrative Tools
+- **AdminSettings**: Key-value configuration storage for system settings
+- **Issue**: Issue tracking system with priority levels and status management
+- **IssueScreenshot**: File attachments for issue documentation
 
-```bash
-# For npm
-docker build -t my-app .
+### Key Features & Relationships
 
-# For pnpm
-docker build -f Dockerfile.pnpm -t my-app .
+**Role-Based Access Control**
+- Users assigned roles (User/Admin) with role levels 1-4
+- Special `allowLevel4` flag for advanced permissions
 
-# For bun
-docker build -f Dockerfile.bun -t my-app .
+**Workshop Prerequisites Chain**
+- Workshops can require completion of other workshops
+- Equipment access tied to specific workshop completions
+- Prevents booking without proper qualifications
 
-# Run the container
-docker run -p 3000:3000 my-app
-```
+**Payment Integration**
+- Stripe customer and payment method storage
+- Encrypted card information with PCI compliance considerations
+- Billing address and payment history tracking
 
-The containerized application can be deployed to any platform that supports Docker, including:
+**Booking System**
+- Time-slot based equipment reservations
+- Workshop capacity management
+- Conflict prevention with unique constraints
 
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
+**Audit & Compliance**
+- Comprehensive consent tracking (media, data privacy, community guidelines)
+- Waiver signature storage
+- Emergency contact information for safety compliance
 
-### DIY Deployment
+### Database Relationships
 
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
+The schema implements several key relationship patterns:
 
-Make sure to deploy the output of `npm run build`
+- **One-to-Many**: User → UserMembership, User → UserWorkshop, User → EquipmentBooking
+- **Many-to-Many**: Workshop ↔ Workshop (prerequisites), Equipment ↔ Workshop (prerequisites)
+- **Cascade Deletions**: User deletions cascade to related bookings and memberships
+- **Unique Constraints**: Prevent duplicate bookings and workshop registrations
 
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
+### Technology Stack
 
-## Styling
+**Backend:**
+- **Prisma ORM**: Type-safe database access and migrations
+- **PostgreSQL**: Primary database with ACID compliance
+- **Express.js**: API server framework
 
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
+**Frontend:**
+- **React Router**: Modern full-stack React framework with SSR
+- **TypeScript**: Type safety throughout the application
+- **Tailwind CSS**: Utility-first styling framework
 
----
+**External Integrations:**
+- **Stripe**: Payment processing and subscription management
+- **Mailgun**: Transactional email delivery
+- **SendGrid**: Alternative email service provider
 
-Built with ❤️ using React Router.
+## API Documentation
+
+*This section is a placeholder for comprehensive API documentation including:*
+
+- Authentication endpoints
+- User management APIs
+- Membership plan management
+- Workshop booking system
+- Equipment reservation APIs
+- Payment processing integration
+- Administrative functions
+- Volunteer time tracking
+
+*Documentation will include request/response schemas, authentication requirements, rate limiting, and example implementations.*
