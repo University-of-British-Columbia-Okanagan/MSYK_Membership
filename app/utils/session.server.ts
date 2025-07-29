@@ -35,27 +35,16 @@ async function generateSignedWaiver(
     // Embed font
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    // Add name (print name field)
     const fullName = `${firstName} ${lastName}`;
     secondPage.drawText(fullName, {
-      x: 50, // Adjust X position as needed
-      y: 150, // Adjust Y position to match "Releasor (Print Name)" line
-      size: 12,
+      x: 80, // Align with the signature line
+      y: 165, // Position above the "Releasor (Print Name)" line
+      size: 11,
       font: font,
       color: rgb(0, 0, 0),
     });
 
-    // Add current date
-    const currentDate = new Date().toLocaleDateString();
-    secondPage.drawText(currentDate, {
-      x: 50, // Adjust X position as needed
-      y: 100, // Adjust Y position to match "Date" line
-      size: 12,
-      font: font,
-      color: rgb(0, 0, 0),
-    });
-
-    // Process signature image
+    // Add signature image first (above name)
     if (signatureDataURL && signatureDataURL.startsWith("data:image/")) {
       try {
         // Remove data URL prefix
@@ -67,18 +56,28 @@ async function generateSignedWaiver(
         // Embed signature image
         const signatureImage = await pdfDoc.embedPng(signatureBytes);
 
-        // Add signature to PDF
+        // Add signature to PDF - positioned above the "Signature" line
         secondPage.drawImage(signatureImage, {
-          x: 50, // Adjust X position as needed
-          y: 125, // Adjust Y position to match "Signature" line
-          width: 200, // Adjust signature width
-          height: 50, // Adjust signature height
+          x: 80, // Align with the signature line
+          y: 185, // Position above the "Signature" line
+          width: 150, // Smaller signature width
+          height: 30, // Smaller signature height
         });
       } catch (imageError) {
         console.error("Error embedding signature image:", imageError);
         // Continue without signature image if there's an error
       }
     }
+
+    // Add current date - positioned above "Date" line
+    const currentDate = new Date().toLocaleDateString("en-US");
+    secondPage.drawText(currentDate, {
+      x: 80, // Align with the date line
+      y: 145, // Position above the "Date" line
+      size: 11,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
 
     // Generate PDF bytes
     const pdfBytes = await pdfDoc.save();
@@ -410,3 +409,5 @@ export async function getRoleUser(request: Request) {
   }
   return null;
 }
+
+export { decryptWaiver };

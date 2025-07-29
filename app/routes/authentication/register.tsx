@@ -55,10 +55,14 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Ensure signature data is properly handled
-  if (typeof waiverSignature === "string" && waiverSignature.trim() !== "") {
+  if (
+    typeof waiverSignature === "string" &&
+    waiverSignature.trim() !== "" &&
+    waiverSignature !== "undefined"
+  ) {
     rawValues.waiverSignature = waiverSignature;
   } else {
-    rawValues.waiverSignature = null;
+    rawValues.waiverSignature = undefined;
   }
 
   const result = await register(rawValues);
@@ -694,11 +698,18 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           .
                         </FormDescription>
                         <FormControl>
-                          <DigitalSignaturePad
-                            value={field.value}
-                            onChange={field.onChange}
-                            error={actionData?.errors?.waiverSignature?.[0]}
-                          />
+                          <>
+                            <DigitalSignaturePad
+                              value={field.value}
+                              onChange={field.onChange}
+                              error={actionData?.errors?.waiverSignature?.[0]}
+                            />
+                            <input
+                              type="hidden"
+                              name="waiverSignature"
+                              value={field.value || ""}
+                            />
+                          </>
                         </FormControl>
                         <FormMessage>
                           {actionData?.errors?.waiverSignature}
