@@ -496,7 +496,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="mediaConsent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="text-base font-semibold text-gray-900">
                           Media Consent <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormDescription className="text-sm text-gray-600">
@@ -516,9 +516,11 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                                 value="true"
                                 checked={field.value === true}
                                 onChange={() => field.onChange(true)}
-                                className="text-yellow-500 focus:ring-yellow-500"
+                                className="text-yellow-500 focus:ring-yellow-500 h-4 w-4"
                               />
-                              <span>I consent</span>
+                              <span className="text-sm text-gray-700">
+                                I consent
+                              </span>
                             </label>
                             <label className="flex items-center space-x-2">
                               <input
@@ -527,9 +529,11 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                                 value="false"
                                 checked={field.value === false}
                                 onChange={() => field.onChange(false)}
-                                className="text-yellow-500 focus:ring-yellow-500"
+                                className="text-yellow-500 focus:ring-yellow-500 h-4 w-4"
                               />
-                              <span>I do not consent</span>
+                              <span className="text-sm text-gray-700">
+                                I do not consent
+                              </span>
                             </label>
                           </div>
                         </FormControl>
@@ -546,7 +550,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="dataPrivacy"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="text-base font-semibold text-gray-900">
                           Data Privacy <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormDescription className="text-sm text-gray-600">
@@ -564,15 +568,15 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           disclosure is required by law.
                         </FormDescription>
                         <FormControl>
-                          <label className="flex items-center space-x-3 mt-4">
+                          <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
                               name="dataPrivacy"
                               checked={field.value}
                               onCheckedChange={(value) => field.onChange(value)}
                               id="data-privacy"
-                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
+                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
                             />
-                            <span>
+                            <span className="text-sm text-gray-700 leading-relaxed">
                               I have read and agree to the Data Privacy policy
                             </span>
                           </label>
@@ -590,7 +594,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="communityGuidelines"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="text-base font-semibold text-gray-900">
                           MSYK Community Guidelines{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
@@ -608,15 +612,15 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           .
                         </FormDescription>
                         <FormControl>
-                          <label className="flex items-center space-x-3 mt-4">
+                          <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
                               name="communityGuidelines"
                               checked={field.value}
                               onCheckedChange={(value) => field.onChange(value)}
                               id="community-guidelines"
-                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
+                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
                             />
-                            <span>
+                            <span className="text-sm text-gray-700 leading-relaxed">
                               I confirm I have read and agree to follow the MSYK
                               Community Guidelines.
                             </span>
@@ -635,7 +639,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="operationsPolicy"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="text-base font-semibold text-gray-900">
                           MSYK User Operations & Safety Policy{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
@@ -653,15 +657,15 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           .
                         </FormDescription>
                         <FormControl>
-                          <label className="flex items-center space-x-3 mt-4">
+                          <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
                               name="operationsPolicy"
                               checked={field.value}
                               onCheckedChange={(value) => field.onChange(value)}
                               id="operations-policy"
-                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white"
+                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
                             />
-                            <span>
+                            <span className="text-sm text-gray-700 leading-relaxed">
                               I confirm I have read and agree to follow the MSYK
                               User Operations & Safety Policy.
                             </span>
@@ -680,7 +684,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="waiverSignature"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
+                        <FormLabel className="text-base font-semibold text-gray-900">
                           Waiver and Hold Harmless Agreement{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
@@ -711,9 +715,9 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             />
                           </>
                         </FormControl>
-                        <FormMessage>
+                        {/* <FormMessage>
                           {actionData?.errors?.waiverSignature}
-                        </FormMessage>
+                        </FormMessage> */}
                       </FormItem>
                     )}
                   />
