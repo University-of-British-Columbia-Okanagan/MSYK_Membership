@@ -23,15 +23,14 @@ model User {
   email                 String  @unique
   password              String
   phone                 String
-  over18                Boolean
-  parentGuardianName    String?
-  parentGuardianPhone   String?
-  parentGuardianEmail   String?
-  photoRelease          Boolean
-  dataPrivacy           Boolean
+  dateOfBirth           String
   emergencyContactName  String
   emergencyContactPhone String
   emergencyContactEmail String
+  mediaConsent          Boolean
+  dataPrivacy           Boolean
+  communityGuidelines   Boolean
+  operationsPolicy      Boolean
 
   // Role Connection
   roleUserId  Int      @default(1)
@@ -39,8 +38,8 @@ model User {
   roleLevel   Int      @default(1)
   allowLevel4 Boolean  @default(false)
 
-  avatarUrl             String?
-  waiverSignature       String?
+  avatarUrl       String?
+  waiverSignature String?
 
   // Relationships
   userWorkshops      UserWorkshop[]

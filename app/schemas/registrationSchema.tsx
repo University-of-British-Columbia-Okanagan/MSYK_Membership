@@ -61,7 +61,7 @@ export const registerSchema = z
         "You must agree to follow the MSYK User Operations & Safety Policy",
     }),
 
-    guardianSignedConsent: z
+    waiverSignature: z
       .string()
       .min(1, "Digital signature is required for the waiver agreement"),
   })

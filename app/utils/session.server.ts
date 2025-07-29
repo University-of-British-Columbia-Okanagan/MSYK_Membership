@@ -4,6 +4,115 @@ import { db } from "./db.server";
 import { registerSchema } from "../schemas/registrationSchema";
 import { loginSchema } from "../schemas/loginSchema";
 import { Prisma } from "@prisma/client";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import * as fs from "fs";
+import * as path from "path";
+import CryptoJS from "crypto-js";
+
+async function generateSignedWaiver(
+  firstName: string,
+  lastName: string,
+  signatureDataURL: string
+): Promise<string> {
+  try {
+    // Read the waiver PDF template
+    const templatePath = path.join(
+      process.cwd(),
+      "public",
+      "documents",
+      "waiver-template.pdf"
+    );
+    const existingPdfBytes = fs.readFileSync(templatePath);
+
+    // Load the PDF
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    const pages = pdfDoc.getPages();
+    const secondPage = pages[1]; // Page 2 where signature goes
+
+    // Get page dimensions
+    const { width, height } = secondPage.getSize();
+
+    // Embed font
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    // Add name (print name field)
+    const fullName = `${firstName} ${lastName}`;
+    secondPage.drawText(fullName, {
+      x: 50, // Adjust X position as needed
+      y: 150, // Adjust Y position to match "Releasor (Print Name)" line
+      size: 12,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    // Add current date
+    const currentDate = new Date().toLocaleDateString();
+    secondPage.drawText(currentDate, {
+      x: 50, // Adjust X position as needed
+      y: 100, // Adjust Y position to match "Date" line
+      size: 12,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    // Process signature image
+    if (signatureDataURL && signatureDataURL.startsWith("data:image/")) {
+      try {
+        // Remove data URL prefix
+        const base64Data = signatureDataURL.split(",")[1];
+        const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
+          c.charCodeAt(0)
+        );
+
+        // Embed signature image
+        const signatureImage = await pdfDoc.embedPng(signatureBytes);
+
+        // Add signature to PDF
+        secondPage.drawImage(signatureImage, {
+          x: 50, // Adjust X position as needed
+          y: 125, // Adjust Y position to match "Signature" line
+          width: 200, // Adjust signature width
+          height: 50, // Adjust signature height
+        });
+      } catch (imageError) {
+        console.error("Error embedding signature image:", imageError);
+        // Continue without signature image if there's an error
+      }
+    }
+
+    // Generate PDF bytes
+    const pdfBytes = await pdfDoc.save();
+
+    // Convert to base64 for encryption
+    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+
+    // Encrypt the PDF
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY || "M4kersp4ce!y";
+    const encryptedPdf = CryptoJS.AES.encrypt(
+      pdfBase64,
+      encryptionKey
+    ).toString();
+
+    return encryptedPdf;
+  } catch (error) {
+    console.error("Error generating signed waiver:", error);
+    throw new Error("Failed to generate signed waiver");
+  }
+}
+
+function decryptWaiver(encryptedData: string): Buffer {
+  try {
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY || "M4kersp4ce!y";
+    const decryptedBase64 = CryptoJS.AES.decrypt(
+      encryptedData,
+      encryptionKey
+    ).toString(CryptoJS.enc.Utf8);
+    return Buffer.from(decryptedBase64, "base64");
+  } catch (error) {
+    console.error("Error decrypting waiver:", error);
+    throw new Error("Failed to decrypt waiver");
+  }
+}
 
 /**
  * Registers a new user account with validation
@@ -24,22 +133,23 @@ export async function register(rawValues: Record<string, any>) {
 
     const data = parsed.data;
 
-    // Handle digital signature as base64 string instead of file
-    let guardianSignedConsentData = null;
-    const guardianSignedConsent = rawValues.guardianSignedConsent;
+    // Handle waiver signature and PDF generation
+    let waiverSignatureData = null;
+    const waiverSignature = rawValues.waiverSignature;
 
     if (
-      typeof guardianSignedConsent === "string" &&
-      guardianSignedConsent.trim() !== "" &&
-      guardianSignedConsent.startsWith("data:image/")
+      typeof waiverSignature === "string" &&
+      waiverSignature.trim() !== "" &&
+      waiverSignature.startsWith("data:image/")
     ) {
-      // Uncomment the following line if you want to store the raw base64 string
-      // guardianSignedConsentData = guardianSignedConsent;
-
-      // Hash the base64 signature data like a password
-      guardianSignedConsentData = await bcrypt.hash(guardianSignedConsent, 10);
+      // Generate signed and encrypted PDF
+      waiverSignatureData = await generateSignedWaiver(
+        data.firstName,
+        data.lastName,
+        waiverSignature
+      );
     } else {
-      guardianSignedConsentData = null;
+      waiverSignatureData = null;
     }
 
     // Hash the password
@@ -53,21 +163,20 @@ export async function register(rawValues: Record<string, any>) {
         email: data.email,
         password: hashedPassword,
         phone: data.phone || "",
-        over18: data.over18 ?? false,
-        photoRelease: data.photoRelease ?? false,
-        dataPrivacy: data.dataPrivacy ?? false,
-        parentGuardianName: data.parentGuardianName || null,
-        parentGuardianPhone: data.parentGuardianPhone || null,
-        parentGuardianEmail: data.parentGuardianEmail || null,
-        guardianSignedConsent: guardianSignedConsentData, // Store base64 string
+        dateOfBirth: data.dateOfBirth,
         emergencyContactName: data.emergencyContactName || "",
         emergencyContactPhone: data.emergencyContactPhone || "",
         emergencyContactEmail: data.emergencyContactEmail || "",
+        mediaConsent: data.mediaConsent ?? false,
+        dataPrivacy: data.dataPrivacy ?? false,
+        communityGuidelines: data.communityGuidelines ?? false,
+        operationsPolicy: data.operationsPolicy ?? false,
+        waiverSignature: waiverSignatureData,
       },
       select: {
         id: true,
         email: true,
-        guardianSignedConsent: true,
+        waiverSignature: true,
       },
     });
 

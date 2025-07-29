@@ -28,7 +28,7 @@ export async function loader({ request }: { request: Request }) {
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
 
-  const guardianSignedConsent = formData.get("guardianSignedConsent");
+  const waiverSignature = formData.get("waiverSignature");
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
   rawValues.mediaConsent = rawValues.mediaConsent === "on";
@@ -55,13 +55,10 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Ensure signature data is properly handled
-  if (
-    typeof guardianSignedConsent === "string" &&
-    guardianSignedConsent.trim() !== ""
-  ) {
-    rawValues.guardianSignedConsent = guardianSignedConsent;
+  if (typeof waiverSignature === "string" && waiverSignature.trim() !== "") {
+    rawValues.waiverSignature = waiverSignature;
   } else {
-    rawValues.guardianSignedConsent = null;
+    rawValues.waiverSignature = null;
   }
 
   const result = await register(rawValues);
@@ -102,7 +99,7 @@ interface FormErrors {
   dataPrivacy?: string[];
   communityGuidelines?: string[];
   operationsPolicy?: string[];
-  guardianSignedConsent?: string[];
+  waiverSignature?: string[];
 }
 
 interface ActionData {
@@ -250,7 +247,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       dataPrivacy: false,
       communityGuidelines: false,
       operationsPolicy: false,
-      guardianSignedConsent: undefined,
+      waiverSignature: undefined,
     },
   });
 
@@ -676,7 +673,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   {/* Waiver and Hold Harmless Agreement */}
                   <FormField
                     control={form.control}
-                    name="guardianSignedConsent"
+                    name="waiverSignature"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
@@ -700,13 +697,11 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           <DigitalSignaturePad
                             value={field.value}
                             onChange={field.onChange}
-                            error={
-                              actionData?.errors?.guardianSignedConsent?.[0]
-                            }
+                            error={actionData?.errors?.waiverSignature?.[0]}
                           />
                         </FormControl>
                         <FormMessage>
-                          {actionData?.errors?.guardianSignedConsent}
+                          {actionData?.errors?.waiverSignature}
                         </FormMessage>
                       </FormItem>
                     )}
