@@ -496,7 +496,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="mediaConsent"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold text-gray-900">
+                        <FormLabel className="text-base text-gray-900">
                           Media Consent <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormDescription className="text-sm text-gray-600">
@@ -550,7 +550,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="dataPrivacy"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold text-gray-900">
+                        <FormLabel className="text-base text-gray-900">
                           Data Privacy <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormDescription className="text-sm text-gray-600">
@@ -594,7 +594,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="communityGuidelines"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold text-gray-900">
+                        <FormLabel className="text-base text-gray-900">
                           MSYK Community Guidelines{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
@@ -639,7 +639,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="operationsPolicy"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold text-gray-900">
+                        <FormLabel className="text-base text-gray-900">
                           MSYK User Operations & Safety Policy{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
@@ -684,7 +684,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     name="waiverSignature"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-base font-semibold text-gray-900">
+                        <FormLabel className="text-base text-gray-900">
                           Waiver and Hold Harmless Agreement{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
