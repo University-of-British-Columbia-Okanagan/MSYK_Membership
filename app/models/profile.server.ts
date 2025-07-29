@@ -16,7 +16,8 @@ export type VolunteerHourEntry = {
   userId: number;
   startTime: Date;
   endTime: Date;
-  description: string | null;
+  description: string;
+  isResubmission: boolean;
   status: string;
   createdAt: Date;
   updatedAt: Date;

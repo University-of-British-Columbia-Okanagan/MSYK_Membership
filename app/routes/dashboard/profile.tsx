@@ -346,9 +346,9 @@ export default function ProfilePage() {
     {
       header: "Status",
       render: (entry) => (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col items-center gap-1">
           <span
-            className={`px-2 py-1 rounded-full text-xs font-medium ${
+            className={`px-2 py-1 rounded-full text-xs font-medium text-center ${
               entry.status === "approved"
                 ? "bg-green-100 text-green-800"
                 : entry.status === "denied"

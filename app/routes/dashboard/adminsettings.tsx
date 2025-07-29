@@ -711,6 +711,7 @@ function VolunteerHourStatusControl({
   hour: {
     id: number;
     status: string;
+    isResubmission?: boolean;
     user: {
       firstName: string;
       lastName: string;
@@ -801,11 +802,11 @@ function VolunteerHourStatusControl({
 
   return (
     <>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col items-center gap-1">
         <select
           value={status}
           onChange={(e) => handleStatusChange(e.target.value)}
-          className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${getStatusColor(
+          className={`px-2 py-1 rounded-full text-xs font-medium border-0 text-center ${getStatusColor(
             status
           )}`}
         >
@@ -815,11 +816,11 @@ function VolunteerHourStatusControl({
           <option value="resolved">Resolved</option>
         </select>
 
-        {/* {hour.isResubmission && (
+        {hour.isResubmission && (
           <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
             Resubmission
           </span>
-        )} */}
+        )}
       </div>
 
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
@@ -903,6 +904,7 @@ export default function AdminSettings() {
         endTime: string;
         description: string | null;
         status: string;
+        isResubmission: boolean;
         createdAt: string;
         updatedAt: string;
         user: {
@@ -919,6 +921,7 @@ export default function AdminSettings() {
         description: string | null;
         status: string;
         previousStatus: string | null;
+        isResubmission: boolean;
         createdAt: string;
         updatedAt: string;
         user: {
@@ -3166,7 +3169,7 @@ export default function AdminSettings() {
                           {
                             header: "Status",
                             render: (hour: any) => (
-                              <div className="flex flex-col gap-1">
+                              <div className="flex flex-col items-center gap-1">
                                 <VolunteerHourStatusControl hour={hour} />
                                 {hour.isResubmission && (
                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -3476,9 +3479,9 @@ export default function AdminSettings() {
                             const previousStatus = action.previousStatus;
 
                             return (
-                              <div className="space-y-1">
+                              <div className="flex flex-col items-center space-y-1">
                                 {/* Status Change Display */}
-                                <div className="flex items-center space-x-2">
+                                <div className="flex items-center justify-center space-x-2">
                                   {previousStatus && (
                                     <>
                                       <span
@@ -3517,9 +3520,11 @@ export default function AdminSettings() {
                                 </div>
 
                                 {action.isResubmission && (
-                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                    Resubmission
-                                  </span>
+                                  <div className="flex justify-center">
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      Resubmission
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             );
