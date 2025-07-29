@@ -815,12 +815,6 @@ function VolunteerHourStatusControl({
           <option value="denied">Denied</option>
           <option value="resolved">Resolved</option>
         </select>
-
-        {hour.isResubmission && (
-          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-            Resubmission
-          </span>
-        )}
       </div>
 
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
