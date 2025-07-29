@@ -20,7 +20,7 @@ async function generateSignedWaiver(
       process.cwd(),
       "public",
       "documents",
-      "waiver-template.pdf"
+      "msyk-waiver-template.pdf"
     );
     const existingPdfBytes = fs.readFileSync(templatePath);
 
