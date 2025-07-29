@@ -711,6 +711,7 @@ function VolunteerHourStatusControl({
   hour: {
     id: number;
     status: string;
+    isResubmission?: boolean;
     user: {
       firstName: string;
       lastName: string;
@@ -801,18 +802,20 @@ function VolunteerHourStatusControl({
 
   return (
     <>
-      <select
-        value={status}
-        onChange={(e) => handleStatusChange(e.target.value)}
-        className={`px-2 py-1 rounded-full text-xs font-medium border-0 ${getStatusColor(
-          status
-        )}`}
-      >
-        <option value="pending">Pending</option>
-        <option value="approved">Approved</option>
-        <option value="denied">Denied</option>
-        <option value="resolved">Resolved</option>
-      </select>
+      <div className="flex flex-col items-center gap-1">
+        <select
+          value={status}
+          onChange={(e) => handleStatusChange(e.target.value)}
+          className={`px-2 py-1 rounded-full text-xs font-medium border-0 text-center ${getStatusColor(
+            status
+          )}`}
+        >
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="denied">Denied</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </div>
 
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <AlertDialogContent>
@@ -895,6 +898,7 @@ export default function AdminSettings() {
         endTime: string;
         description: string | null;
         status: string;
+        isResubmission: boolean;
         createdAt: string;
         updatedAt: string;
         user: {
@@ -911,6 +915,7 @@ export default function AdminSettings() {
         description: string | null;
         status: string;
         previousStatus: string | null;
+        isResubmission: boolean;
         createdAt: string;
         updatedAt: string;
         user: {
@@ -1023,6 +1028,9 @@ export default function AdminSettings() {
   const [volunteerStatusFilter, setVolunteerStatusFilter] =
     useState<string>("pending");
 
+  // Show only resubmissions
+  const [showResubmissionsOnly, setShowResubmissionsOnly] = useState(false);
+
   // Status filters for recent actions
   const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
 
@@ -1063,9 +1071,19 @@ export default function AdminSettings() {
         fullName.includes(volunteerSearchName.toLowerCase());
 
       // Status filter
-      const statusMatch =
-        volunteerStatusFilter === "all" ||
-        hour.status === volunteerStatusFilter;
+      let statusMatch = true;
+      if (showResubmissionsOnly) {
+        // When "Show resubmissions and denied hours only" is checked,
+        // only show pending resubmissions and denied hours
+        statusMatch =
+          (hour.status === "pending" && hour.isResubmission) ||
+          hour.status === "denied";
+      } else {
+        // Normal status filtering when checkbox is unchecked
+        statusMatch =
+          volunteerStatusFilter === "all" ||
+          hour.status === volunteerStatusFilter;
+      }
 
       // Date/time range filtering
       let dateTimeMatch = true;
@@ -1092,6 +1110,7 @@ export default function AdminSettings() {
     volunteerHours,
     volunteerSearchName,
     volunteerStatusFilter,
+    showResubmissionsOnly,
     appliedVolunteerFromDate,
     appliedVolunteerFromTime,
     appliedVolunteerToDate,
@@ -1218,6 +1237,7 @@ export default function AdminSettings() {
   const handleClearVolunteerFilters = () => {
     setVolunteerSearchName("");
     setVolunteerStatusFilter("pending"); // Reset to default
+    setShowResubmissionsOnly(false);
     setVolunteerFromDate("");
     setVolunteerFromTime("");
     setVolunteerToDate("");
@@ -2860,7 +2880,10 @@ export default function AdminSettings() {
                     <CardTitle>Manage Volunteer Hours</CardTitle>
                     <CardDescription>
                       Review and approve/deny/resolve/pending volunteer hour
-                      submissions from all users
+                      submissions. Use the "Show resubmissions and denied hours
+                      only" filter to focus on hours that need attention -
+                      denied hours that need feedback and resubmissions that
+                      need review.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -2897,7 +2920,12 @@ export default function AdminSettings() {
                               onChange={(e) =>
                                 setVolunteerStatusFilter(e.target.value)
                               }
-                              className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                              disabled={showResubmissionsOnly}
+                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base ${
+                                showResubmissionsOnly
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : ""
+                              }`}
                             >
                               <option value="all">All Status</option>
                               <option value="pending">Pending</option>
@@ -2905,7 +2933,45 @@ export default function AdminSettings() {
                               <option value="denied">Denied</option>
                               <option value="resolved">Resolved</option>
                             </select>
+                            {showResubmissionsOnly && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Status filter is disabled when showing
+                                resubmissions and denied hours only
+                              </p>
+                            )}
                           </div>
+                        </div>
+
+                        <div className="mb-6">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="showResubmissionsOnly"
+                              checked={showResubmissionsOnly}
+                              onChange={(e) =>
+                                setShowResubmissionsOnly(e.target.checked)
+                              }
+                              className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <label
+                              htmlFor="showResubmissionsOnly"
+                              className="text-sm font-medium text-gray-700"
+                            >
+                              Show resubmissions and denied hours only
+                            </label>
+                            <span className="text-xs text-gray-500">
+                              (Shows only pending resubmissions and denied hours
+                              - overrides status filter)
+                            </span>
+                          </div>
+                          {showResubmissionsOnly && (
+                            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                              <strong>Active:</strong> Showing only pending
+                              hours marked as resubmissions and denied hours.
+                              Status filter is disabled. Uncheck to use normal
+                              filtering.
+                            </div>
+                          )}
                         </div>
 
                         {/* Date and Time Filters - Two Rows */}
@@ -3024,6 +3090,7 @@ export default function AdminSettings() {
 
                           {(volunteerSearchName ||
                             volunteerStatusFilter !== "pending" ||
+                            showResubmissionsOnly ||
                             appliedVolunteerFromDate ||
                             appliedVolunteerFromTime ||
                             appliedVolunteerToDate ||
@@ -3096,7 +3163,14 @@ export default function AdminSettings() {
                           {
                             header: "Status",
                             render: (hour: any) => (
-                              <VolunteerHourStatusControl hour={hour} />
+                              <div className="flex flex-col items-center gap-1">
+                                <VolunteerHourStatusControl hour={hour} />
+                                {hour.isResubmission && (
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    Resubmission
+                                  </span>
+                                )}
+                              </div>
                             ),
                           },
                           {
@@ -3305,24 +3379,29 @@ export default function AdminSettings() {
                       <div className="flex flex-col space-y-2">
                         <div className="flex items-center justify-between text-sm text-gray-600">
                           <span>
-                            Showing {actionsStartIndex + 1}-
+                            Showing {volunteerStartIndex + 1}-
                             {Math.min(
-                              actionsEndIndex,
-                              sortedRecentActions.length
+                              volunteerEndIndex,
+                              sortedVolunteerHours.length
                             )}{" "}
-                            of {sortedRecentActions.length} entries
-                            {appliedActionsFromDate &&
-                              appliedActionsFromTime &&
-                              appliedActionsToDate &&
-                              appliedActionsToTime && (
+                            of {sortedVolunteerHours.length} entries
+                            {showResubmissionsOnly && (
+                              <span className="ml-2 text-blue-600 font-medium">
+                                (Pending Resubmissions + Denied Hours Only)
+                              </span>
+                            )}
+                            {appliedVolunteerFromDate &&
+                              appliedVolunteerFromTime &&
+                              appliedVolunteerToDate &&
+                              appliedVolunteerToTime && (
                                 <span className="ml-2 text-yellow-600">
                                   (filtered from{" "}
                                   {new Date(
-                                    `${appliedActionsFromDate}T${appliedActionsFromTime}`
+                                    `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
                                   ).toLocaleString()}{" "}
                                   to{" "}
                                   {new Date(
-                                    `${appliedActionsToDate}T${appliedActionsToTime}`
+                                    `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
                                   ).toLocaleString()}
                                   )
                                 </span>
@@ -3332,17 +3411,20 @@ export default function AdminSettings() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-sm">
                             <span className="text-blue-700 font-medium">
-                              Total Hours: {totalRecentActionHours.toFixed(1)}{" "}
+                              Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
                               hours
                             </span>
-                            {actionsStatusFilter !== "all" && (
-                              <span className="text-gray-600">
-                                (Status:{" "}
-                                {actionsStatusFilter.charAt(0).toUpperCase() +
-                                  actionsStatusFilter.slice(1)}
-                                )
-                              </span>
-                            )}
+                            {!showResubmissionsOnly &&
+                              volunteerStatusFilter !== "all" && (
+                                <span className="text-gray-600">
+                                  (Status:{" "}
+                                  {volunteerStatusFilter
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                    volunteerStatusFilter.slice(1)}
+                                  )
+                                </span>
+                              )}
                           </div>
                         </div>
                       </div>
@@ -3390,58 +3472,54 @@ export default function AdminSettings() {
                             const currentStatus = action.status;
                             const previousStatus = action.previousStatus;
 
-                            // If no previous status, just show current status
-                            if (!previousStatus) {
-                              return (
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    currentStatus === "approved"
-                                      ? "bg-green-100 text-green-800"
-                                      : currentStatus === "denied"
-                                      ? "bg-red-100 text-red-800"
-                                      : currentStatus === "resolved"
-                                      ? "bg-purple-100 text-purple-800"
-                                      : "bg-yellow-100 text-yellow-800"
-                                  }`}
-                                >
-                                  {currentStatus.charAt(0).toUpperCase() +
-                                    currentStatus.slice(1)}
-                                </span>
-                              );
-                            }
-
-                            // Show previous -> current status
                             return (
-                              <div className="flex items-center space-x-2">
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    previousStatus === "approved"
-                                      ? "bg-green-100 text-green-800"
-                                      : previousStatus === "denied"
-                                      ? "bg-red-100 text-red-800"
-                                      : previousStatus === "resolved"
-                                      ? "bg-purple-100 text-purple-800"
-                                      : "bg-yellow-100 text-yellow-800"
-                                  }`}
-                                >
-                                  {previousStatus.charAt(0).toUpperCase() +
-                                    previousStatus.slice(1)}
-                                </span>
-                                <span className="text-gray-400">→</span>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    currentStatus === "approved"
-                                      ? "bg-green-100 text-green-800"
-                                      : currentStatus === "denied"
-                                      ? "bg-red-100 text-red-800"
-                                      : currentStatus === "resolved"
-                                      ? "bg-purple-100 text-purple-800"
-                                      : "bg-yellow-100 text-yellow-800"
-                                  }`}
-                                >
-                                  {currentStatus.charAt(0).toUpperCase() +
-                                    currentStatus.slice(1)}
-                                </span>
+                              <div className="flex flex-col items-center space-y-1">
+                                {/* Status Change Display */}
+                                <div className="flex items-center justify-center space-x-2">
+                                  {previousStatus && (
+                                    <>
+                                      <span
+                                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          previousStatus === "approved"
+                                            ? "bg-green-100 text-green-800"
+                                            : previousStatus === "denied"
+                                            ? "bg-red-100 text-red-800"
+                                            : previousStatus === "resolved"
+                                            ? "bg-purple-100 text-purple-800"
+                                            : "bg-yellow-100 text-yellow-800"
+                                        }`}
+                                      >
+                                        {previousStatus
+                                          .charAt(0)
+                                          .toUpperCase() +
+                                          previousStatus.slice(1)}
+                                      </span>
+                                      <span className="text-gray-400">→</span>
+                                    </>
+                                  )}
+                                  <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      currentStatus === "approved"
+                                        ? "bg-green-100 text-green-800"
+                                        : currentStatus === "denied"
+                                        ? "bg-red-100 text-red-800"
+                                        : currentStatus === "resolved"
+                                        ? "bg-purple-100 text-purple-800"
+                                        : "bg-yellow-100 text-yellow-800"
+                                    }`}
+                                  >
+                                    {currentStatus.charAt(0).toUpperCase() +
+                                      currentStatus.slice(1)}
+                                  </span>
+                                </div>
+
+                                {action.isResubmission && (
+                                  <div className="flex justify-center">
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      Resubmission
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             );
                           },

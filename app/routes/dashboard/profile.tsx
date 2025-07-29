@@ -12,7 +12,14 @@ import type { LoaderFunction } from "react-router-dom";
 import Sidebar from "../../components/ui/Dashboard/Sidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
-import { CreditCard, Medal, Clock, Plus } from "lucide-react";
+import {
+  CreditCard,
+  Medal,
+  Clock,
+  Plus,
+  FileText,
+  Download,
+} from "lucide-react";
 import {
   Select,
   SelectTrigger,
@@ -49,6 +56,9 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
 }
 
 export async function action({ request }: { request: Request }) {
+  const formData = await request.formData();
+  const action = formData.get("_action");
+
   const roleUser = await getRoleUser(request);
 
   if (!roleUser?.userId) {
@@ -61,17 +71,20 @@ export async function action({ request }: { request: Request }) {
     return { error: "You must be an active volunteer to log hours" };
   }
 
-  const formData = await request.formData();
-  const action = formData.get("_action");
-
   if (action === "logHours") {
     const startTimeStr = formData.get("startTime") as string;
     const endTimeStr = formData.get("endTime") as string;
-    const description = (formData.get("description") as string) || undefined;
+    const description = formData.get("description") as string;
+    const isResubmission = formData.get("isResubmission") === "true";
 
     // Validate the data
     if (!startTimeStr || !endTimeStr) {
       return { error: "Start time and end time are required" };
+    }
+
+    // Add description validation
+    if (!description || description.trim() === "") {
+      return { error: "Description is required" };
     }
 
     const startTime = new Date(startTimeStr);
@@ -98,11 +111,12 @@ export async function action({ request }: { request: Request }) {
       return { error: "Volunteer session cannot be longer than 24 hours" };
     }
 
-    // Check for overlapping volunteer hours
+    // Check for overlapping volunteer hours (pass isResubmission flag)
     const hasOverlap = await checkVolunteerHourOverlap(
       roleUser.userId,
       startTime,
-      endTime
+      endTime,
+      isResubmission
     );
     if (hasOverlap) {
       return {
@@ -112,9 +126,14 @@ export async function action({ request }: { request: Request }) {
     }
 
     try {
-      await logVolunteerHours(roleUser.userId, startTime, endTime, description);
+      await logVolunteerHours(
+        roleUser.userId,
+        startTime,
+        endTime,
+        description.trim(),
+        isResubmission
+      );
       return { success: "Volunteer hours logged successfully!" };
-      // return redirect("/dashboard/profile?success=hours-logged");
     } catch (error) {
       console.error("Error logging volunteer hours:", error);
       return { error: "Failed to log volunteer hours. Please try again." };
@@ -160,6 +179,9 @@ export default function ProfilePage() {
 
   // State for expanding denied hours message
   const [showDeniedMessage, setShowDeniedMessage] = useState(false);
+
+  // For resubmission hours
+  const [isResubmission, setIsResubmission] = useState(false);
 
   // Clear form after successful submission and auto-hide success message
   useEffect(() => {
@@ -331,19 +353,26 @@ export default function ProfilePage() {
     {
       header: "Status",
       render: (entry) => (
-        <span
-          className={`px-2 py-1 rounded-full text-xs font-medium ${
-            entry.status === "approved"
-              ? "bg-green-100 text-green-800"
-              : entry.status === "denied"
-              ? "bg-red-100 text-red-800"
-              : entry.status === "resolved"
-              ? "bg-purple-100 text-purple-800"
-              : "bg-yellow-100 text-yellow-800"
-          }`}
-        >
-          {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
-        </span>
+        <div className="flex flex-col items-center gap-1">
+          <span
+            className={`px-2 py-1 rounded-full text-xs font-medium text-center ${
+              entry.status === "approved"
+                ? "bg-green-100 text-green-800"
+                : entry.status === "denied"
+                ? "bg-red-100 text-red-800"
+                : entry.status === "resolved"
+                ? "bg-purple-100 text-purple-800"
+                : "bg-yellow-100 text-yellow-800"
+            }`}
+          >
+            {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
+          </span>
+          {entry.isResubmission && (
+            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              Resubmission
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -583,6 +612,45 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
+            <div>
+              <div className="p-6 sm:p-8 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-4">
+                  <FileText className="h-5 w-5 text-yellow-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Documents
+                  </h3>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-medium text-gray-900">
+                        Waiver and Hold Harmless Agreement
+                      </span>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Your signed liability waiver document
+                      </p>
+                    </div>
+                    <div>
+                      {user.waiverSignature &&
+                      !user.waiverSignature.includes("Placeholder") ? (
+                        <a
+                          href="/dashboard/profile/download-waiver"
+                          className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                        >
+                          <Download className="h-4 w-4" />
+                          Download
+                        </a>
+                      ) : (
+                        <span className="text-sm text-gray-500 italic">
+                          Waiver document unavailable for download
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Account Activity */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
@@ -625,9 +693,9 @@ export default function ProfilePage() {
                         <p className="text-sm text-blue-800">
                           <strong>How to log volunteer hours:</strong> Select
                           the start and end time for your volunteer session. You
-                          can optionally add a brief description of what you
-                          worked on. Your hours will be reviewed and approved by
-                          an administrator.
+                          must add a brief description of what you worked on.
+                          Your hours will be reviewed and approved by an
+                          administrator.
                         </p>
                       </div>
 
@@ -648,6 +716,11 @@ export default function ProfilePage() {
                         className="grid grid-cols-1 md:grid-cols-4 gap-4"
                       >
                         <input type="hidden" name="_action" value="logHours" />
+                        <input
+                          type="hidden"
+                          name="isResubmission"
+                          value={isResubmission ? "true" : "false"}
+                        />
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -679,7 +752,7 @@ export default function ProfilePage() {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description (Optional)
+                            Description
                           </label>
                           <input
                             type="text"
@@ -687,6 +760,7 @@ export default function ProfilePage() {
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             placeholder="What did you work on?"
+                            required
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                           />
                         </div>
@@ -701,6 +775,38 @@ export default function ProfilePage() {
                           </button>
                         </div>
                       </Form>
+
+                      {hasDeniedHours && (
+                        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <div className="flex items-start space-x-3">
+                            <input
+                              type="checkbox"
+                              id="isResubmission"
+                              name="isResubmission"
+                              value="true"
+                              checked={isResubmission}
+                              onChange={(e) =>
+                                setIsResubmission(e.target.checked)
+                              }
+                              className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <div className="flex-1">
+                              <label
+                                htmlFor="isResubmission"
+                                className="text-sm font-medium text-blue-900 cursor-pointer"
+                              >
+                                This is a resubmission for denied hours
+                              </label>
+                              <p className="text-xs text-blue-700 mt-1">
+                                Check this if you're resubmitting hours that
+                                were previously denied. This allows you to use
+                                the same or overlapping time periods and helps
+                                administrators track resubmissions.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Recent Hours */}

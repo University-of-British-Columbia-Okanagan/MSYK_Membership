@@ -23,15 +23,14 @@ model User {
   email                 String  @unique
   password              String
   phone                 String
-  over18                Boolean
-  parentGuardianName    String?
-  parentGuardianPhone   String?
-  parentGuardianEmail   String?
-  photoRelease          Boolean
-  dataPrivacy           Boolean
+  dateOfBirth           String
   emergencyContactName  String
   emergencyContactPhone String
   emergencyContactEmail String
+  mediaConsent          Boolean
+  dataPrivacy           Boolean
+  communityGuidelines   Boolean
+  operationsPolicy      Boolean
 
   // Role Connection
   roleUserId  Int      @default(1)
@@ -39,8 +38,8 @@ model User {
   roleLevel   Int      @default(1)
   allowLevel4 Boolean  @default(false)
 
-  avatarUrl             String?
-  guardianSignedConsent String? // This will store the base64 image data
+  avatarUrl       String?
+  waiverSignature String?
 
   // Relationships
   userWorkshops      UserWorkshop[]
@@ -68,9 +67,10 @@ model VolunteerTimetable {
   userId         Int
   startTime      DateTime
   endTime        DateTime
-  description    String?
+  description    String
   status         String   @default("pending") // "pending", "approved", "denied", "resolved"
   previousStatus String?
+  isResubmission Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

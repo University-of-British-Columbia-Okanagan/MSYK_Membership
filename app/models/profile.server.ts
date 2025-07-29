@@ -9,6 +9,7 @@ export type UserProfileData = {
   membershipType: string;
   nextBillingDate: string | null;
   cardLast4: string;
+  waiverSignature: string | null;
 };
 
 export type VolunteerHourEntry = {
@@ -16,7 +17,8 @@ export type VolunteerHourEntry = {
   userId: number;
   startTime: Date;
   endTime: Date;
-  description: string | null;
+  description: string;
+  isResubmission: boolean;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -38,24 +40,19 @@ export async function getProfileDetails(request: Request) {
       lastName: true,
       avatarUrl: true,
       email: true,
+      waiverSignature: true,
     },
   });
-
-  console.log("User:", user);
 
   const membership = await db.userMembership.findFirst({
     where: { userId: parseInt(userId), status: "active" },
     include: { membershipPlan: true },
   });
 
-  console.log("Membership:", membership);
-
   const payment = await db.userPaymentInformation.findFirst({
     where: { userId: parseInt(userId) },
     select: { cardLast4: true, createdAt: true },
   });
-
-  console.log("Payment:", payment);
 
   if (!user) return null;
 
@@ -67,6 +64,7 @@ export async function getProfileDetails(request: Request) {
     membershipType: membership?.membershipPlan.type ?? "N/A",
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
+    waiverSignature: user.waiverSignature,
   };
 }
 
@@ -107,14 +105,16 @@ export async function getVolunteerHours(
  * @param userId - The ID of the user logging volunteer hours
  * @param startTime - The start time of the volunteer session
  * @param endTime - The end time of the volunteer session
- * @param description - Optional description of the volunteer work performed
+ * @param description - Description of the volunteer work performed
+ * @param isResubmission - Whether this is a resubmission for denied hours
  * @returns Promise<VolunteerHourEntry> - The created volunteer hour entry
  */
 export async function logVolunteerHours(
   userId: number,
   startTime: Date,
   endTime: Date,
-  description?: string
+  description: string,
+  isResubmission: boolean = false
 ) {
   return await db.volunteerTimetable.create({
     data: {
@@ -122,6 +122,7 @@ export async function logVolunteerHours(
       startTime,
       endTime,
       description,
+      isResubmission,
     },
   });
 }
@@ -131,44 +132,49 @@ export async function logVolunteerHours(
  * @param userId - The ID of the user to check for overlaps
  * @param startTime - The proposed start time of the new volunteer session
  * @param endTime - The proposed end time of the new volunteer session
+ * @param isResubmission - Whether this is a resubmission (allows overlap with denied hours)
  * @returns Promise<boolean> - True if there's an overlap, false otherwise
  */
 export async function checkVolunteerHourOverlap(
   userId: number,
   startTime: Date,
-  endTime: Date
+  endTime: Date,
+  isResubmission: boolean = false
 ): Promise<boolean> {
+  const whereClause: any = {
+    userId,
+    OR: [
+      // New session starts during existing session
+      {
+        AND: [
+          { startTime: { lte: startTime } },
+          { endTime: { gt: startTime } },
+        ],
+      },
+      // New session ends during existing session
+      {
+        AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }],
+      },
+      // New session completely contains existing session
+      {
+        AND: [{ startTime: { gte: startTime } }, { endTime: { lte: endTime } }],
+      },
+      // Existing session completely contains new session
+      {
+        AND: [{ startTime: { lte: startTime } }, { endTime: { gte: endTime } }],
+      },
+    ],
+  };
+
+  // If this is a resubmission, exclude denied hours from overlap check
+  if (isResubmission) {
+    whereClause.status = {
+      not: "denied",
+    };
+  }
+
   const overlappingHours = await db.volunteerTimetable.findFirst({
-    where: {
-      userId,
-      OR: [
-        // New session starts during existing session
-        {
-          AND: [
-            { startTime: { lte: startTime } },
-            { endTime: { gt: startTime } },
-          ],
-        },
-        // New session ends during existing session
-        {
-          AND: [{ startTime: { lt: endTime } }, { endTime: { gte: endTime } }],
-        },
-        // New session completely contains existing session
-        {
-          AND: [
-            { startTime: { gte: startTime } },
-            { endTime: { lte: endTime } },
-          ],
-        },
-        // Existing session completely contains new session
-        {
-          AND: [
-            { startTime: { lte: startTime } },
-            { endTime: { gte: endTime } },
-          ],
-        },
-      ],
-    },
+    where: whereClause,
   });
 
   return overlappingHours !== null;
@@ -201,18 +207,21 @@ export async function getAllVolunteerHours() {
  * @param status - The new status to set (e.g., "approved", "denied", "pending")
  * @returns Promise<VolunteerHourEntry> - The updated volunteer hour entry
  */
-export async function updateVolunteerHourStatus(hourId: number, status: string) {
+export async function updateVolunteerHourStatus(
+  hourId: number,
+  status: string
+) {
   // Get the current status before updating
   const currentEntry = await db.volunteerTimetable.findUnique({
     where: { id: hourId },
-    select: { status: true }
+    select: { status: true },
   });
 
   const previousStatus = currentEntry?.status || "pending";
 
   return await db.volunteerTimetable.update({
     where: { id: hourId },
-    data: { 
+    data: {
       status,
       previousStatus: previousStatus,
       updatedAt: new Date(),

@@ -43,6 +43,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cross-env": "^7.0.3",
+    "crypto-js": "^4.2.0",
     "cypress": "^13.17.0",
     "date-fns": "^4.1.0",
     "dotenv": "^17.0.1",
@@ -51,6 +52,7 @@
     "mailgun.js": "^11.1.0",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.10.0",
+    "pdf-lib": "^1.17.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.2",
@@ -72,6 +74,7 @@
     "@testing-library/user-event": "^14.5.2",
     "@types/bcrypt": "^5.0.2",
     "@types/bcryptjs": "^2.4.6",
+    "@types/crypto-js": "^4.2.2",
     "@types/express": "^5.0.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.17.14",
@@ -90,7 +93,7 @@
     "ts-jest": "^29.4.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
-    "vite": "^5.4.11",
+    "vite": "^7.0.6",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.0.6"
   }
