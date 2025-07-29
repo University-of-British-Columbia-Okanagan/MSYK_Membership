@@ -688,7 +688,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           Please download, review, and digitally sign the waiver
                           document. You can{" "}
                           <a
-                            href="/documents/waiver.pdf"
+                            href="/documents/msyk-waiver-template.pdf"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-yellow-600 hover:text-yellow-700 underline"
