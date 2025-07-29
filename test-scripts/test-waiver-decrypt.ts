@@ -1,5 +1,5 @@
-import { decryptWaiver } from "./app/utils/session.server";
-import { db } from "./app/utils/db.server";
+import { decryptWaiver } from "../app/utils/session.server";
+import { db } from "../app/utils/db.server";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -10,6 +10,12 @@ async function testWaiverDecryption() {
       where: {
         waiverSignature: {
           not: null,
+        },
+        // Exclude placeholder data from seed
+        NOT: {
+          waiverSignature: {
+            contains: "Placeholder",
+          },
         },
       },
       select: {
@@ -22,23 +28,25 @@ async function testWaiverDecryption() {
     });
 
     if (!user || !user.waiverSignature) {
-      console.log("No user found with a waiver signature");
+      console.log("❌ No user found with a real waiver signature");
+      console.log(
+        "💡 Please register a new user through the web form with an actual signature to test decryption"
+      );
       return;
     }
 
-    console.log(`Testing decryption for user: ${user.firstName} ${user.lastName} (${user.email})`);
+    console.log(
+      `Testing decryption for user: ${user.firstName} ${user.lastName} (${user.email})`
+    );
 
     // Decrypt the waiver
     const decryptedPdfBuffer = decryptWaiver(user.waiverSignature);
 
-    // Create output directory if it doesn't exist
-    const outputDir = path.join(process.cwd(), "test-output");
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir);
-    }
-
     // Save the decrypted PDF to a file
-    const outputPath = path.join(outputDir, `waiver-${user.id}-${user.firstName}-${user.lastName}.pdf`);
+    const outputPath = path.join(
+      "",
+      `waiver-${user.id}-${user.firstName}-${user.lastName}.pdf`
+    );
     fs.writeFileSync(outputPath, decryptedPdfBuffer);
 
     console.log(`✓ Successfully decrypted and saved waiver to: ${outputPath}`);
@@ -47,7 +55,6 @@ async function testWaiverDecryption() {
     console.log(`  - The user's signature`);
     console.log(`  - Name: ${user.firstName} ${user.lastName}`);
     console.log(`  - Current date when signed`);
-
   } catch (error) {
     console.error("❌ Error testing waiver decryption:", error);
   } finally {

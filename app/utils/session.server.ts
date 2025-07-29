@@ -9,6 +9,38 @@ import * as fs from "fs";
 import * as path from "path";
 import CryptoJS from "crypto-js";
 
+/**
+ * Generates a digitally signed and encrypted waiver PDF document
+ *
+ * This function takes a PDF template, overlays the user's information (name, signature, date),
+ * and returns an encrypted version of the signed document for secure storage.
+ *
+ * @param firstName - The user's first name to be printed on the waiver
+ * @param lastName - The user's last name to be printed on the waiver
+ * @param signatureDataURL - Base64 encoded PNG signature image data (must start with "data:image/")
+ * @returns Promise<string> - AES encrypted base64 string of the signed PDF document
+ *
+ * @throws Error - Throws "Failed to generate signed waiver" if PDF generation fails
+ *
+ * @example
+ * ```typescript
+ * const encryptedWaiver = await generateSignedWaiver(
+ *   "John",
+ *   "Doe",
+ *   "data:image/png;base64,iVBORw0KGgo..."
+ * );
+ * ```
+ *
+ * @security
+ * - Uses AES encryption with key from WAIVER_ENCRYPTION_KEY environment variable
+ * - Signature is embedded as PNG image on page 2 of the PDF template
+ * - All user data is positioned using fixed coordinates for consistent layout
+ *
+ * @dependencies
+ * - Requires "msyk-waiver-template.pdf" in public/documents/ directory
+ * - Uses pdf-lib library for PDF manipulation
+ * - Uses crypto-js for AES encryption
+ */
 async function generateSignedWaiver(
   firstName: string,
   lastName: string,
@@ -22,70 +54,60 @@ async function generateSignedWaiver(
       "documents",
       "msyk-waiver-template.pdf"
     );
-    const existingPdfBytes = fs.readFileSync(templatePath);
 
-    // Load the PDF
+    const existingPdfBytes = fs.readFileSync(templatePath);
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
     const pages = pdfDoc.getPages();
-    const secondPage = pages[1]; // Page 2 where signature goes
-
-    // Get page dimensions
-    const { width, height } = secondPage.getSize();
+    const secondPage = pages[1];
 
     // Embed font
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+    const baseX = 75; // X position (left/right)
+
+    // Add name using calculated position
     const fullName = `${firstName} ${lastName}`;
     secondPage.drawText(fullName, {
-      x: 80, // Align with the signature line
-      y: 165, // Position above the "Releasor (Print Name)" line
-      size: 11,
+      x: baseX,
+      y: 245,
+      size: 10, // Slightly smaller font
       font: font,
       color: rgb(0, 0, 0),
     });
 
-    // Add signature image first (above name)
+    // Add signature using calculated position
     if (signatureDataURL && signatureDataURL.startsWith("data:image/")) {
       try {
-        // Remove data URL prefix
         const base64Data = signatureDataURL.split(",")[1];
         const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
           c.charCodeAt(0)
         );
 
-        // Embed signature image
         const signatureImage = await pdfDoc.embedPng(signatureBytes);
 
-        // Add signature to PDF - positioned above the "Signature" line
         secondPage.drawImage(signatureImage, {
-          x: 80, // Align with the signature line
-          y: 185, // Position above the "Signature" line
-          width: 150, // Smaller signature width
-          height: 30, // Smaller signature height
+          x: baseX * 3,
+          y: 125,
+          // width: 140, // Slightly smaller signature
+          // height: 20, // Reduced height
         });
       } catch (imageError) {
         console.error("Error embedding signature image:", imageError);
-        // Continue without signature image if there's an error
       }
     }
 
-    // Add current date - positioned above "Date" line
+    // Add date using calculated position
     const currentDate = new Date().toLocaleDateString("en-US");
     secondPage.drawText(currentDate, {
-      x: 80, // Align with the date line
-      y: 145, // Position above the "Date" line
-      size: 11,
+      x: baseX,
+      y: 160,
+      size: 10, // Consistent font size
       font: font,
       color: rgb(0, 0, 0),
     });
 
-    // Generate PDF bytes
     const pdfBytes = await pdfDoc.save();
-
-    // Convert to base64 for encryption
     const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
-
-    // Encrypt the PDF
     const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY || "M4kersp4ce!y";
     const encryptedPdf = CryptoJS.AES.encrypt(
       pdfBase64,
@@ -99,6 +121,34 @@ async function generateSignedWaiver(
   }
 }
 
+/**
+ * Decrypts an encrypted waiver PDF document back to its original binary format
+ *
+ * This function reverses the encryption process used by generateSignedWaiver(),
+ * returning a Buffer containing the original PDF bytes that can be saved or displayed.
+ *
+ * @param encryptedData - AES encrypted string containing the PDF data (from generateSignedWaiver)
+ * @returns Buffer - Binary PDF data ready for file writing or streaming
+ *
+ * @throws Error - Throws "Failed to decrypt waiver" if decryption fails or data is malformed
+ *
+ * @example
+ * ```typescript
+ * const pdfBuffer = decryptWaiver(user.waiverSignature);
+ * fs.writeFileSync('signed-waiver.pdf', pdfBuffer);
+ * ```
+ *
+ * @security
+ * - Uses same AES decryption key as generateSignedWaiver()
+ * - Key retrieved from WAIVER_ENCRYPTION_KEY environment variable
+ * - Falls back to default key "M4kersp4ce!y" if environment variable not set
+ *
+ * @dependencies
+ * - Uses crypto-js for AES decryption
+ * - Requires valid encrypted data format from generateSignedWaiver()
+ *
+ * @see generateSignedWaiver - For the encryption counterpart of this function
+ */
 function decryptWaiver(encryptedData: string): Buffer {
   try {
     const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY || "M4kersp4ce!y";
