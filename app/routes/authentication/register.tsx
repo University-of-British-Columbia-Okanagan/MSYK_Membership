@@ -19,6 +19,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
 import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info } from "lucide-react";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -623,6 +625,16 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           </a>
                           .
                         </FormDescription>
+                        {!communityGuidelinesViewed && (
+                          <Alert className="mb-4 border-blue-200 bg-blue-50">
+                            <Info className="h-4 w-4 text-blue-600" />
+                            <AlertDescription className="text-blue-800">
+                              Please click the "download and view the document
+                              here" link above to read the Community Guidelines
+                              before you can agree to them.
+                            </AlertDescription>
+                          </Alert>
+                        )}
                         <FormControl>
                           <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
@@ -642,7 +654,9 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                                   : ""
                               }
                             />
-                            <span className="text-sm text-gray-700 leading-relaxed">
+                            <span
+                              className={`text-sm leading-relaxed ${!communityGuidelinesViewed ? "text-gray-400" : "text-gray-700"}`}
+                            >
                               I confirm I have read and agree to follow the MSYK
                               Community Guidelines.
                             </span>
@@ -679,6 +693,16 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           </a>
                           .
                         </FormDescription>
+                        {!operationsPolicyViewed && (
+                          <Alert className="mb-4 border-blue-200 bg-blue-50">
+                            <Info className="h-4 w-4 text-blue-600" />
+                            <AlertDescription className="text-blue-800">
+                              Please click the "download and view the document
+                              here" link above to read the User Operations &
+                              Safety Policy before you can agree to it.
+                            </AlertDescription>
+                          </Alert>
+                        )}
                         <FormControl>
                           <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
@@ -698,7 +722,9 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                                   : ""
                               }
                             />
-                            <span className="text-sm text-gray-700 leading-relaxed">
+                            <span
+                              className={`text-sm leading-relaxed ${!operationsPolicyViewed ? "text-gray-400" : "text-gray-700"}`}
+                            >
                               I confirm I have read and agree to follow the MSYK
                               User Operations & Safety Policy.
                             </span>
@@ -735,8 +761,18 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           </a>
                           .
                         </FormDescription>
+                        {!waiverDocumentViewed && (
+                          <Alert className="mb-4 border-blue-200 bg-blue-50">
+                            <Info className="h-4 w-4 text-blue-600" />
+                            <AlertDescription className="text-blue-800">
+                              Please click the "download the waiver document
+                              here" link above to read the waiver before you can
+                              provide your digital signature.
+                            </AlertDescription>
+                          </Alert>
+                        )}
                         <FormControl>
-                          <>
+                          <div>
                             <DigitalSignaturePad
                               value={field.value}
                               onChange={field.onChange}
@@ -748,11 +784,8 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                               name="waiverSignature"
                               value={field.value || ""}
                             />
-                          </>
+                          </div>
                         </FormControl>
-                        {/* <FormMessage>
-                          {actionData?.errors?.waiverSignature}
-                        </FormMessage> */}
                       </FormItem>
                     )}
                   />
