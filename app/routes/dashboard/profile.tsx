@@ -359,10 +359,10 @@ export default function ProfilePage() {
               entry.status === "approved"
                 ? "bg-green-100 text-green-800"
                 : entry.status === "denied"
-                ? "bg-red-100 text-red-800"
-                : entry.status === "resolved"
-                ? "bg-purple-100 text-purple-800"
-                : "bg-yellow-100 text-yellow-800"
+                  ? "bg-red-100 text-red-800"
+                  : entry.status === "resolved"
+                    ? "bg-purple-100 text-purple-800"
+                    : "bg-yellow-100 text-yellow-800"
             }`}
           >
             {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
