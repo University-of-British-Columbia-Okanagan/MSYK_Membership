@@ -724,7 +724,7 @@ export default function ProfilePage() {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Start Time
+                            Start Time <span className="text-red-500">*</span>
                           </label>
                           <input
                             type="datetime-local"
@@ -738,7 +738,7 @@ export default function ProfilePage() {
 
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            End Time
+                            End Time <span className="text-red-500">*</span>
                           </label>
                           <input
                             type="datetime-local"

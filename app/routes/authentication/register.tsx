@@ -13,12 +13,18 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
 import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Info, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -115,12 +121,14 @@ const DigitalSignaturePad: React.FC<{
   value: string | null;
   onChange: (value: string | null) => void;
   error?: string;
-}> = ({ value, onChange, error }) => {
+  disabled?: boolean;
+}> = ({ value, onChange, error, disabled = false }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    if (disabled) return;
     setIsDrawing(true);
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -200,7 +208,7 @@ const DigitalSignaturePad: React.FC<{
         ref={canvasRef}
         width={300}
         height={150}
-        className="border border-gray-200 rounded cursor-crosshair w-full"
+        className={`border border-gray-200 rounded w-full ${disabled ? "cursor-not-allowed bg-gray-100" : "cursor-crosshair"}`}
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}
@@ -208,6 +216,9 @@ const DigitalSignaturePad: React.FC<{
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={stopDrawing}
+        title={
+          disabled ? "Please download and view the waiver document first" : ""
+        }
       />
       <div className="flex justify-between items-center mt-2">
         <Button
@@ -215,6 +226,7 @@ const DigitalSignaturePad: React.FC<{
           onClick={clearSignature}
           variant="outline"
           size="sm"
+          disabled={disabled}
         >
           Clear
         </Button>
@@ -259,6 +271,15 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
   const [loading, setLoading] = useState(false);
   const [showMinorError, setShowMinorError] = useState("");
   const formRef = useRef<HTMLFormElement | null>(null);
+
+  const [communityGuidelinesViewed, setCommunityGuidelinesViewed] =
+    useState(false);
+  const [operationsPolicyViewed, setOperationsPolicyViewed] = useState(false);
+  const [waiverDocumentViewed, setWaiverDocumentViewed] = useState(false);
+
+  const [showCommunityNotice, setShowCommunityNotice] = useState(false);
+  const [showOperationsNotice, setShowOperationsNotice] = useState(false);
+  const [showWaiverNotice, setShowWaiverNotice] = useState(false);
 
   const handleSubmission = () => {
     setLoading(true);
@@ -606,21 +627,62 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-yellow-600 hover:text-yellow-700 underline"
+                            onClick={() => setCommunityGuidelinesViewed(true)}
                           >
                             download and view the document here
                           </a>
                           .
                         </FormDescription>
+                        {!communityGuidelinesViewed && (
+                          <Collapsible
+                            open={showCommunityNotice}
+                            onOpenChange={setShowCommunityNotice}
+                            className="mb-4"
+                          >
+                            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 text-left bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                              <div className="flex items-center space-x-2">
+                                <Info className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  Notice
+                                </span>
+                              </div>
+                              {showCommunityNotice ? (
+                                <ChevronUp className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-blue-600" />
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="p-3 bg-blue-50 border-l border-r border-b border-blue-200 rounded-b-lg">
+                              <p className="text-sm text-blue-800">
+                                Please click the "download and view the document
+                                here" link above to read the Community
+                                Guidelines before you can agree to them.
+                              </p>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        )}
                         <FormControl>
                           <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
                               name="communityGuidelines"
                               checked={field.value}
-                              onCheckedChange={(value) => field.onChange(value)}
+                              onCheckedChange={(value) =>
+                                communityGuidelinesViewed
+                                  ? field.onChange(value)
+                                  : null
+                              }
+                              disabled={!communityGuidelinesViewed}
                               id="community-guidelines"
-                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
+                              className={`border-2 ${!communityGuidelinesViewed ? "border-gray-300 bg-gray-100 cursor-not-allowed" : "border-yellow-500"} text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0`}
+                              title={
+                                !communityGuidelinesViewed
+                                  ? "Please download and view the document first"
+                                  : ""
+                              }
                             />
-                            <span className="text-sm text-gray-700 leading-relaxed">
+                            <span
+                              className={`text-sm leading-relaxed ${!communityGuidelinesViewed ? "text-gray-400" : "text-gray-700"}`}
+                            >
                               I confirm I have read and agree to follow the MSYK
                               Community Guidelines.
                             </span>
@@ -651,21 +713,62 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-yellow-600 hover:text-yellow-700 underline"
+                            onClick={() => setOperationsPolicyViewed(true)}
                           >
                             download and view the document here
                           </a>
                           .
                         </FormDescription>
+                        {!operationsPolicyViewed && (
+                          <Collapsible
+                            open={showOperationsNotice}
+                            onOpenChange={setShowOperationsNotice}
+                            className="mb-4"
+                          >
+                            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 text-left bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                              <div className="flex items-center space-x-2">
+                                <Info className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  Notice
+                                </span>
+                              </div>
+                              {showOperationsNotice ? (
+                                <ChevronUp className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-blue-600" />
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="p-3 bg-blue-50 border-l border-r border-b border-blue-200 rounded-b-lg">
+                              <p className="text-sm text-blue-800">
+                                Please click the "download and view the document
+                                here" link above to read the User Operations &
+                                Safety Policy before you can agree to it.
+                              </p>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        )}
                         <FormControl>
                           <label className="flex items-start space-x-3 mt-4">
                             <Checkbox
                               name="operationsPolicy"
                               checked={field.value}
-                              onCheckedChange={(value) => field.onChange(value)}
+                              onCheckedChange={(value) =>
+                                operationsPolicyViewed
+                                  ? field.onChange(value)
+                                  : null
+                              }
+                              disabled={!operationsPolicyViewed}
                               id="operations-policy"
-                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
+                              className={`border-2 ${!operationsPolicyViewed ? "border-gray-300 bg-gray-100 cursor-not-allowed" : "border-yellow-500"} text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0`}
+                              title={
+                                !operationsPolicyViewed
+                                  ? "Please download and view the document first"
+                                  : ""
+                              }
                             />
-                            <span className="text-sm text-gray-700 leading-relaxed">
+                            <span
+                              className={`text-sm leading-relaxed ${!operationsPolicyViewed ? "text-gray-400" : "text-gray-700"}`}
+                            >
                               I confirm I have read and agree to follow the MSYK
                               User Operations & Safety Policy.
                             </span>
@@ -696,28 +799,55 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-yellow-600 hover:text-yellow-700 underline"
+                            onClick={() => setWaiverDocumentViewed(true)}
                           >
                             download the waiver document here
                           </a>
                           .
                         </FormDescription>
+                        {!waiverDocumentViewed && (
+                          <Collapsible
+                            open={showWaiverNotice}
+                            onOpenChange={setShowWaiverNotice}
+                            className="mb-4"
+                          >
+                            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 text-left bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                              <div className="flex items-center space-x-2">
+                                <Info className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  Notice
+                                </span>
+                              </div>
+                              {showWaiverNotice ? (
+                                <ChevronUp className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-blue-600" />
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="p-3 bg-blue-50 border-l border-r border-b border-blue-200 rounded-b-lg">
+                              <p className="text-sm text-blue-800">
+                                Please click the "download the waiver document
+                                here" link above to read the waiver before you
+                                can provide your digital signature.
+                              </p>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        )}
                         <FormControl>
-                          <>
+                          <div>
                             <DigitalSignaturePad
                               value={field.value}
                               onChange={field.onChange}
                               error={actionData?.errors?.waiverSignature?.[0]}
+                              disabled={!waiverDocumentViewed}
                             />
                             <input
                               type="hidden"
                               name="waiverSignature"
                               value={field.value || ""}
                             />
-                          </>
+                          </div>
                         </FormControl>
-                        {/* <FormMessage>
-                          {actionData?.errors?.waiverSignature}
-                        </FormMessage> */}
                       </FormItem>
                     )}
                   />
