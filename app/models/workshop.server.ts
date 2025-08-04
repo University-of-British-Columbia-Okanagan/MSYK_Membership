@@ -154,7 +154,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
           workshopId: newWorkshop.id,
           name: variation.name,
           price: variation.price,
-          description: variation.description || null,
+          description: variation.description,
         })),
       });
     }

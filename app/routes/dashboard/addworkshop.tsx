@@ -1226,7 +1226,7 @@ export default function AddWorkshop() {
                           </label>
                           <input
                             type="text"
-                            placeholder="e.g., Picture Frame"
+                            placeholder="Required variation name"
                             value={variation.name}
                             onChange={(e) => {
                               const newVariations = [...priceVariations];
@@ -1282,12 +1282,12 @@ export default function AddWorkshop() {
 
                         <div>
                           <label className="block text-sm font-medium mb-1">
-                            Description
+                            Description <span className="text-red-500">*</span>
                           </label>
                           <div className="flex gap-2">
                             <input
                               type="text"
-                              placeholder="Optional description"
+                              placeholder="Required description"
                               value={variation.description}
                               onChange={(e) => {
                                 const newVariations = [...priceVariations];
@@ -1311,6 +1311,18 @@ export default function AddWorkshop() {
                               Remove
                             </Button>
                           </div>
+                          {/* ADD ERROR DISPLAY: */}
+                          {actionData?.errors?.[
+                            `priceVariations.${index}.description`
+                          ] && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {
+                                actionData.errors[
+                                  `priceVariations.${index}.description`
+                                ]
+                              }
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}

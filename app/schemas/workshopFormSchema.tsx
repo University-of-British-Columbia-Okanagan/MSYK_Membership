@@ -15,7 +15,7 @@ export const workshopFormSchema = z
         z.object({
           name: z.string().min(1, "Variation name is required"),
           price: z.number().min(0, "Price must be a positive number"),
-          description: z.string().optional().default(""),
+          description: z.string().min(1, "Description is required"),
         })
       )
       .optional()
