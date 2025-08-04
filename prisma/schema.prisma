@@ -233,7 +233,7 @@ model WorkshopPriceVariation {
   workshopId  Int
   name        String
   price       Float
-  description String?
+  description String
 
   // Relationships
   workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
