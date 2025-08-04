@@ -1032,6 +1032,52 @@ export default function AddWorkshop() {
                 <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
                   There are some errors in your form. Please review the
                   highlighted fields below.
+                  {/* ADD THIS SECTION TO SHOW PRICE VARIATION ERRORS: */}
+                  {actionData.errors.priceVariations && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variations Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Array.isArray(actionData.errors.priceVariations) ? (
+                          actionData.errors.priceVariations.map(
+                            (error: string, index: number) => (
+                              <li key={index}>{error}</li>
+                            )
+                          )
+                        ) : (
+                          <li>{actionData.errors.priceVariations}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {/* CHECK FOR INDIVIDUAL VARIATION FIELD ERRORS: */}
+                  {Object.keys(actionData.errors).some((key) =>
+                    key.startsWith("priceVariations.")
+                  ) && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variation Field Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Object.entries(actionData.errors)
+                          .filter(([key]) => key.startsWith("priceVariations."))
+                          .map(([key, error]) => {
+                            const match = key.match(
+                              /priceVariations\.(\d+)\.(.+)/
+                            );
+                            const variationIndex = match
+                              ? parseInt(match[1]) + 1
+                              : 0;
+                            const fieldName = match ? match[2] : "field";
+                            return (
+                              <li key={key}>
+                                Variation {variationIndex} - {fieldName}:{" "}
+                                {Array.isArray(error)
+                                  ? error.join(", ")
+                                  : error}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
