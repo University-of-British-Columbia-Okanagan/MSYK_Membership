@@ -967,10 +967,13 @@ export default function AdminSettings() {
       "Friday",
       "Saturday",
     ];
-    const defaultSchedule = days.reduce((acc, day) => {
-      acc[day] = { start: 9, end: 17, closed: false };
-      return acc;
-    }, {} as Record<string, { start: number; end: number; closed: boolean }>);
+    const defaultSchedule = days.reduce(
+      (acc, day) => {
+        acc[day] = { start: 9, end: 17, closed: false };
+        return acc;
+      },
+      {} as Record<string, { start: number; end: number; closed: boolean }>
+    );
 
     // Merge the default with settings from the server
     return days.reduce((acc, day) => {
@@ -1853,12 +1856,13 @@ export default function AdminSettings() {
                                 );
                                 const displayValue =
                                   editingWorkshop === workshop.id
-                                    ? cutoffValues[workshop.id] ??
-                                      bestUnit.value
+                                    ? (cutoffValues[workshop.id] ??
+                                      bestUnit.value)
                                     : bestUnit.value;
                                 const displayUnit =
                                   editingWorkshop === workshop.id
-                                    ? cutoffUnits[workshop.id] ?? bestUnit.unit
+                                    ? (cutoffUnits[workshop.id] ??
+                                      bestUnit.unit)
                                     : bestUnit.unit;
 
                                 return (
@@ -2008,12 +2012,13 @@ export default function AdminSettings() {
                                 );
                                 const displayValue =
                                   editingWorkshop === workshop.id
-                                    ? cutoffValues[workshop.id] ??
-                                      bestUnit.value
+                                    ? (cutoffValues[workshop.id] ??
+                                      bestUnit.value)
                                     : bestUnit.value;
                                 const displayUnit =
                                   editingWorkshop === workshop.id
-                                    ? cutoffUnits[workshop.id] ?? bestUnit.unit
+                                    ? (cutoffUnits[workshop.id] ??
+                                      bestUnit.unit)
                                     : bestUnit.unit;
 
                                 return (
@@ -3374,34 +3379,29 @@ export default function AdminSettings() {
                       </div>
                     </div>
 
-                    {/* Stats */}
+                    {/* Stats for Recently Managed Volunteer Actions */}
                     <div className="mb-4 p-3 bg-gray-50 rounded-lg">
                       <div className="flex flex-col space-y-2">
                         <div className="flex items-center justify-between text-sm text-gray-600">
                           <span>
-                            Showing {volunteerStartIndex + 1}-
+                            Showing {actionsStartIndex + 1}-
                             {Math.min(
-                              volunteerEndIndex,
-                              sortedVolunteerHours.length
+                              actionsEndIndex,
+                              sortedRecentActions.length
                             )}{" "}
-                            of {sortedVolunteerHours.length} entries
-                            {showResubmissionsOnly && (
-                              <span className="ml-2 text-blue-600 font-medium">
-                                (Pending Resubmissions + Denied Hours Only)
-                              </span>
-                            )}
-                            {appliedVolunteerFromDate &&
-                              appliedVolunteerFromTime &&
-                              appliedVolunteerToDate &&
-                              appliedVolunteerToTime && (
+                            of {sortedRecentActions.length} entries
+                            {appliedActionsFromDate &&
+                              appliedActionsFromTime &&
+                              appliedActionsToDate &&
+                              appliedActionsToTime && (
                                 <span className="ml-2 text-yellow-600">
                                   (filtered from{" "}
                                   {new Date(
-                                    `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+                                    `${appliedActionsFromDate}T${appliedActionsFromTime}`
                                   ).toLocaleString()}{" "}
                                   to{" "}
                                   {new Date(
-                                    `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+                                    `${appliedActionsToDate}T${appliedActionsToTime}`
                                   ).toLocaleString()}
                                   )
                                 </span>
@@ -3411,20 +3411,16 @@ export default function AdminSettings() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-4 text-sm">
                             <span className="text-blue-700 font-medium">
-                              Total Hours: {totalVolunteerHours.toFixed(1)}{" "}
-                              hours
+                              {actionsStatusFilter === "all"
+                                ? "Total Hours (All Status)"
+                                : `Total Hours (${
+                                    actionsStatusFilter
+                                      .charAt(0)
+                                      .toUpperCase() +
+                                    actionsStatusFilter.slice(1)
+                                  } Status)`}
+                              : {totalRecentActionHours.toFixed(1)} hours
                             </span>
-                            {!showResubmissionsOnly &&
-                              volunteerStatusFilter !== "all" && (
-                                <span className="text-gray-600">
-                                  (Status:{" "}
-                                  {volunteerStatusFilter
-                                    .charAt(0)
-                                    .toUpperCase() +
-                                    volunteerStatusFilter.slice(1)}
-                                  )
-                                </span>
-                              )}
                           </div>
                         </div>
                       </div>
@@ -3483,10 +3479,10 @@ export default function AdminSettings() {
                                           previousStatus === "approved"
                                             ? "bg-green-100 text-green-800"
                                             : previousStatus === "denied"
-                                            ? "bg-red-100 text-red-800"
-                                            : previousStatus === "resolved"
-                                            ? "bg-purple-100 text-purple-800"
-                                            : "bg-yellow-100 text-yellow-800"
+                                              ? "bg-red-100 text-red-800"
+                                              : previousStatus === "resolved"
+                                                ? "bg-purple-100 text-purple-800"
+                                                : "bg-yellow-100 text-yellow-800"
                                         }`}
                                       >
                                         {previousStatus
@@ -3502,10 +3498,10 @@ export default function AdminSettings() {
                                       currentStatus === "approved"
                                         ? "bg-green-100 text-green-800"
                                         : currentStatus === "denied"
-                                        ? "bg-red-100 text-red-800"
-                                        : currentStatus === "resolved"
-                                        ? "bg-purple-100 text-purple-800"
-                                        : "bg-yellow-100 text-yellow-800"
+                                          ? "bg-red-100 text-red-800"
+                                          : currentStatus === "resolved"
+                                            ? "bg-purple-100 text-purple-800"
+                                            : "bg-yellow-100 text-yellow-800"
                                     }`}
                                   >
                                     {currentStatus.charAt(0).toUpperCase() +
