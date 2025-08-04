@@ -1666,3 +1666,20 @@ export async function getWorkshopWithPriceVariations(workshopId: number) {
     throw new Error("Failed to fetch workshop with price variations");
   }
 }
+
+/**
+ * Retrieves a specific workshop price variation by its ID
+ * @param variationId - The ID of the price variation to retrieve
+ * @returns Promise<WorkshopPriceVariation|null> - The variation record or null if not found
+ */
+export async function getWorkshopPriceVariation(variationId: number) {
+  try {
+    const variation = await db.workshopPriceVariation.findUnique({
+      where: { id: variationId },
+    });
+    return variation;
+  } catch (error) {
+    console.error("Error fetching workshop price variation:", error);
+    throw new Error("Failed to fetch workshop price variation");
+  }
+}
