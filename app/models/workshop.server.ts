@@ -11,6 +11,12 @@ interface WorkshopData {
   type: string;
   prerequisites?: number[];
   equipments?: number[];
+  hasPriceVariations?: boolean;
+  priceVariations?: Array<{
+    name: string;
+    price: number;
+    description: string;
+  }>;
   occurrences: {
     startDate: Date;
     endDate: Date;
@@ -124,6 +130,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         location: data.location,
         capacity: data.capacity,
         type: data.type,
+        hasPriceVariations: data.hasPriceVariations || false,
       },
     });
 
@@ -132,6 +139,22 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         data: data.prerequisites.map((prereqId) => ({
           workshopId: newWorkshop.id,
           prerequisiteId: prereqId,
+        })),
+      });
+    }
+
+    // Step 1.5: Create price variations if they exist
+    if (
+      data.hasPriceVariations &&
+      data.priceVariations &&
+      data.priceVariations.length > 0
+    ) {
+      await db.workshopPriceVariation.createMany({
+        data: data.priceVariations.map((variation) => ({
+          workshopId: newWorkshop.id,
+          name: variation.name,
+          price: variation.price,
+          description: variation.description || null,
         })),
       });
     }
@@ -426,8 +449,8 @@ export async function updateWorkshopWithOccurrences(
           occ.status === "cancelled"
             ? "cancelled"
             : occ.startDate >= now
-            ? "active"
-            : "past";
+              ? "active"
+              : "past";
 
         // Create each occurrence individually to get its ID
         const createdOcc = await db.workshopOccurrence.create({
@@ -456,8 +479,8 @@ export async function updateWorkshopWithOccurrences(
       occ.status === "cancelled"
         ? "cancelled"
         : occ.startDate >= now
-        ? "active"
-        : "past";
+          ? "active"
+          : "past";
 
     await db.workshopOccurrence.update({
       where: { id: occ.id },

@@ -571,7 +571,6 @@ export async function action({ request }: { request: Request }) {
   const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
   const hasPriceVariations = rawValues.hasPriceVariations === "true";
-
   let priceVariations: Array<{
     name: string;
     price: number;
@@ -595,7 +594,7 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  //  Validate form data using Zod schema
+  // Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
     price,
@@ -630,6 +629,8 @@ export async function action({ request }: { request: Request }) {
         prerequisites: parsed.data.prerequisites,
         equipments: parsed.data.equipments,
         isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
+        hasPriceVariations: parsed.data.hasPriceVariations,
+        priceVariations: parsed.data.priceVariations,
         selectedSlots,
       },
       request
