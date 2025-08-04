@@ -578,9 +578,6 @@ export async function createCheckoutSession(request: Request) {
           price_data: {
             currency: "cad",
             product_data: {
-              // CHANGE THIS LINE:
-              // name: workshop.name,
-              // TO THIS:
               name: workshopDisplayName,
               description: `${`Occurrence on ${new Date(
                 occurrence.startDate
@@ -598,12 +595,16 @@ export async function createCheckoutSession(request: Request) {
         workshopId: workshopId.toString(),
         occurrenceId: occurrenceId.toString(),
         userId: userId.toString(),
-        // ADD THIS LINE:
         variationId: variationId ? variationId.toString() : "",
       },
     });
+
+    return new Response(JSON.stringify({ url: session.url }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-  
+
   // Multi-day Workshop Payment
   else if (body.workshopId && body.connectId) {
     const { workshopId, connectId, price, userId, userEmail } = body;

@@ -287,7 +287,8 @@ export async function action({ request }: { request: Request }) {
 
     // Workshop branch: standard single occurrence registration
     else if (body.workshopId && body.occurrenceId) {
-      const { workshopId, occurrenceId, price, userId } = body;
+      // ADD variationId TO DESTRUCTURING:
+      const { workshopId, occurrenceId, price, userId, variationId } = body;
       if (!workshopId || !occurrenceId || !price || !userId) {
         return new Response(
           JSON.stringify({ error: "Missing required payment data" }),
@@ -309,6 +310,15 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
+      // ADD VARIATION NAME LOGIC:
+      let workshopDisplayName = workshop.name;
+      if (variationId) {
+        const variation = await getWorkshopPriceVariation(Number(variationId));
+        if (variation) {
+          workshopDisplayName = `${workshop.name} - ${variation.name}`;
+        }
+      }
+
       const gstPercentage = await getAdminSetting("gst_percentage", "5");
       const gstRate = parseFloat(gstPercentage) / 100;
       const priceWithGST = price * (1 + gstRate);
@@ -321,7 +331,10 @@ export async function action({ request }: { request: Request }) {
             price_data: {
               currency: "cad",
               product_data: {
-                name: workshop.name,
+                // CHANGE THIS LINE:
+                // name: workshop.name,
+                // TO THIS:
+                name: workshopDisplayName,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
                 ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
@@ -338,6 +351,8 @@ export async function action({ request }: { request: Request }) {
           workshopId: workshopId.toString(),
           occurrenceId: occurrenceId.toString(),
           userId: userId.toString(),
+          // ADD THIS LINE:
+          variationId: variationId ? variationId.toString() : "",
         },
       });
 
