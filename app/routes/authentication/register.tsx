@@ -13,14 +13,18 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
 import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info } from "lucide-react";
+import { Info, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -272,6 +276,10 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     useState(false);
   const [operationsPolicyViewed, setOperationsPolicyViewed] = useState(false);
   const [waiverDocumentViewed, setWaiverDocumentViewed] = useState(false);
+
+  const [showCommunityNotice, setShowCommunityNotice] = useState(false);
+  const [showOperationsNotice, setShowOperationsNotice] = useState(false);
+  const [showWaiverNotice, setShowWaiverNotice] = useState(false);
 
   const handleSubmission = () => {
     setLoading(true);
@@ -626,14 +634,32 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           .
                         </FormDescription>
                         {!communityGuidelinesViewed && (
-                          <Alert className="mb-4 border-blue-200 bg-blue-50">
-                            <Info className="h-4 w-4 text-blue-600" />
-                            <AlertDescription className="text-blue-800">
-                              Please click the "download and view the document
-                              here" link above to read the Community Guidelines
-                              before you can agree to them.
-                            </AlertDescription>
-                          </Alert>
+                          <Collapsible
+                            open={showCommunityNotice}
+                            onOpenChange={setShowCommunityNotice}
+                            className="mb-4"
+                          >
+                            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 text-left bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                              <div className="flex items-center space-x-2">
+                                <Info className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  Notice
+                                </span>
+                              </div>
+                              {showCommunityNotice ? (
+                                <ChevronUp className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-blue-600" />
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="p-3 bg-blue-50 border-l border-r border-b border-blue-200 rounded-b-lg">
+                              <p className="text-sm text-blue-800">
+                                Please click the "download and view the document
+                                here" link above to read the Community
+                                Guidelines before you can agree to them.
+                              </p>
+                            </CollapsibleContent>
+                          </Collapsible>
                         )}
                         <FormControl>
                           <label className="flex items-start space-x-3 mt-4">
@@ -694,14 +720,32 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           .
                         </FormDescription>
                         {!operationsPolicyViewed && (
-                          <Alert className="mb-4 border-blue-200 bg-blue-50">
-                            <Info className="h-4 w-4 text-blue-600" />
-                            <AlertDescription className="text-blue-800">
-                              Please click the "download and view the document
-                              here" link above to read the User Operations &
-                              Safety Policy before you can agree to it.
-                            </AlertDescription>
-                          </Alert>
+                          <Collapsible
+                            open={showOperationsNotice}
+                            onOpenChange={setShowOperationsNotice}
+                            className="mb-4"
+                          >
+                            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 text-left bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                              <div className="flex items-center space-x-2">
+                                <Info className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  Notice
+                                </span>
+                              </div>
+                              {showOperationsNotice ? (
+                                <ChevronUp className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-blue-600" />
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="p-3 bg-blue-50 border-l border-r border-b border-blue-200 rounded-b-lg">
+                              <p className="text-sm text-blue-800">
+                                Please click the "download and view the document
+                                here" link above to read the User Operations &
+                                Safety Policy before you can agree to it.
+                              </p>
+                            </CollapsibleContent>
+                          </Collapsible>
                         )}
                         <FormControl>
                           <label className="flex items-start space-x-3 mt-4">
@@ -762,14 +806,32 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           .
                         </FormDescription>
                         {!waiverDocumentViewed && (
-                          <Alert className="mb-4 border-blue-200 bg-blue-50">
-                            <Info className="h-4 w-4 text-blue-600" />
-                            <AlertDescription className="text-blue-800">
-                              Please click the "download the waiver document
-                              here" link above to read the waiver before you can
-                              provide your digital signature.
-                            </AlertDescription>
-                          </Alert>
+                          <Collapsible
+                            open={showWaiverNotice}
+                            onOpenChange={setShowWaiverNotice}
+                            className="mb-4"
+                          >
+                            <CollapsibleTrigger className="flex items-center justify-between w-full p-3 text-left bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                              <div className="flex items-center space-x-2">
+                                <Info className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  Notice
+                                </span>
+                              </div>
+                              {showWaiverNotice ? (
+                                <ChevronUp className="h-4 w-4 text-blue-600" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-blue-600" />
+                              )}
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="p-3 bg-blue-50 border-l border-r border-b border-blue-200 rounded-b-lg">
+                              <p className="text-sm text-blue-800">
+                                Please click the "download the waiver document
+                                here" link above to read the waiver before you
+                                can provide your digital signature.
+                              </p>
+                            </CollapsibleContent>
+                          </Collapsible>
                         )}
                         <FormControl>
                           <div>
