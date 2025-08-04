@@ -568,7 +568,7 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-   const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
+  const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
   //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
@@ -763,6 +763,14 @@ export default function AddWorkshop() {
   >([]);
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
   const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
+  const [hasPriceVariations, setHasPriceVariations] = useState(false);
+  const [priceVariations, setPriceVariations] = useState<
+    Array<{
+      name: string;
+      price: string;
+      description: string;
+    }>
+  >([]);
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -1014,7 +1022,7 @@ export default function AddWorkshop() {
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label="Price"
+                    label={hasPriceVariations ? "Price (Base)" : "Price"}
                     placeholder="Price"
                     required
                     error={actionData?.errors?.price}
@@ -1074,6 +1082,138 @@ export default function AddWorkshop() {
                     Check this if this workshop is a multi-day workshop
                   </p>
                 </div>
+
+                {/* "Add Workshop Price Variations" Checkbox */}
+                <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={hasPriceVariations}
+                        onChange={(e) => {
+                          setHasPriceVariations(e.target.checked);
+                          if (!e.target.checked) {
+                            setPriceVariations([]);
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                    </div>
+                    <span className="font-small">
+                      Add Workshop Price Variations
+                    </span>
+                  </label>
+                  <p className="mt-2 pl-9 text-sm text-gray-500">
+                    Check this to add different pricing options for this
+                    workshop
+                  </p>
+                </div>
+
+                {/* Price Variations Management */}
+                {hasPriceVariations && (
+                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium">Price Variations</h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setPriceVariations([
+                            ...priceVariations,
+                            { name: "", price: "", description: "" },
+                          ])
+                        }
+                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                      >
+                        Add Variation
+                      </Button>
+                    </div>
+
+                    {priceVariations.map((variation, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-white rounded-lg border"
+                      >
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Variation Name{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g., Picture Frame"
+                            value={variation.name}
+                            onChange={(e) => {
+                              const newVariations = [...priceVariations];
+                              newVariations[index].name = e.target.value;
+                              setPriceVariations(newVariations);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Price <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="0"
+                            value={variation.price}
+                            onChange={(e) => {
+                              const newVariations = [...priceVariations];
+                              newVariations[index].price = e.target.value;
+                              setPriceVariations(newVariations);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Description
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Optional description"
+                              value={variation.description}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].description =
+                                  e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                const newVariations = priceVariations.filter(
+                                  (_, i) => i !== index
+                                );
+                                setPriceVariations(newVariations);
+                              }}
+                              className="text-red-600 border-red-300 hover:bg-red-100"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {priceVariations.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">
+                        No price variations added yet. Click "Add Variation" to
+                        get started.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
@@ -1187,8 +1327,8 @@ export default function AddWorkshop() {
                                               {isStartDatePast && isEndDatePast
                                                 ? "Both start and end dates are in the past"
                                                 : isStartDatePast
-                                                ? "Start date is in the past"
-                                                : "End date is in the past"}
+                                                  ? "Start date is in the past"
+                                                  : "End date is in the past"}
                                             </p>
                                           </TooltipContent>
                                         )}
@@ -1562,6 +1702,18 @@ export default function AddWorkshop() {
                   value={isMultiDayWorkshop ? "true" : "false"}
                 />
 
+                {/* Hidden input for price variations */}
+                <input
+                  type="hidden"
+                  name="hasPriceVariations"
+                  value={hasPriceVariations ? "true" : "false"}
+                />
+                <input
+                  type="hidden"
+                  name="priceVariations"
+                  value={JSON.stringify(priceVariations)}
+                />
+
                 <AlertDialog
                   open={showOverlapConfirm}
                   onOpenChange={setShowOverlapConfirm}
@@ -1595,8 +1747,8 @@ export default function AddWorkshop() {
                                         {conflict.conflictType === "user"
                                           ? `Conflicted by user: ${conflict.conflictName}`
                                           : conflict.conflictType === "workshop"
-                                          ? `Conflicted by workshop: ${conflict.conflictName}`
-                                          : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
+                                            ? `Conflicted by workshop: ${conflict.conflictName}`
+                                            : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
                                       </span>
                                     </div>
                                   ))}
