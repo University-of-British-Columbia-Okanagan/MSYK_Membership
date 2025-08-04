@@ -378,8 +378,8 @@ export async function action({ request }: { request: Request }) {
   }
 
   const formData = await request.formData();
-
   const rawValues = Object.fromEntries(formData.entries());
+
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
@@ -570,6 +570,31 @@ export async function action({ request }: { request: Request }) {
 
   const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
+  const hasPriceVariations = rawValues.hasPriceVariations === "true";
+
+  let priceVariations: Array<{
+    name: string;
+    price: number;
+    description: string;
+  }> = [];
+  if (hasPriceVariations && rawValues.priceVariations) {
+    try {
+      const parsedVariations = JSON.parse(rawValues.priceVariations as string);
+      priceVariations = parsedVariations.map((v: any) => ({
+        name: String(v.name || "").trim(),
+        price: parseFloat(v.price) || 0,
+        description: String(v.description || "").trim(),
+      }));
+    } catch (error) {
+      logger.error(`[Add workshop] Error parsing price variations: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: { priceVariations: ["Invalid price variations format"] },
+      };
+    }
+  }
+
   //  Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
@@ -579,6 +604,8 @@ export async function action({ request }: { request: Request }) {
     prerequisites,
     equipments,
     isMultiDayWorkshop,
+    hasPriceVariations,
+    priceVariations,
   });
 
   if (!parsed.success) {
@@ -1131,6 +1158,15 @@ export default function AddWorkshop() {
                       </Button>
                     </div>
 
+                    {/* ADD THIS ERROR DISPLAY: */}
+                    {actionData?.errors?.priceVariations && (
+                      <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
+                        {Array.isArray(actionData.errors.priceVariations)
+                          ? actionData.errors.priceVariations.join(", ")
+                          : actionData.errors.priceVariations}
+                      </div>
+                    )}
+
                     {priceVariations.map((variation, index) => (
                       <div
                         key={index}
@@ -1152,6 +1188,18 @@ export default function AddWorkshop() {
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
                           />
+                          {/* ERROR DISPLAY: */}
+                          {actionData?.errors?.[
+                            `priceVariations.${index}.name`
+                          ] && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {
+                                actionData.errors[
+                                  `priceVariations.${index}.name`
+                                ]
+                              }
+                            </p>
+                          )}
                         </div>
 
                         <div>
@@ -1160,6 +1208,8 @@ export default function AddWorkshop() {
                           </label>
                           <input
                             type="number"
+                            step="0.01"
+                            min="0"
                             placeholder="0"
                             value={variation.price}
                             onChange={(e) => {
@@ -1169,6 +1219,18 @@ export default function AddWorkshop() {
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
                           />
+                          {/* ERROR DISPLAY: */}
+                          {actionData?.errors?.[
+                            `priceVariations.${index}.price`
+                          ] && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {
+                                actionData.errors[
+                                  `priceVariations.${index}.price`
+                                ]
+                              }
+                            </p>
+                          )}
                         </div>
 
                         <div>
