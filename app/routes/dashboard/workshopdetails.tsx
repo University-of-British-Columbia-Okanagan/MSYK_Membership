@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
+  getWorkshopWithPriceVariations,
   getWorkshopById,
   checkUserRegistration,
   getUserCompletedPrerequisites,
@@ -66,7 +67,7 @@ export async function loader({
   request: Request;
 }) {
   const workshopId = parseInt(params.id);
-  const workshop = await getWorkshopById(workshopId);
+  const workshop = await getWorkshopWithPriceVariations(workshopId);
   if (!workshop) {
     throw new Response("Workshop not found", { status: 404 });
   }
@@ -395,7 +396,17 @@ export default function WorkshopDetails() {
       return;
     }
 
-    navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
+    if (
+      workshop.hasPriceVariations &&
+      workshop.priceVariations &&
+      workshop.priceVariations.length > 0
+    ) {
+      navigate(
+        `/dashboard/workshops/pricevariations/${workshop.id}?occurrenceId=${occurrenceId}`
+      );
+    } else {
+      navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
+    }
   };
 
   // Offer Again button for Admins
@@ -597,18 +608,95 @@ export default function WorkshopDetails() {
 
               <CardContent>
                 <div className="flex items-center gap-4">
-                  <Badge
-                    variant="outline"
-                    className="px-4 py-2 text-lg font-medium"
-                  >
-                    ${workshop.price}
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="px-4 py-2 text-lg font-medium"
-                  >
-                    {workshop.location}
-                  </Badge>
+                  {/* REPLACE THE ENTIRE PRICE SECTION WITH THIS: */}
+                  {workshop.hasPriceVariations &&
+                  workshop.priceVariations &&
+                  workshop.priceVariations.length > 0 ? (
+                    <div className="w-full">
+                      {/* Main pricing display */}
+                      <div className="flex items-center gap-4 mb-4">
+                        <Badge
+                          variant="outline"
+                          className="px-4 py-2 text-lg font-medium bg-yellow-50 border-yellow-300 text-yellow-800"
+                        >
+                          Starting from $
+                          {Math.min(
+                            workshop.price,
+                            ...workshop.priceVariations.map((v: any) => v.price)
+                          )}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="px-4 py-2 text-lg font-medium"
+                        >
+                          {workshop.location}
+                        </Badge>
+                      </div>
+
+                      {/* Pricing options card */}
+                      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                          <h3 className="text-sm font-semibold text-gray-800">
+                            Other Available Pricing Options
+                          </h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {workshop.priceVariations.map((variation: any) => (
+                            <div
+                              key={variation.id}
+                              className="bg-white border border-yellow-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow"
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-medium text-gray-900 text-sm">
+                                  {variation.name}
+                                </h4>
+                                <span className="font-bold text-green-600">
+                                  ${variation.price}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600 leading-relaxed">
+                                {variation.description}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-3 text-center">
+                          <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium">
+                            <svg
+                              className="w-4 h-4"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                            Choose your option during registration
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      <Badge
+                        variant="outline"
+                        className="px-4 py-2 text-lg font-medium"
+                      >
+                        ${workshop.price}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="px-4 py-2 text-lg font-medium"
+                      >
+                        {workshop.location}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
 
                 <Separator className="my-6" />

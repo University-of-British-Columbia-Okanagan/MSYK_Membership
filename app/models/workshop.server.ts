@@ -1609,3 +1609,60 @@ export async function offerWorkshopAgain(
     throw new Error("Failed to create new workshop offer");
   }
 }
+
+/**
+ * Retrieves workshop with price variations by workshop ID
+ * @param workshopId - The ID of the workshop to retrieve
+ * @returns Promise<Workshop|null> - The workshop record with price variations or null if not found
+ */
+export async function getWorkshopWithPriceVariations(workshopId: number) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: {
+          orderBy: { price: "asc" },
+        },
+        occurrences: {
+          include: {
+            userWorkshops: true,
+            equipmentSlots: {
+              include: {
+                equipment: true,
+              },
+              orderBy: {
+                startTime: "asc",
+              },
+            },
+          },
+        },
+        prerequisites: {
+          select: {
+            prerequisiteId: true,
+          },
+        },
+      },
+    });
+
+    if (!workshop) {
+      return null;
+    }
+
+    // Flatten prerequisite workshop IDs
+    const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
+
+    // Extract all equipment IDs used in the workshop occurrences
+    const equipments = workshop.occurrences.flatMap((occ) =>
+      occ.equipmentSlots.map((slot) => slot.equipmentId)
+    );
+
+    return {
+      ...workshop,
+      prerequisites,
+      equipments,
+    };
+  } catch (error) {
+    console.error("Error fetching workshop with price variations:", error);
+    throw new Error("Failed to fetch workshop with price variations");
+  }
+}

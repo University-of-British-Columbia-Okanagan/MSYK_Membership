@@ -34,6 +34,10 @@ export default [
   route("/dashboard/user", "routes/dashboard/userdashboardlayout.tsx"),
   route("/dashboard/workshops", "routes/dashboard/workshops.tsx"),
   route("/dashboard/workshops/:id", "routes/dashboard/workshopdetails.tsx"),
+  route(
+    "/dashboard/workshops/pricevariations/:workshopId",
+    "routes/dashboard/workshoppricingvariation.tsx"
+  ),
   route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
   route(
     "/editmembershipplan/:planId",
@@ -57,6 +61,11 @@ export default [
   route(
     "dashboard/payment/:workshopId/:occurrenceId",
     "routes/dashboard/payment.tsx"
+  ),
+  route(
+    "dashboard/payment/:workshopId/:occurrenceId/:variationId",
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/workshopWithVariation" }
   ),
   route("dashboard/payment/:membershipPlanId", "routes/dashboard/payment.tsx", {
     id: "dashboard/payment/membership",
