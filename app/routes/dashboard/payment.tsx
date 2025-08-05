@@ -175,14 +175,13 @@ export const loader: LoaderFunction = async ({ params, request }) => {
   }
 
   // Branch for multi-day workshops using connectId
-  else if (params.workshopId && params.connectId) {
+  else if (params.workshopId && params.connectId && !params.variationId) {
     const workshopId = Number(params.workshopId);
     const connectId = Number(params.connectId);
     if (isNaN(workshopId) || isNaN(connectId))
       throw new Response("Invalid workshop or connect ID", { status: 400 });
 
     const workshop = await getWorkshopById(workshopId);
-    // getWorkshopOccurrencesByConnectId should return an array of occurrences for this workshop with the given connectId
     const occurrences = await getWorkshopOccurrencesByConnectId(
       workshopId,
       connectId
@@ -192,7 +191,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
-    // For payment, we use the first occurrence as a representative
     return {
       workshop,
       occurrence: occurrences[0],
@@ -200,6 +198,45 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isMultiDayWorkshop: true,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
+      selectedVariation: null,
+    };
+  }
+
+  // Branch for multi-day workshops with price variations
+  else if (params.workshopId && params.connectId && params.variationId) {
+    const workshopId = Number(params.workshopId);
+    const connectId = Number(params.connectId);
+    const variationId = Number(params.variationId);
+
+    if (isNaN(workshopId) || isNaN(connectId) || isNaN(variationId))
+      throw new Response("Invalid workshop, connect, or variation ID", {
+        status: 400,
+      });
+
+    const workshop = await getWorkshopById(workshopId);
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      connectId
+    );
+
+    if (!workshop || !occurrences || occurrences.length === 0)
+      throw new Response("Workshop or Occurrences not found", { status: 404 });
+
+    // Get the specific price variation
+    const selectedVariation = await getWorkshopPriceVariation(variationId);
+    if (!selectedVariation)
+      throw new Response("Price variation not found", { status: 404 });
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
+    return {
+      workshop,
+      occurrence: occurrences[0],
+      user,
+      isMultiDayWorkshop: true,
+      savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation,
     };
   } else {
     throw new Response("Missing required parameters", { status: 400 });
@@ -287,7 +324,6 @@ export async function action({ request }: { request: Request }) {
 
     // Workshop branch: standard single occurrence registration
     else if (body.workshopId && body.occurrenceId) {
-      // ADD variationId TO DESTRUCTURING:
       const { workshopId, occurrenceId, price, userId, variationId } = body;
       if (!workshopId || !occurrenceId || !price || !userId) {
         return new Response(
@@ -310,7 +346,6 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
-      // ADD VARIATION NAME LOGIC:
       let workshopDisplayName = workshop.name;
       if (variationId) {
         const variation = await getWorkshopPriceVariation(Number(variationId));
@@ -331,9 +366,6 @@ export async function action({ request }: { request: Request }) {
             price_data: {
               currency: "cad",
               product_data: {
-                // CHANGE THIS LINE:
-                // name: workshop.name,
-                // TO THIS:
                 name: workshopDisplayName,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
@@ -351,7 +383,6 @@ export async function action({ request }: { request: Request }) {
           workshopId: workshopId.toString(),
           occurrenceId: occurrenceId.toString(),
           userId: userId.toString(),
-          // ADD THIS LINE:
           variationId: variationId ? variationId.toString() : "",
         },
       });
@@ -544,8 +575,11 @@ export default function Payment() {
             body: JSON.stringify({
               workshopId: data.workshop.id,
               connectId: data.occurrence.connectId,
-              price: data.workshop.price,
+              price: data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price,
               userId: data.user.id,
+              variationId: data.selectedVariation?.id || null,
             }),
           });
           const resData = await response.json();

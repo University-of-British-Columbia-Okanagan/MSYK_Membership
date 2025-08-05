@@ -1435,47 +1435,77 @@ export async function getWorkshopOccurrencesByConnectId(
 }
 
 /**
- * Registers a user for all occurrences in a multi-session workshop
+ * Registers a user for all occurrences of a multi-day workshop using connectId
  * @param workshopId - The ID of the workshop
- * @param connectId - The connection ID linking multiple sessions
+ * @param connectId - The connect ID linking all workshop occurrences
  * @param userId - The ID of the user to register
- * @returns Promise<UserWorkshop[]> - Array of created registration records
+ * @param variationId - The ID of the selected price variation (optional)
+ * @returns Promise<Object> - Registration result with success status
  * @throws Error if registration fails for any occurrence
  */
 export async function registerUserForAllOccurrences(
   workshopId: number,
   connectId: number,
-  userId: number
+  userId: number,
+  variationId?: number | null
 ) {
-  // 1. Find all occurrences that match workshopId + connectId
-  const occurrences = await db.workshopOccurrence.findMany({
-    where: { workshopId, connectId },
-  });
-  if (!occurrences || occurrences.length === 0) {
-    throw new Error("No occurrences found for this workshop connectId group.");
-  }
+  try {
+    // Get all occurrences for this workshop with the given connectId
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      connectId
+    );
 
-  // 2. For each occurrence, insert a record in your pivot table (e.g. userWorkshop)
-  for (const occ of occurrences) {
-    // Check if user is already registered for this occurrence
-    const existing = await db.userWorkshop.findFirst({
-      where: {
-        userId,
-        workshopId,
-        occurrenceId: occ.id,
-      },
-    });
-    if (!existing) {
-      // If not registered, create a new record
-      await db.userWorkshop.create({
-        data: {
-          userId,
-          workshopId,
-          occurrenceId: occ.id,
-          result: "passed",
-        },
-      });
+    if (!occurrences || occurrences.length === 0) {
+      throw new Error("No occurrences found for this workshop");
     }
+
+    const workshop = await getWorkshopById(workshopId);
+    if (!workshop) {
+      throw new Error("Workshop not found");
+    }
+
+    // Determine registration result based on workshop type
+    const registrationResult =
+      workshop.type.toLowerCase() === "orientation" ? "pending" : undefined;
+
+    // Register user for each occurrence
+    const registrations = await Promise.all(
+      occurrences.map(async (occurrence) => {
+        // Check if already registered
+        const existingRegistration = await checkUserRegistration(
+          workshopId,
+          userId,
+          occurrence.id
+        );
+
+        if (existingRegistration.registered) {
+          return { occurrenceId: occurrence.id, alreadyRegistered: true };
+        }
+
+        // Register for this occurrence
+        await db.userWorkshop.create({
+          data: {
+            userId,
+            workshopId,
+            occurrenceId: occurrence.id,
+            priceVariationId: variationId,
+            ...(registrationResult ? { result: registrationResult } : {}),
+          },
+        });
+
+        return { occurrenceId: occurrence.id, registered: true };
+      })
+    );
+
+    return {
+      success: true,
+      registrations,
+      workshopName: workshop.name,
+    };
+  } catch (error) {
+    console.error("Error registering for all occurrences:", error);
+    throw error;
   }
 }
 

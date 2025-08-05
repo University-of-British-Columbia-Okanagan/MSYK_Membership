@@ -166,10 +166,15 @@ export async function loader({ request }: { request: Request }) {
   // Multi-day workshop
   else if (workshopId && connectId && userId) {
     try {
+      const variationId = metadata.variationId
+        ? parseInt(metadata.variationId)
+        : null;
+
       await registerUserForAllOccurrences(
         parseInt(workshopId),
         parseInt(connectId),
-        parseInt(userId)
+        parseInt(userId),
+        variationId
       );
       return new Response(
         JSON.stringify({

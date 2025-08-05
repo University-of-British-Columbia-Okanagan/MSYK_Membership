@@ -471,10 +471,21 @@ export default function WorkshopDetails() {
       return;
     }
 
-    // Navigate to the payment route using connectId (note the route now includes "connect")
-    navigate(
-      `/dashboard/payment/${workshop.id}/connect/${firstActiveOccurrence.connectId}`
-    );
+    // PRICE VARIATION CHECK FOR MULTI-DAY WORKSHOPS:
+    if (
+      workshop.hasPriceVariations &&
+      workshop.priceVariations &&
+      workshop.priceVariations.length > 0
+    ) {
+      navigate(
+        `/dashboard/workshops/pricevariations/${workshop.id}?connectId=${firstActiveOccurrence.connectId}`
+      );
+    } else {
+      // Navigate to the payment route using connectId (note the route now includes "connect")
+      navigate(
+        `/dashboard/payment/${workshop.id}/connect/${firstActiveOccurrence.connectId}`
+      );
+    }
   }
 
   function handleCancelAll() {

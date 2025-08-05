@@ -59,8 +59,14 @@ export default [
     { id: "dashboard/payment/multiDayWorkshop" }
   ),
   route(
+    "dashboard/payment/:workshopId/connect/:connectId/:variationId",
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/multiDayWorkshopWithVariation" }
+  ),
+  route(
     "dashboard/payment/:workshopId/:occurrenceId",
-    "routes/dashboard/payment.tsx"
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/singleWorkshop" }
   ),
   route(
     "dashboard/payment/:workshopId/:occurrenceId/:variationId",

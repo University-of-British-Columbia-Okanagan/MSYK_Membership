@@ -38,17 +38,34 @@ export default function WorkshopPricingVariation() {
   );
 
   const handleContinue = () => {
-    if ((!selectedVariation && selectedVariation !== 0) || !occurrenceId) {
+    if (selectedVariation === null) {
       return;
     }
-    if (selectedVariation === 0) {
-      // User selected base price, go to payment without variation
-      navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
+
+    // CHECK FOR CONNECT ID (MULTI-DAY):
+    const connectId = searchParams.get("connectId");
+
+    if (connectId) {
+      // Multi-day workshop with variation
+      if (selectedVariation === 0) {
+        navigate(`/dashboard/payment/${workshop.id}/connect/${connectId}`);
+      } else {
+        navigate(
+          `/dashboard/payment/${workshop.id}/connect/${connectId}/${selectedVariation}`
+        );
+      }
+    } else if (occurrenceId) {
+      // Single occurrence workflow
+      if (selectedVariation === 0) {
+        navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
+      } else {
+        navigate(
+          `/dashboard/payment/${workshop.id}/${occurrenceId}/${selectedVariation}`
+        );
+      }
     } else {
-      // User selected a variation, include variation ID
-      navigate(
-        `/dashboard/payment/${workshop.id}/${occurrenceId}/${selectedVariation}`
-      );
+      console.error("Missing both connectId and occurrenceId");
+      // Could show an error message to the user here
     }
   };
 
