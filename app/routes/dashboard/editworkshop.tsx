@@ -849,16 +849,6 @@ export default function EditWorkshop() {
   const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
     useState<boolean>(isMultiDay);
 
-  // const [priceVariations, setPriceVariations] = useState(
-  //   workshop.priceVariations || []
-  // );
-  // const [newVariation, setNewVariation] = useState({
-  //   name: "",
-  //   description: "",
-  //   price: "",
-  // });
-  // const [editingVariation, setEditingVariation] = useState<number | null>(null);
-
   const [hasPriceVariations, setHasPriceVariations] = useState(() => {
     return workshop.priceVariations && workshop.priceVariations.length > 0;
   });
@@ -873,6 +863,9 @@ export default function EditWorkshop() {
     }
     return [];
   });
+
+  const [showPriceVariationConfirm, setShowPriceVariationConfirm] =
+    useState(false);
 
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -1424,9 +1417,17 @@ export default function EditWorkshop() {
                         type="checkbox"
                         checked={hasPriceVariations}
                         onChange={(e) => {
-                          setHasPriceVariations(e.target.checked);
-                          if (!e.target.checked) {
-                            setPriceVariations([]);
+                          const isChecked = e.target.checked;
+
+                          if (!isChecked && priceVariations.length > 0) {
+                            // Show confirmation dialog if unchecking and there are existing variations
+                            setShowPriceVariationConfirm(true);
+                          } else {
+                            // If checking or no variations exist, proceed normally
+                            setHasPriceVariations(isChecked);
+                            if (!isChecked) {
+                              setPriceVariations([]);
+                            }
                           }
                         }}
                         className="sr-only peer"
@@ -2578,6 +2579,50 @@ export default function EditWorkshop() {
                         }}
                       >
                         Proceed Anyway
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                {/* Price Variation Removal Confirmation Dialog */}
+                <AlertDialog
+                  open={showPriceVariationConfirm}
+                  onOpenChange={setShowPriceVariationConfirm}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-amber-600">
+                        Remove Price Variations?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="space-y-2">
+                        <p>
+                          You currently have {priceVariations.length} price
+                          variation{priceVariations.length !== 1 ? "s" : ""}{" "}
+                          configured for this workshop.
+                        </p>
+                        <p className="font-medium">
+                          If you uncheck this option, all existing price
+                          variations will be permanently removed.
+                        </p>
+                        <p>
+                          Are you sure you want to remove all price variations?
+                        </p>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>
+                        Keep Price Variations
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          // User confirmed removal
+                          setHasPriceVariations(false);
+                          setPriceVariations([]);
+                          setShowPriceVariationConfirm(false);
+                        }}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Remove All Variations
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
