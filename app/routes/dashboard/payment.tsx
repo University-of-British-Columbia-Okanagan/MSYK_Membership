@@ -843,7 +843,6 @@ export default function Payment() {
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
-          {/* ADD THIS SECTION FOR VARIATION DISPLAY: */}
           {data.selectedVariation && (
             <p className="text-gray-700">
               Option: {data.selectedVariation.name}
