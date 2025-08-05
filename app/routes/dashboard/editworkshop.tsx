@@ -242,6 +242,30 @@ export async function action({
 
   const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
+  const hasPriceVariations = rawValues.hasPriceVariations === "true";
+  let priceVariations: Array<{
+    name: string;
+    price: number;
+    description: string;
+  }> = [];
+  if (hasPriceVariations && rawValues.priceVariations) {
+    try {
+      const parsedVariations = JSON.parse(rawValues.priceVariations as string);
+      priceVariations = parsedVariations.map((v: any) => ({
+        name: String(v.name || "").trim(),
+        price: parseFloat(v.price) || 0,
+        description: String(v.description || "").trim(),
+      }));
+    } catch (error) {
+      logger.error(`[Edit workshop] Error parsing price variations: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: { priceVariations: ["Invalid price variations format"] },
+      };
+    }
+  }
+
   let occurrences: {
     id?: number;
     status?: string;
@@ -308,6 +332,8 @@ export async function action({
     prerequisites,
     equipments,
     isMultiDayWorkshop,
+    hasPriceVariations: hasPriceVariations,
+    priceVariations: priceVariations,
   });
 
   if (!parsed.success) {
@@ -393,6 +419,8 @@ export async function action({
       isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
       selectedSlots, // Pass the selected slots
       userId, // Pass the user ID
+      hasPriceVariations,
+      priceVariations,
     });
 
     // Process equipment bookings for the NEW occurrences

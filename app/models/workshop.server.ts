@@ -388,6 +388,12 @@ export async function updateWorkshopWithOccurrences(
   data: UpdateWorkshopData & {
     selectedSlots?: Record<number, number[]>;
     userId?: number;
+    hasPriceVariations?: boolean;
+    priceVariations?: Array<{
+      name: string;
+      price: number;
+      description: string;
+    }>;
   }
 ) {
   // Update workshop basic info
@@ -400,8 +406,29 @@ export async function updateWorkshopWithOccurrences(
       location: data.location,
       capacity: data.capacity,
       type: data.type,
+      hasPriceVariations: data.hasPriceVariations || false,
     },
   });
+
+  // Update price variations
+  if (data.hasPriceVariations !== undefined) {
+    // Delete existing price variations
+    await db.workshopPriceVariation.deleteMany({
+      where: { workshopId },
+    });
+
+    // Add new price variations if any
+    if (data.priceVariations && data.priceVariations.length > 0) {
+      await db.workshopPriceVariation.createMany({
+        data: data.priceVariations.map((variation) => ({
+          workshopId,
+          name: variation.name,
+          price: variation.price,
+          description: variation.description,
+        })),
+      });
+    }
+  }
 
   if (data.prerequisites) {
     await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
