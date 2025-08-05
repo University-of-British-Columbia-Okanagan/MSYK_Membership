@@ -728,66 +728,63 @@ export async function deleteWorkshop(workshopId: number) {
 }
 
 /**
- * Registers a user for a specific workshop occurrence
+ * Registers a user for a workshop occurrence
  * @param workshopId - The ID of the workshop
  * @param occurrenceId - The ID of the specific occurrence
  * @param userId - The ID of the user to register
- * @returns Promise<UserWorkshop> - The created registration record
- * @throws Error if registration fails or capacity is exceeded
+ * @param variationId - The ID of the selected price variation (optional)
+ * @returns Promise<Object> - Registration result with success status and details
+ * @throws Error if user is already registered or workshop/occurrence not found
  */
 export async function registerForWorkshop(
   workshopId: number,
   occurrenceId: number,
-  userId: number
+  userId: number,
+  variationId?: number | null
 ) {
   try {
-    // Validate occurrence exists and belongs to the specified workshop
-    const occurrence = await db.workshopOccurrence.findUnique({
-      where: { id: occurrenceId },
-      include: { workshop: true },
-    });
+    // Check if the user is already registered for this occurrence
+    const existingRegistration = await checkUserRegistration(
+      workshopId,
+      userId,
+      occurrenceId
+    );
 
-    if (!occurrence || occurrence.workshop.id !== workshopId) {
+    if (existingRegistration.registered) {
       throw new Error(
-        "Workshop occurrence not found for the specified workshop"
+        "User is already registered for this workshop occurrence"
       );
     }
 
-    // Prevent registrations for past occurrences
-    const now = new Date();
-    if (new Date(occurrence.startDate) < now) {
-      throw new Error("Cannot register for past workshops.");
+    // Get the workshop and occurrence to ensure they exist
+    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+    if (!occurrence) {
+      throw new Error("Workshop occurrence not found");
     }
 
-    // Check if the user is already registered for this occurrence
-    const existingRegistration = await db.userWorkshop.findFirst({
-      where: { userId, occurrenceId },
-    });
-
-    if (existingRegistration) {
-      throw new Error("User already registered for this session.");
+    const workshop = await getWorkshopById(workshopId);
+    if (!workshop) {
+      throw new Error("Workshop not found");
     }
 
-    // Determine registration result based on workshop type.
-    // If the workshop type is "orientation", set result to "pending".
+    // Determine registration result based on workshop type
     const registrationResult =
-      occurrence.workshop.type.toLowerCase() === "orientation"
-        ? "pending"
-        : undefined;
+      workshop.type.toLowerCase() === "orientation" ? "pending" : undefined;
 
-    // Register user for this occurrence, including the result field if applicable.
+    // Register user for this occurrence, including the result field if applicable
     await db.userWorkshop.create({
       data: {
         userId,
-        workshopId: occurrence.workshop.id,
+        workshopId: workshop.id,
         occurrenceId,
+        priceVariationId: variationId,
         ...(registrationResult ? { result: registrationResult } : {}),
       },
     });
 
     return {
       success: true,
-      workshopName: occurrence.workshop.name,
+      workshopName: workshop.name,
       startDate: occurrence.startDate,
       endDate: occurrence.endDate,
     };

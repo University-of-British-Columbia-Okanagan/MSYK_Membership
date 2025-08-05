@@ -112,6 +112,7 @@ export async function loader({ request }: { request: Request }) {
     equipmentId,
     slotsDataKey,
     isEquipmentBooking,
+    variationId,
   } = metadata;
 
   if (equipmentId && userId && isEquipmentBooking === "true") {
@@ -194,10 +195,15 @@ export async function loader({ request }: { request: Request }) {
   // Workshop single occurrence
   else if (workshopId && occurrenceId && userId) {
     try {
+      const variationId = metadata.variationId
+        ? parseInt(metadata.variationId)
+        : null;
+
       await registerForWorkshop(
         parseInt(workshopId),
         parseInt(occurrenceId),
-        parseInt(userId)
+        parseInt(userId),
+        variationId
       );
       return new Response(
         JSON.stringify({
@@ -321,10 +327,10 @@ export default function PaymentSuccess() {
         {data.isQuickCheckout
           ? `Back to ${data.checkoutType}s`
           : data.isEquipment
-          ? "Back to Equipment"
-          : data.isMembership
-          ? "Back to Memberships"
-          : "Back to Workshops"}
+            ? "Back to Equipment"
+            : data.isMembership
+              ? "Back to Memberships"
+              : "Back to Workshops"}
       </button>
     </div>
   );
