@@ -21,6 +21,7 @@ import {
   cancelWorkshopOccurrence,
   getWorkshops,
   getMultiDayWorkshopUserCount,
+  getWorkshopWithPriceVariations,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +94,7 @@ export async function loader({
   request: Request;
 }) {
   const workshopId = Number(params.workshopId);
-  const workshop = await getWorkshopById(workshopId);
+  const workshop = await getWorkshopWithPriceVariations(workshopId);
   if (!workshop) {
     logger.info("Workshop not found", {
       url: request.url,
@@ -820,6 +821,31 @@ export default function EditWorkshop() {
   const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
     useState<boolean>(isMultiDay);
 
+  // const [priceVariations, setPriceVariations] = useState(
+  //   workshop.priceVariations || []
+  // );
+  // const [newVariation, setNewVariation] = useState({
+  //   name: "",
+  //   description: "",
+  //   price: "",
+  // });
+  // const [editingVariation, setEditingVariation] = useState<number | null>(null);
+
+  const [hasPriceVariations, setHasPriceVariations] = useState(() => {
+    return workshop.priceVariations && workshop.priceVariations.length > 0;
+  });
+
+  const [priceVariations, setPriceVariations] = useState(() => {
+    if (workshop.priceVariations && workshop.priceVariations.length > 0) {
+      return workshop.priceVariations.map((variation: any) => ({
+        name: variation.name,
+        price: variation.price.toString(),
+        description: variation.description,
+      }));
+    }
+    return [];
+  });
+
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
@@ -1234,6 +1260,51 @@ export default function EditWorkshop() {
                 <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
                   There are some errors in your form. Please review the
                   highlighted fields below.
+                  {actionData.errors.priceVariations && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variations Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Array.isArray(actionData.errors.priceVariations) ? (
+                          actionData.errors.priceVariations.map(
+                            (error: string, index: number) => (
+                              <li key={index}>{error}</li>
+                            )
+                          )
+                        ) : (
+                          <li>{actionData.errors.priceVariations}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {/* CHECK FOR INDIVIDUAL VARIATION FIELD ERRORS */}
+                  {Object.keys(actionData.errors).some((key) =>
+                    key.startsWith("priceVariations.")
+                  ) && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variation Field Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Object.entries(actionData.errors)
+                          .filter(([key]) => key.startsWith("priceVariations."))
+                          .map(([key, error]) => {
+                            const match = key.match(
+                              /priceVariations\.(\d+)\.(.+)/
+                            );
+                            const variationIndex = match
+                              ? parseInt(match[1]) + 1
+                              : 0;
+                            const fieldName = match ? match[2] : "field";
+                            return (
+                              <li key={key}>
+                                Variation {variationIndex} - {fieldName}:{" "}
+                                {Array.isArray(error)
+                                  ? error.join(", ")
+                                  : error}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1253,7 +1324,7 @@ export default function EditWorkshop() {
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label="Price"
+                    label={hasPriceVariations ? "Price (Base)" : "Price"}
                     placeholder="Price"
                     required
                     type="number"
@@ -1316,6 +1387,185 @@ export default function EditWorkshop() {
                     If checked, it is a multi-day workshop
                   </p>
                 </div>
+
+                {/* "Add Workshop Price Variations" Checkbox */}
+                <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={hasPriceVariations}
+                        onChange={(e) => {
+                          setHasPriceVariations(e.target.checked);
+                          if (!e.target.checked) {
+                            setPriceVariations([]);
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                    </div>
+                    <span className="font-small">
+                      Add Workshop Price Variations
+                    </span>
+                  </label>
+                  <p className="mt-2 pl-9 text-sm text-gray-500">
+                    Check this to add different pricing options for this
+                    workshop
+                  </p>
+                </div>
+
+                {/* Price Variations Management */}
+                {hasPriceVariations && (
+                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium">Price Variations</h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setPriceVariations([
+                            ...priceVariations,
+                            { name: "", price: "", description: "" },
+                          ])
+                        }
+                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                      >
+                        Add Variation
+                      </Button>
+                    </div>
+
+                    {/* ERROR DISPLAY: */}
+                    {actionData?.errors?.priceVariations && (
+                      <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
+                        {Array.isArray(actionData.errors.priceVariations)
+                          ? actionData.errors.priceVariations.join(", ")
+                          : actionData.errors.priceVariations}
+                      </div>
+                    )}
+
+                    {priceVariations.map((variation, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-white rounded-lg border"
+                      >
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Variation Name{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Required variation name"
+                            value={variation.name}
+                            onChange={(e) => {
+                              const newVariations = [...priceVariations];
+                              newVariations[index].name = e.target.value;
+                              setPriceVariations(newVariations);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          />
+                          {/* ERROR DISPLAY: */}
+                          {actionData?.errors?.[
+                            `priceVariations.${index}.name`
+                          ] && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {
+                                actionData.errors[
+                                  `priceVariations.${index}.name`
+                                ]
+                              }
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Price <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0"
+                            value={variation.price}
+                            onChange={(e) => {
+                              const newVariations = [...priceVariations];
+                              newVariations[index].price = e.target.value;
+                              setPriceVariations(newVariations);
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          />
+                          {/* ERROR DISPLAY: */}
+                          {actionData?.errors?.[
+                            `priceVariations.${index}.price`
+                          ] && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {
+                                actionData.errors[
+                                  `priceVariations.${index}.price`
+                                ]
+                              }
+                            </p>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Description <span className="text-red-500">*</span>
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Required description"
+                              value={variation.description}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].description =
+                                  e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                const newVariations = priceVariations.filter(
+                                  (_, i) => i !== index
+                                );
+                                setPriceVariations(newVariations);
+                              }}
+                              className="text-red-600 border-red-300 hover:bg-red-100"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                          {/* ADD ERROR DISPLAY: */}
+                          {actionData?.errors?.[
+                            `priceVariations.${index}.description`
+                          ] && (
+                            <p className="text-red-500 text-xs mt-1">
+                              {
+                                actionData.errors[
+                                  `priceVariations.${index}.description`
+                                ]
+                              }
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {priceVariations.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">
+                        No price variations added yet. Click "Add Variation" to
+                        get started.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
@@ -1435,8 +1685,8 @@ export default function EditWorkshop() {
                                                 isEndDatePast
                                                   ? "Both start and end dates are in the past"
                                                   : isStartDatePast
-                                                  ? "Start date is in the past"
-                                                  : "End date is in the past"}
+                                                    ? "Start date is in the past"
+                                                    : "End date is in the past"}
                                               </p>
                                             </TooltipContent>
                                           )}
@@ -2172,6 +2422,17 @@ export default function EditWorkshop() {
 
                 <input
                   type="hidden"
+                  name="hasPriceVariations"
+                  value={hasPriceVariations ? "true" : "false"}
+                />
+                <input
+                  type="hidden"
+                  name="priceVariations"
+                  value={JSON.stringify(priceVariations)}
+                />
+
+                <input
+                  type="hidden"
                   name="selectedSlots"
                   value={JSON.stringify(selectedSlotsMap)}
                 />
@@ -2209,8 +2470,8 @@ export default function EditWorkshop() {
                                         {conflict.conflictType === "user"
                                           ? `Conflicted by user: ${conflict.conflictName}`
                                           : conflict.conflictType === "workshop"
-                                          ? `Conflicted by workshop: ${conflict.conflictName}`
-                                          : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
+                                            ? `Conflicted by workshop: ${conflict.conflictName}`
+                                            : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
                                       </span>
                                     </div>
                                   ))}
