@@ -11,7 +11,10 @@ import { Button } from "@/components/ui/button";
 import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
 import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
 import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
-import { getWorkshopById, offerWorkshopAgain } from "~/models/workshop.server";
+import {
+  offerWorkshopAgain,
+  getWorkshopWithPriceVariations,
+} from "~/models/workshop.server";
 import { Badge } from "@/components/ui/badge";
 import {
   Calendar as CalendarIcon,
@@ -34,14 +37,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getRoleUser } from "~/utils/session.server";
+import { getUser, getRoleUser } from "~/utils/session.server";
+import {
+  getEquipmentSlotsWithStatus,
+  getAvailableEquipment,
+} from "~/models/equipment.server";
 import { logger } from "~/logging/logger";
+import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  1) Helper: format a Date as "YYYY-MM-DDTHH:mm" for datetime-local
@@ -90,6 +99,54 @@ function hasOccurrencesInPast(
   );
 }
 
+/**
+ * Get equipment slots for workshop occurrences
+ */
+function getEquipmentSlotsForOccurrences(
+  occurrences: { startDate: Date; endDate: Date }[]
+): {
+  [day: string]: string[];
+} {
+  const slotsForOccurrences: { [day: string]: string[] } = {};
+
+  occurrences.forEach((occ) => {
+    if (isNaN(occ.startDate.getTime()) || isNaN(occ.endDate.getTime())) {
+      return; // Skip invalid dates
+    }
+
+    // Create 30-minute slots for the entire workshop duration
+    const currentTime = new Date(occ.startDate);
+    while (currentTime < occ.endDate) {
+      // Format day as "Sat 24" (using the actual day name and number)
+      const dayName = currentTime.toLocaleDateString("en-US", {
+        weekday: "short",
+      });
+      const dayNumber = currentTime.getDate();
+      const dayKey = `${dayName} ${dayNumber}`;
+
+      // Format time as "05:00"
+      const hours = String(currentTime.getHours()).padStart(2, "0");
+      const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+      const timeKey = `${hours}:${minutes}`;
+
+      // Add to slots map
+      if (!slotsForOccurrences[dayKey]) {
+        slotsForOccurrences[dayKey] = [];
+      }
+
+      // Only add if not already in the array
+      if (!slotsForOccurrences[dayKey].includes(timeKey)) {
+        slotsForOccurrences[dayKey].push(timeKey);
+      }
+
+      // Move to next 30-minute slot
+      currentTime.setTime(currentTime.getTime() + 30 * 60 * 1000);
+    }
+  });
+
+  return slotsForOccurrences;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  3) Loader
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,12 +161,27 @@ export async function loader({
   const roleUser = await getRoleUser(request);
 
   // Get workshop details including existing occurrences
-  const workshop = await getWorkshopById(workshopId);
+  const workshop = await getWorkshopWithPriceVariations(workshopId);
   if (!workshop) {
     throw new Response("Workshop not found", { status: 404 });
   }
 
-  return { workshopId, workshop, roleUser };
+  const user = await getUser(request);
+  const userId = user?.id || undefined;
+
+  // Get equipment slots and available equipment
+  const equipmentsWithSlots = await getEquipmentSlotsWithStatus(userId, true);
+  const availableEquipments = await getAvailableEquipment();
+  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
+
+  return {
+    workshopId,
+    workshop,
+    roleUser,
+    equipmentsWithSlots,
+    availableEquipments,
+    equipmentVisibilityDays,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +269,151 @@ export async function action({
 
   const workshopId = Number(params.id);
 
+  // Get existing workshop occurrences to check for duplicates
+  const existingWorkshop = await getWorkshopWithPriceVariations(workshopId);
+  if (!existingWorkshop) {
+    return { errors: { general: ["Workshop not found"] } };
+  }
+
+  // Check for duplicate times in future active occurrences
+  const now = new Date();
+  const futureActiveOccurrences = existingWorkshop.occurrences.filter(
+    (occ: any) => new Date(occ.startDate) >= now && occ.status === "active"
+  );
+
+  for (const newOcc of occurrences) {
+    for (const existingOcc of futureActiveOccurrences) {
+      const existingStart = new Date(existingOcc.startDate);
+      const existingEnd = new Date(existingOcc.endDate);
+
+      // Check if new occurrence overlaps with existing ones
+      if (
+        (newOcc.startDate >= existingStart && newOcc.startDate < existingEnd) ||
+        (newOcc.endDate > existingStart && newOcc.endDate <= existingEnd) ||
+        (newOcc.startDate <= existingStart && newOcc.endDate >= existingEnd)
+      ) {
+        const formatDate = (date: Date) => {
+          return (
+            date.toLocaleDateString("en-US", {
+              weekday: "short",
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            }) +
+            ", " +
+            date.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            })
+          );
+        };
+
+        return {
+          errors: {
+            occurrences: [
+              `Cannot create workshop time ${formatDate(newOcc.startDate)} to ${formatDate(newOcc.endDate)} because it overlaps with existing workshop time ${formatDate(existingStart)} to ${formatDate(existingEnd)}.`,
+            ],
+          },
+        };
+      }
+    }
+  }
+
+  // CHECK FOR EQUIPMENT CONFLICTS
+  if (existingWorkshop.equipments && existingWorkshop.equipments.length > 0) {
+    // Get equipment slots for validation
+    const equipmentsWithSlots = await getEquipmentSlotsWithStatus(
+      undefined,
+      true
+    );
+
+    // Check each new occurrence against equipment bookings
+    for (const newOcc of occurrences) {
+      for (const equipmentId of existingWorkshop.equipments) {
+        const equipment = equipmentsWithSlots.find(
+          (eq: any) => eq.id === equipmentId
+        );
+        if (!equipment) continue;
+
+        // Create 30-minute slots for the new occurrence
+        const currentTime = new Date(newOcc.startDate);
+        while (currentTime < newOcc.endDate) {
+          // Format day as "Sat 24"
+          const dayName = currentTime.toLocaleDateString("en-US", {
+            weekday: "short",
+          });
+          const dayNumber = currentTime.getDate();
+          const dayKey = `${dayName} ${dayNumber}`;
+
+          // Format time as "05:00"
+          const hours = String(currentTime.getHours()).padStart(2, "0");
+          const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+          const timeKey = `${hours}:${minutes}`;
+
+          // Check if this slot exists and is booked
+          const slot = equipment.slotsByDay[dayKey]?.[timeKey];
+          if (slot && (slot.isBooked || slot.reservedForWorkshop)) {
+            // Skip if it's reserved for this same workshop
+            if ((slot as any).workshopName === existingWorkshop.name) {
+              currentTime.setTime(currentTime.getTime() + 30 * 60 * 1000);
+              continue;
+            }
+
+            // Calculate end time for display
+            const endTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
+            const endHours = String(endTime.getHours()).padStart(2, "0");
+            const endMinutes = String(endTime.getMinutes()).padStart(2, "0");
+
+            const formatDate = (date: Date) => {
+              return (
+                date.toLocaleDateString("en-US", {
+                  weekday: "short",
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                }) +
+                ", " +
+                date.toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                })
+              );
+            };
+
+            // Determine conflict type and name
+            let conflictName = "Unknown booking";
+            if (slot.reservedForWorkshop && (slot as any).workshopName) {
+              conflictName = `workshop "${(slot as any).workshopName}"`;
+            } else if (
+              slot.isBooked &&
+              (slot as any).userFirstName &&
+              (slot as any).userLastName
+            ) {
+              conflictName = `user ${(slot as any).userFirstName} ${(slot as any).userLastName}`;
+            } else if (slot.reservedForWorkshop) {
+              conflictName = "another workshop";
+            } else if (slot.isBooked) {
+              conflictName = "another user";
+            }
+
+            return {
+              errors: {
+                occurrences: [
+                  `Equipment "${equipment.name}" is already booked on ${formatDate(currentTime)} from ${hours}:${minutes} to ${endHours}:${endMinutes} by ${conflictName}. Please choose different dates or times.`,
+                ],
+              },
+            };
+          }
+
+          // Move to next 30-minute slot
+          currentTime.setTime(currentTime.getTime() + 30 * 60 * 1000);
+        }
+      }
+    }
+  }
+
   // Add new occurrences with the same workshop ID but a new offerId
   await offerWorkshopAgain(workshopId, occurrences);
 
@@ -207,19 +424,24 @@ export async function action({
 //  5) WorkshopOfferAgain Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WorkshopOfferAgain() {
-  const { workshopId, workshop, roleUser } = useLoaderData() as {
+  const { workshop, roleUser, equipmentsWithSlots } = useLoaderData() as {
     workshopId: number;
     workshop: any;
     roleUser: any;
+    equipmentsWithSlots: any[];
+    availableEquipments: any[];
+    equipmentVisibilityDays: number;
   };
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
   const navigate = useNavigate();
 
-  // Store original workshop dates for reference
+  const selectedEquipments: number[] = workshop.equipments || [];
+
+  // Store original workshop dates for reference (LATEST OFFER ONLY)
   const [originalOccurrences, setOriginalOccurrences] = useState<
     { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
   >(() => {
-    // Pre-populate with the workshop's existing occurrences
+    // Pre-populate with the workshop's existing occurrences from LATEST OFFER ONLY
     if (workshop.occurrences && workshop.occurrences.length > 0) {
       // First, find the latest offerId
       let latestOfferId = 0;
@@ -232,6 +454,42 @@ export default function WorkshopOfferAgain() {
       // Filter for occurrences with the latest offerId only
       return workshop.occurrences
         .filter((occ: any) => occ.offerId === latestOfferId)
+        .map((occ: any) => ({
+          startDate: new Date(occ.startDate),
+          endDate: new Date(occ.endDate),
+          startDatePST: occ.startDatePST
+            ? new Date(occ.startDatePST)
+            : undefined,
+          endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined,
+        }))
+        .filter(
+          (occ: any) =>
+            !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
+        )
+        .sort(
+          (a: { startDate: Date }, b: { startDate: Date }) =>
+            a.startDate.getTime() - b.startDate.getTime()
+        ); // Sort by start date ascending
+    }
+    return [];
+  });
+
+  // Store ALL future workshop dates for equipment usage (ALL OFFERS)
+  const [allFutureOccurrences, setAllFutureOccurrences] = useState<
+    { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
+  >(() => {
+    // Pre-populate with ALL future active workshop occurrences from ALL offers
+    if (workshop.occurrences && workshop.occurrences.length > 0) {
+      const now = new Date();
+
+      return workshop.occurrences
+        .filter((occ: any) => {
+          const startDate = new Date(occ.startDate);
+          // Include all future active occurrences regardless of offer
+          return (
+            startDate.getTime() >= now.getTime() && occ.status === "active"
+          );
+        })
         .map((occ: any) => ({
           startDate: new Date(occ.startDate),
           endDate: new Date(occ.endDate),
@@ -355,10 +613,37 @@ export default function WorkshopOfferAgain() {
   };
 
   // Check for duplicate dates
-  const isDuplicateDate = (newDate: Date, existingDates: Date[]): boolean => {
-    return existingDates.some(
-      (existingDate) => existingDate.getTime() === newDate.getTime()
-    );
+  const isDuplicateDate = (newDate: Date, existingDates: Date[]) => {
+    // Check against existing future active occurrences
+    const now = new Date();
+    const futureActiveOccurrences =
+      workshop.occurrences?.filter(
+        (occ: any) => new Date(occ.startDate) >= now && occ.status === "active"
+      ) || [];
+
+    // Check if the new date conflicts with any existing occurrences
+    for (const existingOcc of futureActiveOccurrences) {
+      const existingStart = new Date(existingOcc.startDate);
+      const existingEnd = new Date(existingOcc.endDate);
+
+      // For the RepetitionScheduleInputs, we're typically checking start dates
+      // So we check if the newDate falls within any existing workshop time range
+      if (newDate >= existingStart && newDate < existingEnd) {
+        return true;
+      }
+    }
+
+    // Also check against the existingDates parameter (dates already added in the current session)
+    for (const existingDate of existingDates) {
+      // Check if dates are the same day and similar time (within 30 minutes)
+      const timeDiff = Math.abs(newDate.getTime() - existingDate.getTime());
+      if (timeDiff < 30 * 60 * 1000) {
+        // 30 minutes in milliseconds
+        return true;
+      }
+    }
+
+    return false;
   };
 
   // Format date for display
@@ -580,8 +865,8 @@ export default function WorkshopOfferAgain() {
                                         {isStartDatePast && isEndDatePast
                                           ? "Both start and end dates are in the past"
                                           : isStartDatePast
-                                          ? "Start date is in the past"
-                                          : "End date is in the past"}
+                                            ? "Start date is in the past"
+                                            : "End date is in the past"}
                                       </p>
                                     </TooltipContent>
                                   )}
@@ -714,6 +999,200 @@ export default function WorkshopOfferAgain() {
 
                   <FormMessage>{actionData?.errors?.occurrences}</FormMessage>
                 </FormItem>
+
+                {/* EQUIPMENT USAGE TABS */}
+                {workshop.equipments && workshop.equipments.length > 0 && (
+                  <div className="mt-8 mb-6">
+                    <h3 className="font-semibold mb-4 text-lg">
+                      Workshop Equipment Usage
+                    </h3>
+                    <div className="mb-4 text-sm text-center text-blue-600 bg-blue-100 p-3 rounded border border-blue-300">
+                      <p>
+                        This workshop uses the following equipment. Ensure your
+                        new dates don't conflict with existing bookings.
+                      </p>
+                    </div>
+
+                    {(() => {
+                      // DEDUPLICATE EQUIPMENT IDS
+                      const uniqueEquipmentIds = [
+                        ...new Set(selectedEquipments),
+                      ];
+
+                      return (
+                        <Tabs
+                          defaultValue={uniqueEquipmentIds[0]?.toString() || ""}
+                          className="w-full"
+                        >
+                          <TabsList className="mb-4">
+                            {uniqueEquipmentIds.map((equipmentId: number) => {
+                              const equipment = equipmentsWithSlots.find(
+                                (eq) => eq.id === equipmentId
+                              );
+                              return (
+                                <TabsTrigger
+                                  key={`eq-tab-${equipmentId}`}
+                                  value={equipmentId.toString()}
+                                  className="px-4 py-2"
+                                >
+                                  {equipment?.name ||
+                                    `Equipment ${equipmentId}`}
+                                </TabsTrigger>
+                              );
+                            })}
+                          </TabsList>
+
+                          {uniqueEquipmentIds.map((equipmentId: number) => {
+                            const equipment = equipmentsWithSlots.find(
+                              (eq) => eq.id === equipmentId
+                            );
+                            if (!equipment) return null;
+
+                            // Create a condensed time range summary using ALL FUTURE OCCURRENCES
+                            const getTimeRangeSummary = () => {
+                              if (allFutureOccurrences.length === 0)
+                                return "No scheduled times";
+
+                              if (allFutureOccurrences.length === 1) {
+                                const occ = allFutureOccurrences[0];
+                                return `${occ.startDate.toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    weekday: "short",
+                                    month: "short",
+                                    day: "numeric",
+                                  }
+                                )} ${occ.startDate.toLocaleTimeString("en-US", {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })} - ${occ.endDate.toLocaleTimeString(
+                                  "en-US",
+                                  {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  }
+                                )}`;
+                              }
+
+                              // Multiple occurrences - show range
+                              const sortedOccs = [...allFutureOccurrences].sort(
+                                (a, b) =>
+                                  a.startDate.getTime() - b.startDate.getTime()
+                              );
+                              const firstOcc = sortedOccs[0];
+                              const lastOcc = sortedOccs[sortedOccs.length - 1];
+
+                              return `${sortedOccs.length} sessions: ${firstOcc.startDate.toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )} - ${lastOcc.endDate.toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )}`;
+                            };
+
+                            return (
+                              <TabsContent
+                                key={`eq-content-${equipmentId}`}
+                                value={equipmentId.toString()}
+                                className="mt-0 p-0"
+                              >
+                                <div className="border border-gray-200 rounded-lg bg-white shadow-sm p-4">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <h4 className="font-medium text-lg">
+                                      {equipment.name}
+                                    </h4>
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-blue-50 text-blue-700"
+                                    >
+                                      {allFutureOccurrences.length} session
+                                      {allFutureOccurrences.length !== 1
+                                        ? "s"
+                                        : ""}
+                                    </Badge>
+                                  </div>
+
+                                  <div className="text-sm text-gray-600 mb-3">
+                                    <strong>Usage Times:</strong>{" "}
+                                    {getTimeRangeSummary()}
+                                  </div>
+
+                                  {allFutureOccurrences.length > 1 && (
+                                    <details className="group">
+                                      <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 flex items-center">
+                                        <span>View all session times</span>
+                                        <svg
+                                          className="w-4 h-4 ml-1 transition-transform group-open:rotate-180"
+                                          fill="currentColor"
+                                          viewBox="0 0 20 20"
+                                        >
+                                          <path
+                                            fillRule="evenodd"
+                                            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                            clipRule="evenodd"
+                                          />
+                                        </svg>
+                                      </summary>
+                                      <div className="mt-3 space-y-2 pl-4 border-l-2 border-gray-200">
+                                        {allFutureOccurrences.map(
+                                          (occ, index) => (
+                                            <div
+                                              key={index}
+                                              className="text-sm"
+                                            >
+                                              <div className="font-medium text-gray-700">
+                                                {occ.startDate.toLocaleDateString(
+                                                  "en-US",
+                                                  {
+                                                    weekday: "short",
+                                                    month: "short",
+                                                    day: "numeric",
+                                                  }
+                                                )}{" "}
+                                                {occ.startDate.toLocaleTimeString(
+                                                  "en-US",
+                                                  {
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                    hour12: true,
+                                                  }
+                                                )}
+                                              </div>
+                                              <div className="text-xs text-gray-500">
+                                                to{" "}
+                                                {occ.endDate.toLocaleTimeString(
+                                                  "en-US",
+                                                  {
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                    hour12: true,
+                                                  }
+                                                )}
+                                              </div>
+                                            </div>
+                                          )
+                                        )}
+                                      </div>
+                                    </details>
+                                  )}
+                                </div>
+                              </TabsContent>
+                            );
+                          })}
+                        </Tabs>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Hidden input for occurrences */}
                 <input

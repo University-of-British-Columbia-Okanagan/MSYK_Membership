@@ -953,6 +953,24 @@ export default function AddWorkshop() {
         // Set flag
         setIsMultiDayWorkshop(!!workshopData.isMultiDayWorkshop);
 
+        // Set price variations if they exist
+        if (
+          workshopData.hasPriceVariations &&
+          workshopData.priceVariations &&
+          workshopData.priceVariations.length > 0
+        ) {
+          setHasPriceVariations(true);
+          // Convert price variations to the expected format
+          const formattedVariations = workshopData.priceVariations.map(
+            (variation: any) => ({
+              name: variation.name,
+              price: variation.price.toString(), // Convert to string for form input
+              description: variation.description,
+            })
+          );
+          setPriceVariations(formattedVariations);
+        }
+
         // Clear the localStorage to prevent pre-filling again on refresh
         localStorage.removeItem("duplicateWorkshopData");
       } catch (error) {

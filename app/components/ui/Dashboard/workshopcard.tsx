@@ -75,7 +75,7 @@ export default function WorkshopCard({
                 >
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem
+                {/* <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault();
                     if (
@@ -91,7 +91,7 @@ export default function WorkshopCard({
                   }}
                 >
                   Duplicate
-                </DropdownMenuItem>
+                </DropdownMenuItem> */}
                 <DropdownMenuItem
                   onSelect={() => {
                     if (
