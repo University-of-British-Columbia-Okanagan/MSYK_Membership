@@ -5,6 +5,7 @@ import {
   getWorkshopById,
   getWorkshopOccurrence,
   getWorkshopOccurrencesByConnectId,
+  getWorkshopPriceVariation,
 } from "../../models/workshop.server";
 import {
   getMembershipPlanById,
@@ -112,8 +113,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     };
   }
 
-  // Workshop branch: either single occurrence or multi-day workshop
-  else if (params.workshopId && params.occurrenceId) {
+  // Branch for single workshops without variations
+  else if (params.workshopId && params.occurrenceId && !params.variationId) {
     const workshopId = Number(params.workshopId);
     const occurrenceId = Number(params.occurrenceId);
     if (isNaN(workshopId) || isNaN(occurrenceId))
@@ -133,18 +134,54 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isMultiDayWorkshop: false,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
+      selectedVariation: null,
+    };
+  }
+
+  // Branch for single workshops with price variations
+  else if (params.workshopId && params.occurrenceId && params.variationId) {
+    const workshopId = Number(params.workshopId);
+    const occurrenceId = Number(params.occurrenceId);
+    const variationId = Number(params.variationId);
+
+    if (isNaN(workshopId) || isNaN(occurrenceId) || isNaN(variationId))
+      throw new Response("Invalid workshop, occurrence, or variation ID", {
+        status: 400,
+      });
+
+    const workshop = await getWorkshopById(workshopId);
+    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+
+    if (!workshop || !occurrence)
+      throw new Response("Workshop or Occurrence not found", { status: 404 });
+
+    // Get the specific price variation
+    const selectedVariation = await getWorkshopPriceVariation(variationId);
+
+    if (!selectedVariation)
+      throw new Response("Price variation not found", { status: 404 });
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
+    return {
+      workshop,
+      occurrence,
+      user,
+      isMultiDayWorkshop: false,
+      savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation,
     };
   }
 
   // Branch for multi-day workshops using connectId
-  else if (params.workshopId && params.connectId) {
+  else if (params.workshopId && params.connectId && !params.variationId) {
     const workshopId = Number(params.workshopId);
     const connectId = Number(params.connectId);
     if (isNaN(workshopId) || isNaN(connectId))
       throw new Response("Invalid workshop or connect ID", { status: 400 });
 
     const workshop = await getWorkshopById(workshopId);
-    // getWorkshopOccurrencesByConnectId should return an array of occurrences for this workshop with the given connectId
     const occurrences = await getWorkshopOccurrencesByConnectId(
       workshopId,
       connectId
@@ -154,7 +191,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
-    // For payment, we use the first occurrence as a representative
     return {
       workshop,
       occurrence: occurrences[0],
@@ -162,6 +198,45 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isMultiDayWorkshop: true,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
+      selectedVariation: null,
+    };
+  }
+
+  // Branch for multi-day workshops with price variations
+  else if (params.workshopId && params.connectId && params.variationId) {
+    const workshopId = Number(params.workshopId);
+    const connectId = Number(params.connectId);
+    const variationId = Number(params.variationId);
+
+    if (isNaN(workshopId) || isNaN(connectId) || isNaN(variationId))
+      throw new Response("Invalid workshop, connect, or variation ID", {
+        status: 400,
+      });
+
+    const workshop = await getWorkshopById(workshopId);
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      connectId
+    );
+
+    if (!workshop || !occurrences || occurrences.length === 0)
+      throw new Response("Workshop or Occurrences not found", { status: 404 });
+
+    // Get the specific price variation
+    const selectedVariation = await getWorkshopPriceVariation(variationId);
+    if (!selectedVariation)
+      throw new Response("Price variation not found", { status: 404 });
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
+    return {
+      workshop,
+      occurrence: occurrences[0],
+      user,
+      isMultiDayWorkshop: true,
+      savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation,
     };
   } else {
     throw new Response("Missing required parameters", { status: 400 });
@@ -249,7 +324,7 @@ export async function action({ request }: { request: Request }) {
 
     // Workshop branch: standard single occurrence registration
     else if (body.workshopId && body.occurrenceId) {
-      const { workshopId, occurrenceId, price, userId } = body;
+      const { workshopId, occurrenceId, price, userId, variationId } = body;
       if (!workshopId || !occurrenceId || !price || !userId) {
         return new Response(
           JSON.stringify({ error: "Missing required payment data" }),
@@ -271,6 +346,14 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
+      let workshopDisplayName = workshop.name;
+      if (variationId) {
+        const variation = await getWorkshopPriceVariation(Number(variationId));
+        if (variation) {
+          workshopDisplayName = `${workshop.name} - ${variation.name}`;
+        }
+      }
+
       const gstPercentage = await getAdminSetting("gst_percentage", "5");
       const gstRate = parseFloat(gstPercentage) / 100;
       const priceWithGST = price * (1 + gstRate);
@@ -283,7 +366,7 @@ export async function action({ request }: { request: Request }) {
             price_data: {
               currency: "cad",
               product_data: {
-                name: workshop.name,
+                name: workshopDisplayName,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
                 ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
@@ -300,6 +383,7 @@ export async function action({ request }: { request: Request }) {
           workshopId: workshopId.toString(),
           occurrenceId: occurrenceId.toString(),
           userId: userId.toString(),
+          variationId: variationId ? variationId.toString() : "",
         },
       });
 
@@ -408,6 +492,7 @@ export default function Payment() {
     oldMembershipNextPaymentDate?: Date | null;
     savedPaymentMethod?: any;
     gstPercentage: number;
+    selectedVariation?: any;
   };
 
   const navigate = useNavigate();
@@ -490,8 +575,11 @@ export default function Payment() {
             body: JSON.stringify({
               workshopId: data.workshop.id,
               connectId: data.occurrence.connectId,
-              price: data.workshop.price,
+              price: data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price,
               userId: data.user.id,
+              variationId: data.selectedVariation?.id || null,
             }),
           });
           const resData = await response.json();
@@ -508,8 +596,11 @@ export default function Payment() {
             body: JSON.stringify({
               workshopId: data.workshop.id,
               occurrenceId: data.occurrence.id,
-              price: data.workshop.price,
+              price: data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price,
               userId: data.user.id,
+              variationId: data.selectedVariation?.id || null,
             }),
           });
           const resData = await response.json();
@@ -545,7 +636,11 @@ export default function Payment() {
                 : undefined,
             }}
             itemName={data.workshop.name}
-            itemPrice={data.workshop.price}
+            itemPrice={
+              data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price
+            }
             gstPercentage={data.gstPercentage}
             savedCard={{
               cardLast4: data.savedPaymentMethod.cardLast4,
@@ -620,8 +715,8 @@ export default function Payment() {
             {data.isResubscription
               ? "Confirm Membership Resubscription"
               : data.isDowngrade
-              ? "Confirm Membership Downgrade"
-              : "Complete Your Membership Payment"}
+                ? "Confirm Membership Downgrade"
+                : "Complete Your Membership Payment"}
           </h2>
 
           <p className="text-gray-700">Plan: {data.membershipPlan.title}</p>
@@ -748,6 +843,12 @@ export default function Payment() {
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
+          {/* ADD THIS SECTION FOR VARIATION DISPLAY: */}
+          {data.selectedVariation && (
+            <p className="text-gray-700">
+              Option: {data.selectedVariation.name}
+            </p>
+          )}
           {data.isMultiDayWorkshop ? (
             <p className="text-gray-700">
               Occurrence Group: {data.occurrence?.connectId}
@@ -762,7 +863,9 @@ export default function Payment() {
               Total: CA$
               {data.workshop
                 ? (
-                    data.workshop.price *
+                    (data.selectedVariation
+                      ? data.selectedVariation.price
+                      : data.workshop.price) *
                     (1 + data.gstPercentage / 100)
                   ).toFixed(2)
                 : "0.00"}
@@ -770,7 +873,12 @@ export default function Payment() {
             <p className="text-sm text-gray-600">
               (Includes CA$
               {data.workshop
-                ? (data.workshop.price * (data.gstPercentage / 100)).toFixed(2)
+                ? (
+                    (data.selectedVariation
+                      ? data.selectedVariation.price
+                      : data.workshop.price) *
+                    (data.gstPercentage / 100)
+                  ).toFixed(2)
                 : "0.00"}{" "}
               GST)
             </p>

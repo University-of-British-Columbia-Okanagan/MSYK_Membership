@@ -5,6 +5,7 @@ import {
   getWorkshopOccurrencesByConnectId,
   registerForWorkshop,
   registerUserForAllOccurrences,
+  getWorkshopPriceVariation,
 } from "./workshop.server";
 import { getMembershipPlanById } from "./membership.server";
 import { getSavedPaymentMethod } from "./user.server";
@@ -542,7 +543,8 @@ export async function createCheckoutSession(request: Request) {
   }
   // Workshop Single Occurrence Payment
   else if (body.workshopId && body.occurrenceId) {
-    const { workshopId, occurrenceId, price, userId, userEmail } = body;
+    const { workshopId, occurrenceId, price, userId, userEmail, variationId } =
+      body;
     if (!workshopId || !occurrenceId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -553,6 +555,14 @@ export async function createCheckoutSession(request: Request) {
     );
     if (!workshop || !occurrence) {
       throw new Error("Workshop or Occurrence not found");
+    }
+
+    let workshopDisplayName = workshop.name;
+    if (variationId) {
+      const variation = await getWorkshopPriceVariation(Number(variationId));
+      if (variation) {
+        workshopDisplayName = `${workshop.name} - ${variation.name}`;
+      }
     }
 
     // Calculate GST
@@ -568,12 +578,12 @@ export async function createCheckoutSession(request: Request) {
           price_data: {
             currency: "cad",
             product_data: {
-              name: workshop.name,
+              name: workshopDisplayName,
               description: `${`Occurrence on ${new Date(
                 occurrence.startDate
               ).toLocaleString()}`} (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
+            unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
         },
@@ -585,16 +595,20 @@ export async function createCheckoutSession(request: Request) {
         workshopId: workshopId.toString(),
         occurrenceId: occurrenceId.toString(),
         userId: userId.toString(),
+        variationId: variationId ? variationId.toString() : "",
       },
     });
+
     return new Response(JSON.stringify({ url: session.url }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
+
   // Multi-day Workshop Payment
   else if (body.workshopId && body.connectId) {
-    const { workshopId, connectId, price, userId, userEmail } = body;
+    const { workshopId, connectId, price, userId, userEmail, variationId } =
+      body;
     if (!workshopId || !connectId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -605,6 +619,14 @@ export async function createCheckoutSession(request: Request) {
     );
     if (!workshop || !occurrences || occurrences.length === 0) {
       throw new Error("Workshop or Occurrences not found");
+    }
+
+    let workshopDisplayName = workshop.name;
+    if (variationId) {
+      const variation = await getWorkshopPriceVariation(Number(variationId));
+      if (variation) {
+        workshopDisplayName = `${workshop.name} - ${variation.name}`;
+      }
     }
 
     const occurrencesDescription = occurrences
@@ -629,10 +651,10 @@ export async function createCheckoutSession(request: Request) {
           price_data: {
             currency: "cad",
             product_data: {
-              name: workshop.name,
+              name: workshopDisplayName,
               description: `${description} (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
+            unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
         },
@@ -644,6 +666,7 @@ export async function createCheckoutSession(request: Request) {
         workshopId: workshopId.toString(),
         connectId: connectId.toString(),
         userId: userId.toString(),
+        variationId: variationId ? variationId.toString() : "",
       },
     });
 
@@ -652,6 +675,7 @@ export async function createCheckoutSession(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
   // Equipment Booking Payment
   else if (
     body.equipmentId &&

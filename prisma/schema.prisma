@@ -124,6 +124,7 @@ model Workshop {
   capacity           Int
   type               String // "workshop" or "orientation"
   imageUrl           String?
+  hasPriceVariations Boolean  @default(false)
   cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.")
   registrationCutoff Int      @default(60) // Registration cut-off in minutes before the workshop starts
 
@@ -137,6 +138,8 @@ model Workshop {
   prerequisites   WorkshopPrerequisite[] @relation("WorkshopWithPrerequisite")
 
   equipmentPrerequisites EquipmentPrerequisite[] @relation("EquipmentPrerequisiteWorkshop")
+
+  priceVariations WorkshopPriceVariation[]
 }
 
 model WorkshopOccurrence {
@@ -208,18 +211,35 @@ model EquipmentBooking {
 }
 
 model UserWorkshop {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  workshopId   Int
-  occurrenceId Int
-  result       String   @default("passed")
-  date         DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  workshopId       Int
+  occurrenceId     Int
+  priceVariationId Int?
+  result           String   @default("passed")
+  date             DateTime @default(now())
 
   user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   workshop   Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   occurrence WorkshopOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
 
+  priceVariation WorkshopPriceVariation? @relation("UserWorkshopPriceVariation", fields: [priceVariationId], references: [id], onDelete: SetNull)
+
   @@unique([userId, occurrenceId]) // Prevents duplicate registrations for the same occurrence
+}
+
+model WorkshopPriceVariation {
+  id          Int     @id @default(autoincrement())
+  workshopId  Int
+  name        String
+  price       Float
+  description String
+
+  // Relationships
+  workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  userWorkshops UserWorkshop[] @relation("UserWorkshopPriceVariation")
+
+  @@unique([workshopId, name]) // Prevent duplicate variation names for same workshop
 }
 
 model MembershipPlan {

@@ -11,6 +11,12 @@ interface WorkshopData {
   type: string;
   prerequisites?: number[];
   equipments?: number[];
+  hasPriceVariations?: boolean;
+  priceVariations?: Array<{
+    name: string;
+    price: number;
+    description: string;
+  }>;
   occurrences: {
     startDate: Date;
     endDate: Date;
@@ -124,6 +130,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         location: data.location,
         capacity: data.capacity,
         type: data.type,
+        hasPriceVariations: data.hasPriceVariations || false,
       },
     });
 
@@ -132,6 +139,22 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         data: data.prerequisites.map((prereqId) => ({
           workshopId: newWorkshop.id,
           prerequisiteId: prereqId,
+        })),
+      });
+    }
+
+    // Step 1.5: Create price variations if they exist
+    if (
+      data.hasPriceVariations &&
+      data.priceVariations &&
+      data.priceVariations.length > 0
+    ) {
+      await db.workshopPriceVariation.createMany({
+        data: data.priceVariations.map((variation) => ({
+          workshopId: newWorkshop.id,
+          name: variation.name,
+          price: variation.price,
+          description: variation.description,
         })),
       });
     }
@@ -365,6 +388,12 @@ export async function updateWorkshopWithOccurrences(
   data: UpdateWorkshopData & {
     selectedSlots?: Record<number, number[]>;
     userId?: number;
+    hasPriceVariations?: boolean;
+    priceVariations?: Array<{
+      name: string;
+      price: number;
+      description: string;
+    }>;
   }
 ) {
   // Update workshop basic info
@@ -377,8 +406,29 @@ export async function updateWorkshopWithOccurrences(
       location: data.location,
       capacity: data.capacity,
       type: data.type,
+      hasPriceVariations: data.hasPriceVariations || false,
     },
   });
+
+  // Update price variations
+  if (data.hasPriceVariations !== undefined) {
+    // Delete existing price variations
+    await db.workshopPriceVariation.deleteMany({
+      where: { workshopId },
+    });
+
+    // Add new price variations if any
+    if (data.priceVariations && data.priceVariations.length > 0) {
+      await db.workshopPriceVariation.createMany({
+        data: data.priceVariations.map((variation) => ({
+          workshopId,
+          name: variation.name,
+          price: variation.price,
+          description: variation.description,
+        })),
+      });
+    }
+  }
 
   if (data.prerequisites) {
     await db.workshopPrerequisite.deleteMany({ where: { workshopId } });
@@ -426,8 +476,8 @@ export async function updateWorkshopWithOccurrences(
           occ.status === "cancelled"
             ? "cancelled"
             : occ.startDate >= now
-            ? "active"
-            : "past";
+              ? "active"
+              : "past";
 
         // Create each occurrence individually to get its ID
         const createdOcc = await db.workshopOccurrence.create({
@@ -456,8 +506,8 @@ export async function updateWorkshopWithOccurrences(
       occ.status === "cancelled"
         ? "cancelled"
         : occ.startDate >= now
-        ? "active"
-        : "past";
+          ? "active"
+          : "past";
 
     await db.workshopOccurrence.update({
       where: { id: occ.id },
@@ -705,66 +755,63 @@ export async function deleteWorkshop(workshopId: number) {
 }
 
 /**
- * Registers a user for a specific workshop occurrence
+ * Registers a user for a workshop occurrence
  * @param workshopId - The ID of the workshop
  * @param occurrenceId - The ID of the specific occurrence
  * @param userId - The ID of the user to register
- * @returns Promise<UserWorkshop> - The created registration record
- * @throws Error if registration fails or capacity is exceeded
+ * @param variationId - The ID of the selected price variation (optional)
+ * @returns Promise<Object> - Registration result with success status and details
+ * @throws Error if user is already registered or workshop/occurrence not found
  */
 export async function registerForWorkshop(
   workshopId: number,
   occurrenceId: number,
-  userId: number
+  userId: number,
+  variationId?: number | null
 ) {
   try {
-    // Validate occurrence exists and belongs to the specified workshop
-    const occurrence = await db.workshopOccurrence.findUnique({
-      where: { id: occurrenceId },
-      include: { workshop: true },
-    });
+    // Check if the user is already registered for this occurrence
+    const existingRegistration = await checkUserRegistration(
+      workshopId,
+      userId,
+      occurrenceId
+    );
 
-    if (!occurrence || occurrence.workshop.id !== workshopId) {
+    if (existingRegistration.registered) {
       throw new Error(
-        "Workshop occurrence not found for the specified workshop"
+        "User is already registered for this workshop occurrence"
       );
     }
 
-    // Prevent registrations for past occurrences
-    const now = new Date();
-    if (new Date(occurrence.startDate) < now) {
-      throw new Error("Cannot register for past workshops.");
+    // Get the workshop and occurrence to ensure they exist
+    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+    if (!occurrence) {
+      throw new Error("Workshop occurrence not found");
     }
 
-    // Check if the user is already registered for this occurrence
-    const existingRegistration = await db.userWorkshop.findFirst({
-      where: { userId, occurrenceId },
-    });
-
-    if (existingRegistration) {
-      throw new Error("User already registered for this session.");
+    const workshop = await getWorkshopById(workshopId);
+    if (!workshop) {
+      throw new Error("Workshop not found");
     }
 
-    // Determine registration result based on workshop type.
-    // If the workshop type is "orientation", set result to "pending".
+    // Determine registration result based on workshop type
     const registrationResult =
-      occurrence.workshop.type.toLowerCase() === "orientation"
-        ? "pending"
-        : undefined;
+      workshop.type.toLowerCase() === "orientation" ? "pending" : undefined;
 
-    // Register user for this occurrence, including the result field if applicable.
+    // Register user for this occurrence, including the result field if applicable
     await db.userWorkshop.create({
       data: {
         userId,
-        workshopId: occurrence.workshop.id,
+        workshopId: workshop.id,
         occurrenceId,
+        priceVariationId: variationId,
         ...(registrationResult ? { result: registrationResult } : {}),
       },
     });
 
     return {
       success: true,
-      workshopName: occurrence.workshop.name,
+      workshopName: workshop.name,
       startDate: occurrence.startDate,
       endDate: occurrence.endDate,
     };
@@ -1415,47 +1462,77 @@ export async function getWorkshopOccurrencesByConnectId(
 }
 
 /**
- * Registers a user for all occurrences in a multi-session workshop
+ * Registers a user for all occurrences of a multi-day workshop using connectId
  * @param workshopId - The ID of the workshop
- * @param connectId - The connection ID linking multiple sessions
+ * @param connectId - The connect ID linking all workshop occurrences
  * @param userId - The ID of the user to register
- * @returns Promise<UserWorkshop[]> - Array of created registration records
+ * @param variationId - The ID of the selected price variation (optional)
+ * @returns Promise<Object> - Registration result with success status
  * @throws Error if registration fails for any occurrence
  */
 export async function registerUserForAllOccurrences(
   workshopId: number,
   connectId: number,
-  userId: number
+  userId: number,
+  variationId?: number | null
 ) {
-  // 1. Find all occurrences that match workshopId + connectId
-  const occurrences = await db.workshopOccurrence.findMany({
-    where: { workshopId, connectId },
-  });
-  if (!occurrences || occurrences.length === 0) {
-    throw new Error("No occurrences found for this workshop connectId group.");
-  }
+  try {
+    // Get all occurrences for this workshop with the given connectId
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      connectId
+    );
 
-  // 2. For each occurrence, insert a record in your pivot table (e.g. userWorkshop)
-  for (const occ of occurrences) {
-    // Check if user is already registered for this occurrence
-    const existing = await db.userWorkshop.findFirst({
-      where: {
-        userId,
-        workshopId,
-        occurrenceId: occ.id,
-      },
-    });
-    if (!existing) {
-      // If not registered, create a new record
-      await db.userWorkshop.create({
-        data: {
-          userId,
-          workshopId,
-          occurrenceId: occ.id,
-          result: "passed",
-        },
-      });
+    if (!occurrences || occurrences.length === 0) {
+      throw new Error("No occurrences found for this workshop");
     }
+
+    const workshop = await getWorkshopById(workshopId);
+    if (!workshop) {
+      throw new Error("Workshop not found");
+    }
+
+    // Determine registration result based on workshop type
+    const registrationResult =
+      workshop.type.toLowerCase() === "orientation" ? "pending" : undefined;
+
+    // Register user for each occurrence
+    const registrations = await Promise.all(
+      occurrences.map(async (occurrence) => {
+        // Check if already registered
+        const existingRegistration = await checkUserRegistration(
+          workshopId,
+          userId,
+          occurrence.id
+        );
+
+        if (existingRegistration.registered) {
+          return { occurrenceId: occurrence.id, alreadyRegistered: true };
+        }
+
+        // Register for this occurrence
+        await db.userWorkshop.create({
+          data: {
+            userId,
+            workshopId,
+            occurrenceId: occurrence.id,
+            priceVariationId: variationId,
+            ...(registrationResult ? { result: registrationResult } : {}),
+          },
+        });
+
+        return { occurrenceId: occurrence.id, registered: true };
+      })
+    );
+
+    return {
+      success: true,
+      registrations,
+      workshopName: workshop.name,
+    };
+  } catch (error) {
+    console.error("Error registering for all occurrences:", error);
+    throw error;
   }
 }
 
@@ -1584,5 +1661,79 @@ export async function offerWorkshopAgain(
   } catch (error) {
     console.error("Error offering workshop again:", error);
     throw new Error("Failed to create new workshop offer");
+  }
+}
+
+/**
+ * Retrieves workshop with price variations by workshop ID
+ * @param workshopId - The ID of the workshop to retrieve
+ * @returns Promise<Workshop|null> - The workshop record with price variations or null if not found
+ */
+export async function getWorkshopWithPriceVariations(workshopId: number) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: {
+          orderBy: { price: "asc" },
+        },
+        occurrences: {
+          include: {
+            userWorkshops: true,
+            equipmentSlots: {
+              include: {
+                equipment: true,
+              },
+              orderBy: {
+                startTime: "asc",
+              },
+            },
+          },
+        },
+        prerequisites: {
+          select: {
+            prerequisiteId: true,
+          },
+        },
+      },
+    });
+
+    if (!workshop) {
+      return null;
+    }
+
+    // Flatten prerequisite workshop IDs
+    const prerequisites = workshop.prerequisites.map((p) => p.prerequisiteId);
+
+    // Extract all equipment IDs used in the workshop occurrences
+    const equipments = workshop.occurrences.flatMap((occ) =>
+      occ.equipmentSlots.map((slot) => slot.equipmentId)
+    );
+
+    return {
+      ...workshop,
+      prerequisites,
+      equipments,
+    };
+  } catch (error) {
+    console.error("Error fetching workshop with price variations:", error);
+    throw new Error("Failed to fetch workshop with price variations");
+  }
+}
+
+/**
+ * Retrieves a specific workshop price variation by its ID
+ * @param variationId - The ID of the price variation to retrieve
+ * @returns Promise<WorkshopPriceVariation|null> - The variation record or null if not found
+ */
+export async function getWorkshopPriceVariation(variationId: number) {
+  try {
+    const variation = await db.workshopPriceVariation.findUnique({
+      where: { id: variationId },
+    });
+    return variation;
+  } catch (error) {
+    console.error("Error fetching workshop price variation:", error);
+    throw new Error("Failed to fetch workshop price variation");
   }
 }
