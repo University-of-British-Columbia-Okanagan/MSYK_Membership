@@ -597,6 +597,10 @@ export default function WorkshopDetails() {
                               equipments: workshop.equipments || [],
                               // Exclude occurrences/dates
                               isMultiDayWorkshop: isMultiDayWorkshop,
+                              // Add pricing variation data
+                              hasPriceVariations:
+                                workshop.hasPriceVariations || false,
+                              priceVariations: workshop.priceVariations || [],
                             })
                           );
                           // Navigate to the add workshop page
