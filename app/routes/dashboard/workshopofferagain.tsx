@@ -12,7 +12,6 @@ import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
 import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
 import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import {
-  getWorkshopById,
   offerWorkshopAgain,
   getWorkshopWithPriceVariations,
 } from "~/models/workshop.server";
@@ -45,8 +44,6 @@ import {
 } from "~/models/equipment.server";
 import { logger } from "~/logging/logger";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
-import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
-import type { SlotsByDay } from "~/components/ui/Dashboard/EquipmentBookingGrid";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
@@ -427,14 +424,7 @@ export async function action({
 //  5) WorkshopOfferAgain Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function WorkshopOfferAgain() {
-  const {
-    workshopId,
-    workshop,
-    roleUser,
-    equipmentsWithSlots,
-    availableEquipments,
-    equipmentVisibilityDays,
-  } = useLoaderData() as {
+  const { workshop, roleUser, equipmentsWithSlots } = useLoaderData() as {
     workshopId: number;
     workshop: any;
     roleUser: any;
@@ -447,11 +437,11 @@ export default function WorkshopOfferAgain() {
 
   const selectedEquipments: number[] = workshop.equipments || [];
 
-  // Store original workshop dates for reference
+  // Store original workshop dates for reference (LATEST OFFER ONLY)
   const [originalOccurrences, setOriginalOccurrences] = useState<
     { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
   >(() => {
-    // Pre-populate with the workshop's existing occurrences
+    // Pre-populate with the workshop's existing occurrences from LATEST OFFER ONLY
     if (workshop.occurrences && workshop.occurrences.length > 0) {
       // First, find the latest offerId
       let latestOfferId = 0;
@@ -462,26 +452,60 @@ export default function WorkshopOfferAgain() {
       });
 
       // Filter for occurrences with the latest offerId only
-      return (
-        workshop.occurrences
-          // .filter((occ: any) => occ.offerId === latestOfferId)
-          .map((occ: any) => ({
-            startDate: new Date(occ.startDate),
-            endDate: new Date(occ.endDate),
-            startDatePST: occ.startDatePST
-              ? new Date(occ.startDatePST)
-              : undefined,
-            endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined,
-          }))
-          .filter(
-            (occ: any) =>
-              !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
-          )
-          .sort(
-            (a: { startDate: Date }, b: { startDate: Date }) =>
-              a.startDate.getTime() - b.startDate.getTime()
-          )
-      ); // Sort by start date ascending
+      return workshop.occurrences
+        .filter((occ: any) => occ.offerId === latestOfferId)
+        .map((occ: any) => ({
+          startDate: new Date(occ.startDate),
+          endDate: new Date(occ.endDate),
+          startDatePST: occ.startDatePST
+            ? new Date(occ.startDatePST)
+            : undefined,
+          endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined,
+        }))
+        .filter(
+          (occ: any) =>
+            !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
+        )
+        .sort(
+          (a: { startDate: Date }, b: { startDate: Date }) =>
+            a.startDate.getTime() - b.startDate.getTime()
+        ); // Sort by start date ascending
+    }
+    return [];
+  });
+
+  // Store ALL future workshop dates for equipment usage (ALL OFFERS)
+  const [allFutureOccurrences, setAllFutureOccurrences] = useState<
+    { startDate: Date; endDate: Date; startDatePST?: Date; endDatePST?: Date }[]
+  >(() => {
+    // Pre-populate with ALL future active workshop occurrences from ALL offers
+    if (workshop.occurrences && workshop.occurrences.length > 0) {
+      const now = new Date();
+
+      return workshop.occurrences
+        .filter((occ: any) => {
+          const startDate = new Date(occ.startDate);
+          // Include all future active occurrences regardless of offer
+          return (
+            startDate.getTime() >= now.getTime() && occ.status === "active"
+          );
+        })
+        .map((occ: any) => ({
+          startDate: new Date(occ.startDate),
+          endDate: new Date(occ.endDate),
+          startDatePST: occ.startDatePST
+            ? new Date(occ.startDatePST)
+            : undefined,
+          endDatePST: occ.endDatePST ? new Date(occ.endDatePST) : undefined,
+        }))
+        .filter(
+          (occ: any) =>
+            !isNaN(occ.startDate.getTime()) && !isNaN(occ.endDate.getTime())
+        )
+        .sort(
+          (a: { startDate: Date }, b: { startDate: Date }) =>
+            a.startDate.getTime() - b.startDate.getTime()
+        ); // Sort by start date ascending
     }
     return [];
   });
@@ -1024,13 +1048,13 @@ export default function WorkshopOfferAgain() {
                             );
                             if (!equipment) return null;
 
-                            // Create a condensed time range summary
+                            // Create a condensed time range summary using ALL FUTURE OCCURRENCES
                             const getTimeRangeSummary = () => {
-                              if (originalOccurrences.length === 0)
+                              if (allFutureOccurrences.length === 0)
                                 return "No scheduled times";
 
-                              if (originalOccurrences.length === 1) {
-                                const occ = originalOccurrences[0];
+                              if (allFutureOccurrences.length === 1) {
+                                const occ = allFutureOccurrences[0];
                                 return `${occ.startDate.toLocaleDateString(
                                   "en-US",
                                   {
@@ -1053,7 +1077,7 @@ export default function WorkshopOfferAgain() {
                               }
 
                               // Multiple occurrences - show range
-                              const sortedOccs = [...originalOccurrences].sort(
+                              const sortedOccs = [...allFutureOccurrences].sort(
                                 (a, b) =>
                                   a.startDate.getTime() - b.startDate.getTime()
                               );
@@ -1090,8 +1114,8 @@ export default function WorkshopOfferAgain() {
                                       variant="outline"
                                       className="bg-blue-50 text-blue-700"
                                     >
-                                      {originalOccurrences.length} session
-                                      {originalOccurrences.length !== 1
+                                      {allFutureOccurrences.length} session
+                                      {allFutureOccurrences.length !== 1
                                         ? "s"
                                         : ""}
                                     </Badge>
@@ -1102,7 +1126,7 @@ export default function WorkshopOfferAgain() {
                                     {getTimeRangeSummary()}
                                   </div>
 
-                                  {originalOccurrences.length > 1 && (
+                                  {allFutureOccurrences.length > 1 && (
                                     <details className="group">
                                       <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 flex items-center">
                                         <span>View all session times</span>
@@ -1119,7 +1143,7 @@ export default function WorkshopOfferAgain() {
                                         </svg>
                                       </summary>
                                       <div className="mt-3 space-y-2 pl-4 border-l-2 border-gray-200">
-                                        {originalOccurrences.map(
+                                        {allFutureOccurrences.map(
                                           (occ, index) => (
                                             <div
                                               key={index}
@@ -1169,8 +1193,6 @@ export default function WorkshopOfferAgain() {
                     })()}
                   </div>
                 )}
-
-                {/* Hidden input for occurrences */}
 
                 {/* Hidden input for occurrences */}
                 <input
