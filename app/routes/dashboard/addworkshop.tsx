@@ -879,7 +879,7 @@ export default function AddWorkshop() {
     }
   };
 
-  // Add this function to remove a prerequisite
+  // Function to remove a prerequisite
   const removePrerequisite = (workshopId: number) => {
     const updated = selectedPrerequisites.filter((id) => id !== workshopId);
     setSelectedPrerequisites(updated);
@@ -1050,7 +1050,6 @@ export default function AddWorkshop() {
                 <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
                   There are some errors in your form. Please review the
                   highlighted fields below.
-                  {/* ADD THIS SECTION TO SHOW PRICE VARIATION ERRORS: */}
                   {actionData.errors.priceVariations && (
                     <div className="mt-2 pt-2 border-t border-red-300">
                       <strong>Price Variations Errors:</strong>
@@ -1223,7 +1222,6 @@ export default function AddWorkshop() {
                       </Button>
                     </div>
 
-                    {/* ADD THIS ERROR DISPLAY: */}
                     {actionData?.errors?.priceVariations && (
                       <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
                         {Array.isArray(actionData.errors.priceVariations)

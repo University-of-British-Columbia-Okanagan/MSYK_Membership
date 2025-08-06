@@ -69,7 +69,7 @@ async function generateSignedWaiver(
     const fullName = `${firstName} ${lastName}`;
     secondPage.drawText(fullName, {
       x: baseX,
-      y: 245,
+      y: 200,
       size: 10, // Slightly smaller font
       font: font,
       color: rgb(0, 0, 0),
@@ -86,8 +86,8 @@ async function generateSignedWaiver(
         const signatureImage = await pdfDoc.embedPng(signatureBytes);
 
         secondPage.drawImage(signatureImage, {
-          x: baseX * 3,
-          y: 125,
+          x: baseX * 3.5,
+          y: 80,
           // width: 140, // Slightly smaller signature
           // height: 20, // Reduced height
         });
@@ -100,7 +100,7 @@ async function generateSignedWaiver(
     const currentDate = new Date().toLocaleDateString("en-US");
     secondPage.drawText(currentDate, {
       x: baseX,
-      y: 160,
+      y: 114,
       size: 10, // Consistent font size
       font: font,
       color: rgb(0, 0, 0),
@@ -108,7 +108,10 @@ async function generateSignedWaiver(
 
     const pdfBytes = await pdfDoc.save();
     const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
-    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY || "M4kersp4ce!y";
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
     const encryptedPdf = CryptoJS.AES.encrypt(
       pdfBase64,
       encryptionKey
@@ -141,7 +144,7 @@ async function generateSignedWaiver(
  * @security
  * - Uses same AES decryption key as generateSignedWaiver()
  * - Key retrieved from WAIVER_ENCRYPTION_KEY environment variable
- * - Falls back to default key "M4kersp4ce!y" if environment variable not set
+ * - Falls back to default key if environment variable not set
  *
  * @dependencies
  * - Uses crypto-js for AES decryption
@@ -151,7 +154,10 @@ async function generateSignedWaiver(
  */
 function decryptWaiver(encryptedData: string): Buffer {
   try {
-    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY || "M4kersp4ce!y";
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
     const decryptedBase64 = CryptoJS.AES.decrypt(
       encryptedData,
       encryptionKey

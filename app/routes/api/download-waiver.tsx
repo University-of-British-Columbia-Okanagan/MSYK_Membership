@@ -5,7 +5,6 @@ import { db } from "~/utils/db.server";
 export const loader: LoaderFunction = async ({ request }) => {
   try {
     const userId = await getUserId(request);
-    console.log("API Route - User ID:", userId);
 
     if (!userId) {
       return new Response("Unauthorized", { status: 401 });
@@ -22,12 +21,6 @@ export const loader: LoaderFunction = async ({ request }) => {
       },
     });
 
-    console.log("API Route - User found:", !!user);
-    console.log(
-      "API Route - Waiver signature exists:",
-      !!user?.waiverSignature
-    );
-
     if (!user || !user.waiverSignature) {
       return new Response("Waiver not found", { status: 404 });
     }
@@ -38,14 +31,9 @@ export const loader: LoaderFunction = async ({ request }) => {
     }
 
     // Decrypt the waiver
-    console.log("API Route - Attempting to decrypt waiver...");
     let decryptedPdfBuffer;
     try {
       decryptedPdfBuffer = decryptWaiver(user.waiverSignature);
-      console.log(
-        "API Route - Decryption successful, buffer size:",
-        decryptedPdfBuffer.length
-      );
     } catch (decryptError) {
       console.error("API Route - Decryption failed:", decryptError);
       return new Response("Failed to decrypt waiver document", { status: 500 });
