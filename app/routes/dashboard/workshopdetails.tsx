@@ -558,9 +558,11 @@ export default function WorkshopDetails() {
                 <CardTitle className="text-2xl font-bold">
                   {workshop.name}
                 </CardTitle>
-                <CardDescription className="text-gray-600 max-w-2xl mx-auto">
-                  {workshop.description}
-                </CardDescription>
+                {workshop.priceVariations.length === 0 && (
+                  <CardDescription className="text-gray-600 max-w-2xl mx-auto">
+                    {workshop.description}
+                  </CardDescription>
+                )}
 
                 {/* Admin Only: View Users Button */}
                 {isAdmin && (
@@ -644,40 +646,59 @@ export default function WorkshopDetails() {
                         </Badge>
                       </div>
 
-                      {/* Pricing options card */}
-                      <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                          <h3 className="text-sm font-semibold text-gray-800">
-                            Other Available Pricing Options
-                          </h3>
-                        </div>
+                      {/* Pricing Options Section */}
+                      <div className="mb-6">
+                        <h2 className="text-lg font-semibold mb-4">
+                          Pricing Options
+                        </h2>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Base Price Card */}
+                          <div className="border p-4 rounded-lg shadow-md bg-blue-50 border-blue-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <h3 className="text-lg font-medium text-gray-800">
+                                Standard pricing for {workshop.name}
+                              </h3>
+                              <span className="text-xl font-bold text-blue-600">
+                                ${workshop.price}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600">
+                              {workshop.description}
+                            </p>
+                            <div className="mt-2">
+                              <Badge className="bg-blue-100 text-blue-800 border-blue-300">
+                                Default Option
+                              </Badge>
+                            </div>
+                          </div>
+
+                          {/* Price Variations */}
                           {workshop.priceVariations.map((variation: any) => (
                             <div
                               key={variation.id}
-                              className="bg-white border border-yellow-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow"
+                              className="border p-4 rounded-lg shadow-md bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                             >
-                              <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-medium text-gray-900 text-sm">
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-lg font-medium text-gray-800">
                                   {variation.name}
-                                </h4>
-                                <span className="font-bold text-green-600">
+                                </h3>
+                                <span className="text-xl font-bold text-blue-600">
                                   ${variation.price}
                                 </span>
                               </div>
-                              <p className="text-xs text-gray-600 leading-relaxed">
+                              <p className="text-sm text-gray-600">
                                 {variation.description}
                               </p>
                             </div>
                           ))}
                         </div>
 
-                        <div className="mt-3 text-center">
-                          <span className="inline-flex items-center gap-1 text-xs text-blue-600 font-medium">
+                        {/* Instruction message */}
+                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center gap-2">
                             <svg
-                              className="w-4 h-4"
+                              className="w-5 h-5 text-blue-600 flex-shrink-0"
                               fill="currentColor"
                               viewBox="0 0 20 20"
                             >
@@ -687,8 +708,17 @@ export default function WorkshopDetails() {
                                 clipRule="evenodd"
                               />
                             </svg>
-                            Choose your option during registration
-                          </span>
+                            <div className="text-sm">
+                              <p className="font-medium text-blue-800">
+                                How to select your pricing option:
+                              </p>
+                              <p className="text-blue-700 mt-1">
+                                After clicking to register for the workshop
+                                time(s), you'll be able to choose from these
+                                pricing options during the checkout process.
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
