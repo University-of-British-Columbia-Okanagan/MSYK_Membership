@@ -25,7 +25,7 @@ import {
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
 import { useState, useEffect } from "react";
-import { Users } from "lucide-react";
+import { Users, MapPin } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -623,27 +623,23 @@ export default function WorkshopDetails() {
 
               <CardContent>
                 <div className="flex items-center gap-4">
-                  {/* REPLACE THE ENTIRE PRICE SECTION WITH THIS: */}
                   {workshop.hasPriceVariations &&
                   workshop.priceVariations &&
                   workshop.priceVariations.length > 0 ? (
                     <div className="w-full">
-                      {/* Main pricing display */}
+                      {/* Base price display */}
                       <div className="flex items-center gap-4 mb-4">
                         <Badge
                           variant="outline"
                           className="px-4 py-2 text-lg font-medium bg-yellow-50 border-yellow-300 text-yellow-800"
                         >
-                          Starting from $
-                          {Math.min(
-                            workshop.price,
-                            ...workshop.priceVariations.map((v: any) => v.price)
-                          )}
+                          Base price of ${workshop.price}
                         </Badge>
                         <Badge
                           variant="outline"
                           className="px-4 py-2 text-lg font-medium"
                         >
+                          <MapPin className="w-4 h-4 mr-2" />
                           {workshop.location}
                         </Badge>
                       </div>
