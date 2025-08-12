@@ -357,6 +357,26 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
               <p className="text-sm text-green-800 font-medium">
                 ✓ Registration successful!
               </p>
+              <div className="mt-2">
+                <p className="text-sm text-gray-600">
+                  You can now{" "}
+                  <a
+                    href="/login"
+                    className="text-yellow-600
+                    hover:text-yellow-700 font-medium"
+                  >
+                    login here
+                  </a>{" "}
+                  or{" "}
+                  <a
+                    href="/dashboard"
+                    className="text-yellow-600
+                    hover:text-yellow-700 font-medium"
+                  >
+                    view the portal as guest
+                  </a>
+                </p>
+              </div>
             </div>
           )}
           {hasErrors && (
@@ -387,6 +407,30 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   features like volunteer hour tracking and equipment booking
                   for more serious makers.
                 </p>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6 mt-6">
+                  <div className="text-center space-y-3">
+                    <p className="text-sm text-gray-600">
+                      Already have an account?{" "}
+                      <a
+                        href="/login"
+                        className="text-yellow-600 hover:text-yellow-700 font-semibold transition-colors duration-200 decoration-1 underline-offset-2"
+                      >
+                        Sign in here
+                      </a>
+                    </p>
+
+                    <p className="text-sm text-gray-600">
+                      View the portal as a guest?{" "}
+                      <a
+                        href="/dashboard"
+                        className="text-yellow-600 hover:text-yellow-700 font-semibold transition-colors duration-200 decoration-1 underline-offset-2"
+                      >
+                        View here
+                      </a>
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <Form {...form}>
@@ -851,30 +895,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       </FormItem>
                     )}
                   />
-
-                  <div className="text-center mb-4">
-                    <p className="text-sm text-gray-600">
-                      Already have an account?{" "}
-                      <a
-                        href="/login"
-                        className="text-yellow-600 hover:text-yellow-700 font-medium"
-                      >
-                        Sign in here
-                      </a>
-                    </p>
-                  </div>
-
-                  <div className="text-center mb-4">
-                    <p className="text-sm text-gray-600">
-                      View the portal as a guest?{" "}
-                      <a
-                        href="/dashboard"
-                        className="text-yellow-600 hover:text-yellow-700 font-medium"
-                      >
-                        View here
-                      </a>
-                    </p>
-                  </div>
 
                   {/* Submit Button */}
                   <button
