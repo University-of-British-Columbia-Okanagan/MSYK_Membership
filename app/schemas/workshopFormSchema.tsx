@@ -16,6 +16,7 @@ export const workshopFormSchema = z
           name: z.string().min(1, "Variation name is required"),
           price: z.number().min(0, "Price must be a positive number"),
           description: z.string().min(1, "Description is required"),
+          capacity: z.number().min(1, "Capacity must be at least 1"),
         })
       )
       .optional()
@@ -83,8 +84,15 @@ export const workshopFormSchema = z
   .refine(
     (data) => {
       // Check for unique prices across base price and all variations
-      if (data.hasPriceVariations && data.priceVariations && data.priceVariations.length > 0) {
-        const allPrices = [data.price, ...data.priceVariations.map(v => v.price)];
+      if (
+        data.hasPriceVariations &&
+        data.priceVariations &&
+        data.priceVariations.length > 0
+      ) {
+        const allPrices = [
+          data.price,
+          ...data.priceVariations.map((v) => v.price),
+        ];
         const uniquePrices = new Set(allPrices);
         return allPrices.length === uniquePrices.size;
       }

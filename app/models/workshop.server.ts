@@ -16,6 +16,7 @@ interface WorkshopData {
     name: string;
     price: number;
     description: string;
+    capacity: number;
   }>;
   occurrences: {
     startDate: Date;
@@ -155,6 +156,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
           name: variation.name,
           price: variation.price,
           description: variation.description,
+          capacity: variation.capacity,
         })),
       });
     }
@@ -393,6 +395,7 @@ export async function updateWorkshopWithOccurrences(
       name: string;
       price: number;
       description: string;
+      capacity: number;
     }>;
   }
 ) {
@@ -425,6 +428,7 @@ export async function updateWorkshopWithOccurrences(
           name: variation.name,
           price: variation.price,
           description: variation.description,
+          capacity: variation.capacity,
         })),
       });
     }
@@ -770,7 +774,7 @@ export async function registerForWorkshop(
   variationId?: number | null
 ) {
   try {
-    // Check if the user is already registered for this occurrence
+    // Check if already registered
     const existingRegistration = await checkUserRegistration(
       workshopId,
       userId,
@@ -778,20 +782,36 @@ export async function registerForWorkshop(
     );
 
     if (existingRegistration.registered) {
-      throw new Error(
-        "User is already registered for this workshop occurrence"
-      );
+      throw new Error("User is already registered for this workshop");
     }
 
-    // Get the workshop and occurrence to ensure they exist
-    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
-    if (!occurrence) {
-      throw new Error("Workshop occurrence not found");
+    // Check capacity before registering
+    const capacityCheck = await checkWorkshopCapacity(
+      workshopId,
+      occurrenceId,
+      variationId
+    );
+
+    if (!capacityCheck.hasCapacity) {
+      if (capacityCheck.reason === "workshop_full") {
+        throw new Error(
+          `Workshop is full. Capacity: ${capacityCheck.workshopCapacity}, Current registrations: ${capacityCheck.totalRegistrations}`
+        );
+      } else if (capacityCheck.reason === "variation_full") {
+        throw new Error(
+          `${capacityCheck.variationName} variation is full. Capacity: ${capacityCheck.variationCapacity}, Current registrations: ${capacityCheck.variationRegistrations}`
+        );
+      }
     }
 
     const workshop = await getWorkshopById(workshopId);
     if (!workshop) {
       throw new Error("Workshop not found");
+    }
+
+    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+    if (!occurrence) {
+      throw new Error("Workshop occurrence not found");
     }
 
     // Determine registration result based on workshop type
@@ -1735,5 +1755,160 @@ export async function getWorkshopPriceVariation(variationId: number) {
   } catch (error) {
     console.error("Error fetching workshop price variation:", error);
     throw new Error("Failed to fetch workshop price variation");
+  }
+}
+
+/**
+ * Checks if workshop or price variation has capacity for registration
+ * @param workshopId - The ID of the workshop
+ * @param occurrenceId - The ID of the specific occurrence
+ * @param variationId - Optional price variation ID
+ * @returns Promise<Object> - Object with capacity status and counts
+ */
+export async function checkWorkshopCapacity(
+  workshopId: number,
+  occurrenceId: number,
+  variationId?: number | null
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          where: { id: occurrenceId },
+          include: {
+            userWorkshops: true,
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrence not found");
+    }
+
+    const occurrence = workshop.occurrences[0];
+    const totalRegistrations = occurrence.userWorkshops.length;
+
+    // Check base workshop capacity
+    if (totalRegistrations >= workshop.capacity) {
+      return {
+        hasCapacity: false,
+        reason: "workshop_full",
+        workshopCapacity: workshop.capacity,
+        totalRegistrations,
+      };
+    }
+
+    // If no variation specified, just check base capacity
+    if (!variationId) {
+      return {
+        hasCapacity: true,
+        workshopCapacity: workshop.capacity,
+        totalRegistrations,
+      };
+    }
+
+    // Check specific variation capacity
+    const variation = workshop.priceVariations.find(
+      (v) => v.id === variationId
+    );
+    if (!variation) {
+      throw new Error("Price variation not found");
+    }
+
+    const variationRegistrations = occurrence.userWorkshops.filter(
+      (uw) => uw.priceVariationId === variationId
+    ).length;
+
+    if (variationRegistrations >= variation.capacity) {
+      return {
+        hasCapacity: false,
+        reason: "variation_full",
+        variationCapacity: variation.capacity,
+        variationRegistrations,
+        variationName: variation.name,
+      };
+    }
+
+    return {
+      hasCapacity: true,
+      workshopCapacity: workshop.capacity,
+      totalRegistrations,
+      variationCapacity: variation.capacity,
+      variationRegistrations,
+    };
+  } catch (error) {
+    console.error("Error checking workshop capacity:", error);
+    throw error;
+  }
+}
+
+/**
+ * Gets registration counts for workshop and all its price variations
+ * @param workshopId - The ID of the workshop
+ * @param occurrenceId - The ID of the specific occurrence
+ * @returns Promise<Object> - Object with detailed capacity information
+ */
+export async function getWorkshopRegistrationCounts(
+  workshopId: number,
+  occurrenceId: number
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          where: { id: occurrenceId },
+          include: {
+            userWorkshops: {
+              include: {
+                priceVariation: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrence not found");
+    }
+
+    const occurrence = workshop.occurrences[0];
+    const registrations = occurrence.userWorkshops;
+
+    // Count base registrations (no price variation)
+    const baseRegistrations = registrations.filter(
+      (uw) => !uw.priceVariationId
+    ).length;
+
+    // Count registrations by variation
+    const variationCounts = workshop.priceVariations.map((variation) => {
+      const count = registrations.filter(
+        (uw) => uw.priceVariationId === variation.id
+      ).length;
+
+      return {
+        variationId: variation.id,
+        name: variation.name,
+        capacity: variation.capacity,
+        registrations: count,
+        hasCapacity: count < variation.capacity,
+      };
+    });
+
+    return {
+      workshopCapacity: workshop.capacity,
+      totalRegistrations: registrations.length,
+      baseRegistrations,
+      hasBaseCapacity: registrations.length < workshop.capacity,
+      variations: variationCounts,
+    };
+  } catch (error) {
+    console.error("Error getting workshop registration counts:", error);
+    throw error;
   }
 }

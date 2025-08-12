@@ -583,6 +583,7 @@ export async function action({ request }: { request: Request }) {
         name: String(v.name || "").trim(),
         price: parseFloat(v.price) || 0,
         description: String(v.description || "").trim(),
+        capacity: parseInt(v.capacity) || 1,
       }));
     } catch (error) {
       logger.error(`[Add workshop] Error parsing price variations: ${error}`, {
@@ -797,6 +798,7 @@ export default function AddWorkshop() {
       name: string;
       price: string;
       description: string;
+      capacity: string;
     }>
   >([]);
 
@@ -966,6 +968,7 @@ export default function AddWorkshop() {
               name: variation.name,
               price: variation.price.toString(), // Convert to string for form input
               description: variation.description,
+              capacity: variation.capacity?.toString() || "1",
             })
           );
           setPriceVariations(formattedVariations);
@@ -1213,7 +1216,12 @@ export default function AddWorkshop() {
                         onClick={() =>
                           setPriceVariations([
                             ...priceVariations,
-                            { name: "", price: "", description: "" },
+                            {
+                              name: "",
+                              price: "",
+                              description: "",
+                              capacity: "1",
+                            },
                           ])
                         }
                         className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
@@ -1264,77 +1272,108 @@ export default function AddWorkshop() {
                     {priceVariations.map((variation, index) => (
                       <div
                         key={index}
-                        className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-white rounded-lg border"
+                        className="mb-3 p-3 bg-white rounded-lg border"
                       >
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Variation Name{" "}
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Required variation name"
-                            value={variation.name}
-                            onChange={(e) => {
-                              const newVariations = [...priceVariations];
-                              newVariations[index].name = e.target.value;
-                              setPriceVariations(newVariations);
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          />
-                          {/* ERROR DISPLAY: */}
-                          {actionData?.errors?.[
-                            `priceVariations.${index}.name`
-                          ] && (
-                            <p className="text-red-500 text-xs mt-1">
-                              {
-                                actionData.errors[
-                                  `priceVariations.${index}.name`
-                                ]
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Price <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0"
-                            value={variation.price}
-                            onChange={(e) => {
-                              const newVariations = [...priceVariations];
-                              newVariations[index].price = e.target.value;
-                              setPriceVariations(newVariations);
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          />
-                          {/* ERROR DISPLAY: */}
-                          {actionData?.errors?.[
-                            `priceVariations.${index}.price`
-                          ] && (
-                            <p className="text-red-500 text-xs mt-1">
-                              {
-                                actionData.errors[
-                                  `priceVariations.${index}.price`
-                                ]
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Description <span className="text-red-500">*</span>
-                          </label>
-                          <div className="flex gap-2">
+                        <div className="grid grid-cols-12 gap-3 items-start">
+                          {/* Variation Name */}
+                          <div className="col-span-12 sm:col-span-3">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Name <span className="text-red-500">*</span>
+                            </label>
                             <input
                               type="text"
-                              placeholder="Required description"
+                              placeholder="Variation name"
+                              value={variation.name}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].name = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.name`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.name`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Price */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Price <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0"
+                              value={variation.price}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].price = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.price`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.price`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Capacity */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Capacity <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder="1"
+                              value={variation.capacity}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].capacity = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.capacity`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.capacity`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <div className="col-span-10 sm:col-span-4">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Description{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Description"
                               value={variation.description}
                               onChange={(e) => {
                                 const newVariations = [...priceVariations];
@@ -1342,34 +1381,41 @@ export default function AddWorkshop() {
                                   e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
                             />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.description`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.description`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Remove Button */}
+                          <div className="col-span-2 sm:col-span-1">
+                            <label className="block text-xs font-medium mb-1 text-transparent">
+                              Remove
+                            </label>
                             <Button
                               type="button"
                               variant="outline"
+                              size="sm"
                               onClick={() => {
                                 const newVariations = priceVariations.filter(
                                   (_, i) => i !== index
                                 );
                                 setPriceVariations(newVariations);
                               }}
-                              className="text-red-600 border-red-300 hover:bg-red-100"
+                              className="w-full text-red-600 border-red-300 hover:bg-red-50 text-xs py-1.5 h-auto"
                             >
-                              Remove
+                              ✕
                             </Button>
                           </div>
-                          {/* ADD ERROR DISPLAY: */}
-                          {actionData?.errors?.[
-                            `priceVariations.${index}.description`
-                          ] && (
-                            <p className="text-red-500 text-xs mt-1">
-                              {
-                                actionData.errors[
-                                  `priceVariations.${index}.description`
-                                ]
-                              }
-                            </p>
-                          )}
                         </div>
                       </div>
                     ))}
