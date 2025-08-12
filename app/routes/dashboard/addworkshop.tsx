@@ -1222,6 +1222,37 @@ export default function AddWorkshop() {
                       </Button>
                     </div>
 
+                    {/* Base Price Display */}
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-blue-800">
+                            Base Price (Standard Option)
+                          </h4>
+                          <p className="text-xs text-blue-600 mt-1">
+                            This is your workshop's standard pricing that users
+                            can select (editable from the price input box above)
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-blue-700">
+                            ${form.watch("price") || "0"}
+                          </span>
+                          <p className="text-xs text-blue-600">Base Price</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Pricing Options Header */}
+                    <div className="mb-3">
+                      <h4 className="text-sm font-medium text-gray-700">
+                        Additional Pricing Options
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Create alternative pricing tiers
+                      </p>
+                    </div>
+
                     {actionData?.errors?.priceVariations && (
                       <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
                         {Array.isArray(actionData.errors.priceVariations)
