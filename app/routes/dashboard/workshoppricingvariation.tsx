@@ -6,7 +6,7 @@ import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import { getWorkshopWithPriceVariations } from "~/models/workshop.server";
+import { getWorkshopWithPriceVariations, getWorkshopRegistrationCounts } from "~/models/workshop.server";
 import type { Route } from "./+types/workshoppricingvariation";
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -25,11 +25,30 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw new Response("Workshop not found", { status: 404 });
   }
 
-  return { workshop, user, isAdmin };
+  // Get capacity information
+  const url = new URL(request.url);
+  const occurrenceId = url.searchParams.get("occurrenceId");
+  const connectId = url.searchParams.get("connectId");
+
+  let capacityInfo = null;
+  
+  if (occurrenceId) {
+    capacityInfo = await getWorkshopRegistrationCounts(workshopId, Number(occurrenceId));
+  } else if (connectId) {
+    // For multi-day workshops, get capacity from the first occurrence with this connectId
+    const firstOccurrence = workshop.occurrences.find(
+      (occ: any) => occ.connectId === Number(connectId)
+    );
+    if (firstOccurrence) {
+      capacityInfo = await getWorkshopRegistrationCounts(workshopId, firstOccurrence.id);
+    }
+  }
+
+  return { workshop, user, isAdmin, capacityInfo };
 }
 
 export default function WorkshopPricingVariation() {
-  const { workshop, user, isAdmin } = useLoaderData<typeof loader>();
+  const { workshop, user, isAdmin, capacityInfo } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const occurrenceId = searchParams.get("occurrenceId");
@@ -106,6 +125,22 @@ export default function WorkshopPricingVariation() {
                 while the additional options may offer different features or
                 pricing.
               </p>
+              
+              {/* Workshop Capacity Display */}
+              {capacityInfo && (
+                <div className="mt-3 pt-3 border-t border-blue-300">
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm text-blue-700">
+                      <strong>Workshop Capacity:</strong> {capacityInfo.totalRegistrations}/{capacityInfo.workshopCapacity} registered
+                    </div>
+                    {capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity && (
+                      <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                        Workshop Full
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -154,47 +189,79 @@ export default function WorkshopPricingVariation() {
                   <h4 className="text-md font-medium text-gray-700 mb-3">
                     Alternative Pricing Options
                   </h4>
-                  {workshop.priceVariations.map((variation) => (
-                    <div
-                      key={variation.id}
-                      className={`border rounded-lg p-6 cursor-pointer transition-all mb-4 ${
-                        selectedVariation === variation.id
-                          ? "border-green-500 bg-green-50"
-                          : "border-gray-200 hover:border-gray-300"
-                      }`}
-                      onClick={() => setSelectedVariation(variation.id)}
-                    >
-                      <div className="flex items-center">
-                        <input
-                          type="radio"
-                          name="variation"
-                          value={variation.id}
-                          checked={selectedVariation === variation.id}
-                          onChange={() => setSelectedVariation(variation.id)}
-                          className="mr-4"
-                        />
-                        <div className="flex-1">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <div className="flex items-center gap-2 mb-2">
-                                <h3 className="text-xl font-semibold">
-                                  {variation.name}
-                                </h3>
+                  {workshop.priceVariations.map((variation) => {
+                    const variationCapacity = capacityInfo?.variations?.find(
+                      (v: any) => v.variationId === variation.id
+                    );
+                    
+                    return (
+                      <div
+                        key={variation.id}
+                        className={`border rounded-lg p-6 cursor-pointer transition-all mb-4 ${
+                          selectedVariation === variation.id
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200 hover:border-gray-300"
+                        } ${
+                          variationCapacity && !variationCapacity.hasCapacity
+                            ? "opacity-50 cursor-not-allowed"
+                            : ""
+                        }`}
+                        onClick={() => {
+                          if (!variationCapacity || variationCapacity.hasCapacity) {
+                            setSelectedVariation(variation.id);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center">
+                          <input
+                            type="radio"
+                            name="variation"
+                            value={variation.id}
+                            checked={selectedVariation === variation.id}
+                            onChange={() => {
+                              if (!variationCapacity || variationCapacity.hasCapacity) {
+                                setSelectedVariation(variation.id);
+                              }
+                            }}
+                            disabled={variationCapacity && !variationCapacity.hasCapacity}
+                            className="mr-4"
+                          />
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h3 className="text-xl font-semibold">
+                                    {variation.name}
+                                  </h3>
+                                  {/* Variation Capacity Display */}
+                                  {variationCapacity && (
+                                    <>
+                                      <span className="text-sm text-gray-600">
+                                        ({variationCapacity.registrations}/{variationCapacity.capacity} registered)
+                                      </span>
+                                      {!variationCapacity.hasCapacity && (
+                                        <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                          FULL
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                                <p className="text-gray-600">
+                                  {variation.description}
+                                </p>
                               </div>
-                              <p className="text-gray-600">
-                                {variation.description}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-2xl font-bold text-blue-600">
-                                ${variation.price}
-                              </span>
+                              <div className="text-right">
+                                <span className="text-2xl font-bold text-blue-600">
+                                  ${variation.price}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
