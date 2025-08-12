@@ -6,7 +6,10 @@ import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import { getWorkshopWithPriceVariations, getWorkshopRegistrationCounts } from "~/models/workshop.server";
+import {
+  getWorkshopWithPriceVariations,
+  getWorkshopRegistrationCounts,
+} from "~/models/workshop.server";
 import type { Route } from "./+types/workshoppricingvariation";
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -31,16 +34,22 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const connectId = url.searchParams.get("connectId");
 
   let capacityInfo = null;
-  
+
   if (occurrenceId) {
-    capacityInfo = await getWorkshopRegistrationCounts(workshopId, Number(occurrenceId));
+    capacityInfo = await getWorkshopRegistrationCounts(
+      workshopId,
+      Number(occurrenceId)
+    );
   } else if (connectId) {
     // For multi-day workshops, get capacity from the first occurrence with this connectId
     const firstOccurrence = workshop.occurrences.find(
       (occ: any) => occ.connectId === Number(connectId)
     );
     if (firstOccurrence) {
-      capacityInfo = await getWorkshopRegistrationCounts(workshopId, firstOccurrence.id);
+      capacityInfo = await getWorkshopRegistrationCounts(
+        workshopId,
+        firstOccurrence.id
+      );
     }
   }
 
@@ -48,7 +57,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 }
 
 export default function WorkshopPricingVariation() {
-  const { workshop, user, isAdmin, capacityInfo } = useLoaderData<typeof loader>();
+  const { workshop, user, isAdmin, capacityInfo } =
+    useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const occurrenceId = searchParams.get("occurrenceId");
@@ -125,17 +135,20 @@ export default function WorkshopPricingVariation() {
                 while the additional options may offer different features or
                 pricing.
               </p>
-              
+
               {/* Workshop Capacity Display */}
               {capacityInfo && (
                 <div className="mt-3 pt-3 border-t border-blue-300">
                   <div className="flex items-center gap-4">
                     <div className="text-sm text-blue-700">
-                      <strong>Workshop Capacity:</strong> {capacityInfo.totalRegistrations}/{capacityInfo.workshopCapacity} registered
+                      <strong>Workshop Capacity:</strong>{" "}
+                      {capacityInfo.totalRegistrations}/
+                      {capacityInfo.workshopCapacity} registered
                     </div>
-                    {capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity && (
+                    {capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity && (
                       <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                        Workshop Full
+                        WORKSHOP FULL
                       </span>
                     )}
                   </div>
@@ -146,12 +159,24 @@ export default function WorkshopPricingVariation() {
             <div className="space-y-4">
               {/* Base Price Option */}
               <div
-                className={`border rounded-lg p-6 cursor-pointer transition-all ${
-                  selectedVariation === 0
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-gray-200 hover:border-gray-300"
+                className={`border rounded-lg p-6 transition-all ${
+                  capacityInfo &&
+                  capacityInfo.totalRegistrations >=
+                    capacityInfo.workshopCapacity
+                    ? "opacity-50 cursor-not-allowed border-gray-300"
+                    : selectedVariation === 0
+                      ? "border-blue-500 bg-blue-50 cursor-pointer"
+                      : "border-gray-200 hover:border-gray-300 cursor-pointer"
                 }`}
-                onClick={() => setSelectedVariation(0)}
+                onClick={() => {
+                  if (
+                    !capacityInfo ||
+                    capacityInfo.totalRegistrations <
+                      capacityInfo.workshopCapacity
+                  ) {
+                    setSelectedVariation(0);
+                  }
+                }}
               >
                 <div className="flex items-center">
                   <input
@@ -159,7 +184,22 @@ export default function WorkshopPricingVariation() {
                     name="variation"
                     value={0}
                     checked={selectedVariation === 0}
-                    onChange={() => setSelectedVariation(0)}
+                    onChange={() => {
+                      if (
+                        !capacityInfo ||
+                        capacityInfo.totalRegistrations <
+                          capacityInfo.workshopCapacity
+                      ) {
+                        setSelectedVariation(0);
+                      }
+                    }}
+                    disabled={
+                      !!(
+                        capacityInfo &&
+                        capacityInfo.totalRegistrations >=
+                          capacityInfo.workshopCapacity
+                      )
+                    }
                     className="mr-4"
                   />
                   <div className="flex-1">
@@ -170,6 +210,14 @@ export default function WorkshopPricingVariation() {
                           <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
                             STANDARD
                           </span>
+                          {/* Workshop Full Badge */}
+                          {capacityInfo &&
+                            capacityInfo.totalRegistrations >=
+                              capacityInfo.workshopCapacity && (
+                              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                WORKSHOP FULL
+                              </span>
+                            )}
                         </div>
                         <p className="text-gray-600">{workshop.description}</p>
                       </div>
@@ -193,21 +241,28 @@ export default function WorkshopPricingVariation() {
                     const variationCapacity = capacityInfo?.variations?.find(
                       (v: any) => v.variationId === variation.id
                     );
-                    
+
+                    // Check if workshop is full OR variation is full
+                    const isWorkshopFull =
+                      capacityInfo &&
+                      capacityInfo.totalRegistrations >=
+                        capacityInfo.workshopCapacity;
+                    const isVariationFull =
+                      variationCapacity && !variationCapacity.hasCapacity;
+                    const isDisabled = isWorkshopFull || isVariationFull;
+
                     return (
                       <div
                         key={variation.id}
-                        className={`border rounded-lg p-6 cursor-pointer transition-all mb-4 ${
-                          selectedVariation === variation.id
-                            ? "border-blue-500 bg-blue-50"
-                            : "border-gray-200 hover:border-gray-300"
-                        } ${
-                          variationCapacity && !variationCapacity.hasCapacity
-                            ? "opacity-50 cursor-not-allowed"
-                            : ""
+                        className={`border rounded-lg p-6 transition-all mb-4 ${
+                          isDisabled
+                            ? "opacity-50 cursor-not-allowed border-gray-300"
+                            : selectedVariation === variation.id
+                              ? "border-blue-500 bg-blue-50 cursor-pointer"
+                              : "border-gray-200 hover:border-gray-300 cursor-pointer"
                         }`}
                         onClick={() => {
-                          if (!variationCapacity || variationCapacity.hasCapacity) {
+                          if (!isDisabled) {
                             setSelectedVariation(variation.id);
                           }
                         }}
@@ -219,11 +274,11 @@ export default function WorkshopPricingVariation() {
                             value={variation.id}
                             checked={selectedVariation === variation.id}
                             onChange={() => {
-                              if (!variationCapacity || variationCapacity.hasCapacity) {
+                              if (!isDisabled) {
                                 setSelectedVariation(variation.id);
                               }
                             }}
-                            disabled={variationCapacity && !variationCapacity.hasCapacity}
+                            disabled={isDisabled}
                             className="mr-4"
                           />
                           <div className="flex-1">
@@ -233,19 +288,23 @@ export default function WorkshopPricingVariation() {
                                   <h3 className="text-xl font-semibold">
                                     {variation.name}
                                   </h3>
-                                  {/* Variation Capacity Display */}
+                                  {/* Capacity Display */}
                                   {variationCapacity && (
-                                    <>
-                                      <span className="text-sm text-gray-600">
-                                        ({variationCapacity.registrations}/{variationCapacity.capacity} registered)
-                                      </span>
-                                      {!variationCapacity.hasCapacity && (
-                                        <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                                          FULL
-                                        </span>
-                                      )}
-                                    </>
+                                    <span className="text-sm text-gray-600">
+                                      ({variationCapacity.registrations}/
+                                      {variationCapacity.capacity} registered)
+                                    </span>
                                   )}
+                                  {/* Status Badges */}
+                                  {isWorkshopFull ? (
+                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                      WORKSHOP FULL
+                                    </span>
+                                  ) : isVariationFull ? (
+                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                      FULL
+                                    </span>
+                                  ) : null}
                                 </div>
                                 <p className="text-gray-600">
                                   {variation.description}
@@ -266,7 +325,7 @@ export default function WorkshopPricingVariation() {
               )}
             </div>
 
-            <div className="mt-8 flex justify-between">
+            <div className="flex justify-between items-center mt-8">
               <Button
                 variant="outline"
                 onClick={() => navigate(`/dashboard/workshops/${workshop.id}`)}
@@ -275,10 +334,27 @@ export default function WorkshopPricingVariation() {
               </Button>
               <Button
                 onClick={handleContinue}
-                disabled={selectedVariation === null}
-                className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                disabled={
+                  selectedVariation === null ||
+                  !!(
+                    capacityInfo &&
+                    capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity
+                  )
+                }
+                className={`${
+                  selectedVariation === null ||
+                  (capacityInfo &&
+                    capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity)
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-yellow-500 hover:bg-yellow-600"
+                } text-white px-6 py-2 rounded-lg`}
               >
-                Continue to Payment
+                {capacityInfo &&
+                capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity
+                  ? "Workshop Full"
+                  : "Continue to Payment"}
               </Button>
             </div>
           </div>
