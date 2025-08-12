@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useLoaderData, useNavigate, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -95,11 +95,25 @@ export default function WorkshopPricingVariation() {
               <p className="text-gray-600">Choose your workshop price option</p>
             </div>
 
+            {/* Informational Header */}
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                Pricing Options
+              </h3>
+              <p className="text-blue-700 text-sm">
+                Select your preferred pricing option. The{" "}
+                <strong>Base Price</strong> is the standard workshop pricing,
+                while the additional options may offer different features or
+                pricing.
+              </p>
+            </div>
+
             <div className="space-y-4">
+              {/* Base Price Option */}
               <div
                 className={`border rounded-lg p-6 cursor-pointer transition-all ${
                   selectedVariation === 0
-                    ? "border-yellow-500 bg-yellow-50"
+                    ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300"
                 }`}
                 onClick={() => setSelectedVariation(0)}
@@ -115,8 +129,17 @@ export default function WorkshopPricingVariation() {
                   />
                   <div className="flex-1">
                     <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-xl font-semibold">Base Price</h3>
+                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
+                            STANDARD
+                          </span>
+                        </div>
+                        <p className="text-gray-600">{workshop.description}</p>
+                      </div>
                       <div className="text-right">
-                        <span className="text-2xl font-bold text-green-600">
+                        <span className="text-2xl font-bold text-blue-600">
                           ${workshop.price}
                         </span>
                       </div>
@@ -124,45 +147,56 @@ export default function WorkshopPricingVariation() {
                   </div>
                 </div>
               </div>
-              {workshop.priceVariations.map((variation) => (
-                <div
-                  key={variation.id}
-                  className={`border rounded-lg p-6 cursor-pointer transition-all ${
-                    selectedVariation === variation.id
-                      ? "border-yellow-500 bg-yellow-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                  onClick={() => setSelectedVariation(variation.id)}
-                >
-                  <div className="flex items-center">
-                    <input
-                      type="radio"
-                      name="variation"
-                      value={variation.id}
-                      checked={selectedVariation === variation.id}
-                      onChange={() => setSelectedVariation(variation.id)}
-                      className="mr-4"
-                    />
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="text-xl font-semibold">
-                            {variation.name}
-                          </h3>
-                          <p className="text-gray-600 mt-2">
-                            {variation.description}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-2xl font-bold text-green-600">
-                            ${variation.price}
-                          </span>
+
+              {/* Price Variations */}
+              {workshop.priceVariations.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="text-md font-medium text-gray-700 mb-3">
+                    Alternative Pricing Options
+                  </h4>
+                  {workshop.priceVariations.map((variation) => (
+                    <div
+                      key={variation.id}
+                      className={`border rounded-lg p-6 cursor-pointer transition-all mb-4 ${
+                        selectedVariation === variation.id
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                      onClick={() => setSelectedVariation(variation.id)}
+                    >
+                      <div className="flex items-center">
+                        <input
+                          type="radio"
+                          name="variation"
+                          value={variation.id}
+                          checked={selectedVariation === variation.id}
+                          onChange={() => setSelectedVariation(variation.id)}
+                          className="mr-4"
+                        />
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-xl font-semibold">
+                                  {variation.name}
+                                </h3>
+                              </div>
+                              <p className="text-gray-600">
+                                {variation.description}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-2xl font-bold text-blue-600">
+                                ${variation.price}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
 
             <div className="mt-8 flex justify-between">
