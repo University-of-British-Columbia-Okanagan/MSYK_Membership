@@ -79,6 +79,22 @@ export const workshopFormSchema = z
         "At least one price variation is required when price variations are enabled",
       path: ["priceVariations"], // This will show the error on the priceVariations field
     }
+  )
+  .refine(
+    (data) => {
+      // Check for unique prices across base price and all variations
+      if (data.hasPriceVariations && data.priceVariations && data.priceVariations.length > 0) {
+        const allPrices = [data.price, ...data.priceVariations.map(v => v.price)];
+        const uniquePrices = new Set(allPrices);
+        return allPrices.length === uniquePrices.size;
+      }
+      return true;
+    },
+    {
+      message:
+        "All prices must be unique. The base price and variation prices cannot be the same.",
+      path: ["priceVariations"], // This will show the error on the priceVariations field
+    }
   );
 
 export type WorkshopFormValues = z.infer<typeof workshopFormSchema>;
