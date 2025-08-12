@@ -39,7 +39,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { duplicateWorkshop } from "~/models/workshop.server";
+import {
+  duplicateWorkshop,
+  getWorkshopRegistrationCounts,
+} from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
@@ -51,6 +54,19 @@ interface Occurrence {
   startDate: Date;
   endDate: Date;
   status: string;
+  capacityInfo?: {
+    workshopCapacity: number;
+    totalRegistrations: number;
+    baseRegistrations: number;
+    hasBaseCapacity: boolean;
+    variations: Array<{
+      variationId: number;
+      name: string;
+      capacity: number;
+      registrations: number;
+      hasCapacity: boolean;
+    }>;
+  };
 }
 
 interface PrerequisiteWorkshop {
@@ -117,6 +133,23 @@ export async function loader({
       isWithinVisibilityWindow
     );
   });
+
+  // Get capacity information for each occurrence
+  const occurrencesWithCapacity = await Promise.all(
+    workshop.occurrences.map(async (occ: any) => {
+      const capacityInfo = await getWorkshopRegistrationCounts(
+        workshopId,
+        occ.id
+      );
+      return {
+        ...occ,
+        capacityInfo,
+      };
+    })
+  );
+
+  // Replace the occurrences with ones that include capacity info
+  workshop.occurrences = occurrencesWithCapacity;
 
   // Instead of storing just a boolean, we'll store { registered, registeredAt } for each occurrence
   let registrations: {
@@ -322,6 +355,69 @@ const formatCutoffTime = (minutes: number): string => {
     // Less than 1 hour
     return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
   }
+};
+
+/**
+ * Check if workshop has capacity for new registrations
+ * @param capacityInfo Capacity information from getWorkshopRegistrationCounts
+ * @returns Object with capacity status and reason
+ */
+const checkWorkshopCapacity = (capacityInfo: any) => {
+  // Check if workshop is at full capacity
+  if (capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) {
+    return {
+      hasCapacity: false,
+      reason: "workshop_full",
+      message: `Workshop is full (${capacityInfo.totalRegistrations}/${capacityInfo.workshopCapacity})`,
+    };
+  }
+
+  // If workshop has price variations, check if all variations are full
+  if (capacityInfo.variations && capacityInfo.variations.length > 0) {
+    const allVariationsFull = capacityInfo.variations.every(
+      (variation: any) => !variation.hasCapacity
+    );
+
+    // Also check if base registration has capacity
+    const baseHasCapacity = capacityInfo.hasBaseCapacity;
+
+    // If all variations are full AND base is at capacity, no one can register
+    if (allVariationsFull && !baseHasCapacity) {
+      return {
+        hasCapacity: false,
+        reason: "all_options_full",
+        message: "All pricing options are at capacity",
+      };
+    }
+  }
+
+  return {
+    hasCapacity: true,
+    reason: "available",
+    message: "Capacity available",
+  };
+};
+
+/**
+ * Get capacity display text for UI
+ * @param capacityInfo Capacity information from getWorkshopRegistrationCounts
+ * @returns Formatted capacity text
+ */
+const getCapacityDisplayText = (capacityInfo: any) => {
+  if (!capacityInfo) return "";
+
+  const { totalRegistrations, workshopCapacity, variations } = capacityInfo;
+
+  let text = `${totalRegistrations}/${workshopCapacity} registered`;
+
+  // if (variations && variations.length > 0) {
+  //   const fullVariations = variations.filter((v: any) => !v.hasCapacity);
+  //   if (fullVariations.length > 0) {
+  //     text += ` (Some options full)`;
+  //   }
+  // }
+
+  return text;
 };
 
 export default function WorkshopDetails() {
@@ -1092,6 +1188,41 @@ export default function WorkshopDetails() {
                               - {new Date(occurrence.endDate).toLocaleString()}
                             </p>
 
+                            {/* Capacity Display */}
+                            {occurrence.capacityInfo && (
+                              <div className="mt-2 mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-600">
+                                    {getCapacityDisplayText(
+                                      occurrence.capacityInfo
+                                    )}
+                                  </span>
+                                  {/* {!checkWorkshopCapacity(
+                                    occurrence.capacityInfo
+                                  ).hasCapacity && (
+                                    <Badge className="bg-red-500 text-white text-xs px-2 py-1">
+                                      Full
+                                    </Badge>
+                                  )} */}
+                                </div>
+
+                                {/* Show variation capacity details if applicable*/}
+                                {occurrence.capacityInfo.variations &&
+                                  occurrence.capacityInfo.variations.length >
+                                    0 && (
+                                    <div className="mt-1 text-xs text-gray-500">
+                                      {occurrence.capacityInfo.variations.some(
+                                        (v: any) => !v.hasCapacity
+                                      ) && (
+                                        <p className="text-amber-600">
+                                          Some pricing options are full
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                              </div>
+                            )}
+
                             <div className="mt-2 flex items-center justify-between">
                               {occurrence.status === "cancelled" ? (
                                 <Badge className="bg-red-500 text-white px-3 py-1">
@@ -1181,86 +1312,158 @@ export default function WorkshopDetails() {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <div>
-                                        <Button
-                                          className={`${
-                                            !user
-                                              ? "bg-blue-400 hover:bg-gray-500"
-                                              : "bg-blue-500 hover:bg-blue-600"
-                                          } text-white px-4 py-2 rounded-lg`}
-                                          onClick={() =>
-                                            handleRegister(occurrence.id)
-                                          }
-                                          disabled={
-                                            !user ||
-                                            !hasCompletedAllPrerequisites ||
+                                        {(() => {
+                                          const capacityCheck =
+                                            checkWorkshopCapacity(
+                                              occurrence.capacityInfo
+                                            );
+                                          const isWithinCutoff =
                                             isWithinCutoffPeriod(
                                               new Date(occurrence.startDate),
                                               workshop.registrationCutoff
-                                            )
-                                          }
-                                        >
-                                          Register
-                                        </Button>
+                                            );
+
+                                          return (
+                                            <Button
+                                              className={`${
+                                                !user
+                                                  ? "bg-blue-400 hover:bg-gray-500"
+                                                  : capacityCheck.hasCapacity &&
+                                                      !isWithinCutoff
+                                                    ? "bg-blue-500 hover:bg-blue-600"
+                                                    : "bg-gray-400 hover:bg-gray-500"
+                                              } text-white px-4 py-2 rounded-lg`}
+                                              onClick={() =>
+                                                handleRegister(occurrence.id)
+                                              }
+                                              disabled={
+                                                !user ||
+                                                !hasCompletedAllPrerequisites ||
+                                                !capacityCheck.hasCapacity ||
+                                                isWithinCutoff
+                                              }
+                                            >
+                                              {!capacityCheck.hasCapacity
+                                                ? "Full"
+                                                : "Register"}
+                                            </Button>
+                                          );
+                                        })()}
                                       </div>
                                     </TooltipTrigger>
-                                    {!user ? (
-                                      <TooltipContent className="bg-blue-50 text-blue-800 border border-blue-300 p-3 max-w-xs">
-                                        <p className="font-medium mb-2">
-                                          Account required
-                                        </p>
-                                        <p className="text-sm mb-3">
-                                          You need an account to register for
-                                          workshops.
-                                        </p>
-                                        <div className="flex gap-2">
-                                          <button
-                                            onClick={() => {
-                                              const currentUrl =
-                                                window.location.pathname;
-                                              window.location.href = `/login?redirect=${encodeURIComponent(
-                                                currentUrl
-                                              )}`;
-                                            }}
-                                            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
-                                          >
-                                            Sign In
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              const currentUrl =
-                                                window.location.pathname;
-                                              window.location.href = `/register?redirect=${encodeURIComponent(
-                                                currentUrl
-                                              )}`;
-                                            }}
-                                            className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-3 py-1 rounded text-xs"
-                                          >
-                                            Register
-                                          </button>
-                                        </div>
-                                      </TooltipContent>
-                                    ) : isWithinCutoffPeriod(
-                                        new Date(occurrence.startDate),
-                                        workshop.registrationCutoff
-                                      ) ? (
-                                      <TooltipContent className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs">
-                                        <p>
-                                          Registration is closed. Registration
-                                          cutoff is{" "}
-                                          {formatCutoffTime(
-                                            workshop.registrationCutoff
-                                          )}{" "}
-                                          before the workshop starts.
-                                        </p>
-                                      </TooltipContent>
-                                    ) : !hasCompletedAllPrerequisites ? (
-                                      <TooltipContent className="bg-red-100 text-red-800 border border-red-300 p-2 max-w-xs">
-                                        <p>
-                                          You must complete all prerequisites
-                                          before registering.
-                                        </p>
-                                      </TooltipContent>
-                                    ) : null}
+                                    {(() => {
+                                      const capacityCheck =
+                                        checkWorkshopCapacity(
+                                          occurrence.capacityInfo
+                                        );
+                                      const isWithinCutoff =
+                                        isWithinCutoffPeriod(
+                                          new Date(occurrence.startDate),
+                                          workshop.registrationCutoff
+                                        );
+
+                                      if (!user) {
+                                        return (
+                                          <TooltipContent className="bg-blue-50 text-blue-800 border border-blue-300 p-3 max-w-xs">
+                                            <p className="font-medium mb-2">
+                                              Account required
+                                            </p>
+                                            <p className="text-sm mb-3">
+                                              You need an account to register
+                                              for workshops.
+                                            </p>
+                                            <div className="flex gap-2">
+                                              <button
+                                                onClick={() => {
+                                                  const currentUrl =
+                                                    window.location.pathname;
+                                                  window.location.href = `/login?redirect=${encodeURIComponent(
+                                                    currentUrl
+                                                  )}`;
+                                                }}
+                                                className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
+                                              >
+                                                Sign In
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  const currentUrl =
+                                                    window.location.pathname;
+                                                  window.location.href = `/register?redirect=${encodeURIComponent(
+                                                    currentUrl
+                                                  )}`;
+                                                }}
+                                                className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-3 py-1 rounded text-xs"
+                                              >
+                                                Register
+                                              </button>
+                                            </div>
+                                          </TooltipContent>
+                                        );
+                                      } else if (!capacityCheck.hasCapacity) {
+                                        return (
+                                          <TooltipContent className="bg-red-100 text-red-800 border border-red-300 p-2 max-w-xs">
+                                            <p>{capacityCheck.message}</p>
+                                            {occurrence.capacityInfo
+                                              ?.variations && (
+                                              <div className="mt-2 text-xs">
+                                                <p>Capacity details:</p>
+                                                <ul className="list-disc list-inside">
+                                                  <li>
+                                                    Workshop:{" "}
+                                                    {
+                                                      occurrence.capacityInfo
+                                                        .totalRegistrations
+                                                    }
+                                                    /
+                                                    {
+                                                      occurrence.capacityInfo
+                                                        .workshopCapacity
+                                                    }
+                                                  </li>
+                                                  {occurrence.capacityInfo.variations.map(
+                                                    (v: any) => (
+                                                      <li key={v.variationId}>
+                                                        {v.name}:{" "}
+                                                        {v.registrations}/
+                                                        {v.capacity}{" "}
+                                                        {!v.hasCapacity &&
+                                                          "(Full)"}
+                                                      </li>
+                                                    )
+                                                  )}
+                                                </ul>
+                                              </div>
+                                            )}
+                                          </TooltipContent>
+                                        );
+                                      } else if (isWithinCutoff) {
+                                        return (
+                                          <TooltipContent className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs">
+                                            <p>
+                                              Registration is closed.
+                                              Registration cutoff is{" "}
+                                              {formatCutoffTime(
+                                                workshop.registrationCutoff
+                                              )}{" "}
+                                              before the workshop starts.
+                                            </p>
+                                          </TooltipContent>
+                                        );
+                                      } else if (
+                                        !hasCompletedAllPrerequisites
+                                      ) {
+                                        return (
+                                          <TooltipContent className="bg-red-100 text-red-800 border border-red-300 p-2 max-w-xs">
+                                            <p>
+                                              You must complete all
+                                              prerequisites before registering.
+                                            </p>
+                                          </TooltipContent>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
                                   </Tooltip>
                                 </TooltipProvider>
                               )}
