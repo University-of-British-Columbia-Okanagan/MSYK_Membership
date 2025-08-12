@@ -583,7 +583,7 @@ export async function action({ request }: { request: Request }) {
         name: String(v.name || "").trim(),
         price: parseFloat(v.price) || 0,
         description: String(v.description || "").trim(),
-        capacity: parseInt(v.capacity) || 1,
+        capacity: v.capacity && v.capacity !== "" ? parseInt(v.capacity) : 0,
       }));
     } catch (error) {
       logger.error(`[Add workshop] Error parsing price variations: ${error}`, {
@@ -968,7 +968,7 @@ export default function AddWorkshop() {
               name: variation.name,
               price: variation.price.toString(), // Convert to string for form input
               description: variation.description,
-              capacity: variation.capacity?.toString() || "1",
+              capacity: variation.capacity?.toString() || "",
             })
           );
           setPriceVariations(formattedVariations);
@@ -1220,7 +1220,7 @@ export default function AddWorkshop() {
                               name: "",
                               price: "",
                               description: "",
-                              capacity: "1",
+                              capacity: "",
                             },
                           ])
                         }
@@ -1343,24 +1343,26 @@ export default function AddWorkshop() {
                             <input
                               type="number"
                               min="1"
-                              placeholder="1"
+                              placeholder=""
                               value={variation.capacity}
                               onChange={(e) => {
                                 const newVariations = [...priceVariations];
                                 newVariations[index].capacity = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                                actionData?.errors?.[
+                                  `priceVariations.${index}.capacity`
+                                ]
+                                  ? "border-red-500"
+                                  : "border-gray-300"
+                              }`}
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.capacity`
                             ] && (
                               <p className="text-red-500 text-xs mt-1">
-                                {
-                                  actionData.errors[
-                                    `priceVariations.${index}.capacity`
-                                  ]
-                                }
+                                Capacity is required and must be at least 1
                               </p>
                             )}
                           </div>
