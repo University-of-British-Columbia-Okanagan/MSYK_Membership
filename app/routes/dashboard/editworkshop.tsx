@@ -28,6 +28,7 @@ import {
   getMultiDayWorkshopUserCount,
   getWorkshopWithPriceVariations,
   getWorkshopRegistrationCounts,
+  cancelWorkshopPriceVariation,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -118,6 +119,11 @@ export async function loader({
     workshop.occurrences?.[0]?.id || 0
   ).catch(() => null);
 
+  const cancelledPriceVariations =
+    workshop.priceVariations?.filter(
+      (variation: any) => variation.status === "cancelled"
+    ) || [];
+
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
@@ -167,6 +173,7 @@ export async function loader({
     equipmentVisibilityDays,
     roleUser,
     registrationCounts,
+    cancelledPriceVariations,
   };
 }
 
@@ -196,7 +203,7 @@ export async function action({
     throw new Response("Not Authorized", { status: 419 });
   }
 
-  // Check if this submission is a cancellation request.
+  // Check if this submission is a cancellation request
   if (rawValues.cancelOccurrenceId) {
     const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
     const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
@@ -230,6 +237,30 @@ export async function action({
         { url: request.url }
       );
       return { errors: { cancel: ["Failed to cancel occurrence(s)"] } };
+    }
+    return redirect("/dashboard/admin");
+  }
+
+  // Check if this submission is a price variation cancellation request
+  if (rawValues.cancelPriceVariationId) {
+    const variationId = parseInt(
+      rawValues.cancelPriceVariationId as string,
+      10
+    );
+
+    try {
+      await cancelWorkshopPriceVariation(variationId);
+
+      logger.info(
+        `[User: ${roleUser.userId}] Cancelled price variation ${variationId} for workshop ${params.workshopId}`,
+        { url: request.url }
+      );
+    } catch (error: any) {
+      logger.error(
+        `[User: ${roleUser.userId}] Error cancelling price variation ${variationId}: ${error.message}`,
+        { url: request.url }
+      );
+      return { errors: { cancel: ["Failed to cancel price variation"] } };
     }
     return redirect("/dashboard/admin");
   }
@@ -747,6 +778,7 @@ export default function EditWorkshop() {
     userCounts,
     roleUser,
     registrationCounts,
+    cancelledPriceVariations,
   } = useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
@@ -856,7 +888,11 @@ export default function EditWorkshop() {
 
   const [priceVariations, setPriceVariations] = useState(() => {
     if (workshop.priceVariations && workshop.priceVariations.length > 0) {
-      return workshop.priceVariations.map((variation: any) => ({
+      // Only include active price variations in the editable state
+      const activeVariations = workshop.priceVariations.filter(
+        (variation: any) => variation.status !== "cancelled"
+      );
+      return activeVariations.map((variation: any) => ({
         name: variation.name,
         price: variation.price.toString(),
         description: variation.description,
@@ -869,7 +905,14 @@ export default function EditWorkshop() {
   // Track how many price variations existed initially (from database)
   const [initialPriceVariationsCount, setInitialPriceVariationsCount] =
     useState(() => {
-      return workshop.priceVariations ? workshop.priceVariations.length : 0;
+      if (workshop.priceVariations) {
+        // Only count active price variations
+        const activeVariations = workshop.priceVariations.filter(
+          (variation: any) => variation.status !== "cancelled"
+        );
+        return activeVariations.length;
+      }
+      return 0;
     });
 
   const [showPriceVariationConfirm, setShowPriceVariationConfirm] =
@@ -1094,6 +1137,60 @@ export default function EditWorkshop() {
       "isMultiDayWorkshop",
       isMultiDayWorkshop ? "true" : "false"
     );
+
+    // Add all the other required form fields
+    formData.append("name", form.getValues("name"));
+    formData.append("description", form.getValues("description"));
+    formData.append("price", form.getValues("price").toString());
+    formData.append("location", form.getValues("location"));
+    formData.append("capacity", form.getValues("capacity").toString());
+    formData.append("type", workshop.type);
+    formData.append(
+      "occurrences",
+      JSON.stringify(
+        occurrences.map((occ) => ({
+          id: occ.id,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status: occ.status,
+          userCount: occ.userCount,
+          offerId: occ.offerId,
+        }))
+      )
+    );
+    formData.append(
+      "prerequisites",
+      JSON.stringify([...selectedPrerequisites].sort((a, b) => a - b))
+    );
+    formData.append("equipments", JSON.stringify(selectedEquipments || []));
+    formData.append("selectedSlots", JSON.stringify(selectedSlotsMap));
+    formData.append(
+      "hasPriceVariations",
+      hasPriceVariations ? "true" : "false"
+    );
+    if (hasPriceVariations && priceVariations.length > 0) {
+      formData.append("priceVariations", JSON.stringify(priceVariations));
+    }
+
+    // Use fetcher to submit the form
+    fetcher.submit(formData, {
+      method: "post",
+      action: `/dashboard/editworkshop/${workshop.id}`,
+    });
+  }
+
+  function handleCancelPriceVariation(variationId: number) {
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this price variation? All users registered for this variation will be notified that their registration has been cancelled."
+    );
+
+    if (!confirmed) return;
+
+    // Create form data for the cancellation
+    const formData = new FormData();
+    formData.append("cancelPriceVariationId", variationId.toString());
 
     // Add all the other required form fields
     formData.append("name", form.getValues("name"));
@@ -1756,25 +1853,88 @@ export default function EditWorkshop() {
                             )}
                           </div>
 
-                          {/* Remove Button */}
+                          {/* Remove/Cancel Button */}
                           <div className="col-span-2 sm:col-span-1">
                             <label className="block text-xs font-medium mb-1 text-transparent">
-                              Remove
+                              {(() => {
+                                const { registrationCounts } =
+                                  useLoaderData<typeof loader>();
+                                if (
+                                  registrationCounts?.variations &&
+                                  index < initialPriceVariationsCount
+                                ) {
+                                  const currentVariation =
+                                    workshop.priceVariations?.[index];
+                                  if (currentVariation) {
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) =>
+                                          v.variationId === currentVariation.id
+                                      )?.registrations || 0;
+                                    return registrationCount > 0
+                                      ? "Cancel"
+                                      : "Remove";
+                                  }
+                                }
+                                return "Remove";
+                              })()}
                             </label>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const newVariations = priceVariations.filter(
-                                  (_, i) => i !== index
-                                );
-                                setPriceVariations(newVariations);
-                              }}
-                              className="w-full text-red-600 border-red-300 hover:bg-red-50 text-xs py-1.5 h-auto"
-                            >
-                              ✕
-                            </Button>
+                            {(() => {
+                              const { registrationCounts } =
+                                useLoaderData<typeof loader>();
+                              if (
+                                registrationCounts?.variations &&
+                                index < initialPriceVariationsCount
+                              ) {
+                                const currentVariation =
+                                  workshop.priceVariations?.[index];
+                                if (currentVariation) {
+                                  const registrationCount =
+                                    registrationCounts.variations.find(
+                                      (v) =>
+                                        v.variationId === currentVariation.id
+                                    )?.registrations || 0;
+
+                                  if (registrationCount > 0) {
+                                    // Show Cancel button for variations with registrations
+                                    return (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleCancelPriceVariation(
+                                            currentVariation.id
+                                          )
+                                        }
+                                        className="w-full text-blue-600 border-blue-300 hover:bg-blue-50 text-xs py-1.5 h-auto"
+                                      >
+                                        Cancel
+                                      </Button>
+                                    );
+                                  }
+                                }
+                              }
+
+                              // Show Remove button for new variations or those without registrations
+                              return (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newVariations =
+                                      priceVariations.filter(
+                                        (_, i) => i !== index
+                                      );
+                                    setPriceVariations(newVariations);
+                                  }}
+                                  className="w-full text-red-600 border-red-300 hover:bg-red-50 text-xs py-1.5 h-auto"
+                                >
+                                  ✕
+                                </Button>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -1788,6 +1948,121 @@ export default function EditWorkshop() {
                     )}
                   </div>
                 )}
+
+                {/* Cancelled Price Variations Section */}
+                {hasPriceVariations &&
+                  cancelledPriceVariations &&
+                  cancelledPriceVariations.length > 0 && (
+                    <div className="mt-6 mb-6 p-4 border border-red-200 rounded-lg bg-red-50">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium text-red-800">
+                          Cancelled Price Variations
+                        </h3>
+                        <span className="text-sm text-red-600 bg-red-100 px-2 py-1 rounded">
+                          {cancelledPriceVariations.length} cancelled
+                        </span>
+                      </div>
+
+                      <div className="mb-3">
+                        <p className="text-sm text-red-700">
+                          These price variations have been cancelled and are no
+                          longer available for registration. All users
+                          registered for these variations have been notified.
+                        </p>
+                      </div>
+
+                      {cancelledPriceVariations.map(
+                        (variation: any, index: number) => (
+                          <div
+                            key={`cancelled-${variation.id}`}
+                            className="mb-3 p-3 bg-red-100 rounded-lg border border-red-200 opacity-75"
+                          >
+                            <div className="grid grid-cols-12 gap-3 items-start">
+                              {/* Variation Name */}
+                              <div className="col-span-12 sm:col-span-3">
+                                <label className="block text-xs font-medium mb-1 text-red-700">
+                                  Name
+                                </label>
+                                <input
+                                  type="text"
+                                  value={variation.name}
+                                  disabled
+                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                />
+                              </div>
+
+                              {/* Price */}
+                              <div className="col-span-6 sm:col-span-2">
+                                <label className="block text-xs font-medium mb-1 text-red-700">
+                                  Price
+                                </label>
+                                <input
+                                  type="text"
+                                  value={`$${variation.price}`}
+                                  disabled
+                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                />
+                              </div>
+
+                              {/* Capacity */}
+                              <div className="col-span-6 sm:col-span-2">
+                                <label className="block text-xs font-medium mb-1 text-red-700">
+                                  Capacity
+                                </label>
+                                <input
+                                  type="text"
+                                  value={variation.capacity || "N/A"}
+                                  disabled
+                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                />
+                                {(() => {
+                                  if (registrationCounts?.variations) {
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) => v.variationId === variation.id
+                                      )?.registrations || 0;
+                                    if (registrationCount > 0) {
+                                      return (
+                                        <div className="text-xs text-red-600 mt-1 font-medium">
+                                          {registrationCount} user
+                                          {registrationCount !== 1 ? "s" : ""}{" "}
+                                          were registered
+                                        </div>
+                                      );
+                                    }
+                                  }
+                                  return null;
+                                })()}
+                              </div>
+
+                              {/* Description */}
+                              <div className="col-span-10 sm:col-span-4">
+                                <label className="block text-xs font-medium mb-1 text-red-700">
+                                  Description
+                                </label>
+                                <input
+                                  type="text"
+                                  value={variation.description}
+                                  disabled
+                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                />
+                              </div>
+
+                              {/* Status Indicator */}
+                              <div className="col-span-2 sm:col-span-1">
+                                <label className="block text-xs font-medium mb-1 text-red-700">
+                                  Status
+                                </label>
+                                <div className="w-full px-2 py-1.5 text-xs bg-red-200 text-red-800 rounded text-center font-medium border border-red-300">
+                                  CANCELLED
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
 
                 <FormField
                   control={form.control}
@@ -2644,6 +2919,13 @@ export default function EditWorkshop() {
                   type="hidden"
                   id="cancelOccurrenceId"
                   name="cancelOccurrenceId"
+                  value=""
+                />
+
+                <input
+                  type="hidden"
+                  id="cancelPriceVariationId"
+                  name="cancelPriceVariationId"
                   value=""
                 />
 

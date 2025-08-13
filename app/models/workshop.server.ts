@@ -414,13 +414,19 @@ export async function updateWorkshopWithOccurrences(
   });
 
   // Update price variations
+  // Update price variations (preserve cancelled ones)
   if (data.hasPriceVariations !== undefined) {
-    // Delete existing price variations
-    await db.workshopPriceVariation.deleteMany({
-      where: { workshopId },
+    // Get existing cancelled variations to preserve them
+    const cancelledVariations = await db.workshopPriceVariation.findMany({
+      where: { workshopId, status: "cancelled" },
     });
 
-    // Add new price variations if any
+    // Delete only active price variations
+    await db.workshopPriceVariation.deleteMany({
+      where: { workshopId, status: "active" },
+    });
+
+    // Add new active price variations if any
     if (data.priceVariations && data.priceVariations.length > 0) {
       await db.workshopPriceVariation.createMany({
         data: data.priceVariations.map((variation) => ({
@@ -429,6 +435,7 @@ export async function updateWorkshopWithOccurrences(
           price: variation.price,
           description: variation.description,
           capacity: variation.capacity,
+          status: "active",
         })),
       });
     }
@@ -1710,11 +1717,14 @@ export async function offerWorkshopAgain(
  */
 export async function getWorkshopWithPriceVariations(workshopId: number) {
   try {
-    const workshop = await db.workshop.findUnique({
+      const workshop = await db.workshop.findUnique({
       where: { id: workshopId },
       include: {
         priceVariations: {
-          orderBy: { price: "asc" },
+          orderBy: [
+            { status: 'asc' }, // Active first, then cancelled
+            { id: 'asc' }
+          ]
         },
         occurrences: {
           include: {
@@ -2107,5 +2117,31 @@ export async function getMultiDayWorkshopRegistrationCounts(
       error
     );
     throw error;
+  }
+}
+
+/**
+ * Cancels a workshop price variation and all related registrations
+ * @param variationId - The ID of the price variation to cancel
+ * @returns Promise<Object> - The result of the cancellation
+ */
+export async function cancelWorkshopPriceVariation(variationId: number) {
+  try {
+    // First, update the price variation status to cancelled
+    await db.workshopPriceVariation.update({
+      where: { id: variationId },
+      data: { status: "cancelled" },
+    });
+
+    // Update all user registrations for this price variation to cancelled status
+    await db.userWorkshop.updateMany({
+      where: { priceVariationId: variationId },
+      data: { result: "cancelled" },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error cancelling workshop price variation:", error);
+    throw new Error("Failed to cancel workshop price variation");
   }
 }
