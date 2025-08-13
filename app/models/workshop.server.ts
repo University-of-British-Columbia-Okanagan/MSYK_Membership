@@ -1717,14 +1717,14 @@ export async function offerWorkshopAgain(
  */
 export async function getWorkshopWithPriceVariations(workshopId: number) {
   try {
-      const workshop = await db.workshop.findUnique({
+    const workshop = await db.workshop.findUnique({
       where: { id: workshopId },
       include: {
         priceVariations: {
           orderBy: [
-            { status: 'asc' }, // Active first, then cancelled
-            { id: 'asc' }
-          ]
+            { status: "asc" }, // Active first, then cancelled
+            { id: "asc" },
+          ],
         },
         occurrences: {
           include: {
@@ -2144,4 +2144,37 @@ export async function cancelWorkshopPriceVariation(variationId: number) {
     console.error("Error cancelling workshop price variation:", error);
     throw new Error("Failed to cancel workshop price variation");
   }
+}
+
+/**
+ * Gets user registration information including price variation for a specific workshop
+ * @param userId - The ID of the user
+ * @param workshopId - The ID of the workshop
+ * @returns Promise<Object> - Object with registration info including price variation
+ */
+export async function getUserWorkshopRegistrationInfo(
+  userId: number,
+  workshopId: number
+) {
+  if (!userId) return null;
+
+  const userRegistration = await db.userWorkshop.findFirst({
+    where: {
+      userId,
+      workshopId,
+    },
+    include: {
+      priceVariation: true,
+      occurrence: true,
+    },
+  });
+
+  if (!userRegistration) return null;
+
+  return {
+    registered: true,
+    priceVariation: userRegistration.priceVariation,
+    occurrence: userRegistration.occurrence,
+    registrationDate: userRegistration.date,
+  };
 }
