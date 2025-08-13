@@ -867,6 +867,12 @@ export default function EditWorkshop() {
     return [];
   });
 
+  // Track how many price variations existed initially (from database)
+  const [initialPriceVariationsCount, setInitialPriceVariationsCount] =
+    useState(() => {
+      return workshop.priceVariations ? workshop.priceVariations.length : 0;
+    });
+
   const [showPriceVariationConfirm, setShowPriceVariationConfirm] =
     useState(false);
 
@@ -1540,13 +1546,30 @@ export default function EditWorkshop() {
                               min="0"
                               placeholder="0"
                               value={variation.price}
-                              onChange={(e) => {
-                                const newVariations = [...priceVariations];
-                                newVariations[index].price = e.target.value;
-                                setPriceVariations(newVariations);
-                              }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              disabled={index < initialPriceVariationsCount}
+                              onChange={
+                                index < initialPriceVariationsCount
+                                  ? undefined
+                                  : (e) => {
+                                      const newVariations = [
+                                        ...priceVariations,
+                                      ];
+                                      newVariations[index].price =
+                                        e.target.value;
+                                      setPriceVariations(newVariations);
+                                    }
+                              }
+                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                                index < initialPriceVariationsCount
+                                  ? "bg-gray-100 text-gray-600 cursor-not-allowed"
+                                  : ""
+                              }`}
                             />
+                            {index < initialPriceVariationsCount && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                Existing price cannot be modified
+                              </div>
+                            )}
                             {actionData?.errors?.[
                               `priceVariations.${index}.price`
                             ] && (
@@ -2365,14 +2388,19 @@ export default function EditWorkshop() {
                                 ) : null;
                               })}
                               {selectedPrerequisites.length === 0 && (
-                                <span className="text-gray-500 text-sm">No prerequisites set</span>
+                                <span className="text-gray-500 text-sm">
+                                  No prerequisites set
+                                </span>
                               )}
                             </div>
                           </div>
                         </FormControl>
-                        <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
+                        <FormMessage>
+                          {actionData?.errors?.prerequisites}
+                        </FormMessage>
                         <div className="text-xs text-gray-500 mt-1">
-                          Prerequisites are read-only and cannot be modified when editing.
+                          Prerequisites are read-only and cannot be modified
+                          when editing.
                         </div>
                       </FormItem>
                     )}
