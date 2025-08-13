@@ -238,14 +238,17 @@ export default function WorkshopPricingVariation() {
                       (v: any) => v.variationId === variation.id
                     );
 
-                    // Check if workshop is full OR variation is full
+                    // Check if workshop is full OR variation is full OR variation is cancelled
                     const isWorkshopFull =
                       capacityInfo &&
                       capacityInfo.totalRegistrations >=
                         capacityInfo.workshopCapacity;
                     const isVariationFull =
                       variationCapacity && !variationCapacity.hasCapacity;
-                    const isDisabled = isWorkshopFull || isVariationFull;
+                    const isVariationCancelled =
+                      variation.status === "cancelled";
+                    const isDisabled =
+                      isWorkshopFull || isVariationFull || isVariationCancelled;
 
                     return (
                       <div
@@ -258,7 +261,7 @@ export default function WorkshopPricingVariation() {
                               : "border-gray-200 hover:border-gray-300 cursor-pointer"
                         }`}
                         onClick={() => {
-                          if (!isDisabled) {
+                          if (!isDisabled && !isVariationCancelled) {
                             setSelectedVariation(variation.id);
                           }
                         }}
@@ -270,7 +273,7 @@ export default function WorkshopPricingVariation() {
                             value={variation.id}
                             checked={selectedVariation === variation.id}
                             onChange={() => {
-                              if (!isDisabled) {
+                              if (!isDisabled && !isVariationCancelled) {
                                 setSelectedVariation(variation.id);
                               }
                             }}
@@ -292,7 +295,11 @@ export default function WorkshopPricingVariation() {
                                     </span>
                                   )}
                                   {/* Status Badges */}
-                                  {isWorkshopFull ? (
+                                  {isVariationCancelled ? (
+                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                      CANCELLED
+                                    </span>
+                                  ) : isWorkshopFull ? (
                                     <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
                                       WORKSHOP FULL
                                     </span>
