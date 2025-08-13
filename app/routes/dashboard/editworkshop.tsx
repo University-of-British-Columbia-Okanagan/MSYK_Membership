@@ -1086,25 +1086,6 @@ export default function EditWorkshop() {
     );
   };
 
-  // Helper functions for prerequisites.
-  const handlePrerequisiteSelect = (workshopId: number) => {
-    let updated: number[];
-    if (selectedPrerequisites.includes(workshopId)) {
-      updated = selectedPrerequisites.filter((id) => id !== workshopId);
-    } else {
-      updated = [...selectedPrerequisites, workshopId];
-    }
-    updated.sort((a, b) => a - b);
-    setSelectedPrerequisites(updated);
-    form.setValue("prerequisites", updated);
-  };
-
-  const removePrerequisite = (workshopId: number) => {
-    const updated = selectedPrerequisites.filter((id) => id !== workshopId);
-    setSelectedPrerequisites(updated);
-    form.setValue("prerequisites", updated);
-  };
-
   const handleEquipmentSelect = (id: number) => {
     // If already included, remove it; otherwise add it (but prevent duplicates)
     const updated = selectedEquipments.includes(id)
@@ -2360,21 +2341,41 @@ export default function EditWorkshop() {
 
                 {/* Prerequisites */}
                 {workshop.type !== "orientation" ? (
-                  <MultiSelectField
+                  <FormField
                     control={form.control}
                     name="prerequisites"
-                    label="Prerequisites"
-                    options={availableWorkshops}
-                    selectedItems={selectedPrerequisites}
-                    onSelect={handlePrerequisiteSelect}
-                    onRemove={removePrerequisite}
-                    error={actionData?.errors?.prerequisites}
-                    placeholder="Select prerequisites..."
-                    helperText="Select workshops of type Orientation that must be completed before enrolling."
-                    filterFn={(item) =>
-                      item.type.toLowerCase() === "orientation" &&
-                      item.id !== workshop.id
-                    }
+                    render={() => (
+                      <FormItem>
+                        <FormLabel>Prerequisites</FormLabel>
+                        <FormControl>
+                          <div>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {selectedPrerequisites.map((prereqId) => {
+                                const workshopPrereq = availableWorkshops.find(
+                                  (w) => w.id === prereqId
+                                );
+                                return workshopPrereq ? (
+                                  <Badge
+                                    key={prereqId}
+                                    variant="secondary"
+                                    className="py-1 px-2"
+                                  >
+                                    {workshopPrereq.name}
+                                  </Badge>
+                                ) : null;
+                              })}
+                              {selectedPrerequisites.length === 0 && (
+                                <span className="text-gray-500 text-sm">No prerequisites set</span>
+                              )}
+                            </div>
+                          </div>
+                        </FormControl>
+                        <FormMessage>{actionData?.errors?.prerequisites}</FormMessage>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Prerequisites are read-only and cannot be modified when editing.
+                        </div>
+                      </FormItem>
+                    )}
                   />
                 ) : (
                   <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
