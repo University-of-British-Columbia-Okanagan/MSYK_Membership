@@ -22,6 +22,7 @@ import {
   getWorkshops,
   getMultiDayWorkshopUserCount,
   getWorkshopWithPriceVariations,
+  getWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +107,12 @@ export async function loader({
   const availableEquipments = await getAvailableEquipment();
   const userCounts = await getMultiDayWorkshopUserCount(workshopId);
 
+  // Get registration counts for capacity validation
+  const registrationCounts = await getWorkshopRegistrationCounts(
+    workshopId,
+    workshop.occurrences?.[0]?.id || 0
+  ).catch(() => null);
+
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
@@ -154,6 +161,7 @@ export async function loader({
     selectedSlotsMap,
     equipmentVisibilityDays,
     roleUser,
+    registrationCounts,
   };
 }
 
@@ -749,6 +757,7 @@ export default function EditWorkshop() {
     availableEquipments,
     userCounts,
     roleUser,
+    registrationCounts,
   } = useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
@@ -1583,14 +1592,27 @@ export default function EditWorkshop() {
                             )}
                           </div>
 
-                          {/* Capacity */}
+                           {/* Capacity */}
                           <div className="col-span-6 sm:col-span-2">
                             <label className="block text-xs font-medium mb-1 text-gray-700">
                               Capacity <span className="text-red-500">*</span>
                             </label>
                             <input
                               type="number"
-                              min="1"
+                              min={(() => {
+                                // Get current registrations for this variation
+                                const { registrationCounts } = useLoaderData<typeof loader>();
+                                if (registrationCounts?.variations && index < initialPriceVariationsCount) {
+                                  const currentVariation = workshop.priceVariations?.[index];
+                                  if (currentVariation) {
+                                    const registrationCount = registrationCounts.variations.find(
+                                      v => v.variationId === currentVariation.id
+                                    )?.registrations || 0;
+                                    return registrationCount;
+                                  }
+                                }
+                                return 1;
+                              })()}
                               max={form.watch("capacity") || undefined}
                               placeholder=""
                               value={variation.capacity}
@@ -1603,21 +1625,40 @@ export default function EditWorkshop() {
                                 ${
                                   actionData?.errors?.[
                                     `priceVariations.${index}.capacity`
-                                  ] ||
-                                  (variation.capacity &&
-                                    form.watch("capacity") &&
-                                    parseInt(variation.capacity) >
-                                      form.watch("capacity"))
+                                  ]
                                     ? "border-red-500"
                                     : "border-gray-300"
                                 }
                               `}
                             />
+                            {(() => {
+                              const { registrationCounts } = useLoaderData<typeof loader>();
+                              if (registrationCounts?.variations && index < initialPriceVariationsCount) {
+                                const currentVariation = workshop.priceVariations?.[index];
+                                if (currentVariation) {
+                                  const registrationCount = registrationCounts.variations.find(
+                                    v => v.variationId === currentVariation.id
+                                  )?.registrations || 0;
+                                  if (registrationCount > 0) {
+                                    return (
+                                      <div className="text-xs text-blue-600 mt-1">
+                                        {registrationCount} user{registrationCount !== 1 ? 's' : ''} already registered
+                                      </div>
+                                    );
+                                  }
+                                }
+                              }
+                              return null;
+                            })()}
                             {actionData?.errors?.[
                               `priceVariations.${index}.capacity`
                             ] && (
                               <p className="text-red-500 text-xs mt-1">
-                                Capacity is required and must be at least 1
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.capacity`
+                                  ]
+                                }
                               </p>
                             )}
                           </div>
