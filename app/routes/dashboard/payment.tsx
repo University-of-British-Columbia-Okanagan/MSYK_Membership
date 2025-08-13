@@ -1,4 +1,4 @@
-import { useLoaderData, useNavigate } from "react-router-dom";
+import { useLoaderData, useNavigate, redirect } from "react-router-dom";
 import type { LoaderFunction } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,12 +6,14 @@ import {
   getWorkshopOccurrence,
   getWorkshopOccurrencesByConnectId,
   getWorkshopPriceVariation,
+  checkWorkshopCapacity,
+  checkMultiDayWorkshopCapacity,
 } from "../../models/workshop.server";
 import {
   getMembershipPlanById,
   getUserActiveMembership,
 } from "../../models/membership.server";
-import { getUser } from "~/utils/session.server";
+import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
 import { getSavedPaymentMethod } from "../../models/user.server";
@@ -28,6 +30,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export const loader: LoaderFunction = async ({ params, request }) => {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
+
+  // Get role user to determine redirect path
+  const roleUser = await getRoleUser(request);
+  const isAdmin = roleUser?.roleName === "Admin";
+
+  // Determine redirect path based on user role
+  const getRedirectPath = () => {
+    if (!user) return "/dashboard";
+    if (isAdmin) return "/dashboard/admin";
+    return "/dashboard/user";
+  };
 
   const savedPaymentMethod = await getSavedPaymentMethod(user.id);
 
@@ -125,6 +138,17 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrence)
       throw new Response("Workshop or Occurrence not found", { status: 404 });
 
+    // CHECK: If occurrence is cancelled, redirect user
+    if (occurrence.status === "cancelled") {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If workshop is full, redirect user
+    const capacityCheck = await checkWorkshopCapacity(workshopId, occurrenceId);
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
@@ -155,11 +179,25 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrence)
       throw new Response("Workshop or Occurrence not found", { status: 404 });
 
+    // CHECK: If occurrence is cancelled, redirect user
+    if (occurrence.status === "cancelled") {
+      throw redirect(getRedirectPath());
+    }
+
     // Get the specific price variation
     const selectedVariation = await getWorkshopPriceVariation(variationId);
-
     if (!selectedVariation)
       throw new Response("Price variation not found", { status: 404 });
+
+    // CHECK: If workshop is full (including variation capacity), redirect user
+    const capacityCheck = await checkWorkshopCapacity(
+      workshopId,
+      occurrenceId,
+      variationId
+    );
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
@@ -188,6 +226,23 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     );
     if (!workshop || !occurrences || occurrences.length === 0)
       throw new Response("Workshop or Occurrences not found", { status: 404 });
+
+    // CHECK: If ANY occurrence is cancelled, redirect user
+    const hasAnyCancelledOccurrence = occurrences.some(
+      (occ) => occ.status === "cancelled"
+    );
+    if (hasAnyCancelledOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If workshop is full, redirect user
+    const capacityCheck = await checkMultiDayWorkshopCapacity(
+      workshopId,
+      connectId
+    );
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
@@ -222,10 +277,28 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrences || occurrences.length === 0)
       throw new Response("Workshop or Occurrences not found", { status: 404 });
 
+    // CHECK: If ANY occurrence is cancelled, redirect user
+    const hasAnyCancelledOccurrence = occurrences.some(
+      (occ) => occ.status === "cancelled"
+    );
+    if (hasAnyCancelledOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
     // Get the specific price variation
     const selectedVariation = await getWorkshopPriceVariation(variationId);
     if (!selectedVariation)
       throw new Response("Price variation not found", { status: 404 });
+
+    // CHECK: If workshop is full (including variation capacity), redirect user
+    const capacityCheck = await checkMultiDayWorkshopCapacity(
+      workshopId,
+      connectId,
+      variationId
+    );
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
