@@ -634,6 +634,7 @@ export default function Payment() {
               connectId: data.isMultiDayWorkshop
                 ? data.occurrence.connectId
                 : undefined,
+              variationId: data.selectedVariation?.id || null,
             }}
             itemName={data.workshop.name}
             itemPrice={
