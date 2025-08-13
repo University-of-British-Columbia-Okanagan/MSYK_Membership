@@ -1946,123 +1946,116 @@ export default function EditWorkshop() {
                         get started.
                       </p>
                     )}
-                  </div>
-                )}
 
-                {/* Cancelled Price Variations Section */}
-                {hasPriceVariations &&
-                  cancelledPriceVariations &&
-                  cancelledPriceVariations.length > 0 && (
-                    <div className="mt-6 mb-6 p-4 border border-red-200 rounded-lg bg-red-50">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-medium text-red-800">
-                          Cancelled Price Variations
-                        </h3>
-                        <span className="text-sm text-red-600 bg-red-100 px-2 py-1 rounded">
-                          {cancelledPriceVariations.length} cancelled
-                        </span>
-                      </div>
+                    {/* Cancelled Price Variations Section - Inside the same container */}
+                    {cancelledPriceVariations &&
+                      cancelledPriceVariations.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-red-200">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-red-800">
+                              Cancelled Price Variations
+                            </h4>
+                            <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                              {cancelledPriceVariations.length} cancelled
+                            </span>
+                          </div>
 
-                      <div className="mb-3">
-                        <p className="text-sm text-red-700">
-                          These price variations have been cancelled and are no
-                          longer available for registration. All users
-                          registered for these variations have been notified.
-                        </p>
-                      </div>
+                          <div className="mb-3">
+                            <p className="text-xs text-red-700">
+                              These price variations have been cancelled and are
+                              no longer available for registration. All users
+                              registered for these variations have been
+                              notified.
+                            </p>
+                          </div>
 
-                      {cancelledPriceVariations.map(
-                        (variation: any, index: number) => (
-                          <div
-                            key={`cancelled-${variation.id}`}
-                            className="mb-3 p-3 bg-red-100 rounded-lg border border-red-200 opacity-75"
-                          >
-                            <div className="grid grid-cols-12 gap-3 items-start">
-                              {/* Variation Name */}
-                              <div className="col-span-12 sm:col-span-3">
-                                <label className="block text-xs font-medium mb-1 text-red-700">
-                                  Name
-                                </label>
-                                <input
-                                  type="text"
-                                  value={variation.name}
-                                  disabled
-                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
-                                />
-                              </div>
+                          {cancelledPriceVariations.map(
+                            (variation: any, index: number) => (
+                              <div
+                                key={`cancelled-${variation.id}`}
+                                className="mb-3 p-3 bg-red-100 rounded-lg border border-red-200 opacity-75"
+                              >
+                                <div className="grid grid-cols-12 gap-3 items-start">
+                                  {/* Variation Name */}
+                                  <div className="col-span-12 sm:col-span-3">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Name
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.name}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
 
-                              {/* Price */}
-                              <div className="col-span-6 sm:col-span-2">
-                                <label className="block text-xs font-medium mb-1 text-red-700">
-                                  Price
-                                </label>
-                                <input
-                                  type="text"
-                                  value={`$${variation.price}`}
-                                  disabled
-                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
-                                />
-                              </div>
+                                  {/* Price */}
+                                  <div className="col-span-6 sm:col-span-2">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Price
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={`$${variation.price}`}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
 
-                              {/* Capacity */}
-                              <div className="col-span-6 sm:col-span-2">
-                                <label className="block text-xs font-medium mb-1 text-red-700">
-                                  Capacity
-                                </label>
-                                <input
-                                  type="text"
-                                  value={variation.capacity || "N/A"}
-                                  disabled
-                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
-                                />
-                                {(() => {
-                                  if (registrationCounts?.variations) {
-                                    const registrationCount =
-                                      registrationCounts.variations.find(
-                                        (v) => v.variationId === variation.id
-                                      )?.registrations || 0;
-                                    if (registrationCount > 0) {
-                                      return (
-                                        <div className="text-xs text-red-600 mt-1 font-medium">
-                                          {registrationCount} user
-                                          {registrationCount !== 1 ? "s" : ""}{" "}
-                                          were registered
-                                        </div>
-                                      );
-                                    }
-                                  }
-                                  return null;
-                                })()}
-                              </div>
+                                  {/* Capacity */}
+                                  <div className="col-span-6 sm:col-span-2">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Capacity
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.capacity || "N/A"}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                    {(() => {
+                                      if (registrationCounts?.variations) {
+                                        const registrationCount =
+                                          registrationCounts.variations.find(
+                                            (v) =>
+                                              v.variationId === variation.id
+                                          )?.registrations || 0;
+                                        if (registrationCount > 0) {
+                                          return (
+                                            <div className="text-xs text-red-600 mt-1 font-medium">
+                                              {registrationCount} user
+                                              {registrationCount !== 1
+                                                ? "s"
+                                                : ""}{" "}
+                                              was registered
+                                            </div>
+                                          );
+                                        }
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
 
-                              {/* Description */}
-                              <div className="col-span-10 sm:col-span-4">
-                                <label className="block text-xs font-medium mb-1 text-red-700">
-                                  Description
-                                </label>
-                                <input
-                                  type="text"
-                                  value={variation.description}
-                                  disabled
-                                  className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
-                                />
-                              </div>
-
-                              {/* Status Indicator */}
-                              <div className="col-span-2 sm:col-span-1">
-                                <label className="block text-xs font-medium mb-1 text-red-700">
-                                  Status
-                                </label>
-                                <div className="w-full px-2 py-1.5 text-xs bg-red-200 text-red-800 rounded text-center font-medium border border-red-300">
-                                  CANCELLED
+                                  {/* Description */}
+                                  <div className="col-span-10 sm:col-span-4">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Description
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.description}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </div>
-                        )
+                            )
+                          )}
+                        </div>
                       )}
-                    </div>
-                  )}
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
