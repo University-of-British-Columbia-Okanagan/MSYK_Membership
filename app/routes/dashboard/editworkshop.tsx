@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { redirect, useActionData, useLoaderData } from "react-router";
+import {
+  redirect,
+  useActionData,
+  useLoaderData,
+  useFetcher,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -730,22 +735,6 @@ function checkForEquipmentOverlaps(
    4) Other functions
    ---------------------------------------------------------------------------*/
 
-function handleCancelOccurrence(occurrenceId?: number) {
-  if (!occurrenceId) return;
-
-  // Set the hidden input's value.
-  const cancelInput = document.getElementById(
-    "cancelOccurrenceId"
-  ) as HTMLInputElement;
-  if (cancelInput) {
-    cancelInput.value = occurrenceId.toString();
-  }
-
-  // Use the native submit() method to trigger the form submission.
-  const formEl = document.querySelector("form") as HTMLFormElement;
-  formEl?.submit();
-}
-
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
    ---------------------------------------------------------------------------*/
@@ -784,6 +773,7 @@ export default function EditWorkshop() {
     initialOccurrences.some((occ) => occ.connectId != null) || false;
 
   const navigate = useNavigate();
+  const fetcher = useFetcher();
 
   // React Hook Form setup
   const form = useForm<WorkshopFormValues>({
@@ -1093,6 +1083,60 @@ export default function EditWorkshop() {
       minute: "2-digit",
     });
   };
+
+  function handleCancelOccurrence(occurrenceId?: number) {
+    if (!occurrenceId) return;
+
+    // Create form data for the cancellation
+    const formData = new FormData();
+    formData.append("cancelOccurrenceId", occurrenceId.toString());
+    formData.append(
+      "isMultiDayWorkshop",
+      isMultiDayWorkshop ? "true" : "false"
+    );
+
+    // Add all the other required form fields
+    formData.append("name", form.getValues("name"));
+    formData.append("description", form.getValues("description"));
+    formData.append("price", form.getValues("price").toString());
+    formData.append("location", form.getValues("location"));
+    formData.append("capacity", form.getValues("capacity").toString());
+    formData.append("type", workshop.type);
+    formData.append(
+      "occurrences",
+      JSON.stringify(
+        occurrences.map((occ) => ({
+          id: occ.id,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status: occ.status,
+          userCount: occ.userCount,
+          offerId: occ.offerId,
+        }))
+      )
+    );
+    formData.append(
+      "prerequisites",
+      JSON.stringify([...selectedPrerequisites].sort((a, b) => a - b))
+    );
+    formData.append("equipments", JSON.stringify(selectedEquipments || []));
+    formData.append("selectedSlots", JSON.stringify(selectedSlotsMap));
+    formData.append(
+      "hasPriceVariations",
+      hasPriceVariations ? "true" : "false"
+    );
+    if (hasPriceVariations && priceVariations.length > 0) {
+      formData.append("priceVariations", JSON.stringify(priceVariations));
+    }
+
+    // Use fetcher to submit the form
+    fetcher.submit(formData, {
+      method: "post",
+      action: `/dashboard/editworkshop/${workshop.id}`,
+    });
+  }
 
   // Function to check for duplicate dates to avoid adding the same date twice
   const isDuplicateDate = (newDate: Date, existingDates: Date[]): boolean => {
@@ -1592,7 +1636,7 @@ export default function EditWorkshop() {
                             )}
                           </div>
 
-                           {/* Capacity */}
+                          {/* Capacity */}
                           <div className="col-span-6 sm:col-span-2">
                             <label className="block text-xs font-medium mb-1 text-gray-700">
                               Capacity <span className="text-red-500">*</span>
@@ -1601,13 +1645,20 @@ export default function EditWorkshop() {
                               type="number"
                               min={(() => {
                                 // Get current registrations for this variation
-                                const { registrationCounts } = useLoaderData<typeof loader>();
-                                if (registrationCounts?.variations && index < initialPriceVariationsCount) {
-                                  const currentVariation = workshop.priceVariations?.[index];
+                                const { registrationCounts } =
+                                  useLoaderData<typeof loader>();
+                                if (
+                                  registrationCounts?.variations &&
+                                  index < initialPriceVariationsCount
+                                ) {
+                                  const currentVariation =
+                                    workshop.priceVariations?.[index];
                                   if (currentVariation) {
-                                    const registrationCount = registrationCounts.variations.find(
-                                      v => v.variationId === currentVariation.id
-                                    )?.registrations || 0;
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) =>
+                                          v.variationId === currentVariation.id
+                                      )?.registrations || 0;
                                     return registrationCount;
                                   }
                                 }
@@ -1632,17 +1683,28 @@ export default function EditWorkshop() {
                               `}
                             />
                             {(() => {
-                              const { registrationCounts } = useLoaderData<typeof loader>();
-                              if (registrationCounts?.variations && index < initialPriceVariationsCount) {
-                                const currentVariation = workshop.priceVariations?.[index];
+                              const { registrationCounts } =
+                                useLoaderData<typeof loader>();
+                              if (
+                                registrationCounts?.variations &&
+                                index < initialPriceVariationsCount
+                              ) {
+                                const currentVariation =
+                                  workshop.priceVariations?.[index];
                                 if (currentVariation) {
-                                  const registrationCount = registrationCounts.variations.find(
-                                    v => v.variationId === currentVariation.id
-                                  )?.registrations || 0;
+                                  const registrationCount =
+                                    registrationCounts.variations.find(
+                                      (v) =>
+                                        v.variationId === currentVariation.id
+                                    )?.registrations || 0;
                                   if (registrationCount > 0) {
                                     return (
                                       <div className="text-xs text-blue-600 mt-1">
-                                        {registrationCount} user{registrationCount !== 1 ? 's' : ''} already registered
+                                        {registrationCount} user
+                                        {registrationCount !== 1
+                                          ? "s"
+                                          : ""}{" "}
+                                        already registered
                                       </div>
                                     );
                                   }
