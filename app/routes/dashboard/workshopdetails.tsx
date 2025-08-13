@@ -424,8 +424,21 @@ const checkMultiDayWorkshopCapacity = (capacityInfo: any) => {
     };
   }
 
-  // If workshop has price variations, check if all variations are full
+  // If workshop has price variations, check if ANY variations are full
   if (capacityInfo.variations && capacityInfo.variations.length > 0) {
+    const someVariationsFull = capacityInfo.variations.some(
+      (variation: any) => !variation.hasCapacity
+    );
+
+    // If some variations are full, show the message
+    if (someVariationsFull) {
+      return {
+        hasCapacity: true, // Workshop still has capacity overall
+        reason: "some_options_full",
+        message: "Some pricing options are full",
+      };
+    }
+
     const allVariationsFull = capacityInfo.variations.every(
       (variation: any) => !variation.hasCapacity
     );
@@ -910,26 +923,46 @@ export default function WorkshopDetails() {
                             <Badge
                               variant="outline"
                               className={`${
-                                sortedOccurrences[0].capacityInfo.totalRegistrations >= 
-                                sortedOccurrences[0].capacityInfo.workshopCapacity
+                                sortedOccurrences[0].capacityInfo
+                                  .totalRegistrations >=
+                                sortedOccurrences[0].capacityInfo
+                                  .workshopCapacity
                                   ? "bg-red-50 border-red-200 text-red-700"
                                   : "bg-green-50 border-green-200 text-green-700"
                               }`}
                             >
-                              {sortedOccurrences[0].capacityInfo.totalRegistrations}/
-                              {sortedOccurrences[0].capacityInfo.workshopCapacity} registered
+                              {
+                                sortedOccurrences[0].capacityInfo
+                                  .totalRegistrations
+                              }
+                              /
+                              {
+                                sortedOccurrences[0].capacityInfo
+                                  .workshopCapacity
+                              }{" "}
+                              registered
                             </Badge>
                             {/* Show capacity status message */}
                             {(() => {
-                              const capacityCheck = checkMultiDayWorkshopCapacity(sortedOccurrences[0].capacityInfo);
-                              if (!capacityCheck.hasCapacity) {
+                              const capacityCheck =
+                                checkMultiDayWorkshopCapacity(
+                                  sortedOccurrences[0].capacityInfo
+                                );
+                              if (
+                                !capacityCheck.hasCapacity ||
+                                capacityCheck.reason === "some_options_full"
+                              ) {
                                 return (
                                   <Badge
                                     variant="outline"
-                                    className="bg-red-50 border-red-200 text-red-700"
+                                    className={`${
+                                      capacityCheck.reason === "workshop_full"
+                                        ? "bg-red-50 border-red-200 text-red-700"
+                                        : "bg-amber-50 border-amber-200 text-amber-700"
+                                    }`}
                                   >
-                                    {capacityCheck.reason === "workshop_full" 
-                                      ? "Workshop Full" 
+                                    {capacityCheck.reason === "workshop_full"
+                                      ? "Workshop Full"
                                       : "Some options full"}
                                   </Badge>
                                 );
