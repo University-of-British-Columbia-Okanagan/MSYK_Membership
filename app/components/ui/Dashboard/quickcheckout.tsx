@@ -22,6 +22,7 @@ interface QuickCheckoutProps {
     price?: number;
     currentMembershipId?: number;
     upgradeFee?: number;
+    variationId?: number | null;
   };
   itemName: string;
   itemPrice: number;

@@ -91,6 +91,7 @@ export async function quickCheckout(
     price?: number;
     currentMembershipId?: number;
     upgradeFee?: number;
+    variationId?: number;
   }
 ) {
   const user = await db.user.findUnique({
@@ -116,6 +117,18 @@ export async function quickCheckout(
       description = workshop.name;
       price = workshop.price;
       metadata.workshopId = checkoutData.workshopId.toString();
+
+      // Handle price variation
+      if (checkoutData.variationId) {
+        const variation = await getWorkshopPriceVariation(
+          checkoutData.variationId
+        );
+        if (variation) {
+          description += ` - ${variation.name}`;
+          price = variation.price;
+          metadata.variationId = checkoutData.variationId.toString();
+        }
+      }
 
       if (checkoutData.occurrenceId) {
         const occurrence = await getWorkshopOccurrence(
@@ -200,14 +213,16 @@ export async function quickCheckout(
             await registerUserForAllOccurrences(
               checkoutData.workshopId!,
               checkoutData.connectId,
-              userId
+              userId,
+              checkoutData.variationId || null
             );
           } else if (checkoutData.occurrenceId) {
             // Single occurrence registration
             await registerForWorkshop(
               checkoutData.workshopId!,
               checkoutData.occurrenceId,
-              userId
+              userId,
+              checkoutData.variationId || null
             );
           }
         } else if (checkoutData.type === "membership") {
@@ -431,35 +446,36 @@ export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
   // Check if user wants to use saved card
-  if (body.useSavedCard && body.userId) {
-    // Determine checkout type and prepare data
-    let checkoutData: any = { userId: body.userId };
+if (body.useSavedCard && body.userId) {
+  // Determine checkout type and prepare data
+  let checkoutData: any = { userId: body.userId };
 
-    if (body.workshopId) {
-      checkoutData = {
-        type: "workshop",
-        workshopId: body.workshopId,
-        occurrenceId: body.occurrenceId,
-        connectId: body.connectId,
-      };
-    } else if (body.equipmentId) {
-      checkoutData = {
-        type: "equipment",
-        equipmentId: body.equipmentId,
-        slotCount: body.slotCount,
-        price: body.price,
-        slots: body.slots,
-        slotsDataKey: body.slotsDataKey,
-      };
-    } else if (body.membershipPlanId) {
-      checkoutData = {
-        type: "membership",
-        membershipPlanId: body.membershipPlanId,
-        price: body.price,
-        currentMembershipId: body.currentMembershipId,
-        upgradeFee: body.upgradeFee,
-      };
-    }
+  if (body.workshopId) {
+    checkoutData = {
+      type: "workshop",
+      workshopId: body.workshopId,
+      occurrenceId: body.occurrenceId,
+      connectId: body.connectId,
+      variationId: body.variationId, 
+    };
+  } else if (body.equipmentId) {
+    checkoutData = {
+      type: "equipment",
+      equipmentId: body.equipmentId,
+      slotCount: body.slotCount,
+      price: body.price,
+      slots: body.slots,
+      slotsDataKey: body.slotsDataKey,
+    };
+  } else if (body.membershipPlanId) {
+    checkoutData = {
+      type: "membership",
+      membershipPlanId: body.membershipPlanId,
+      price: body.price,
+      currentMembershipId: body.currentMembershipId,
+      upgradeFee: body.upgradeFee,
+    };
+  }
 
     if (checkoutData.type) {
       return quickCheckout(body.userId, checkoutData);

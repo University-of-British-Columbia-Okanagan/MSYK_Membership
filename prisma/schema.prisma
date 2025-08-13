@@ -234,6 +234,8 @@ model WorkshopPriceVariation {
   name        String
   price       Float
   description String
+  capacity    Int
+  status      String  @default("active") // "active", "cancelled"
 
   // Relationships
   workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)

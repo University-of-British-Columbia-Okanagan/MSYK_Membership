@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { redirect, useActionData, useLoaderData } from "react-router";
+import {
+  redirect,
+  useActionData,
+  useLoaderData,
+  useFetcher,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -22,6 +27,8 @@ import {
   getWorkshops,
   getMultiDayWorkshopUserCount,
   getWorkshopWithPriceVariations,
+  getWorkshopRegistrationCounts,
+  cancelWorkshopPriceVariation,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -106,6 +113,17 @@ export async function loader({
   const availableEquipments = await getAvailableEquipment();
   const userCounts = await getMultiDayWorkshopUserCount(workshopId);
 
+  // Get registration counts for capacity validation
+  const registrationCounts = await getWorkshopRegistrationCounts(
+    workshopId,
+    workshop.occurrences?.[0]?.id || 0
+  ).catch(() => null);
+
+  const cancelledPriceVariations =
+    workshop.priceVariations?.filter(
+      (variation: any) => variation.status === "cancelled"
+    ) || [];
+
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
@@ -154,6 +172,8 @@ export async function loader({
     selectedSlotsMap,
     equipmentVisibilityDays,
     roleUser,
+    registrationCounts,
+    cancelledPriceVariations,
   };
 }
 
@@ -183,7 +203,7 @@ export async function action({
     throw new Response("Not Authorized", { status: 419 });
   }
 
-  // Check if this submission is a cancellation request.
+  // Check if this submission is a cancellation request
   if (rawValues.cancelOccurrenceId) {
     const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
     const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
@@ -221,6 +241,30 @@ export async function action({
     return redirect("/dashboard/admin");
   }
 
+  // Check if this submission is a price variation cancellation request
+  if (rawValues.cancelPriceVariationId) {
+    const variationId = parseInt(
+      rawValues.cancelPriceVariationId as string,
+      10
+    );
+
+    try {
+      await cancelWorkshopPriceVariation(variationId);
+
+      logger.info(
+        `[User: ${roleUser.userId}] Cancelled price variation ${variationId} for workshop ${params.workshopId}`,
+        { url: request.url }
+      );
+    } catch (error: any) {
+      logger.error(
+        `[User: ${roleUser.userId}] Error cancelling price variation ${variationId}: ${error.message}`,
+        { url: request.url }
+      );
+      return { errors: { cancel: ["Failed to cancel price variation"] } };
+    }
+    return redirect("/dashboard/admin");
+  }
+
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
@@ -247,6 +291,7 @@ export async function action({
     name: string;
     price: number;
     description: string;
+    capacity: number;
   }> = [];
   if (hasPriceVariations && rawValues.priceVariations) {
     try {
@@ -255,6 +300,7 @@ export async function action({
         name: String(v.name || "").trim(),
         price: parseFloat(v.price) || 0,
         description: String(v.description || "").trim(),
+        capacity: v.capacity && v.capacity !== "" ? parseInt(v.capacity) : 0,
       }));
     } catch (error) {
       logger.error(`[Edit workshop] Error parsing price variations: ${error}`, {
@@ -720,22 +766,6 @@ function checkForEquipmentOverlaps(
    4) Other functions
    ---------------------------------------------------------------------------*/
 
-function handleCancelOccurrence(occurrenceId?: number) {
-  if (!occurrenceId) return;
-
-  // Set the hidden input's value.
-  const cancelInput = document.getElementById(
-    "cancelOccurrenceId"
-  ) as HTMLInputElement;
-  if (cancelInput) {
-    cancelInput.value = occurrenceId.toString();
-  }
-
-  // Use the native submit() method to trigger the form submission.
-  const formEl = document.querySelector("form") as HTMLFormElement;
-  formEl?.submit();
-}
-
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
    ---------------------------------------------------------------------------*/
@@ -747,6 +777,8 @@ export default function EditWorkshop() {
     availableEquipments,
     userCounts,
     roleUser,
+    registrationCounts,
+    cancelledPriceVariations,
   } = useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
@@ -773,6 +805,7 @@ export default function EditWorkshop() {
     initialOccurrences.some((occ) => occ.connectId != null) || false;
 
   const navigate = useNavigate();
+  const fetcher = useFetcher();
 
   // React Hook Form setup
   const form = useForm<WorkshopFormValues>({
@@ -855,14 +888,32 @@ export default function EditWorkshop() {
 
   const [priceVariations, setPriceVariations] = useState(() => {
     if (workshop.priceVariations && workshop.priceVariations.length > 0) {
-      return workshop.priceVariations.map((variation: any) => ({
+      // Only include active price variations in the editable state
+      const activeVariations = workshop.priceVariations.filter(
+        (variation: any) => variation.status !== "cancelled"
+      );
+      return activeVariations.map((variation: any) => ({
         name: variation.name,
         price: variation.price.toString(),
         description: variation.description,
+        capacity: variation.capacity?.toString() || "",
       }));
     }
     return [];
   });
+
+  // Track how many price variations existed initially (from database)
+  const [initialPriceVariationsCount, setInitialPriceVariationsCount] =
+    useState(() => {
+      if (workshop.priceVariations) {
+        // Only count active price variations
+        const activeVariations = workshop.priceVariations.filter(
+          (variation: any) => variation.status !== "cancelled"
+        );
+        return activeVariations.length;
+      }
+      return 0;
+    });
 
   const [showPriceVariationConfirm, setShowPriceVariationConfirm] =
     useState(false);
@@ -1076,30 +1127,119 @@ export default function EditWorkshop() {
     });
   };
 
+  function handleCancelOccurrence(occurrenceId?: number) {
+    if (!occurrenceId) return;
+
+    // Create form data for the cancellation
+    const formData = new FormData();
+    formData.append("cancelOccurrenceId", occurrenceId.toString());
+    formData.append(
+      "isMultiDayWorkshop",
+      isMultiDayWorkshop ? "true" : "false"
+    );
+
+    // Add all the other required form fields
+    formData.append("name", form.getValues("name"));
+    formData.append("description", form.getValues("description"));
+    formData.append("price", form.getValues("price").toString());
+    formData.append("location", form.getValues("location"));
+    formData.append("capacity", form.getValues("capacity").toString());
+    formData.append("type", workshop.type);
+    formData.append(
+      "occurrences",
+      JSON.stringify(
+        occurrences.map((occ) => ({
+          id: occ.id,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status: occ.status,
+          userCount: occ.userCount,
+          offerId: occ.offerId,
+        }))
+      )
+    );
+    formData.append(
+      "prerequisites",
+      JSON.stringify([...selectedPrerequisites].sort((a, b) => a - b))
+    );
+    formData.append("equipments", JSON.stringify(selectedEquipments || []));
+    formData.append("selectedSlots", JSON.stringify(selectedSlotsMap));
+    formData.append(
+      "hasPriceVariations",
+      hasPriceVariations ? "true" : "false"
+    );
+    if (hasPriceVariations && priceVariations.length > 0) {
+      formData.append("priceVariations", JSON.stringify(priceVariations));
+    }
+
+    // Use fetcher to submit the form
+    fetcher.submit(formData, {
+      method: "post",
+      action: `/dashboard/editworkshop/${workshop.id}`,
+    });
+  }
+
+  function handleCancelPriceVariation(variationId: number) {
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this price variation? All users registered for this variation will be notified that their registration has been cancelled."
+    );
+
+    if (!confirmed) return;
+
+    // Create form data for the cancellation
+    const formData = new FormData();
+    formData.append("cancelPriceVariationId", variationId.toString());
+
+    // Add all the other required form fields
+    formData.append("name", form.getValues("name"));
+    formData.append("description", form.getValues("description"));
+    formData.append("price", form.getValues("price").toString());
+    formData.append("location", form.getValues("location"));
+    formData.append("capacity", form.getValues("capacity").toString());
+    formData.append("type", workshop.type);
+    formData.append(
+      "occurrences",
+      JSON.stringify(
+        occurrences.map((occ) => ({
+          id: occ.id,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status: occ.status,
+          userCount: occ.userCount,
+          offerId: occ.offerId,
+        }))
+      )
+    );
+    formData.append(
+      "prerequisites",
+      JSON.stringify([...selectedPrerequisites].sort((a, b) => a - b))
+    );
+    formData.append("equipments", JSON.stringify(selectedEquipments || []));
+    formData.append("selectedSlots", JSON.stringify(selectedSlotsMap));
+    formData.append(
+      "hasPriceVariations",
+      hasPriceVariations ? "true" : "false"
+    );
+    if (hasPriceVariations && priceVariations.length > 0) {
+      formData.append("priceVariations", JSON.stringify(priceVariations));
+    }
+
+    // Use fetcher to submit the form
+    fetcher.submit(formData, {
+      method: "post",
+      action: `/dashboard/editworkshop/${workshop.id}`,
+    });
+  }
+
   // Function to check for duplicate dates to avoid adding the same date twice
   const isDuplicateDate = (newDate: Date, existingDates: Date[]): boolean => {
     return existingDates.some(
       (existingDate) => existingDate.getTime() === newDate.getTime()
     );
-  };
-
-  // Helper functions for prerequisites.
-  const handlePrerequisiteSelect = (workshopId: number) => {
-    let updated: number[];
-    if (selectedPrerequisites.includes(workshopId)) {
-      updated = selectedPrerequisites.filter((id) => id !== workshopId);
-    } else {
-      updated = [...selectedPrerequisites, workshopId];
-    }
-    updated.sort((a, b) => a - b);
-    setSelectedPrerequisites(updated);
-    form.setValue("prerequisites", updated);
-  };
-
-  const removePrerequisite = (workshopId: number) => {
-    const updated = selectedPrerequisites.filter((id) => id !== workshopId);
-    setSelectedPrerequisites(updated);
-    form.setValue("prerequisites", updated);
   };
 
   const handleEquipmentSelect = (id: number) => {
@@ -1456,13 +1596,49 @@ export default function EditWorkshop() {
                         onClick={() =>
                           setPriceVariations([
                             ...priceVariations,
-                            { name: "", price: "", description: "" },
+                            {
+                              name: "",
+                              price: "",
+                              description: "",
+                              capacity: "",
+                            },
                           ])
                         }
                         className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
                       >
                         Add Variation
                       </Button>
+                    </div>
+
+                    {/* Base Price Display */}
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-blue-800">
+                            Base Price (Standard Option)
+                          </h4>
+                          <p className="text-xs text-blue-600 mt-1">
+                            This is your workshop's standard pricing that users
+                            can select (editable from the price input box above)
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-blue-700">
+                            ${form.watch("price") || "0"}
+                          </span>
+                          <p className="text-xs text-blue-600">Base Price</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Pricing Options Header */}
+                    <div className="mb-3">
+                      <h4 className="text-sm font-medium text-gray-700">
+                        Additional Pricing Options
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Create alternative pricing tiers
+                      </p>
                     </div>
 
                     {/* ERROR DISPLAY: */}
@@ -1477,77 +1653,184 @@ export default function EditWorkshop() {
                     {priceVariations.map((variation, index) => (
                       <div
                         key={index}
-                        className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 bg-white rounded-lg border"
+                        className="mb-3 p-3 bg-white rounded-lg border"
                       >
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Variation Name{" "}
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Required variation name"
-                            value={variation.name}
-                            onChange={(e) => {
-                              const newVariations = [...priceVariations];
-                              newVariations[index].name = e.target.value;
-                              setPriceVariations(newVariations);
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          />
-                          {/* ERROR DISPLAY: */}
-                          {actionData?.errors?.[
-                            `priceVariations.${index}.name`
-                          ] && (
-                            <p className="text-red-500 text-xs mt-1">
-                              {
-                                actionData.errors[
-                                  `priceVariations.${index}.name`
-                                ]
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Price <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0"
-                            value={variation.price}
-                            onChange={(e) => {
-                              const newVariations = [...priceVariations];
-                              newVariations[index].price = e.target.value;
-                              setPriceVariations(newVariations);
-                            }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          />
-                          {/* ERROR DISPLAY: */}
-                          {actionData?.errors?.[
-                            `priceVariations.${index}.price`
-                          ] && (
-                            <p className="text-red-500 text-xs mt-1">
-                              {
-                                actionData.errors[
-                                  `priceVariations.${index}.price`
-                                ]
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium mb-1">
-                            Description <span className="text-red-500">*</span>
-                          </label>
-                          <div className="flex gap-2">
+                        <div className="grid grid-cols-12 gap-3 items-start">
+                          {/* Variation Name */}
+                          <div className="col-span-12 sm:col-span-3">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Name <span className="text-red-500">*</span>
+                            </label>
                             <input
                               type="text"
-                              placeholder="Required description"
+                              placeholder="Variation name"
+                              value={variation.name}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].name = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.name`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.name`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Price */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Price <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0"
+                              value={variation.price}
+                              disabled={index < initialPriceVariationsCount}
+                              onChange={
+                                index < initialPriceVariationsCount
+                                  ? undefined
+                                  : (e) => {
+                                      const newVariations = [
+                                        ...priceVariations,
+                                      ];
+                                      newVariations[index].price =
+                                        e.target.value;
+                                      setPriceVariations(newVariations);
+                                    }
+                              }
+                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                                index < initialPriceVariationsCount
+                                  ? "bg-gray-100 text-gray-600 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            />
+                            {index < initialPriceVariationsCount && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                Existing price cannot be modified
+                              </div>
+                            )}
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.price`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.price`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Capacity */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Capacity <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              min={(() => {
+                                // Get current registrations for this variation
+                                const { registrationCounts } =
+                                  useLoaderData<typeof loader>();
+                                if (
+                                  registrationCounts?.variations &&
+                                  index < initialPriceVariationsCount
+                                ) {
+                                  const currentVariation =
+                                    workshop.priceVariations?.[index];
+                                  if (currentVariation) {
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) =>
+                                          v.variationId === currentVariation.id
+                                      )?.registrations || 0;
+                                    return registrationCount;
+                                  }
+                                }
+                                return 1;
+                              })()}
+                              max={form.watch("capacity") || undefined}
+                              placeholder=""
+                              value={variation.capacity}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].capacity = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 
+                                ${
+                                  actionData?.errors?.[
+                                    `priceVariations.${index}.capacity`
+                                  ]
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }
+                              `}
+                            />
+                            {(() => {
+                              const { registrationCounts } =
+                                useLoaderData<typeof loader>();
+                              if (
+                                registrationCounts?.variations &&
+                                index < initialPriceVariationsCount
+                              ) {
+                                const currentVariation =
+                                  workshop.priceVariations?.[index];
+                                if (currentVariation) {
+                                  const registrationCount =
+                                    registrationCounts.variations.find(
+                                      (v) =>
+                                        v.variationId === currentVariation.id
+                                    )?.registrations || 0;
+                                  if (registrationCount > 0) {
+                                    return (
+                                      <div className="text-xs text-blue-600 mt-1">
+                                        {registrationCount} user
+                                        {registrationCount !== 1
+                                          ? "s"
+                                          : ""}{" "}
+                                        already registered
+                                      </div>
+                                    );
+                                  }
+                                }
+                              }
+                              return null;
+                            })()}
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.capacity`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.capacity`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <div className="col-span-10 sm:col-span-4">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Description{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Description"
                               value={variation.description}
                               onChange={(e) => {
                                 const newVariations = [...priceVariations];
@@ -1555,34 +1838,104 @@ export default function EditWorkshop() {
                                   e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
                             />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => {
-                                const newVariations = priceVariations.filter(
-                                  (_, i) => i !== index
-                                );
-                                setPriceVariations(newVariations);
-                              }}
-                              className="text-red-600 border-red-300 hover:bg-red-100"
-                            >
-                              Remove
-                            </Button>
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.description`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.description`
+                                  ]
+                                }
+                              </p>
+                            )}
                           </div>
-                          {/* ADD ERROR DISPLAY: */}
-                          {actionData?.errors?.[
-                            `priceVariations.${index}.description`
-                          ] && (
-                            <p className="text-red-500 text-xs mt-1">
-                              {
-                                actionData.errors[
-                                  `priceVariations.${index}.description`
-                                ]
+
+                          {/* Remove/Cancel Button */}
+                          <div className="col-span-2 sm:col-span-1">
+                            <label className="block text-xs font-medium mb-1 text-transparent">
+                              {(() => {
+                                const { registrationCounts } =
+                                  useLoaderData<typeof loader>();
+                                if (
+                                  registrationCounts?.variations &&
+                                  index < initialPriceVariationsCount
+                                ) {
+                                  const currentVariation =
+                                    workshop.priceVariations?.[index];
+                                  if (currentVariation) {
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) =>
+                                          v.variationId === currentVariation.id
+                                      )?.registrations || 0;
+                                    return registrationCount > 0
+                                      ? "Cancel"
+                                      : "Remove";
+                                  }
+                                }
+                                return "Remove";
+                              })()}
+                            </label>
+                            {(() => {
+                              const { registrationCounts } =
+                                useLoaderData<typeof loader>();
+                              if (
+                                registrationCounts?.variations &&
+                                index < initialPriceVariationsCount
+                              ) {
+                                const currentVariation =
+                                  workshop.priceVariations?.[index];
+                                if (currentVariation) {
+                                  const registrationCount =
+                                    registrationCounts.variations.find(
+                                      (v) =>
+                                        v.variationId === currentVariation.id
+                                    )?.registrations || 0;
+
+                                  if (registrationCount > 0) {
+                                    // Show Cancel button for variations with registrations
+                                    return (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleCancelPriceVariation(
+                                            currentVariation.id
+                                          )
+                                        }
+                                        className="w-full text-blue-600 border-blue-300 hover:bg-blue-50 text-xs py-1.5 h-auto"
+                                      >
+                                        Cancel
+                                      </Button>
+                                    );
+                                  }
+                                }
                               }
-                            </p>
-                          )}
+
+                              // Show Remove button for new variations or those without registrations
+                              return (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newVariations =
+                                      priceVariations.filter(
+                                        (_, i) => i !== index
+                                      );
+                                    setPriceVariations(newVariations);
+                                  }}
+                                  className="w-full text-red-600 border-red-300 hover:bg-red-50 text-xs py-1.5 h-auto"
+                                >
+                                  ✕
+                                </Button>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1593,6 +1946,114 @@ export default function EditWorkshop() {
                         get started.
                       </p>
                     )}
+
+                    {/* Cancelled Price Variations Section - Inside the same container */}
+                    {cancelledPriceVariations &&
+                      cancelledPriceVariations.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-red-200">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-red-800">
+                              Cancelled Price Variations
+                            </h4>
+                            <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                              {cancelledPriceVariations.length} cancelled
+                            </span>
+                          </div>
+
+                          <div className="mb-3">
+                            <p className="text-xs text-red-700">
+                              These price variations have been cancelled and are
+                              no longer available for registration. All users
+                              registered for these variations have been
+                              notified.
+                            </p>
+                          </div>
+
+                          {cancelledPriceVariations.map(
+                            (variation: any, index: number) => (
+                              <div
+                                key={`cancelled-${variation.id}`}
+                                className="mb-3 p-3 bg-red-100 rounded-lg border border-red-200 opacity-75"
+                              >
+                                <div className="grid grid-cols-12 gap-3 items-start">
+                                  {/* Variation Name */}
+                                  <div className="col-span-12 sm:col-span-3">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Name
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.name}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
+
+                                  {/* Price */}
+                                  <div className="col-span-6 sm:col-span-2">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Price
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={`$${variation.price}`}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
+
+                                  {/* Capacity */}
+                                  <div className="col-span-6 sm:col-span-2">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Capacity
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.capacity || "N/A"}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                    {(() => {
+                                      if (registrationCounts?.variations) {
+                                        const registrationCount =
+                                          registrationCounts.variations.find(
+                                            (v) =>
+                                              v.variationId === variation.id
+                                          )?.registrations || 0;
+                                        if (registrationCount > 0) {
+                                          return (
+                                            <div className="text-xs text-red-600 mt-1 font-medium">
+                                              {registrationCount} user
+                                              {registrationCount !== 1
+                                                ? "s"
+                                                : ""}{" "}
+                                              was registered
+                                            </div>
+                                          );
+                                        }
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
+
+                                  {/* Description */}
+                                  <div className="col-span-10 sm:col-span-4">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Description
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.description}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
                   </div>
                 )}
 
@@ -2274,21 +2735,46 @@ export default function EditWorkshop() {
 
                 {/* Prerequisites */}
                 {workshop.type !== "orientation" ? (
-                  <MultiSelectField
+                  <FormField
                     control={form.control}
                     name="prerequisites"
-                    label="Prerequisites"
-                    options={availableWorkshops}
-                    selectedItems={selectedPrerequisites}
-                    onSelect={handlePrerequisiteSelect}
-                    onRemove={removePrerequisite}
-                    error={actionData?.errors?.prerequisites}
-                    placeholder="Select prerequisites..."
-                    helperText="Select workshops of type Orientation that must be completed before enrolling."
-                    filterFn={(item) =>
-                      item.type.toLowerCase() === "orientation" &&
-                      item.id !== workshop.id
-                    }
+                    render={() => (
+                      <FormItem>
+                        <FormLabel>Prerequisites</FormLabel>
+                        <FormControl>
+                          <div>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {selectedPrerequisites.map((prereqId) => {
+                                const workshopPrereq = availableWorkshops.find(
+                                  (w) => w.id === prereqId
+                                );
+                                return workshopPrereq ? (
+                                  <Badge
+                                    key={prereqId}
+                                    variant="secondary"
+                                    className="py-1 px-2"
+                                  >
+                                    {workshopPrereq.name}
+                                  </Badge>
+                                ) : null;
+                              })}
+                              {selectedPrerequisites.length === 0 && (
+                                <span className="text-gray-500 text-sm">
+                                  No prerequisites set
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </FormControl>
+                        <FormMessage>
+                          {actionData?.errors?.prerequisites}
+                        </FormMessage>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Prerequisites are read-only and cannot be modified
+                          when editing.
+                        </div>
+                      </FormItem>
+                    )}
                   />
                 ) : (
                   <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
@@ -2426,6 +2912,13 @@ export default function EditWorkshop() {
                   type="hidden"
                   id="cancelOccurrenceId"
                   name="cancelOccurrenceId"
+                  value=""
+                />
+
+                <input
+                  type="hidden"
+                  id="cancelPriceVariationId"
+                  name="cancelPriceVariationId"
                   value=""
                 />
 

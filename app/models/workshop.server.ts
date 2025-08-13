@@ -16,6 +16,7 @@ interface WorkshopData {
     name: string;
     price: number;
     description: string;
+    capacity: number;
   }>;
   occurrences: {
     startDate: Date;
@@ -155,6 +156,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
           name: variation.name,
           price: variation.price,
           description: variation.description,
+          capacity: variation.capacity,
         })),
       });
     }
@@ -393,6 +395,7 @@ export async function updateWorkshopWithOccurrences(
       name: string;
       price: number;
       description: string;
+      capacity: number;
     }>;
   }
 ) {
@@ -411,13 +414,19 @@ export async function updateWorkshopWithOccurrences(
   });
 
   // Update price variations
+  // Update price variations (preserve cancelled ones)
   if (data.hasPriceVariations !== undefined) {
-    // Delete existing price variations
-    await db.workshopPriceVariation.deleteMany({
-      where: { workshopId },
+    // Get existing cancelled variations to preserve them
+    const cancelledVariations = await db.workshopPriceVariation.findMany({
+      where: { workshopId, status: "cancelled" },
     });
 
-    // Add new price variations if any
+    // Delete only active price variations
+    await db.workshopPriceVariation.deleteMany({
+      where: { workshopId, status: "active" },
+    });
+
+    // Add new active price variations if any
     if (data.priceVariations && data.priceVariations.length > 0) {
       await db.workshopPriceVariation.createMany({
         data: data.priceVariations.map((variation) => ({
@@ -425,6 +434,8 @@ export async function updateWorkshopWithOccurrences(
           name: variation.name,
           price: variation.price,
           description: variation.description,
+          capacity: variation.capacity,
+          status: "active",
         })),
       });
     }
@@ -770,7 +781,7 @@ export async function registerForWorkshop(
   variationId?: number | null
 ) {
   try {
-    // Check if the user is already registered for this occurrence
+    // Check if already registered
     const existingRegistration = await checkUserRegistration(
       workshopId,
       userId,
@@ -778,20 +789,36 @@ export async function registerForWorkshop(
     );
 
     if (existingRegistration.registered) {
-      throw new Error(
-        "User is already registered for this workshop occurrence"
-      );
+      throw new Error("User is already registered for this workshop");
     }
 
-    // Get the workshop and occurrence to ensure they exist
-    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
-    if (!occurrence) {
-      throw new Error("Workshop occurrence not found");
+    // Check capacity before registering
+    const capacityCheck = await checkWorkshopCapacity(
+      workshopId,
+      occurrenceId,
+      variationId
+    );
+
+    if (!capacityCheck.hasCapacity) {
+      if (capacityCheck.reason === "workshop_full") {
+        throw new Error(
+          `Workshop is full. Capacity: ${capacityCheck.workshopCapacity}, Current registrations: ${capacityCheck.totalRegistrations}`
+        );
+      } else if (capacityCheck.reason === "variation_full") {
+        throw new Error(
+          `${capacityCheck.variationName} variation is full. Capacity: ${capacityCheck.variationCapacity}, Current registrations: ${capacityCheck.variationRegistrations}`
+        );
+      }
     }
 
     const workshop = await getWorkshopById(workshopId);
     if (!workshop) {
       throw new Error("Workshop not found");
+    }
+
+    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+    if (!occurrence) {
+      throw new Error("Workshop occurrence not found");
     }
 
     // Determine registration result based on workshop type
@@ -1477,6 +1504,25 @@ export async function registerUserForAllOccurrences(
   variationId?: number | null
 ) {
   try {
+    // Check capacity before registering for multi-day workshop
+    const capacityCheck = await checkMultiDayWorkshopCapacity(
+      workshopId,
+      connectId,
+      variationId
+    );
+
+    if (!capacityCheck.hasCapacity) {
+      if (capacityCheck.reason === "workshop_full") {
+        throw new Error(
+          `Workshop is full. Capacity: ${capacityCheck.workshopCapacity}, Current registrations: ${capacityCheck.totalRegistrations}`
+        );
+      } else if (capacityCheck.reason === "variation_full") {
+        throw new Error(
+          `${capacityCheck.variationName} variation is full. Capacity: ${capacityCheck.variationCapacity}, Current registrations: ${capacityCheck.variationRegistrations}`
+        );
+      }
+    }
+
     // Get all occurrences for this workshop with the given connectId
     const occurrences = await getWorkshopOccurrencesByConnectId(
       workshopId,
@@ -1675,7 +1721,10 @@ export async function getWorkshopWithPriceVariations(workshopId: number) {
       where: { id: workshopId },
       include: {
         priceVariations: {
-          orderBy: { price: "asc" },
+          orderBy: [
+            { status: "asc" }, // Active first, then cancelled
+            { id: "asc" },
+          ],
         },
         occurrences: {
           include: {
@@ -1736,4 +1785,396 @@ export async function getWorkshopPriceVariation(variationId: number) {
     console.error("Error fetching workshop price variation:", error);
     throw new Error("Failed to fetch workshop price variation");
   }
+}
+
+/**
+ * Checks if workshop or price variation has capacity for registration
+ * @param workshopId - The ID of the workshop
+ * @param occurrenceId - The ID of the specific occurrence
+ * @param variationId - Optional price variation ID
+ * @returns Promise<Object> - Object with capacity status and counts
+ */
+export async function checkWorkshopCapacity(
+  workshopId: number,
+  occurrenceId: number,
+  variationId?: number | null
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          where: { id: occurrenceId },
+          include: {
+            userWorkshops: true,
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrence not found");
+    }
+
+    const occurrence = workshop.occurrences[0];
+    const totalRegistrations = occurrence.userWorkshops.length;
+
+    // Check base workshop capacity
+    if (totalRegistrations >= workshop.capacity) {
+      return {
+        hasCapacity: false,
+        reason: "workshop_full",
+        workshopCapacity: workshop.capacity,
+        totalRegistrations,
+      };
+    }
+
+    // If no variation specified, just check base capacity
+    if (!variationId) {
+      return {
+        hasCapacity: true,
+        workshopCapacity: workshop.capacity,
+        totalRegistrations,
+      };
+    }
+
+    // Check specific variation capacity
+    const variation = workshop.priceVariations.find(
+      (v) => v.id === variationId
+    );
+    if (!variation) {
+      throw new Error("Price variation not found");
+    }
+
+    const variationRegistrations = occurrence.userWorkshops.filter(
+      (uw) => uw.priceVariationId === variationId
+    ).length;
+
+    if (variationRegistrations >= variation.capacity) {
+      return {
+        hasCapacity: false,
+        reason: "variation_full",
+        variationCapacity: variation.capacity,
+        variationRegistrations,
+        variationName: variation.name,
+      };
+    }
+
+    return {
+      hasCapacity: true,
+      workshopCapacity: workshop.capacity,
+      totalRegistrations,
+      variationCapacity: variation.capacity,
+      variationRegistrations,
+    };
+  } catch (error) {
+    console.error("Error checking workshop capacity:", error);
+    throw error;
+  }
+}
+
+/**
+ * Gets registration counts for workshop and all its price variations
+ * @param workshopId - The ID of the workshop
+ * @param occurrenceId - The ID of the specific occurrence
+ * @returns Promise<Object> - Object with detailed capacity information
+ */
+export async function getWorkshopRegistrationCounts(
+  workshopId: number,
+  occurrenceId: number
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          where: { id: occurrenceId },
+          include: {
+            userWorkshops: {
+              include: {
+                priceVariation: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrence not found");
+    }
+
+    const occurrence = workshop.occurrences[0];
+    const registrations = occurrence.userWorkshops;
+
+    // Count base registrations (no price variation)
+    const baseRegistrations = registrations.filter(
+      (uw) => !uw.priceVariationId
+    ).length;
+
+    // Count registrations by variation
+    const variationCounts = workshop.priceVariations.map((variation) => {
+      const count = registrations.filter(
+        (uw) => uw.priceVariationId === variation.id
+      ).length;
+
+      return {
+        variationId: variation.id,
+        name: variation.name,
+        capacity: variation.capacity,
+        registrations: count,
+        hasCapacity: count < variation.capacity,
+      };
+    });
+
+    return {
+      workshopCapacity: workshop.capacity,
+      totalRegistrations: registrations.length,
+      baseRegistrations,
+      hasBaseCapacity: registrations.length < workshop.capacity,
+      variations: variationCounts,
+    };
+  } catch (error) {
+    console.error("Error getting workshop registration counts:", error);
+    throw error;
+  }
+}
+
+/**
+ * Checks if multi-day workshop has capacity for new registrations
+ * @param workshopId - The ID of the workshop
+ * @param connectId - The connectId for multi-day workshop occurrences
+ * @param variationId - Optional price variation ID
+ * @returns Promise<Object> - Object with capacity status and counts
+ */
+export async function checkMultiDayWorkshopCapacity(
+  workshopId: number,
+  connectId: number,
+  variationId?: number | null
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          where: { connectId },
+          include: {
+            userWorkshops: true,
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrences not found");
+    }
+
+    // For multi-day workshops, count unique users across all occurrences
+    const allUserIds = workshop.occurrences.flatMap((occ) =>
+      occ.userWorkshops.map((uw) => uw.userId)
+    );
+    const uniqueUserIds = [...new Set(allUserIds)];
+    const totalRegistrations = uniqueUserIds.length;
+
+    // Check base workshop capacity
+    if (totalRegistrations >= workshop.capacity) {
+      return {
+        hasCapacity: false,
+        reason: "workshop_full",
+        workshopCapacity: workshop.capacity,
+        totalRegistrations,
+      };
+    }
+
+    // If no variation specified, just check base capacity
+    if (!variationId) {
+      return {
+        hasCapacity: true,
+        workshopCapacity: workshop.capacity,
+        totalRegistrations,
+      };
+    }
+
+    // Check specific variation capacity
+    const variation = workshop.priceVariations.find(
+      (v) => v.id === variationId
+    );
+    if (!variation) {
+      throw new Error("Price variation not found");
+    }
+
+    // Count unique users for this variation across all occurrences
+    const variationUserIds = workshop.occurrences.flatMap((occ) =>
+      occ.userWorkshops
+        .filter((uw) => uw.priceVariationId === variationId)
+        .map((uw) => uw.userId)
+    );
+    const uniqueVariationUserIds = [...new Set(variationUserIds)];
+    const variationRegistrations = uniqueVariationUserIds.length;
+
+    if (variationRegistrations >= variation.capacity) {
+      return {
+        hasCapacity: false,
+        reason: "variation_full",
+        variationCapacity: variation.capacity,
+        variationRegistrations,
+        variationName: variation.name,
+      };
+    }
+
+    return {
+      hasCapacity: true,
+      workshopCapacity: workshop.capacity,
+      totalRegistrations,
+      variationCapacity: variation.capacity,
+      variationRegistrations,
+    };
+  } catch (error) {
+    console.error("Error checking multi-day workshop capacity:", error);
+    throw error;
+  }
+}
+
+/**
+ * Gets registration counts for multi-day workshop and all its price variations
+ * @param workshopId - The ID of the workshop
+ * @param connectId - The connectId for multi-day workshop occurrences
+ * @returns Promise<Object> - Object with detailed capacity information
+ */
+export async function getMultiDayWorkshopRegistrationCounts(
+  workshopId: number,
+  connectId: number
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          where: { connectId },
+          include: {
+            userWorkshops: {
+              include: {
+                priceVariation: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrences not found");
+    }
+
+    // Get all registrations across all occurrences
+    const allRegistrations = workshop.occurrences.flatMap(
+      (occ) => occ.userWorkshops
+    );
+
+    // Count unique users (multi-day workshop = one registration per user)
+    const allUserIds = allRegistrations.map((uw) => uw.userId);
+    const uniqueUserIds = [...new Set(allUserIds)];
+    const totalRegistrations = uniqueUserIds.length;
+
+    // Count base registrations (no price variation) - unique users
+    const baseUserIds = allRegistrations
+      .filter((uw) => !uw.priceVariationId)
+      .map((uw) => uw.userId);
+    const uniqueBaseUserIds = [...new Set(baseUserIds)];
+    const baseRegistrations = uniqueBaseUserIds.length;
+
+    // Count registrations by variation - unique users per variation
+    const variationCounts = workshop.priceVariations.map((variation) => {
+      const variationUserIds = allRegistrations
+        .filter((uw) => uw.priceVariationId === variation.id)
+        .map((uw) => uw.userId);
+      const uniqueVariationUserIds = [...new Set(variationUserIds)];
+      const count = uniqueVariationUserIds.length;
+
+      return {
+        variationId: variation.id,
+        name: variation.name,
+        capacity: variation.capacity,
+        registrations: count,
+        hasCapacity: count < variation.capacity,
+      };
+    });
+
+    return {
+      workshopCapacity: workshop.capacity,
+      totalRegistrations,
+      baseRegistrations,
+      hasBaseCapacity: totalRegistrations < workshop.capacity,
+      variations: variationCounts,
+    };
+  } catch (error) {
+    console.error(
+      "Error getting multi-day workshop registration counts:",
+      error
+    );
+    throw error;
+  }
+}
+
+/**
+ * Cancels a workshop price variation and all related registrations
+ * @param variationId - The ID of the price variation to cancel
+ * @returns Promise<Object> - The result of the cancellation
+ */
+export async function cancelWorkshopPriceVariation(variationId: number) {
+  try {
+    // First, update the price variation status to cancelled
+    await db.workshopPriceVariation.update({
+      where: { id: variationId },
+      data: { status: "cancelled" },
+    });
+
+    // Update all user registrations for this price variation to cancelled status
+    await db.userWorkshop.updateMany({
+      where: { priceVariationId: variationId },
+      data: { result: "cancelled" },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error cancelling workshop price variation:", error);
+    throw new Error("Failed to cancel workshop price variation");
+  }
+}
+
+/**
+ * Gets user registration information including price variation for a specific workshop
+ * @param userId - The ID of the user
+ * @param workshopId - The ID of the workshop
+ * @returns Promise<Object> - Object with registration info including price variation
+ */
+export async function getUserWorkshopRegistrationInfo(
+  userId: number,
+  workshopId: number
+) {
+  if (!userId) return null;
+
+  const userRegistration = await db.userWorkshop.findFirst({
+    where: {
+      userId,
+      workshopId,
+    },
+    include: {
+      priceVariation: true,
+      occurrence: true,
+    },
+  });
+
+  if (!userRegistration) return null;
+
+  return {
+    registered: true,
+    priceVariation: userRegistration.priceVariation,
+    occurrence: userRegistration.occurrence,
+    registrationDate: userRegistration.date,
+  };
 }
