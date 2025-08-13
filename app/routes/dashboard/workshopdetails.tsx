@@ -42,6 +42,7 @@ import {
 import {
   duplicateWorkshop,
   getWorkshopRegistrationCounts,
+  getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -137,10 +138,20 @@ export async function loader({
   // Get capacity information for each occurrence
   const occurrencesWithCapacity = await Promise.all(
     workshop.occurrences.map(async (occ: any) => {
-      const capacityInfo = await getWorkshopRegistrationCounts(
-        workshopId,
-        occ.id
-      );
+      let capacityInfo;
+
+      // Check if this is a multi-day workshop
+      if (occ.connectId) {
+        // For multi-day workshops, get capacity based on connectId
+        capacityInfo = await getMultiDayWorkshopRegistrationCounts(
+          workshopId,
+          occ.connectId
+        );
+      } else {
+        // For regular workshops, get capacity for individual occurrence
+        capacityInfo = await getWorkshopRegistrationCounts(workshopId, occ.id);
+      }
+
       return {
         ...occ,
         capacityInfo,
@@ -363,6 +374,47 @@ const formatCutoffTime = (minutes: number): string => {
  * @returns Object with capacity status and reason
  */
 const checkWorkshopCapacity = (capacityInfo: any) => {
+  // Check if workshop is at full capacity
+  if (capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) {
+    return {
+      hasCapacity: false,
+      reason: "workshop_full",
+      message: `Workshop is full (${capacityInfo.totalRegistrations}/${capacityInfo.workshopCapacity})`,
+    };
+  }
+
+  // If workshop has price variations, check if all variations are full
+  if (capacityInfo.variations && capacityInfo.variations.length > 0) {
+    const allVariationsFull = capacityInfo.variations.every(
+      (variation: any) => !variation.hasCapacity
+    );
+
+    // Also check if base registration has capacity
+    const baseHasCapacity = capacityInfo.hasBaseCapacity;
+
+    // If all variations are full AND base is at capacity, no one can register
+    if (allVariationsFull && !baseHasCapacity) {
+      return {
+        hasCapacity: false,
+        reason: "all_options_full",
+        message: "All pricing options are at capacity",
+      };
+    }
+  }
+
+  return {
+    hasCapacity: true,
+    reason: "available",
+    message: "Capacity available",
+  };
+};
+
+/**
+ * Check if multi-day workshop has capacity for new registrations
+ * @param capacityInfo Capacity information from getMultiDayWorkshopRegistrationCounts
+ * @returns Object with capacity status and reason
+ */
+const checkMultiDayWorkshopCapacity = (capacityInfo: any) => {
   // Check if workshop is at full capacity
   if (capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) {
     return {
@@ -845,12 +897,48 @@ export default function WorkshopDetails() {
                       <h2 className="text-lg font-semibold">
                         Multi-day Workshop Dates
                       </h2>
-                      <Badge
-                        variant="outline"
-                        className="bg-blue-50 border-blue-200 text-blue-700"
-                      >
-                        {sortedOccurrences.length} Workshop Dates
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className="bg-blue-50 border-blue-200 text-blue-700"
+                        >
+                          {sortedOccurrences.length} Workshop Dates
+                        </Badge>
+                        {/* Add capacity badge for multi-day workshops */}
+                        {sortedOccurrences[0]?.capacityInfo && (
+                          <>
+                            <Badge
+                              variant="outline"
+                              className={`${
+                                sortedOccurrences[0].capacityInfo.totalRegistrations >= 
+                                sortedOccurrences[0].capacityInfo.workshopCapacity
+                                  ? "bg-red-50 border-red-200 text-red-700"
+                                  : "bg-green-50 border-green-200 text-green-700"
+                              }`}
+                            >
+                              {sortedOccurrences[0].capacityInfo.totalRegistrations}/
+                              {sortedOccurrences[0].capacityInfo.workshopCapacity} registered
+                            </Badge>
+                            {/* Show capacity status message */}
+                            {(() => {
+                              const capacityCheck = checkMultiDayWorkshopCapacity(sortedOccurrences[0].capacityInfo);
+                              if (!capacityCheck.hasCapacity) {
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-red-50 border-red-200 text-red-700"
+                                  >
+                                    {capacityCheck.reason === "workshop_full" 
+                                      ? "Workshop Full" 
+                                      : "Some options full"}
+                                  </Badge>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </>
+                        )}
+                      </div>
                     </div>
                     {/* New Box-Style UI for multi-day workshops */}
                     <div className="border rounded-lg shadow-md bg-white p-4 mb-6">
@@ -985,6 +1073,14 @@ export default function WorkshopDetails() {
                               occ.status !== "cancelled"
                           );
 
+                          // For multi-day workshops, check capacity from the first occurrence
+                          const firstOccurrence = activeOccurrences[0];
+                          const capacityCheck = firstOccurrence?.capacityInfo
+                            ? checkMultiDayWorkshopCapacity(
+                                firstOccurrence.capacityInfo
+                              )
+                            : { hasCapacity: true, reason: "available" };
+
                           const earliestActiveOccurrence =
                             activeOccurrences.reduce((earliest, current) => {
                               const currentDate = new Date(current.startDate);
@@ -1005,84 +1101,12 @@ export default function WorkshopDetails() {
                             <>
                               {withinCutoffPeriod ? (
                                 <div className="flex flex-col items-start gap-2">
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <div>
-                                          <Button
-                                            className={`${
-                                              !user
-                                                ? "bg-gray-400 hover:bg-gray-500"
-                                                : "bg-blue-500 hover:bg-blue-600"
-                                            } text-white px-4 py-2 rounded-lg ${
-                                              withinCutoffPeriod
-                                                ? "opacity-70"
-                                                : ""
-                                            }`}
-                                            disabled={
-                                              !user ||
-                                              withinCutoffPeriod ||
-                                              !hasCompletedAllPrerequisites
-                                            }
-                                          >
-                                            Register for Entire Workshop
-                                          </Button>
-                                        </div>
-                                      </TooltipTrigger>
-                                      {!user ? (
-                                        <TooltipContent className="bg-blue-50 text-blue-800 border border-blue-300 p-3 max-w-xs">
-                                          <p className="font-medium mb-2">
-                                            Account required
-                                          </p>
-                                          <p className="text-sm mb-3">
-                                            You need an account to register for
-                                            workshops.
-                                          </p>
-                                          <div className="flex gap-2">
-                                            <button
-                                              onClick={() => {
-                                                const currentUrl =
-                                                  window.location.pathname;
-                                                window.location.href = `/login?redirect=${encodeURIComponent(
-                                                  currentUrl
-                                                )}`;
-                                              }}
-                                              className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs"
-                                            >
-                                              Sign In
-                                            </button>
-                                            <button
-                                              onClick={() => {
-                                                const currentUrl =
-                                                  window.location.pathname;
-                                                window.location.href = `/register?redirect=${encodeURIComponent(
-                                                  currentUrl
-                                                )}`;
-                                              }}
-                                              className="border border-blue-500 text-blue-500 hover:bg-blue-50 px-3 py-1 rounded text-xs"
-                                            >
-                                              Register
-                                            </button>
-                                          </div>
-                                        </TooltipContent>
-                                      ) : withinCutoffPeriod ? (
-                                        <TooltipContent
-                                          side="top"
-                                          align="start"
-                                          className="bg-amber-100 text-amber-800 border border-amber-300 p-2 max-w-xs"
-                                        >
-                                          <p>
-                                            Registration is closed. Registration
-                                            cutoff is{" "}
-                                            {formatCutoffTime(
-                                              workshop.registrationCutoff
-                                            )}{" "}
-                                            before the first workshop session.
-                                          </p>
-                                        </TooltipContent>
-                                      ) : null}
-                                    </Tooltip>
-                                  </TooltipProvider>
+                                  <Button
+                                    className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg opacity-70"
+                                    disabled={true}
+                                  >
+                                    Registration Closed
+                                  </Button>
                                   <div className="bg-amber-100 text-amber-800 border border-amber-300 rounded-md p-3 text-sm">
                                     Registration is closed. Registration cutoff
                                     is{" "}
@@ -1091,6 +1115,49 @@ export default function WorkshopDetails() {
                                     )}{" "}
                                     before the first workshop session.
                                   </div>
+                                </div>
+                              ) : !capacityCheck.hasCapacity ? (
+                                <div className="flex flex-col items-start gap-2">
+                                  <Button
+                                    className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg"
+                                    disabled={true}
+                                  >
+                                    Full
+                                  </Button>
+                                  {/* <div className="bg-red-100 text-red-800 border border-red-300 rounded-md p-3 text-sm">
+                                    {capacityCheck.message}
+                                    {firstOccurrence?.capacityInfo && (
+                                      <div className="mt-2 text-xs">
+                                        <p>
+                                          Capacity:{" "}
+                                          {
+                                            firstOccurrence.capacityInfo
+                                              .totalRegistrations
+                                          }
+                                          /
+                                          {
+                                            firstOccurrence.capacityInfo
+                                              .workshopCapacity
+                                          }{" "}
+                                          registered
+                                        </p>
+                                        {firstOccurrence.capacityInfo.variations
+                                          ?.length > 0 && (
+                                          <div className="mt-1">
+                                            {firstOccurrence.capacityInfo.variations.map(
+                                              (v: any) => (
+                                                <p key={v.variationId}>
+                                                  {v.name}: {v.registrations}/
+                                                  {v.capacity}{" "}
+                                                  {!v.hasCapacity && "(Full)"}
+                                                </p>
+                                              )
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div> */}
                                 </div>
                               ) : (
                                 <TooltipProvider>
@@ -1105,7 +1172,8 @@ export default function WorkshopDetails() {
                                           buttonClassName="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
                                           disabled={
                                             !user ||
-                                            !hasCompletedAllPrerequisites
+                                            !hasCompletedAllPrerequisites ||
+                                            !capacityCheck.hasCapacity
                                           }
                                         />
                                       </div>

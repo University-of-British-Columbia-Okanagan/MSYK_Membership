@@ -9,6 +9,7 @@ import { getUser, getRoleUser } from "~/utils/session.server";
 import {
   getWorkshopWithPriceVariations,
   getWorkshopRegistrationCounts,
+  getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import type { Route } from "./+types/workshoppricingvariation";
 
@@ -35,27 +36,22 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   let capacityInfo = null;
 
-  if (occurrenceId) {
+  if (connectId) {
+    // Multi-day workshop capacity
+    capacityInfo = await getMultiDayWorkshopRegistrationCounts(
+      workshopId,
+      Number(connectId)
+    );
+  } else if (occurrenceId) {
+    // Regular workshop capacity
     capacityInfo = await getWorkshopRegistrationCounts(
       workshopId,
       Number(occurrenceId)
     );
-  } else if (connectId) {
-    // For multi-day workshops, get capacity from the first occurrence with this connectId
-    const firstOccurrence = workshop.occurrences.find(
-      (occ: any) => occ.connectId === Number(connectId)
-    );
-    if (firstOccurrence) {
-      capacityInfo = await getWorkshopRegistrationCounts(
-        workshopId,
-        firstOccurrence.id
-      );
-    }
   }
 
   return { workshop, user, isAdmin, capacityInfo };
 }
-
 export default function WorkshopPricingVariation() {
   const { workshop, user, isAdmin, capacityInfo } =
     useLoaderData<typeof loader>();
