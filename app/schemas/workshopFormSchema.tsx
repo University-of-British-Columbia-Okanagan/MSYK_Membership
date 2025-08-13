@@ -80,7 +80,7 @@ export const workshopFormSchema = z
     {
       message:
         "At least one price variation is required when price variations are enabled",
-      path: ["priceVariations"], // This will show the error on the priceVariations field
+      path: ["priceVariations"],
     }
   )
   .refine(
@@ -103,7 +103,27 @@ export const workshopFormSchema = z
     {
       message:
         "All prices must be unique. The base price and variation prices cannot be the same.",
-      path: ["priceVariations"], // This will show the error on the priceVariations field
+      path: ["priceVariations"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Check that variation capacities don't exceed total workshop capacity
+      if (
+        data.hasPriceVariations &&
+        data.priceVariations &&
+        data.priceVariations.length > 0
+      ) {
+        const invalidVariations = data.priceVariations.filter(
+          (variation) => variation.capacity > data.capacity
+        );
+        return invalidVariations.length === 0;
+      }
+      return true;
+    },
+    {
+      message: "Variation capacities cannot exceed the total workshop capacity",
+      path: ["priceVariations"],
     }
   );
 
