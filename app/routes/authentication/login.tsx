@@ -150,6 +150,18 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
 
                 <div className="text-center mt-4">
                   <p className="text-sm text-gray-600">
+                    Forgot your password?{" "}
+                    <a
+                      href="/passwordReset"
+                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                    >
+                      Reset Password
+                    </a>
+                  </p>
+                </div>
+
+                <div className="text-center mt-4">
+                  <p className="text-sm text-gray-600">
                     Don't have an account?{" "}
                     <a
                       href="/register"
