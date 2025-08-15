@@ -5,9 +5,9 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import WorkshopList from "~/components/ui/Dashboard/WorkshopList";
+import WorkshopList from "~/components/ui/Dashboard/Workshoplist";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   try {

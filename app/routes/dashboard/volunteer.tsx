@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 import { getRoleUser } from "~/utils/session.server";
 import {
   Mail,

@@ -68,13 +68,13 @@ import {
 } from "~/models/equipment.server";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
-import type { SlotsByDay } from "~/components/ui/Dashboard/EquipmentBookingGrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/Equipmentbookinggrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/Equipmentbookinggrid";
 import { db } from "~/utils/db.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 

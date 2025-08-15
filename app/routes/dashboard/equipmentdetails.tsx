@@ -20,9 +20,9 @@ import { getUser } from "~/utils/session.server";
 import { getWorkshopById } from "../../models/workshop.server";
 import { Link } from "react-router";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { logger } from "~/logging/logger";
 
