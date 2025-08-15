@@ -466,4 +466,49 @@ export async function getRoleUser(request: Request) {
   return null;
 }
 
+/**
+ * Finds a user from the email
+ * @param email 
+ * @returns user
+ */
+export async function findUserByEmail(email: string) {
+  if (!email) return null;
+
+  const user = await db.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      roleLevel: true,
+    },
+  });
+
+  return user;
+}
+
+/**
+ * Updates the password of a user
+ * @param email 
+ * @param password 
+ * @returns user
+ */
+export async function updateUserPassword(email: string, password: string) {
+  if (!email || !password) return null;
+  
+  const hashedPassword = await bcrypt.hash(password, 10);
+  
+  const user = await db.user.update({
+    where: { email },
+    data: { password: hashedPassword },
+    select: {
+      id: true,
+      email: true,
+      password: true
+    },
+  });
+
+  return user;
+}
+
+
 export { decryptWaiver };
