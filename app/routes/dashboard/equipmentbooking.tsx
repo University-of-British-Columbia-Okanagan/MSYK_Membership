@@ -13,21 +13,20 @@ import {
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
-import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
+import EquipmentBookingGrid from "../../components/ui/Dashboard/EquipmentBookingGrid";
 import { useState } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { getRoleUser } from "../../utils/session.server";
-// import { checkSlotAvailability } from "../../models/equipment.server";
-import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
-
 
 export async function loader({
   request,
@@ -43,9 +42,27 @@ export async function loader({
   const roleUser = await getRoleUser(request);
 
   logger.info(
-    `[User: ${userId ?? "guest"}] Loading equipment scheduler (equipmentId: ${equipmentId})`,
+    `[User: ${
+      userId ?? "guest"
+    }] Loading equipment scheduler (equipmentId: ${equipmentId})`,
     { url: request.url }
   );
+
+  let hasCompletedEquipmentPrerequisites = true;
+  let equipmentPrerequisiteMessage = "";
+
+  if (user && equipmentId && (roleLevel === 3 || roleLevel === 4)) {
+    const { hasUserCompletedEquipmentPrerequisites } = await import(
+      "../../models/equipment.server"
+    );
+    hasCompletedEquipmentPrerequisites =
+      await hasUserCompletedEquipmentPrerequisites(user.id, equipmentId);
+
+    if (!hasCompletedEquipmentPrerequisites) {
+      equipmentPrerequisiteMessage =
+        "You must complete the required prerequisite orientations before booking this equipment. Please check the equipment details page to see which orientations are required.";
+    }
+  }
 
   // Get the equipment_visible_registrable_days setting
   const equipmentWithSlots = await getEquipmentSlotsWithStatus(
@@ -76,6 +93,7 @@ export async function loader({
   );
 
   const savedPaymentMethod = user ? await getSavedPaymentMethod(user.id) : null;
+  const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
   return json({
     equipment: equipmentWithSlots,
@@ -89,6 +107,9 @@ export async function loader({
     maxSlotsPerWeek: parseInt(maxSlotsPerWeek, 10),
     roleUser,
     savedPaymentMethod,
+    hasCompletedEquipmentPrerequisites,
+    equipmentPrerequisiteMessage,
+    gstPercentage: parseFloat(gstPercentage),
   });
 }
 
@@ -162,13 +183,17 @@ export async function action({ request }: { request: Request }) {
     });
 
     const response = await createCheckoutSession(fakeRequest);
-    const sessionRes = await response.json();
+    let sessionRes;
+    if (response instanceof Response) {
+      sessionRes = await response.json();
+    } else {
+      sessionRes = response;
+    }
 
     if (sessionRes?.url) {
-      logger.info(
-        `[User: ${user.id}] Checkout session created successfully`,
-        { url: request.url }
-      );
+      logger.info(`[User: ${user.id}] Checkout session created successfully`, {
+        url: request.url,
+      });
       return redirect(sessionRes.url);
     } else {
       logger.error(
@@ -202,6 +227,9 @@ export default function EquipmentBookingForm() {
     maxSlotsPerWeek,
     roleUser,
     savedPaymentMethod,
+    hasCompletedEquipmentPrerequisites,
+    equipmentPrerequisiteMessage,
+    gstPercentage,
   } = useLoaderData();
   const actionData = useActionData();
   const navigation = useNavigation();
@@ -225,7 +253,13 @@ export default function EquipmentBookingForm() {
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        {!roleUser ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-8 w-full">
             {/* Back Button */}
@@ -281,30 +315,56 @@ export default function EquipmentBookingForm() {
 
               {selectedEquipment && (
                 <>
+                  {/* Guest Authentication Section */}
+                  {!roleUser && (
+                    <div className="mt-6 mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="text-center">
+                        <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                          Account Required
+                        </h3>
+                        <p className="text-blue-700 mb-4">
+                          You need an account to book equipment. Please sign in
+                          or create an account to continue.
+                        </p>
+                        <div className="flex gap-3 justify-center">
+                          <button
+                            onClick={() => {
+                              const currentUrl =
+                                window.location.pathname +
+                                window.location.search;
+                              window.location.href = `/login?redirect=${encodeURIComponent(
+                                currentUrl
+                              )}`;
+                            }}
+                            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-medium transition-colors"
+                          >
+                            Sign In
+                          </button>
+                          <button
+                            onClick={() => {
+                              const currentUrl =
+                                window.location.pathname +
+                                window.location.search;
+                              window.location.href = `/register?redirect=${encodeURIComponent(
+                                currentUrl
+                              )}`;
+                            }}
+                            className="bg-white hover:bg-blue-50 text-blue-500 border border-blue-500 px-6 py-2 rounded-lg font-medium transition-colors"
+                          >
+                            Create Account
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <label className="block text-gray-700 font-bold mt-4 mb-2">
                     Select Time Slots
                   </label>
-                  {/* <EquipmentBookingGrid
-              slotsByDay={selectedEquip?.slotsByDay || {}}
-              onSelectSlots={setSelectedSlots}
-              disabled={roleLevel === 1 || roleLevel === 2}
-              visibleTimeRange={
-                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
-              }
-            /> */}
-                  {/* <EquipmentBookingGrid
-              slotsByDay={selectedEquip?.slotsByDay || {}}
-              onSelectSlots={setSelectedSlots}
-              disabled={roleLevel === 1 || roleLevel === 2}
-              visibleTimeRange={
-                roleLevel === 3 ? { startHour: 9, endHour: 18 } : undefined
-              }
-              visibleDays={visibleDays} // Pass the number of visible days
-            /> */}
+
                   <EquipmentBookingGrid
                     slotsByDay={selectedEquip?.slotsByDay || {}}
                     onSelectSlots={setSelectedSlots}
-                    disabled={roleLevel === 1 || roleLevel === 2}
                     visibleTimeRange={
                       roleLevel === 3
                         ? { startHour: 9, endHour: 17 }
@@ -319,10 +379,24 @@ export default function EquipmentBookingForm() {
                     }
                     plannedClosures={
                       roleLevel === 3 ? plannedClosures : undefined
-                    } // Add this prop
+                    }
                     userRoleLevel={roleLevel}
                     maxSlotsPerDay={maxSlotsPerDay}
                     maxSlotsPerWeek={maxSlotsPerWeek}
+                    disabled={
+                      !roleUser ||
+                      roleLevel === 1 ||
+                      roleLevel === 2 ||
+                      (!hasCompletedEquipmentPrerequisites &&
+                        (roleLevel === 3 || roleLevel === 4))
+                    }
+                    disabledMessage={
+                      !roleUser
+                        ? "You need an account to book equipment."
+                        : roleLevel === 1 || roleLevel === 2
+                        ? "You do not have the required membership to book equipment."
+                        : equipmentPrerequisiteMessage
+                    }
                   />
 
                   {totalPrice && (
@@ -386,6 +460,7 @@ export default function EquipmentBookingForm() {
                       }}
                       itemName={`${selectedEquip?.name} Booking`}
                       itemPrice={parseFloat(totalPrice)}
+                      gstPercentage={gstPercentage}
                       savedCard={{
                         cardLast4: savedPaymentMethod.cardLast4,
                         cardExpiry: savedPaymentMethod.cardExpiry,

@@ -6,6 +6,7 @@ export default [
   route("/register", "routes/authentication/register.tsx"),
   route("/login", "routes/authentication/login.tsx"),
   route("/logout", "routes/authentication/logout.tsx"),
+  route("/passwordReset", "routes/authentication/passwordReset.tsx"),
   route("/about", "routes/about/about.tsx"),
   route("/board", "routes/about/board.tsx"),
   route("/staff", "routes/about/staff.tsx"),
@@ -34,14 +35,21 @@ export default [
   route("/dashboard/user", "routes/dashboard/userdashboardlayout.tsx"),
   route("/dashboard/workshops", "routes/dashboard/workshops.tsx"),
   route("/dashboard/workshops/:id", "routes/dashboard/workshopdetails.tsx"),
+  route(
+    "/dashboard/workshops/pricevariations/:workshopId",
+    "routes/dashboard/workshoppricingvariation.tsx"
+  ),
   route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
   route(
     "/editmembershipplan/:planId",
     "routes/getinvolved/editmembershipplan.tsx"
   ),
   route("/dashboard/addworkshop", "routes/dashboard/addworkshop.tsx"),
-  route("/dashboard/editworkshop/:workshopId", "routes/dashboard/editworkshop.tsx"),
-  route("/dashboard/register/:id", "routes/dashboard/register.tsx"),
+  route(
+    "/dashboard/editworkshop/:workshopId",
+    "routes/dashboard/editworkshop.tsx"
+  ),
+  route("/dashboard/register/:id", "routes/api/register.tsx"),
   route(
     "/dashboard/workshops/offer/:id",
     "routes/dashboard/workshopofferagain.tsx"
@@ -49,42 +57,65 @@ export default [
   route(
     "dashboard/payment/:workshopId/connect/:connectId",
     "routes/dashboard/payment.tsx",
-    { id: "dashboard/payment/workshopContinuation" }
+    { id: "dashboard/payment/multiDayWorkshop" }
+  ),
+  route(
+    "dashboard/payment/:workshopId/connect/:connectId/:variationId",
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/multiDayWorkshopWithVariation" }
   ),
   route(
     "dashboard/payment/:workshopId/:occurrenceId",
-    "routes/dashboard/payment.tsx"
+    "routes/dashboard/payment.tsx",
+    { id: "dashboard/payment/singleWorkshop" }
   ),
   route(
-    "dashboard/payment/:membershipPlanId",
+    "dashboard/payment/:workshopId/:occurrenceId/:variationId",
     "routes/dashboard/payment.tsx",
-    { id: "dashboard/payment/membership" }
+    { id: "dashboard/payment/workshopWithVariation" }
   ),
-  route("dashboard/paymentprocess", "routes/dashboard/paymentprocess.tsx"),
+  route("dashboard/payment/:membershipPlanId", "routes/dashboard/payment.tsx", {
+    id: "dashboard/payment/membership",
+  }),
+  route("dashboard/paymentprocess", "routes/api/paymentprocess.tsx"),
   route("dashboard/payment/success", "routes/dashboard/paymentsuccess.tsx"),
-  route("dashboard/payment/downgrade", "routes/dashboard/paymentdowngrade.tsx"),
-  route("dashboard/payment/resubscribe", "routes/dashboard/paymentresubscribe.tsx"),
+  route("dashboard/payment/downgrade", "routes/api/paymentdowngrade.tsx"),
+  route("dashboard/payment/resubscribe", "routes/api/paymentresubscribe.tsx"),
   route(
     "/dashboard/equipmentbooking/:id",
     "routes/dashboard/equipmentbooking.tsx"
   ),
   route("/dashboard/equipments", "routes/dashboard/equipments.tsx"),
   route("/dashboard/equipment/edit/:id", "routes/dashboard/equipmentsedit.tsx"),
-  route("/dashboard/equipment/delete/:id", "routes/dashboard/equipmentsdelete.tsx"),
+  route("/dashboard/equipment/delete/:id", "routes/api/equipmentsdelete.tsx"),
   route("/dashboard/myequipments", "routes/dashboard/myequipments.tsx"),
   route("/dashboard/equipments/:id", "routes/dashboard/equipmentdetails.tsx"),
   route("/dashboard/addequipment", "routes/dashboard/addequipment.tsx"),
   route("/dashboard/myworkshops", "routes/dashboard/myworkshops.tsx"),
-  route("/dashboard/admin/workshop/users", "routes/dashboard/alluserworkshop.tsx"),
-  route("/dashboard/admin/workshop/:workshopId/users", "routes/dashboard/userworkshop.tsx"),
+  route(
+    "/dashboard/admin/workshop/users",
+    "routes/dashboard/alluserworkshop.tsx"
+  ),
+  route(
+    "/dashboard/admin/workshop/:workshopId/users",
+    "routes/dashboard/userworkshop.tsx"
+  ),
   route("/dashboard/admin/users", "routes/dashboard/allusersregistered.tsx"),
-  route("/dashboard/allequipmentbooking","routes/dashboard/allequipmentbooking.tsx"),
+  route(
+    "/dashboard/allequipmentbooking",
+    "routes/dashboard/allequipmentbooking.tsx"
+  ),
   route("/dashboard/profile", "routes/dashboard/profile.tsx"),
-  route("/user/profile/paymentinformation", "routes/dashboard/paymentinformation.tsx"),
+  route(
+    "/user/profile/paymentinformation",
+    "routes/dashboard/paymentinformation.tsx"
+  ),
   route("/dashboard/admin/settings", "routes/dashboard/adminsettings.tsx"),
   route("/dashboard/admin/reports", "routes/dashboard/adminreports.tsx"),
-  route("/report", "routes/dashboard/issue.tsx"),
-  route("/logs", "routes/dashboard/serverlogs.tsx"),
-  route("/dashboard/equipments/book-slot", "routes/dashboard/bookequipmentslot.tsx"),
-
+  route("/dashboard/report", "routes/dashboard/issue.tsx"),
+  route("/dashboard/logs", "routes/dashboard/serverlogs.tsx"),
+  route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
+  route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
+  route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
+  route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
 ] satisfies RouteConfig;

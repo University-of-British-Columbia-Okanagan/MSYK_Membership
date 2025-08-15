@@ -11,16 +11,13 @@ import {
   Calendar,
   User,
   LogOut,
-  ClipboardList,
   Package,
-  BookOpen,
   LayoutDashboard,
-  Users,
-  UserSearch,
   Settings,
   BarChart3,
   BugIcon,
   FileTextIcon,
+  Heart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -51,7 +48,7 @@ export function AdminAppSidebar() {
             Profile
           </Link>
           <Link
-            to="/dashboard/myworkshops"
+            to="/dashboard/workshops"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <LayoutDashboard className="w-5 h-5" />
@@ -79,6 +76,13 @@ export function AdminAppSidebar() {
             Membership Plans
           </Link>
           <Link
+            to="/dashboard/volunteer"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <Heart className="w-5 h-5" />
+            Volunteer
+          </Link>
+          <Link
             to="/dashboard/admin/settings"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
@@ -93,14 +97,14 @@ export function AdminAppSidebar() {
             Admin Reports
           </Link>
           <Link
-            to="/report"
+            to="/dashboard/report"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <BugIcon className="w-5 h-5" />
             Report Issue
           </Link>
           <Link
-            to="/logs"
+            to="/dashboard/logs"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <FileTextIcon className="w-5 h-5" />

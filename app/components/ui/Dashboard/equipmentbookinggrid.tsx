@@ -1,6 +1,4 @@
-"use client";
-
-import React, { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Function to generate times in 30-minute increments between startHour and endHour
@@ -45,17 +43,11 @@ interface SlotsByDay {
 }
 export type { SlotsByDay };
 
-// interface EquipmentBookingGridProps {
-//   slotsByDay: SlotsByDay;
-//   onSelectSlots: (selectedSlots: string[]) => void;
-//   disabled?: boolean;
-//   visibleTimeRange?: { startHour: number; endHour: number }; // NEW
-//   preselectedSlotIds?: number[];
-// }
 interface EquipmentBookingGridProps {
   slotsByDay: SlotsByDay;
   onSelectSlots: (selectedSlots: string[]) => void;
   disabled?: boolean;
+  disabledMessage?: string;
   readOnly?: boolean;
   visibleTimeRange?: { startHour: number; endHour: number };
   preselectedSlotIds?: number[];
@@ -87,6 +79,7 @@ export default function EquipmentBookingGrid({
   disabled = false,
   readOnly = false,
   visibleTimeRange,
+  disabledMessage = "Booking is currently disabled.",
   visibleDays = 7, // Default to 7 days if not specified
   level3Restrictions,
   level4Restrictions,
@@ -95,7 +88,7 @@ export default function EquipmentBookingGrid({
   workshopSlots,
   currentWorkshopOccurrences,
   maxSlotsPerDay = 4, // in slots (each slot = 30 minutes)
-  maxSlotsPerWeek = 14,
+  maxSlotsPerWeek = 14, // in slots (each slot = 30 minutes)
   currentWorkshopId,
   currentWorkshopName,
 }: EquipmentBookingGridProps) {
@@ -282,10 +275,6 @@ export default function EquipmentBookingGrid({
     weekDays.push(allDays.slice(i * 7, (i + 1) * 7));
   }
 
-  // const times = generateTimeSlots(
-  //   visibleTimeRange?.startHour ?? 0,
-  //   visibleTimeRange?.endHour ?? 24
-  // );
   const level3TimeRange = getLevel3TimeRange();
   const times = generateTimeSlots(
     userRoleLevel === 3
@@ -954,16 +943,6 @@ export default function EquipmentBookingGrid({
                 ? "12:00 PM"
                 : `${displayHour % 12}:00 ${displayHour < 12 ? "AM" : "PM"}`
               : "";
-            // const showTime = time.endsWith("00") && Number(time.split(":")[0]) % 2 === 0; // Show every 2 hours
-            // const [hour] = time.split(":");
-            // const displayHour = Number(hour);
-            // const formattedTime = showTime
-            //   ? displayHour === 0
-            //     ? "12 AM"
-            //     : displayHour === 12
-            //     ? "12 PM"
-            //     : `${displayHour % 12} ${displayHour < 12 ? "AM" : "PM"}`
-            //   : "";
 
             return (
               <tr key={time}>
@@ -1119,59 +1098,7 @@ export default function EquipmentBookingGrid({
                         handleSlotToggle(day, time)
                       }
                     >
-                      {/* {isAnyRestriction && (
-                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap">
-                          Restricted by admin
-                        </div>
-                      )}
-                      {isPlannedClosure && (
-                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap">
-                          Planned closure
-                        </div>
-                      )}
-                      {isCurrentWorkshopSlot && (
-                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap">
-                          Reserved for this workshop
-                        </div>
-                      )}
-                      {isPastSlot && (
-                        <div className="hidden group-hover:block absolute z-10 -mt-8 ml-6 px-2 py-1 bg-gray-100 border border-gray-200 rounded text-gray-700 text-xs whitespace-nowrap">
-                          Time has passed
-                        </div>
-                      )} */}
-
-                      {/* {isPastSlot && !isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && (
-                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-gray-100 border border-gray-300 rounded text-gray-700 text-xs whitespace-nowrap shadow-lg">
-                          Time has passed
-                        </div>
-                      )}
-                      {isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && (
-                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
-                          Reserved for this workshop
-                        </div>
-                      )}
-                      {(isWorkshopSlot || slot?.reservedForWorkshop) && !isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && !isPastSlot && (
-                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-purple-100 border border-purple-200 rounded text-purple-700 text-xs whitespace-nowrap shadow-lg">
-                          Reserved for another workshop
-                        </div>
-                      )}
-                      {slot?.isBooked && !isCurrentWorkshopSlot && !isAnyRestriction && !isPlannedClosure && !isPastSlot && (
-                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-blue-100 border border-blue-200 rounded text-blue-700 text-xs whitespace-nowrap shadow-lg">
-                          {slot?.bookedByMe ? "Booked by you" : "Booked by others"}
-                        </div>
-                      )}
-                      {isPlannedClosure && !isAnyRestriction && (
-                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-orange-100 border border-orange-200 rounded text-orange-700 text-xs whitespace-nowrap shadow-lg">
-                          Planned closure
-                        </div>
-                      )}
-                      {isAnyRestriction && (
-                        <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
-                          Restricted by admin
-                        </div>
-                      )} */}
-
-                      {/* one tooltip shows at a time based on priority (admin restrictions > planned closures > 
+                      {/* One tooltip shows at a time based on priority (admin restrictions > planned closures > 
                       workshop reservations > past slots) */}
                       {isAnyRestriction && (
                         <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
@@ -1183,21 +1110,6 @@ export default function EquipmentBookingGrid({
                           Planned closure
                         </div>
                       )}
-                      {/* {isCurrentWorkshopSlot &&
-                        !isAnyRestriction &&
-                        !isPlannedClosure && (
-                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-green-100 border border-green-200 rounded text-green-700 text-xs whitespace-nowrap shadow-lg">
-                            Reserved for this workshop
-                          </div>
-                        )}
-                      {(isWorkshopSlot || slot?.reservedForWorkshop) &&
-                        !isCurrentWorkshopSlot &&
-                        !isAnyRestriction &&
-                        !isPlannedClosure && (
-                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-purple-100 border border-purple-200 rounded text-purple-700 text-xs whitespace-nowrap shadow-lg">
-                            Reserved for another workshop
-                          </div>
-                        )} */}
                       {isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
                         !isPlannedClosure && (
@@ -1263,7 +1175,6 @@ export default function EquipmentBookingGrid({
 
   // Render all week tabs
   const renderWeekTabs = () => {
-    // Generate tab labels like "May 22-28"
     // Generate tab labels like "May 22-28" or "May 28 - June 3"
     const getTabLabel = (weekIndex: number, days: string[]) => {
       if (days.length === 0) return `Week ${weekIndex + 1}`;
@@ -1340,20 +1251,6 @@ export default function EquipmentBookingGrid({
     );
   };
 
-  // if (disabled) {
-  //   return (
-  //     <div className="relative">
-  //       <div className="opacity-50 pointer-events-none">{renderWeekTabs()}</div>
-  //       <div className="absolute inset-0 flex items-center justify-center z-10">
-  //         <div className="bg-white bg-opacity-90 p-6 border border-red-300 text-red-600 rounded shadow-md text-center max-w-md">
-  //           <p className="text-md font-semibold">
-  //             🚫 You do not have the required membership to book equipment.
-  //           </p>
-  //         </div>
-  //       </div>
-  //     </div>
-  //   );
-  // }
   if (disabled) {
     return (
       <div className="relative">
@@ -1361,7 +1258,8 @@ export default function EquipmentBookingGrid({
         <div className="absolute inset-0 flex items-center justify-center z-10">
           <div className="bg-white bg-opacity-90 p-6 border border-red-300 text-red-600 rounded shadow-md text-center max-w-md">
             <p className="text-md font-semibold">
-              🚫 You do not have the required membership to book equipment.
+              {/* 🚫 You do not have the required membership to book equipment. */}
+              🚫 {disabledMessage}
             </p>
           </div>
         </div>

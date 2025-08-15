@@ -1,21 +1,25 @@
-import { useLoaderData, useNavigate } from "react-router-dom";
+import { useLoaderData, useNavigate, redirect } from "react-router-dom";
 import type { LoaderFunction } from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   getWorkshopById,
   getWorkshopOccurrence,
   getWorkshopOccurrencesByConnectId,
+  getWorkshopPriceVariation,
+  checkWorkshopCapacity,
+  checkMultiDayWorkshopCapacity,
 } from "../../models/workshop.server";
 import {
   getMembershipPlanById,
   getUserActiveMembership,
 } from "../../models/membership.server";
-import { getUser } from "~/utils/session.server";
+import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
 import { getSavedPaymentMethod } from "../../models/user.server";
-import QuickCheckout from "@/components/ui/Dashboard/quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
 import { logger } from "~/logging/logger";
+import { getAdminSetting } from "../../models/admin.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -27,8 +31,20 @@ export const loader: LoaderFunction = async ({ params, request }) => {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
 
+  // Get role user to determine redirect path
+  const roleUser = await getRoleUser(request);
+  const isAdmin = roleUser?.roleName === "Admin";
+
+  // Determine redirect path based on user role
+  const getRedirectPath = () => {
+    if (!user) return "/dashboard";
+    if (isAdmin) return "/dashboard/admin";
+    return "/dashboard/user";
+  };
+
   const savedPaymentMethod = await getSavedPaymentMethod(user.id);
 
+  // Membership branch
   if (params.membershipPlanId) {
     const membershipPlanId = Number(params.membershipPlanId);
     if (isNaN(membershipPlanId))
@@ -53,14 +69,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const oldPrice = userActiveMembership.membershipPlan.price;
       const newPrice = membershipPlan.price;
 
-      // Calculate the time portions
-      // const A = now.getTime() - new Date(userActiveMembership.date).getTime();
-      // const B =
-      //   new Date(userActiveMembership.nextPaymentDate).getTime() -
-      //   now.getTime();
-      // const total = A + B;
-
-      const oneMonthMs = 30 * 24 * 60 * 60 * 1000; // Approx one month in milliseconds
       // Instead of using the original signup date for A, use a date exactly one month before the next payment
       const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
       const effectiveStartDate = new Date(nextPaymentDate);
@@ -81,7 +89,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       oldMembershipTitle = userActiveMembership.membershipPlan.title;
       oldMembershipPrice = oldPrice;
       oldMembershipNextPaymentDate = userActiveMembership.nextPaymentDate
-        ? new Date(userActiveMembership.nextPaymentDate).toISOString() // NEW: Convert to ISO string
+        ? new Date(userActiveMembership.nextPaymentDate).toISOString() // Convert to ISO string
         : null;
     }
 
@@ -95,12 +103,13 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       upgradeFee = 0; // No payment needed for resubscription
     }
 
-    // NEW: Override isResubscription flag if query parameter "resubscribe" is present
+    // Override isResubscription flag if query parameter "resubscribe" is present
     const searchParams = new URL(request.url).searchParams;
     if (searchParams.get("resubscribe") === "true") {
       isResubscription = true;
     }
 
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
       membershipPlan,
@@ -113,10 +122,12 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       isDowngrade,
       isResubscription,
       savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
     };
   }
-  // Workshop branch: either single occurrence or continuation
-  else if (params.workshopId && params.occurrenceId) {
+
+  // Branch for single workshops without variations
+  else if (params.workshopId && params.occurrenceId && !params.variationId) {
     const workshopId = Number(params.workshopId);
     const occurrenceId = Number(params.occurrenceId);
     if (isNaN(workshopId) || isNaN(occurrenceId))
@@ -127,22 +138,88 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrence)
       throw new Response("Workshop or Occurrence not found", { status: 404 });
 
+    // CHECK: If occurrence is cancelled, redirect user
+    if (occurrence.status === "cancelled") {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If workshop is full, redirect user
+    const capacityCheck = await checkWorkshopCapacity(workshopId, occurrenceId);
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
     return {
       workshop,
       occurrence,
       user,
-      isContinuation: false,
+      isMultiDayWorkshop: false,
       savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation: null,
     };
-  } else if (params.workshopId && params.connectId) {
-    // New branch for continuation workshops using connectId
+  }
+
+  // Branch for single workshops with price variations
+  else if (params.workshopId && params.occurrenceId && params.variationId) {
+    const workshopId = Number(params.workshopId);
+    const occurrenceId = Number(params.occurrenceId);
+    const variationId = Number(params.variationId);
+
+    if (isNaN(workshopId) || isNaN(occurrenceId) || isNaN(variationId))
+      throw new Response("Invalid workshop, occurrence, or variation ID", {
+        status: 400,
+      });
+
+    const workshop = await getWorkshopById(workshopId);
+    const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+
+    if (!workshop || !occurrence)
+      throw new Response("Workshop or Occurrence not found", { status: 404 });
+
+    // CHECK: If occurrence is cancelled, redirect user
+    if (occurrence.status === "cancelled") {
+      throw redirect(getRedirectPath());
+    }
+
+    // Get the specific price variation
+    const selectedVariation = await getWorkshopPriceVariation(variationId);
+    if (!selectedVariation)
+      throw new Response("Price variation not found", { status: 404 });
+
+    // CHECK: If workshop is full (including variation capacity), redirect user
+    const capacityCheck = await checkWorkshopCapacity(
+      workshopId,
+      occurrenceId,
+      variationId
+    );
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
+    return {
+      workshop,
+      occurrence,
+      user,
+      isMultiDayWorkshop: false,
+      savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation,
+    };
+  }
+
+  // Branch for multi-day workshops using connectId
+  else if (params.workshopId && params.connectId && !params.variationId) {
     const workshopId = Number(params.workshopId);
     const connectId = Number(params.connectId);
     if (isNaN(workshopId) || isNaN(connectId))
       throw new Response("Invalid workshop or connect ID", { status: 400 });
 
     const workshop = await getWorkshopById(workshopId);
-    // getWorkshopOccurrencesByConnectId should return an array of occurrences for this workshop with the given connectId
     const occurrences = await getWorkshopOccurrencesByConnectId(
       workshopId,
       connectId
@@ -150,13 +227,89 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!workshop || !occurrences || occurrences.length === 0)
       throw new Response("Workshop or Occurrences not found", { status: 404 });
 
-    // For payment, we use the first occurrence as a representative
+    // CHECK: If ANY occurrence is cancelled, redirect user
+    const hasAnyCancelledOccurrence = occurrences.some(
+      (occ) => occ.status === "cancelled"
+    );
+    if (hasAnyCancelledOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If workshop is full, redirect user
+    const capacityCheck = await checkMultiDayWorkshopCapacity(
+      workshopId,
+      connectId
+    );
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
     return {
       workshop,
       occurrence: occurrences[0],
       user,
-      isContinuation: true,
+      isMultiDayWorkshop: true,
       savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation: null,
+    };
+  }
+
+  // Branch for multi-day workshops with price variations
+  else if (params.workshopId && params.connectId && params.variationId) {
+    const workshopId = Number(params.workshopId);
+    const connectId = Number(params.connectId);
+    const variationId = Number(params.variationId);
+
+    if (isNaN(workshopId) || isNaN(connectId) || isNaN(variationId))
+      throw new Response("Invalid workshop, connect, or variation ID", {
+        status: 400,
+      });
+
+    const workshop = await getWorkshopById(workshopId);
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      connectId
+    );
+
+    if (!workshop || !occurrences || occurrences.length === 0)
+      throw new Response("Workshop or Occurrences not found", { status: 404 });
+
+    // CHECK: If ANY occurrence is cancelled, redirect user
+    const hasAnyCancelledOccurrence = occurrences.some(
+      (occ) => occ.status === "cancelled"
+    );
+    if (hasAnyCancelledOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Get the specific price variation
+    const selectedVariation = await getWorkshopPriceVariation(variationId);
+    if (!selectedVariation)
+      throw new Response("Price variation not found", { status: 404 });
+
+    // CHECK: If workshop is full (including variation capacity), redirect user
+    const capacityCheck = await checkMultiDayWorkshopCapacity(
+      workshopId,
+      connectId,
+      variationId
+    );
+    if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+
+    return {
+      workshop,
+      occurrence: occurrences[0],
+      user,
+      isMultiDayWorkshop: true,
+      savedPaymentMethod,
+      gstPercentage: parseFloat(gstPercentage),
+      selectedVariation,
     };
   } else {
     throw new Response("Missing required parameters", { status: 400 });
@@ -198,23 +351,28 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
+      const gstPercentage = await getAdminSetting("gst_percentage", "5");
+      const gstRate = parseFloat(gstPercentage) / 100;
+      const priceWithGST = price * (1 + gstRate);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "cad",
               product_data: {
                 name: membershipPlan.title,
                 // ▼ use upgradeFee for description ▼
                 description:
                   membershipPlan.description +
                   (upgradeFee > 0
-                    ? ` (Upgrade fee: $${upgradeFee.toFixed(2)})`
-                    : ""),
+                    ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
+                    : "") +
+                  ` (Includes ${gstPercentage}% GST)`,
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -236,9 +394,10 @@ export async function action({ request }: { request: Request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
     // Workshop branch: standard single occurrence registration
     else if (body.workshopId && body.occurrenceId) {
-      const { workshopId, occurrenceId, price, userId } = body;
+      const { workshopId, occurrenceId, price, userId, variationId } = body;
       if (!workshopId || !occurrenceId || !price || !userId) {
         return new Response(
           JSON.stringify({ error: "Missing required payment data" }),
@@ -260,20 +419,32 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
+      let workshopDisplayName = workshop.name;
+      if (variationId) {
+        const variation = await getWorkshopPriceVariation(Number(variationId));
+        if (variation) {
+          workshopDisplayName = `${workshop.name} - ${variation.name}`;
+        }
+      }
+
+      const gstPercentage = await getAdminSetting("gst_percentage", "5");
+      const gstRate = parseFloat(gstPercentage) / 100;
+      const priceWithGST = price * (1 + gstRate);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "cad",
               product_data: {
-                name: workshop.name,
+                name: workshopDisplayName,
                 description: `Occurrence on ${new Date(
                   occurrence.startDate
-                ).toLocaleString()}`,
+                ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -285,6 +456,7 @@ export async function action({ request }: { request: Request }) {
           workshopId: workshopId.toString(),
           occurrenceId: occurrenceId.toString(),
           userId: userId.toString(),
+          variationId: variationId ? variationId.toString() : "",
         },
       });
 
@@ -293,7 +465,8 @@ export async function action({ request }: { request: Request }) {
         headers: { "Content-Type": "application/json" },
       });
     }
-    // NEW: Workshop continuation branch: using connectId
+
+    // Multi-day workshop branch: using connectId
     else if (body.workshopId && body.connectId) {
       const { workshopId, connectId, price, userId } = body;
       if (!workshopId || !connectId || !price || !userId) {
@@ -322,20 +495,24 @@ export async function action({ request }: { request: Request }) {
       }
       const firstOccurrence = occurrences[0];
 
+      const gstPercentage = await getAdminSetting("gst_percentage", "5");
+      const gstRate = parseFloat(gstPercentage) / 100;
+      const priceWithGST = price * (1 + gstRate);
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
         line_items: [
           {
             price_data: {
-              currency: "usd",
+              currency: "cad",
               product_data: {
                 name: workshop.name,
                 description: `Occurrences starting on ${new Date(
                   firstOccurrence.startDate
-                ).toLocaleString()}`,
+                ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
               },
-              unit_amount: Math.round(price * 100),
+              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
           },
@@ -360,7 +537,7 @@ export async function action({ request }: { request: Request }) {
       });
     }
   } catch (error) {
-    logger.error(`Stripe Checkout Error: ${error}`, {url: request.url,});
+    logger.error(`Stripe Checkout Error: ${error}`, { url: request.url });
     return new Response(
       JSON.stringify({ error: "Failed to create checkout session" }),
       {
@@ -381,12 +558,14 @@ export default function Payment() {
     oldMembershipPrice?: number | null;
     workshop?: any;
     occurrence?: any;
-    isContinuation?: boolean;
+    isMultiDayWorkshop?: boolean;
     userActiveMembership?: any;
     isDowngrade?: boolean;
     isResubscription?: boolean;
     oldMembershipNextPaymentDate?: Date | null;
     savedPaymentMethod?: any;
+    gstPercentage: number;
+    selectedVariation?: any;
   };
 
   const navigate = useNavigate();
@@ -431,8 +610,10 @@ export default function Payment() {
           } else {
             console.error("Downgrade error:", json.error);
           }
-        } else {
-          // ▼ use `upgradeFee` for upgrades, otherwise full price ▼
+        }
+
+        // use `upgradeFee` for upgrades, otherwise full price
+        else {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -443,7 +624,7 @@ export default function Payment() {
                 : data.membershipPlan.price,
               userId: data.user.id,
               oldMembershipNextPaymentDate: data.oldMembershipNextPaymentDate,
-              // ▼ send upgradeFee here ▼
+              // send upgradeFee here
               upgradeFee: data.upgradeFee,
               currentMembershipId: data.userActiveMembership?.id || null,
             }),
@@ -458,17 +639,20 @@ export default function Payment() {
         }
       }
 
-      // Workshop branch (unchanged)
+      // Workshop branch
       else {
-        if (data.isContinuation) {
+        if (data.isMultiDayWorkshop) {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               workshopId: data.workshop.id,
               connectId: data.occurrence.connectId,
-              price: data.workshop.price,
+              price: data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price,
               userId: data.user.id,
+              variationId: data.selectedVariation?.id || null,
             }),
           });
           const resData = await response.json();
@@ -485,8 +669,11 @@ export default function Payment() {
             body: JSON.stringify({
               workshopId: data.workshop.id,
               occurrenceId: data.occurrence.id,
-              price: data.workshop.price,
+              price: data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price,
               userId: data.user.id,
+              variationId: data.selectedVariation?.id || null,
             }),
           });
           const resData = await response.json();
@@ -514,15 +701,21 @@ export default function Payment() {
             checkoutData={{
               type: "workshop",
               workshopId: data.workshop.id,
-              occurrenceId: data.isContinuation
+              occurrenceId: data.isMultiDayWorkshop
                 ? undefined
                 : data.occurrence.id,
-              connectId: data.isContinuation
+              connectId: data.isMultiDayWorkshop
                 ? data.occurrence.connectId
                 : undefined,
+              variationId: data.selectedVariation?.id || null,
             }}
             itemName={data.workshop.name}
-            itemPrice={data.workshop.price}
+            itemPrice={
+              data.selectedVariation
+                ? data.selectedVariation.price
+                : data.workshop.price
+            }
+            gstPercentage={data.gstPercentage}
             savedCard={{
               cardLast4: data.savedPaymentMethod.cardLast4,
               cardExpiry: data.savedPaymentMethod.cardExpiry,
@@ -567,6 +760,7 @@ export default function Payment() {
                   ? data.upgradeFee
                   : data.membershipPlan.price
               }
+              gstPercentage={data.gstPercentage}
               savedCard={{
                 cardLast4: data.savedPaymentMethod.cardLast4,
                 cardExpiry: data.savedPaymentMethod.cardExpiry,
@@ -595,8 +789,8 @@ export default function Payment() {
             {data.isResubscription
               ? "Confirm Membership Resubscription"
               : data.isDowngrade
-              ? "Confirm Membership Downgrade"
-              : "Complete Your Membership Payment"}
+                ? "Confirm Membership Downgrade"
+                : "Complete Your Membership Payment"}
           </h2>
 
           <p className="text-gray-700">Plan: {data.membershipPlan.title}</p>
@@ -607,8 +801,13 @@ export default function Payment() {
           {/* Show a message if user has an old membership */}
           {data.oldMembershipTitle && data.oldMembershipPrice && (
             <p className="mt-2 text-gray-700">
-              Current membership: <strong>{data.oldMembershipTitle}</strong> ($
-              {data.oldMembershipPrice.toFixed(2)}/month)
+              Current membership: <strong>{data.oldMembershipTitle}</strong>{" "}
+              (CA$
+              {(
+                data.oldMembershipPrice *
+                (1 + data.gstPercentage / 100)
+              ).toFixed(2)}
+              /month incl. GST)
             </p>
           )}
 
@@ -630,24 +829,44 @@ export default function Payment() {
           ) : data.isDowngrade ? (
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
               <p className="text-gray-700">
-                You will continue at your current rate of $
-                {data.oldMembershipPrice?.toFixed(2)}/month until your next
-                payment date at{" "}
+                You will continue at your current rate of CA$
+                {data.oldMembershipPrice
+                  ? (
+                      data.oldMembershipPrice *
+                      (1 + data.gstPercentage / 100)
+                    ).toFixed(2)
+                  : "0.00"}
+                /month until your next payment date at{" "}
                 {data.oldMembershipNextPaymentDate
                   ? new Date(
                       data.oldMembershipNextPaymentDate
                     ).toLocaleDateString()
                   : "N/A"}
-                , then switch to ${data.membershipPlan.price.toFixed(2)}/month.
+                , then switch to CA$
+                {(
+                  data.membershipPlan.price *
+                  (1 + data.gstPercentage / 100)
+                ).toFixed(2)}
+                /month (incl. GST).
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
             </div>
           ) : data.upgradeFee > 0 ? (
             <p className="mt-2 text-gray-700">
-              You'll pay a prorated amount of ${data.upgradeFee.toFixed(2)} now
-              to enjoy the benefits of{" "}
+              You'll pay a prorated amount of CA$
+              {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                2
+              )}{" "}
+              now (incl. GST) to enjoy the benefits of{" "}
               <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
-              <strong>${data.membershipPlan.price.toFixed(2)}/month</strong>{" "}
+              <strong>
+                CA$
+                {(
+                  data.membershipPlan.price *
+                  (1 + data.gstPercentage / 100)
+                ).toFixed(2)}
+                /month
+              </strong>{" "}
               starting from{" "}
               {data.oldMembershipNextPaymentDate
                 ? new Date(
@@ -668,20 +887,42 @@ export default function Payment() {
             (in case of upgrade or brand-new membership).
           */}
           {!data.isDowngrade && !data.isResubscription && (
-            <p className="text-lg font-semibold mt-2">
-              Total due now: $
-              {data.userActiveMembership
-                ? data.upgradeFee.toFixed(2)
-                : data.membershipPlan.price.toFixed(2)}
-            </p>
+            <div className="mt-2">
+              <p className="text-lg font-semibold">
+                Total due now: CA$
+                {data.userActiveMembership
+                  ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                      2
+                    )
+                  : (
+                      data.membershipPlan.price *
+                      (1 + data.gstPercentage / 100)
+                    ).toFixed(2)}
+              </p>
+              <p className="text-sm text-gray-600">
+                (Includes CA$
+                {data.userActiveMembership
+                  ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
+                  : (
+                      data.membershipPlan.price *
+                      (data.gstPercentage / 100)
+                    ).toFixed(2)}{" "}
+                GST)
+              </p>
+            </div>
           )}
         </>
       ) : (
-        // Workshop Payment UI (unchanged)
+        // Workshop Payment UI
         <>
           <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
           <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
-          {data.isContinuation ? (
+          {data.selectedVariation && (
+            <p className="text-gray-700">
+              Option: {data.selectedVariation.name}
+            </p>
+          )}
+          {data.isMultiDayWorkshop ? (
             <p className="text-gray-700">
               Occurrence Group: {data.occurrence?.connectId}
             </p>
@@ -690,9 +931,31 @@ export default function Payment() {
               Occurrence ID: {data.occurrence?.id}
             </p>
           )}
-          <p className="text-lg font-semibold mt-2">
-            Total: ${data.workshop?.price.toFixed(2)}
-          </p>
+          <div className="mt-2">
+            <p className="text-lg font-semibold">
+              Total: CA$
+              {data.workshop
+                ? (
+                    (data.selectedVariation
+                      ? data.selectedVariation.price
+                      : data.workshop.price) *
+                    (1 + data.gstPercentage / 100)
+                  ).toFixed(2)
+                : "0.00"}
+            </p>
+            <p className="text-sm text-gray-600">
+              (Includes CA$
+              {data.workshop
+                ? (
+                    (data.selectedVariation
+                      ? data.selectedVariation.price
+                      : data.workshop.price) *
+                    (data.gstPercentage / 100)
+                  ).toFixed(2)
+                : "0.00"}{" "}
+              GST)
+            </p>
+          </div>
         </>
       )}
 

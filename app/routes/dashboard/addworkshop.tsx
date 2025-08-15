@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { Input } from "@/components/ui/input";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
@@ -18,43 +17,31 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { workshopFormSchema } from "../../schemas/workshopFormSchema";
 import type { WorkshopFormValues } from "../../schemas/workshopFormSchema";
 import { addWorkshop, getWorkshops } from "~/models/workshop.server";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Badge } from "~/components/ui/badge";
-import GenericFormField from "~/components/ui/GenericFormField";
-import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
-import OccurrenceRow from "~/components/ui/OccurrenceRow";
-import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
-import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
-import PrerequisitesField from "@/components/ui/PrerequisitesField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
+import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
+import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import {
   getAvailableEquipmentForAdmin,
   getEquipmentSlotsWithStatus,
 } from "~/models/equipment.server";
-import MultiSelectField from "~/components/ui/MultiSelectField";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import {
   Calendar as CalendarIcon,
   CalendarDays as CalendarDaysIcon,
   CalendarRange as CalendarRangeIcon,
   Check as CheckIcon,
 } from "lucide-react";
-import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
-import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/EquipmentBookingGrid";
 import {
   bulkBookEquipment,
   createEquipmentSlotsForOccurrence,
 } from "../../models/equipment.server";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -72,8 +59,8 @@ import { getEquipmentVisibilityDays } from "../../models/admin.server";
 import { getUser, getRoleUser } from "../../utils/session.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -105,8 +92,10 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  logger.info(`[User: ${userId}] Fetched add workshop page`, { url: request.url });
-  
+  logger.info(`[User: ${userId}] Fetched add workshop page`, {
+    url: request.url,
+  });
+
   return {
     workshops,
     equipments: equipmentsRaw,
@@ -156,8 +145,9 @@ function formatLocalDatetime(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+// Helper for formatting display dates
+// Format example: Thu, Feb 27, 2025, 01:24 AM
 function formatDisplayDate(date: Date): string {
-  // Format example: Thu, Feb 27, 2025, 01:24 AM
   return date.toLocaleString(undefined, {
     weekday: "short",
     month: "short",
@@ -169,25 +159,13 @@ function formatDisplayDate(date: Date): string {
   });
 }
 
+// Helper for checking if a date is in the past
 function isDateInPast(date: Date): boolean {
   const now = new Date();
   return date < now && !isNaN(date.getTime());
 }
 
-/**
- * Check if any occurrence dates are in the past
- */
-function hasOccurrencesInPast(
-  occurrences: { startDate: Date; endDate: Date }[]
-): boolean {
-  return occurrences.some(
-    (occ) =>
-      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
-      !isNaN(occ.startDate.getTime()) &&
-      !isNaN(occ.endDate.getTime())
-  );
-}
-
+// Helper function to check for equipment overlaps
 function checkForEquipmentOverlaps(
   currentOccurrences: { startDate: Date; endDate: Date }[],
   currentSelectedEquipments: number[],
@@ -315,7 +293,7 @@ function checkForEquipmentOverlaps(
   return overlaps;
 }
 
-// Add this function after your other helper functions
+// Helper function for getting equipment slots for occurrences
 function getEquipmentSlotsForOccurrences(
   occurrences: { startDate: Date; endDate: Date }[]
 ): { [day: string]: string[] } {
@@ -359,7 +337,7 @@ function getEquipmentSlotsForOccurrences(
   return slotsForOccurrences;
 }
 
-// Add this function to help with auto-selecting workshop slots
+// Helper with auto-selecting workshop slots
 function getSlotStringsForOccurrences(
   equipmentId: number,
   occurrences: { startDate: Date; endDate: Date }[]
@@ -391,14 +369,24 @@ function getSlotStringsForOccurrences(
 }
 
 export async function action({ request }: { request: Request }) {
-  const formData = await request.formData();
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add workshop`, {
+      url: request.url,
+    });
+    throw new Response("Not Authorized", { status: 401 });
+  }
 
+  const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
+
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing selected slots: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing selected slots: ${error}`, {
+      url: request.url,
+    });
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
@@ -411,7 +399,9 @@ export async function action({ request }: { request: Request }) {
   try {
     prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing prerequisites: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing prerequisites: ${error}`, {
+      url: request.url,
+    });
     return { errors: { prerequisites: ["Invalid prerequisites format"] } };
   }
 
@@ -420,7 +410,9 @@ export async function action({ request }: { request: Request }) {
   try {
     equipments = JSON.parse(rawValues.equipments as string).map(Number);
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing equipments: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing equipments: ${error}`, {
+      url: request.url,
+    });
     return { errors: { equipments: ["Invalid equipments format"] } };
   }
 
@@ -439,7 +431,10 @@ export async function action({ request }: { request: Request }) {
 
         // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
-          logger.error(`[Add workshop] End date must be later than start date`, { url: request.url });
+          logger.error(
+            `[Add workshop] End date must be later than start date`,
+            { url: request.url }
+          );
           throw new Error("End date must be later than start date");
         }
 
@@ -457,7 +452,9 @@ export async function action({ request }: { request: Request }) {
       }
     );
   } catch (error) {
-    logger.error(`[Add workshop] Error parsing occurrences: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Error parsing occurrences: ${error}`, {
+      url: request.url,
+    });
     return {
       errors: {
         occurrences: [
@@ -470,22 +467,19 @@ export async function action({ request }: { request: Request }) {
     };
   }
 
-  const roleUser = await getRoleUser(request);
-  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`[User: ${roleUser?.userId}] Not authorized to add workshop`, { url: request.url });
-    throw new Response("Not Authorized", { status: 419 });
-  }
-
   // Fetch up-to-date available equipment to avoid conflicts
   const availableEquipments = await getAvailableEquipmentForAdmin();
   const availableEquipmentIds = new Set(availableEquipments.map((e) => e.id));
 
-  //Ensure selected equipment is still available
+  // Ensure selected equipment is still available
   const unavailableEquipments = equipments.filter(
     (id) => !availableEquipmentIds.has(id)
   );
   if (unavailableEquipments.length > 0) {
-    logger.warn(`[Add workshop] One or more selected equipment are no longer available`, { url: request.url });
+    logger.warn(
+      `[Add workshop] One or more selected equipment are no longer available`,
+      { url: request.url }
+    );
     return {
       errors: {
         equipments: ["One or more selected equipment are no longer available."],
@@ -493,7 +487,7 @@ export async function action({ request }: { request: Request }) {
     };
   }
 
-  //  Ensure no selected equipment conflicts with workshop occurrences
+  // Ensure no selected equipment conflicts with workshop occurrences
   for (const equipmentId of equipments) {
     const conflictingEquipment = availableEquipments.find(
       (e) => e.id === equipmentId
@@ -509,7 +503,10 @@ export async function action({ request }: { request: Request }) {
         );
 
         if (conflict) {
-          logger.warn(`[Add workshop] The equipment ${conflictingEquipment.name} is booked during your workshop time.`, { url: request.url });
+          logger.warn(
+            `[Add workshop] The equipment ${conflictingEquipment.name} is booked during your workshop time.`,
+            { url: request.url }
+          );
           return {
             errors: {
               equipments: [
@@ -551,7 +548,10 @@ export async function action({ request }: { request: Request }) {
                 hour12: true,
               }
             );
-            logger.warn(`[Add workshop] The equipment "${conflictingEquipment.name}" is already booked at ${formattedTime}. Please choose different dates or equipment.`, { url: request.url });
+            logger.warn(
+              `[Add workshop] The equipment "${conflictingEquipment.name}" is already booked at ${formattedTime}. Please choose different dates or equipment.`,
+              { url: request.url }
+            );
             return {
               errors: {
                 equipments: [
@@ -568,9 +568,34 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+  const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
-  //  Validate form data using Zod schema
+  const hasPriceVariations = rawValues.hasPriceVariations === "true";
+  let priceVariations: Array<{
+    name: string;
+    price: number;
+    description: string;
+  }> = [];
+  if (hasPriceVariations && rawValues.priceVariations) {
+    try {
+      const parsedVariations = JSON.parse(rawValues.priceVariations as string);
+      priceVariations = parsedVariations.map((v: any) => ({
+        name: String(v.name || "").trim(),
+        price: parseFloat(v.price) || 0,
+        description: String(v.description || "").trim(),
+        capacity: v.capacity && v.capacity !== "" ? parseInt(v.capacity) : 0,
+      }));
+    } catch (error) {
+      logger.error(`[Add workshop] Error parsing price variations: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: { priceVariations: ["Invalid price variations format"] },
+      };
+    }
+  }
+
+  // Validate form data using Zod schema
   const parsed = workshopFormSchema.safeParse({
     ...rawValues,
     price,
@@ -578,15 +603,20 @@ export async function action({ request }: { request: Request }) {
     occurrences,
     prerequisites,
     equipments,
-    isWorkshopContinuation,
+    isMultiDayWorkshop,
+    hasPriceVariations,
+    priceVariations,
   });
 
   if (!parsed.success) {
-    logger.error(`[Add workshop] Validation Errors: ${parsed.error.flatten().fieldErrors}`, { url: request.url });
+    logger.error(
+      `[Add workshop] Validation Errors: ${parsed.error.flatten().fieldErrors}`,
+      { url: request.url }
+    );
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  //  Save the workshop to the database
+  // Save the workshop to the database
   try {
     const savedWorkshop = await addWorkshop(
       {
@@ -599,29 +629,20 @@ export async function action({ request }: { request: Request }) {
         occurrences: parsed.data.occurrences,
         prerequisites: parsed.data.prerequisites,
         equipments: parsed.data.equipments,
-        isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+        isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
+        hasPriceVariations: parsed.data.hasPriceVariations,
+        priceVariations: parsed.data.priceVariations,
         selectedSlots,
       },
       request
     );
 
-    logger.info(`[User: ${roleUser?.userId}] Created workshop ${parsed.data.name} successfully.`, { url: request.url });
+    logger.info(
+      `[User: ${roleUser?.userId}] Created workshop ${parsed.data.name} successfully.`,
+      { url: request.url }
+    );
     const allSelectedSlotIds = Object.values(selectedSlots).flat().map(Number);
 
-    // try {
-    //   await bulkBookEquipment(savedWorkshop.id, allSelectedSlotIds);
-    //   return redirect("/dashboard/admin");
-    // } catch (error) {
-    //   logger.error("Failed to reserve equipment slots:", error);
-    //   return {
-    //     errors: {
-    //       slots: ["Failed to reserve equipment slots. Please try again."],
-    //     },
-    //   };
-    // }
-    // Process workshop time slots for equipment
-    // Process workshop time slots for equipment
-    // Process workshop time slots for equipment
     try {
       // Get the current user ID
       const user = await getUser(request);
@@ -639,11 +660,16 @@ export async function action({ request }: { request: Request }) {
             userId
           );
         } catch (error) {
-          logger.error(`[Add workshop] Error in bulkBookEquipment: ${error}`, { url: request.url });
+          logger.error(`[Add workshop] Error in bulkBookEquipment: ${error}`, {
+            url: request.url,
+          });
           // Continue with the rest of the process instead of failing
         }
       } else {
-        logger.warn(`[Add workshop] No valid equipment slots selected, skipping bulkBookEquipment`, { url: request.url });
+        logger.warn(
+          `[Add workshop] No valid equipment slots selected, skipping bulkBookEquipment`,
+          { url: request.url }
+        );
       }
 
       // Create slots for all workshop occurrences
@@ -658,7 +684,10 @@ export async function action({ request }: { request: Request }) {
               userId
             );
           } catch (error) {
-            logger.error(`[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`, { url: request.url });
+            logger.error(
+              `[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`,
+              { url: request.url }
+            );
             // Continue with other equipment instead of failing the whole operation
           }
         }
@@ -666,7 +695,10 @@ export async function action({ request }: { request: Request }) {
 
       return redirect("/dashboard/admin");
     } catch (error) {
-      logger.error(`[Add workshop] Failed to reserve equipment slots: ${error}`, { url: request.url });
+      logger.error(
+        `[Add workshop] Failed to reserve equipment slots: ${error}`,
+        { url: request.url }
+      );
       return {
         errors: {
           slots: ["Failed to reserve equipment slots. Please try again."],
@@ -674,7 +706,9 @@ export async function action({ request }: { request: Request }) {
       };
     }
   } catch (error) {
-    logger.error(`[Add workshop] Failed to add workshops: ${error}`, { url: request.url });
+    logger.error(`[Add workshop] Failed to add workshops: ${error}`, {
+      url: request.url,
+    });
     return { errors: { database: ["Failed to add workshop"] } };
   }
 }
@@ -724,22 +758,14 @@ export default function AddWorkshop() {
     "custom" | "weekly" | "monthly"
   >("custom");
 
-  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
   // This will track the selected prerequisites
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
     []
   );
-  const sortedSelectedPrerequisites = [...selectedPrerequisites].sort(
-    (a, b) => a - b
-  );
 
-  const [selectedEquipment, setSelectedEquipment] = useState<number | null>(
-    null
-  );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const { selectedSlotsMap: initialSelectedSlotsMap } = useLoaderData() as {
     workshops: { id: number; name: string; type: string }[];
     equipments: {
@@ -766,6 +792,15 @@ export default function AddWorkshop() {
   >([]);
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
   const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
+  const [hasPriceVariations, setHasPriceVariations] = useState(false);
+  const [priceVariations, setPriceVariations] = useState<
+    Array<{
+      name: string;
+      price: string;
+      description: string;
+      capacity: string;
+    }>
+  >([]);
 
   // Weekly-specific state
   const [weeklyInterval, setWeeklyInterval] = useState(1);
@@ -779,9 +814,9 @@ export default function AddWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  const [isWorkshopContinuation, setIsWorkshopContinuation] = useState(false);
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] = useState(false);
 
-  // For custom dates, add an empty occurrence.
+  // Function for adding occurences
   const addOccurrence = () => {
     const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
     const updatedOccurrences = [...occurrences, newOccurrence];
@@ -804,7 +839,7 @@ export default function AddWorkshop() {
 
     // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
     if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
       updatedOccurrences[index].endDate = endDate;
     }
 
@@ -831,7 +866,7 @@ export default function AddWorkshop() {
     );
   };
 
-  // Add this function to handle prerequisite selection
+  // Function to handle prerequisite selection
   const handlePrerequisiteSelect = (workshopId: number) => {
     if (selectedPrerequisites.includes(workshopId)) {
       // Remove if already selected
@@ -846,27 +881,12 @@ export default function AddWorkshop() {
     }
   };
 
-  // Add this function to remove a prerequisite
+  // Function to remove a prerequisite
   const removePrerequisite = (workshopId: number) => {
     const updated = selectedPrerequisites.filter((id) => id !== workshopId);
     setSelectedPrerequisites(updated);
     form.setValue("prerequisites", updated);
   };
-
-  // const handleFormSubmit = (e: React.FormEvent) => {
-  //   e.preventDefault();
-
-  //   // First check if any dates are in the past
-  //   if (hasOccurrencesInPast(occurrences)) {
-  //     setIsConfirmDialogOpen(true);
-  //     return; // Important: prevent the normal form submission flow
-  //   } else {
-  //     // No past dates, submit directly
-  //     setFormSubmitting(true);
-  //     const form = e.currentTarget as HTMLFormElement;
-  //     form.submit();
-  //   }
-  // };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -889,16 +909,9 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
-    // Then check if any dates are in the past (your existing code)
-    if (hasOccurrencesInPast(occurrences)) {
-      setIsConfirmDialogOpen(true);
-      return;
-    } else {
-      // No past dates, submit directly
-      setFormSubmitting(true);
-      const form = e.currentTarget as HTMLFormElement;
-      form.submit();
-    }
+    setFormSubmitting(true);
+    const form = e.currentTarget as HTMLFormElement;
+    form.submit();
   };
 
   {
@@ -939,8 +952,27 @@ export default function AddWorkshop() {
           form.setValue("equipments", uniqueEquipments);
         }
 
-        // Set continuation flag
-        setIsWorkshopContinuation(!!workshopData.isContinuation);
+        // Set flag
+        setIsMultiDayWorkshop(!!workshopData.isMultiDayWorkshop);
+
+        // Set price variations if they exist
+        if (
+          workshopData.hasPriceVariations &&
+          workshopData.priceVariations &&
+          workshopData.priceVariations.length > 0
+        ) {
+          setHasPriceVariations(true);
+          // Convert price variations to the expected format
+          const formattedVariations = workshopData.priceVariations.map(
+            (variation: any) => ({
+              name: variation.name,
+              price: variation.price.toString(), // Convert to string for form input
+              description: variation.description,
+              capacity: variation.capacity?.toString() || "",
+            })
+          );
+          setPriceVariations(formattedVariations);
+        }
 
         // Clear the localStorage to prevent pre-filling again on refresh
         localStorage.removeItem("duplicateWorkshopData");
@@ -952,10 +984,10 @@ export default function AddWorkshop() {
     form,
     setSelectedPrerequisites,
     setSelectedEquipments,
-    setIsWorkshopContinuation,
+    setIsMultiDayWorkshop,
   ]); // Include dependencies
 
-  // Add this useEffect to update the selected slots when occurrences change
+  // Updates the selected slots when occurrences change
   React.useEffect(() => {
     // Only process valid occurrences
     const validOccurrences = occurrences.filter(
@@ -1021,6 +1053,51 @@ export default function AddWorkshop() {
                 <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
                   There are some errors in your form. Please review the
                   highlighted fields below.
+                  {actionData.errors.priceVariations && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variations Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Array.isArray(actionData.errors.priceVariations) ? (
+                          actionData.errors.priceVariations.map(
+                            (error: string, index: number) => (
+                              <li key={index}>{error}</li>
+                            )
+                          )
+                        ) : (
+                          <li>{actionData.errors.priceVariations}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {/* CHECK FOR INDIVIDUAL VARIATION FIELD ERRORS: */}
+                  {Object.keys(actionData.errors).some((key) =>
+                    key.startsWith("priceVariations.")
+                  ) && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variation Field Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Object.entries(actionData.errors)
+                          .filter(([key]) => key.startsWith("priceVariations."))
+                          .map(([key, error]) => {
+                            const match = key.match(
+                              /priceVariations\.(\d+)\.(.+)/
+                            );
+                            const variationIndex = match
+                              ? parseInt(match[1]) + 1
+                              : 0;
+                            const fieldName = match ? match[2] : "field";
+                            return (
+                              <li key={key}>
+                                Variation {variationIndex} - {fieldName}:{" "}
+                                {Array.isArray(error)
+                                  ? error.join(", ")
+                                  : error}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1036,21 +1113,10 @@ export default function AddWorkshop() {
                     required
                     error={actionData?.errors?.name}
                   />
-                  {/* <GenericFormField
-                  control={form.control}
-                  name="description"
-                  label="Description"
-                  placeholder="Workshop Description"
-                  required
-                  error={actionData?.errors?.description}
-                  component={Textarea} // use Textarea instead of Input
-                  className="w-full" // override default if needed
-                  rows={5}
-                /> */}
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label="Price"
+                    label={hasPriceVariations ? "Price (Base)" : "Price"}
                     placeholder="Price"
                     required
                     error={actionData?.errors?.price}
@@ -1089,15 +1155,15 @@ export default function AddWorkshop() {
                   />
                 </div>
 
-                {/* New "Is Workshop Continuation" Checkbox */}
+                {/* (Multi-day Workshop) Checkbox */}
                 <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <div className="relative">
                       <input
                         type="checkbox"
-                        checked={isWorkshopContinuation}
+                        checked={isMultiDayWorkshop}
                         onChange={(e) =>
-                          setIsWorkshopContinuation(e.target.checked)
+                          setIsMultiDayWorkshop(e.target.checked)
                         }
                         className="sr-only peer"
                       />
@@ -1110,6 +1176,260 @@ export default function AddWorkshop() {
                     Check this if this workshop is a multi-day workshop
                   </p>
                 </div>
+
+                {/* "Add Workshop Price Variations" Checkbox */}
+                <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={hasPriceVariations}
+                        onChange={(e) => {
+                          setHasPriceVariations(e.target.checked);
+                          if (!e.target.checked) {
+                            setPriceVariations([]);
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                    </div>
+                    <span className="font-small">
+                      Add Workshop Price Variations
+                    </span>
+                  </label>
+                  <p className="mt-2 pl-9 text-sm text-gray-500">
+                    Check this to add different pricing options for this
+                    workshop
+                  </p>
+                </div>
+
+                {/* Price Variations Management */}
+                {hasPriceVariations && (
+                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium">Price Variations</h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setPriceVariations([
+                            ...priceVariations,
+                            {
+                              name: "",
+                              price: "",
+                              description: "",
+                              capacity: "",
+                            },
+                          ])
+                        }
+                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                      >
+                        Add Variation
+                      </Button>
+                    </div>
+
+                    {/* Base Price Display */}
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-blue-800">
+                            Base Price (Standard Option)
+                          </h4>
+                          <p className="text-xs text-blue-600 mt-1">
+                            This is your workshop's standard pricing that users
+                            can select (editable from the price input box above)
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-blue-700">
+                            ${form.watch("price") || "0"}
+                          </span>
+                          <p className="text-xs text-blue-600">Base Price</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Pricing Options Header */}
+                    <div className="mb-3">
+                      <h4 className="text-sm font-medium text-gray-700">
+                        Additional Pricing Options
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Create alternative pricing tiers
+                      </p>
+                    </div>
+
+                    {actionData?.errors?.priceVariations && (
+                      <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
+                        {Array.isArray(actionData.errors.priceVariations)
+                          ? actionData.errors.priceVariations.join(", ")
+                          : actionData.errors.priceVariations}
+                      </div>
+                    )}
+
+                    {priceVariations.map((variation, index) => (
+                      <div
+                        key={index}
+                        className="mb-3 p-3 bg-white rounded-lg border"
+                      >
+                        <div className="grid grid-cols-12 gap-3 items-start">
+                          {/* Variation Name */}
+                          <div className="col-span-12 sm:col-span-3">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Name <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Variation name"
+                              value={variation.name}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].name = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.name`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.name`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Price */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Price <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0"
+                              value={variation.price}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].price = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.price`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.price`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Capacity */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Capacity <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              placeholder=""
+                              value={variation.capacity}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].capacity = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                                actionData?.errors?.[
+                                  `priceVariations.${index}.capacity`
+                                ]
+                                  ? "border-red-500"
+                                  : "border-gray-300"
+                              }`}
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.capacity`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                Capacity is required and must be at least 1
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <div className="col-span-10 sm:col-span-4">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Description{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Description"
+                              value={variation.description}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].description =
+                                  e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.description`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.description`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Remove Button */}
+                          <div className="col-span-2 sm:col-span-1">
+                            <label className="block text-xs font-medium mb-1 text-transparent">
+                              Remove
+                            </label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const newVariations = priceVariations.filter(
+                                  (_, i) => i !== index
+                                );
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full text-red-600 border-red-300 hover:bg-red-50 text-xs py-1.5 h-auto"
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {priceVariations.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">
+                        No price variations added yet. Click "Add Variation" to
+                        get started.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
@@ -1135,7 +1455,7 @@ export default function AddWorkshop() {
                       </div>
                       <FormControl>
                         <div className="flex flex-col items-start space-y-6 w-full">
-                          {/* Radio Buttons for selecting date input type - enhanced version */}
+                          {/* Radio Buttons for selecting date input type */}
                           <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                             <DateTypeRadioGroup
                               options={[
@@ -1167,7 +1487,7 @@ export default function AddWorkshop() {
                             />
                           </div>
 
-                          {/* Custom Dates Input - keep the implementation but wrapped in a better card */}
+                          {/* Custom Dates Input */}
                           {dateSelectionType === "custom" && (
                             <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               {occurrences.length === 0 ? (
@@ -1223,8 +1543,8 @@ export default function AddWorkshop() {
                                               {isStartDatePast && isEndDatePast
                                                 ? "Both start and end dates are in the past"
                                                 : isStartDatePast
-                                                ? "Start date is in the past"
-                                                : "End date is in the past"}
+                                                  ? "Start date is in the past"
+                                                  : "End date is in the past"}
                                             </p>
                                           </TooltipContent>
                                         )}
@@ -1243,9 +1563,8 @@ export default function AddWorkshop() {
                             </div>
                           )}
 
-                          {/* Keep the existing code for weekly and monthly options */}
+                          {/* For weekly options */}
                           {dateSelectionType === "weekly" && (
-                            // Existing code for weekly
                             <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               <RepetitionScheduleInputs
                                 scheduleType="weekly"
@@ -1276,7 +1595,7 @@ export default function AddWorkshop() {
                             </div>
                           )}
 
-                          {/* Similar wrapping for monthly option */}
+                          {/* For monthly options */}
                           {dateSelectionType === "monthly" && (
                             <div className="w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               <RepetitionScheduleInputs
@@ -1308,7 +1627,7 @@ export default function AddWorkshop() {
                             </div>
                           )}
 
-                          {/* Improved display of occurrences */}
+                          {/* Display of occurrences */}
                           {occurrences.length > 0 && (
                             <div className="w-full">
                               <h3 className="font-medium mb-4 flex items-center">
@@ -1459,7 +1778,6 @@ export default function AddWorkshop() {
                 />
 
                 {/* Equipment Slot Pickers */}
-                {/* Equipment Slot Pickers */}
                 {selectedEquipments.length > 0 && (
                   <div className="mt-6">
                     <h3 className="font-semibold mb-2">
@@ -1547,7 +1865,7 @@ export default function AddWorkshop() {
                   label="Workshop Type"
                   required
                   error={actionData?.errors?.type}
-                  component="select" // Render a native select element
+                  component="select" // Render native select element
                   className="w-full border rounded-md p-2"
                 >
                   <option value="workshop">Workshop</option>
@@ -1578,11 +1896,14 @@ export default function AddWorkshop() {
                   name="prerequisites"
                   value={JSON.stringify(selectedPrerequisites || [])}
                 />
+
+                {/* Hidden input for equipments */}
                 <input
                   type="hidden"
                   name="equipments"
                   value={JSON.stringify(selectedEquipments)}
                 />
+
                 {/* Hidden input for selected slots */}
                 <input
                   type="hidden"
@@ -1590,10 +1911,23 @@ export default function AddWorkshop() {
                   value={JSON.stringify(selectedSlotsMap)}
                 />
 
+                {/* Hidden input for multi-day workshop */}
                 <input
                   type="hidden"
-                  name="isWorkshopContinuation"
-                  value={isWorkshopContinuation ? "true" : "false"}
+                  name="isMultiDayWorkshop"
+                  value={isMultiDayWorkshop ? "true" : "false"}
+                />
+
+                {/* Hidden input for price variations */}
+                <input
+                  type="hidden"
+                  name="hasPriceVariations"
+                  value={hasPriceVariations ? "true" : "false"}
+                />
+                <input
+                  type="hidden"
+                  name="priceVariations"
+                  value={JSON.stringify(priceVariations)}
                 />
 
                 <AlertDialog
@@ -1618,7 +1952,6 @@ export default function AddWorkshop() {
                             >
                               <p className="font-medium">{overlap.name}</p>
                               <div className="text-sm mt-1 space-y-1">
-                                {/* COPY PASTE: Replace the existing list with this updated version */}
                                 {overlap.overlappingTimes
                                   .slice(0, 3)
                                   .map((conflict, idx) => (
@@ -1630,8 +1963,8 @@ export default function AddWorkshop() {
                                         {conflict.conflictType === "user"
                                           ? `Conflicted by user: ${conflict.conflictName}`
                                           : conflict.conflictType === "workshop"
-                                          ? `Conflicted by workshop: ${conflict.conflictName}`
-                                          : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
+                                            ? `Conflicted by workshop: ${conflict.conflictName}`
+                                            : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
                                       </span>
                                     </div>
                                   ))}
@@ -1659,58 +1992,18 @@ export default function AddWorkshop() {
                 </AlertDialog>
 
                 {/* Submit Button */}
-                <AlertDialog
-                  open={isConfirmDialogOpen}
-                  onOpenChange={setIsConfirmDialogOpen}
-                ></AlertDialog>
-                {/* Submit Button */}
-                <AlertDialog
-                  open={isConfirmDialogOpen}
-                  onOpenChange={setIsConfirmDialogOpen}
-                >
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>
-                        Warning: Past Workshop Dates
-                      </AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Some of your workshop dates are in the past. Are you
-                        sure you want to create a workshop with past dates?
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => {
-                          // Close the dialog
-                          setIsConfirmDialogOpen(false);
-                          // Set the form as submitting
-                          setFormSubmitting(true);
-                          // Use the native form submission to trigger the action function's redirect
-                          const form = document.querySelector(
-                            "form"
-                          ) as HTMLFormElement;
-                          if (form) form.submit();
-                        }}
-                      >
-                        Proceed Anyway
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-
-                  <div className="flex justify-center mt-6">
-                    <Button
-                      type="submit"
-                      className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
-                      onClick={() => {
-                        console.log("Final Form Data:", form.getValues());
-                      }}
-                      disabled={formSubmitting}
-                    >
-                      Add Workshop
-                    </Button>
-                  </div>
-                </AlertDialog>
+                <div className="flex justify-center mt-6">
+                  <Button
+                    type="submit"
+                    className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                    onClick={() => {
+                      console.log("Final Form Data:", form.getValues());
+                    }}
+                    disabled={formSubmitting}
+                  >
+                    Add Workshop
+                  </Button>
+                </div>
               </form>
             </Form>
           </div>

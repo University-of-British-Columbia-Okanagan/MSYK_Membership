@@ -2,7 +2,7 @@ import { logger } from "~/logging/logger";
 import { createCheckoutSession } from "../../models/payment.server";
 import { getUser } from "~/utils/session.server";
 
-export async function action({ request }) {
+export async function action({ request }: { request: Request }) {
   try {
     const user = await getUser(request);
     if (!user) {
@@ -12,9 +12,9 @@ export async function action({ request }) {
       });
     }
 
-    return createCheckoutSession(request); // ✅ Pass entire request
+    return createCheckoutSession(request);
   } catch (error) {
-    logger.error(`Payment action error: ${error}`, {url: request.url,});
+    logger.error(`Payment action error: ${error}`, { url: request.url });
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

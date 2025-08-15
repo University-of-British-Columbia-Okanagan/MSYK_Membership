@@ -1,14 +1,22 @@
-import React from "react";
-import EquipmentCard from "./equipmentcard";
+import EquipmentCard from "./EquipmentCard";
 
 interface Equipment {
   id: number;
   name: string;
   description: string;
   availability: boolean;
+  status: "available" | "booked" | "unavailable";
+  imageUrl?: string;
+  bookingId?: number;
 }
 
-export default function EquipmentList({ equipments, isAdmin }: { equipments: Equipment[], isAdmin: boolean }) {
+export default function EquipmentList({
+  equipments,
+  isAdmin,
+}: {
+  equipments: Equipment[];
+  isAdmin: boolean;
+}) {
   return (
     <div className="p-6">
       <h2 className="text-3xl font-bold mb-6">Available Equipment</h2>

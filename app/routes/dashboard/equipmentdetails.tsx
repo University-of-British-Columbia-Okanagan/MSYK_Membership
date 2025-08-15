@@ -15,11 +15,22 @@ import {
 } from "../../models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
 import { useState, useEffect } from "react";
+import { getUserCompletedEquipmentPrerequisites } from "../../models/equipment.server";
+import { getUser } from "~/utils/session.server";
+import { getWorkshopById } from "../../models/workshop.server";
+import { Link } from "react-router";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 import { ArrowLeft } from "lucide-react";
 import { logger } from "~/logging/logger";
+
+interface PrerequisiteWorkshop {
+  id: number;
+  name: string;
+  completed: boolean;
+}
 
 export async function loader({
   request,
@@ -29,19 +40,75 @@ export async function loader({
   params: { id: string };
 }) {
   const currentUserRole = await getRoleUser(request);
+  const user = await getUser(request);
   const equipmentId = parseInt(params.id);
   const slots = await getAvailableSlots(equipmentId);
   const equipment = await getEquipmentById(equipmentId);
   if (!equipment) {
-    logger.warn(`[User: ${currentUserRole?.userId}] Requested equipment not found`, { url: request.url });
+    logger.warn(
+      `[User: ${currentUserRole?.userId}] Requested equipment not found`,
+      { url: request.url }
+    );
     throw new Response("Equipment not found", { status: 404 });
   }
-  logger.info(`[User: ${currentUserRole?.userId}] Requested equipment details fetched`, { url: request.url });
-  return { equipment, slots, currentUserRole };
+
+  let prerequisiteWorkshops: PrerequisiteWorkshop[] = [];
+
+  if (user && equipment.prerequisites && equipment.prerequisites.length > 0) {
+    // Get completed prerequisites for this user
+    const completedPrerequisites = await getUserCompletedEquipmentPrerequisites(
+      user.id,
+      equipmentId
+    );
+
+    // Fetch prerequisite workshop details
+    prerequisiteWorkshops = await Promise.all(
+      equipment.prerequisites.map(async (prereqId) => {
+        const prereqWorkshop = await getWorkshopById(prereqId);
+        const isCompleted = completedPrerequisites.includes(prereqId);
+
+        return prereqWorkshop
+          ? { id: prereqId, name: prereqWorkshop.name, completed: isCompleted }
+          : {
+              id: prereqId,
+              name: `Workshop #${prereqId}`,
+              completed: isCompleted,
+            };
+      })
+    );
+  } else if (equipment.prerequisites && equipment.prerequisites.length > 0) {
+    // User not logged in, show prerequisites as not completed
+    prerequisiteWorkshops = await Promise.all(
+      equipment.prerequisites.map(async (prereqId) => {
+        const prereqWorkshop = await getWorkshopById(prereqId);
+        return prereqWorkshop
+          ? { id: prereqId, name: prereqWorkshop.name, completed: false }
+          : { id: prereqId, name: `Workshop #${prereqId}`, completed: false };
+      })
+    );
+  }
+
+  logger.info(
+    `[User: ${currentUserRole?.userId}] Requested equipment details fetched`,
+    { url: request.url }
+  );
+  return {
+    equipment,
+    slots,
+    currentUserRole,
+    user,
+    prerequisiteWorkshops,
+  };
 }
 
 export default function EquipmentDetails() {
-  const { equipment, currentUserRole } = useLoaderData();
+  const { equipment, currentUserRole, user, prerequisiteWorkshops } =
+    useLoaderData() as {
+      equipment: any;
+      currentUserRole: any;
+      user: any;
+      prerequisiteWorkshops: PrerequisiteWorkshop[];
+    };
   const fetcher = useFetcher();
   const navigate = useNavigate();
   const [showPopup, setShowPopup] = useState(false);
@@ -97,7 +164,13 @@ export default function EquipmentDetails() {
     <SidebarProvider>
       <div className="flex h-screen">
         {/* Conditional sidebar rendering */}
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        {!user ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
 
         {/* Main content area */}
         <main className="flex-grow p-6 overflow-auto">
@@ -142,6 +215,80 @@ export default function EquipmentDetails() {
                 </div>
 
                 <Separator className="my-6" />
+
+                {/* Prerequisites Section */}
+                {prerequisiteWorkshops.length > 0 && (
+                  <>
+                    <div className="mt-6 mb-8">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h2 className="text-lg font-semibold mb-3 flex items-center">
+                          <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="w-5 h-5"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </span>
+                          Prerequisites Required
+                        </h2>
+
+                        <div className="space-y-3">
+                          {prerequisiteWorkshops.map((prereq) => (
+                            <div
+                              key={prereq.id}
+                              className={`flex items-center p-3 rounded-md ${
+                                prereq.completed
+                                  ? "bg-green-50 border border-green-200"
+                                  : "bg-red-50 border border-red-200"
+                              }`}
+                            >
+                              <div
+                                className={`flex-shrink-0 mr-3 h-8 w-8 rounded-full flex items-center justify-center ${
+                                  prereq.completed
+                                    ? "bg-green-500"
+                                    : "bg-red-500"
+                                } text-white`}
+                              >
+                                {prereq.completed ? "✓" : "!"}
+                              </div>
+                              <div className="flex-1">
+                                <Link
+                                  to={`/dashboard/workshops/${prereq.id}`}
+                                  className={`font-medium hover:underline ${
+                                    prereq.completed
+                                      ? "text-green-700"
+                                      : "text-red-700"
+                                  }`}
+                                >
+                                  {prereq.name}
+                                </Link>
+                                <p
+                                  className={`text-sm ${
+                                    prereq.completed
+                                      ? "text-green-600"
+                                      : "text-red-600"
+                                  }`}
+                                >
+                                  {prereq.completed
+                                    ? "Completed"
+                                    : "Not completed - you must complete this orientation first"}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <Separator className="my-6" />
+                  </>
+                )}
 
                 {/* Book + Edit Equipment */}
                 <div className="flex gap-4">

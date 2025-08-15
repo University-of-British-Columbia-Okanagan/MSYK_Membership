@@ -18,7 +18,7 @@ export interface OccurrenceRowProps {
     value: string
   ) => void;
   formatLocalDatetime: (date: Date) => string;
-  className?: string; // Add this to accept custom styling
+  className?: string;
 }
 
 const OccurrenceRow: React.FC<OccurrenceRowProps> = ({

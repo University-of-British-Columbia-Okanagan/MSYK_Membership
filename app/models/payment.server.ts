@@ -5,16 +5,27 @@ import {
   getWorkshopOccurrencesByConnectId,
   registerForWorkshop,
   registerUserForAllOccurrences,
+  getWorkshopPriceVariation,
 } from "./workshop.server";
 import { getMembershipPlanById } from "./membership.server";
 import { getSavedPaymentMethod } from "./user.server";
 import { db } from "../utils/db.server";
+import { getAdminSetting } from "./admin.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
 
+/**
+ * Creates a payment intent using a user's saved card with automatic GST calculation
+ * @param userId - The ID of the user making the payment
+ * @param amount - The base amount to charge (before GST)
+ * @param description - Description for the payment intent
+ * @param metadata - Additional metadata to attach to the payment
+ * @returns Promise<Stripe.PaymentIntent> - The created and confirmed payment intent
+ * @throws Error if no saved payment method is found
+ */
 export async function createPaymentIntentWithSavedCard(
   userId: number,
   amount: number,
@@ -31,14 +42,25 @@ export async function createPaymentIntentWithSavedCard(
     throw new Error("No saved payment method found");
   }
 
-  // Create payment intent
+  // Get dynamic GST rate from admin settings
+  const { getAdminSetting } = await import("./admin.server");
+  const gstPercentage = await getAdminSetting("gst_percentage", "5");
+  const gstRate = parseFloat(gstPercentage) / 100;
+  const amountWithGST = amount * (1 + gstRate);
+
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.round(amount * 100), // Convert to cents
-    currency: "usd",
+    amount: Math.round(amountWithGST * 100), // Convert to cents with GST included
+    currency: "cad",
     customer: savedPayment.stripeCustomerId,
     payment_method: savedPayment.stripePaymentMethodId,
-    description,
-    metadata,
+    description: `${description} (Includes ${gstPercentage}% GST)`,
+    metadata: {
+      ...metadata,
+      original_amount: amount.toString(),
+      gst_amount: (amountWithGST - amount).toString(),
+      total_with_gst: amountWithGST.toString(),
+      gst_percentage: gstPercentage,
+    },
     confirm: true, // Automatically confirm the payment
     off_session: true, // Payment is being made without customer present
     payment_method_types: ["card"],
@@ -47,6 +69,13 @@ export async function createPaymentIntentWithSavedCard(
   return paymentIntent;
 }
 
+/**
+ * Processes a quick checkout for various service types using saved payment methods
+ * @param userId - The ID of the user making the purchase
+ * @param checkoutData - Object containing checkout details including type, IDs, and pricing
+ * @returns Promise<Object> - Payment result with success status and details
+ * @throws Error if payment processing fails
+ */
 export async function quickCheckout(
   userId: number,
   checkoutData: {
@@ -62,6 +91,7 @@ export async function quickCheckout(
     price?: number;
     currentMembershipId?: number;
     upgradeFee?: number;
+    variationId?: number;
   }
 ) {
   const user = await db.user.findUnique({
@@ -87,6 +117,18 @@ export async function quickCheckout(
       description = workshop.name;
       price = workshop.price;
       metadata.workshopId = checkoutData.workshopId.toString();
+
+      // Handle price variation
+      if (checkoutData.variationId) {
+        const variation = await getWorkshopPriceVariation(
+          checkoutData.variationId
+        );
+        if (variation) {
+          description += ` - ${variation.name}`;
+          price = variation.price;
+          metadata.variationId = checkoutData.variationId.toString();
+        }
+      }
 
       if (checkoutData.occurrenceId) {
         const occurrence = await getWorkshopOccurrence(
@@ -171,14 +213,16 @@ export async function quickCheckout(
             await registerUserForAllOccurrences(
               checkoutData.workshopId!,
               checkoutData.connectId,
-              userId
+              userId,
+              checkoutData.variationId || null
             );
           } else if (checkoutData.occurrenceId) {
             // Single occurrence registration
             await registerForWorkshop(
               checkoutData.workshopId!,
               checkoutData.occurrenceId,
-              userId
+              userId,
+              checkoutData.variationId || null
             );
           }
         } else if (checkoutData.type === "membership") {
@@ -231,6 +275,12 @@ export async function quickCheckout(
   }
 }
 
+/**
+ * Deletes a user's saved payment method from both Stripe and the database
+ * @param userId - The ID of the user whose payment method should be deleted
+ * @returns Promise<Object> - Success object with deletion confirmation
+ * @throws Error if payment method deletion fails
+ */
 export async function deletePaymentMethod(userId: number) {
   try {
     const savedPayment = await db.userPaymentInformation.findUnique({
@@ -254,6 +304,13 @@ export async function deletePaymentMethod(userId: number) {
   }
 }
 
+/**
+ * Creates or updates a payment method for a user in Stripe and stores it in the database
+ * @param userId - The ID of the user
+ * @param data - Payment method data including card details and billing information
+ * @returns Promise<Object> - Success object with payment method details
+ * @throws Error if payment method creation/update fails
+ */
 export async function createOrUpdatePaymentMethod(
   userId: number,
   data: {
@@ -379,39 +436,46 @@ export async function createOrUpdatePaymentMethod(
   }
 }
 
+/**
+ * Creates a Stripe checkout session for different payment scenarios (workshops, memberships, equipment)
+ * @param request - The HTTP request containing payment data in JSON format
+ * @returns Promise<Response> - JSON response with checkout session URL or error
+ * @throws Error if required payment data is missing or Stripe session creation fails
+ */
 export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
   // Check if user wants to use saved card
-  if (body.useSavedCard && body.userId) {
-    // Determine checkout type and prepare data
-    let checkoutData: any = { userId: body.userId };
+if (body.useSavedCard && body.userId) {
+  // Determine checkout type and prepare data
+  let checkoutData: any = { userId: body.userId };
 
-    if (body.workshopId) {
-      checkoutData = {
-        type: "workshop",
-        workshopId: body.workshopId,
-        occurrenceId: body.occurrenceId,
-        connectId: body.connectId,
-      };
-    } else if (body.equipmentId) {
-      checkoutData = {
-        type: "equipment",
-        equipmentId: body.equipmentId,
-        slotCount: body.slotCount,
-        price: body.price,
-        slots: body.slots,
-        slotsDataKey: body.slotsDataKey,
-      };
-    } else if (body.membershipPlanId) {
-      checkoutData = {
-        type: "membership",
-        membershipPlanId: body.membershipPlanId,
-        price: body.price,
-        currentMembershipId: body.currentMembershipId,
-        upgradeFee: body.upgradeFee,
-      };
-    }
+  if (body.workshopId) {
+    checkoutData = {
+      type: "workshop",
+      workshopId: body.workshopId,
+      occurrenceId: body.occurrenceId,
+      connectId: body.connectId,
+      variationId: body.variationId, 
+    };
+  } else if (body.equipmentId) {
+    checkoutData = {
+      type: "equipment",
+      equipmentId: body.equipmentId,
+      slotCount: body.slotCount,
+      price: body.price,
+      slots: body.slots,
+      slotsDataKey: body.slotsDataKey,
+    };
+  } else if (body.membershipPlanId) {
+    checkoutData = {
+      type: "membership",
+      membershipPlanId: body.membershipPlanId,
+      price: body.price,
+      currentMembershipId: body.currentMembershipId,
+      upgradeFee: body.upgradeFee,
+    };
+  }
 
     if (checkoutData.type) {
       return quickCheckout(body.userId, checkoutData);
@@ -449,6 +513,11 @@ export async function createCheckoutSession(request: Request) {
       }.`;
     }
 
+    // Calculate GST
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -458,12 +527,12 @@ export async function createCheckoutSession(request: Request) {
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: {
               name: membershipPlan.title,
-              description: finalDescription,
+              description: `${finalDescription} (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,
         },
@@ -490,7 +559,8 @@ export async function createCheckoutSession(request: Request) {
   }
   // Workshop Single Occurrence Payment
   else if (body.workshopId && body.occurrenceId) {
-    const { workshopId, occurrenceId, price, userId, userEmail } = body;
+    const { workshopId, occurrenceId, price, userId, userEmail, variationId } =
+      body;
     if (!workshopId || !occurrenceId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -502,20 +572,34 @@ export async function createCheckoutSession(request: Request) {
     if (!workshop || !occurrence) {
       throw new Error("Workshop or Occurrence not found");
     }
+
+    let workshopDisplayName = workshop.name;
+    if (variationId) {
+      const variation = await getWorkshopPriceVariation(Number(variationId));
+      if (variation) {
+        workshopDisplayName = `${workshop.name} - ${variation.name}`;
+      }
+    }
+
+    // Calculate GST
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: {
-              name: workshop.name,
-              description: `Occurrence on ${new Date(
+              name: workshopDisplayName,
+              description: `${`Occurrence on ${new Date(
                 occurrence.startDate
-              ).toLocaleString()}`,
+              ).toLocaleString()}`} (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
         },
@@ -527,16 +611,20 @@ export async function createCheckoutSession(request: Request) {
         workshopId: workshopId.toString(),
         occurrenceId: occurrenceId.toString(),
         userId: userId.toString(),
+        variationId: variationId ? variationId.toString() : "",
       },
     });
+
     return new Response(JSON.stringify({ url: session.url }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
-  // Workshop Continuation Payment
+
+  // Multi-day Workshop Payment
   else if (body.workshopId && body.connectId) {
-    const { workshopId, connectId, price, userId, userEmail } = body;
+    const { workshopId, connectId, price, userId, userEmail, variationId } =
+      body;
     if (!workshopId || !connectId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -549,6 +637,14 @@ export async function createCheckoutSession(request: Request) {
       throw new Error("Workshop or Occurrences not found");
     }
 
+    let workshopDisplayName = workshop.name;
+    if (variationId) {
+      const variation = await getWorkshopPriceVariation(Number(variationId));
+      if (variation) {
+        workshopDisplayName = `${workshop.name} - ${variation.name}`;
+      }
+    }
+
     const occurrencesDescription = occurrences
       .map((occ) => {
         const startStr = new Date(occ.startDate).toLocaleString();
@@ -559,18 +655,22 @@ export async function createCheckoutSession(request: Request) {
 
     const description = `Occurrences:\n${occurrencesDescription}`;
 
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: {
-              name: workshop.name,
-              description,
+              name: workshopDisplayName,
+              description: `${description} (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
         },
@@ -582,6 +682,7 @@ export async function createCheckoutSession(request: Request) {
         workshopId: workshopId.toString(),
         connectId: connectId.toString(),
         userId: userId.toString(),
+        variationId: variationId ? variationId.toString() : "",
       },
     });
 
@@ -590,7 +691,8 @@ export async function createCheckoutSession(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
-  // Equipment Booking Payment (NEW BRANCH)
+
+  // Equipment Booking Payment
   else if (
     body.equipmentId &&
     body.slotCount &&
@@ -607,18 +709,24 @@ export async function createCheckoutSession(request: Request) {
       userEmail,
       slotsDataKey,
     } = body;
+
+    // Calculate GST
+    const gstPercentage = await getAdminSetting("gst_percentage", "5");
+    const gstRate = parseFloat(gstPercentage) / 100;
+    const priceWithGST = price * (1 + gstRate);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items: [
         {
           price_data: {
-            currency: "usd",
+            currency: "cad",
             product_data: {
               name: `Equipment Booking (ID: ${equipmentId})`,
-              description: `Booking for ${slotCount} slots`,
+              description: `Booking for ${slotCount} slots (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(price * 100),
+            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,
         },

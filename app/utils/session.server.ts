@@ -1,16 +1,179 @@
-import {
-  createCookieSessionStorage,
-  redirect,
-  Form as RouterForm,
-} from "react-router";
+import { createCookieSessionStorage, redirect } from "react-router";
 import bcrypt from "bcryptjs";
 import { db } from "./db.server";
 import { registerSchema } from "../schemas/registrationSchema";
 import { loginSchema } from "../schemas/loginSchema";
-import { PrismaClient, Prisma } from "@prisma/client";
-import path from "path";
-import fs from "fs/promises";
+import { Prisma } from "@prisma/client";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import * as fs from "fs";
+import * as path from "path";
+import CryptoJS from "crypto-js";
 
+/**
+ * Generates a digitally signed and encrypted waiver PDF document
+ *
+ * This function takes a PDF template, overlays the user's information (name, signature, date),
+ * and returns an encrypted version of the signed document for secure storage.
+ *
+ * @param firstName - The user's first name to be printed on the waiver
+ * @param lastName - The user's last name to be printed on the waiver
+ * @param signatureDataURL - Base64 encoded PNG signature image data (must start with "data:image/")
+ * @returns Promise<string> - AES encrypted base64 string of the signed PDF document
+ *
+ * @throws Error - Throws "Failed to generate signed waiver" if PDF generation fails
+ *
+ * @example
+ * ```typescript
+ * const encryptedWaiver = await generateSignedWaiver(
+ *   "John",
+ *   "Doe",
+ *   "data:image/png;base64,iVBORw0KGgo..."
+ * );
+ * ```
+ *
+ * @security
+ * - Uses AES encryption with key from WAIVER_ENCRYPTION_KEY environment variable
+ * - Signature is embedded as PNG image on page 2 of the PDF template
+ * - All user data is positioned using fixed coordinates for consistent layout
+ *
+ * @dependencies
+ * - Requires "msyk-waiver-template.pdf" in public/documents/ directory
+ * - Uses pdf-lib library for PDF manipulation
+ * - Uses crypto-js for AES encryption
+ */
+async function generateSignedWaiver(
+  firstName: string,
+  lastName: string,
+  signatureDataURL: string
+): Promise<string> {
+  try {
+    // Read the waiver PDF template
+    const templatePath = path.join(
+      process.cwd(),
+      "public",
+      "documents",
+      "msyk-waiver-template.pdf"
+    );
+
+    const existingPdfBytes = fs.readFileSync(templatePath);
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    const pages = pdfDoc.getPages();
+    const secondPage = pages[1];
+
+    // Embed font
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const baseX = 75; // X position (left/right)
+
+    // Add name using calculated position
+    const fullName = `${firstName} ${lastName}`;
+    secondPage.drawText(fullName, {
+      x: baseX,
+      y: 200,
+      size: 10, // Slightly smaller font
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    // Add signature using calculated position
+    if (signatureDataURL && signatureDataURL.startsWith("data:image/")) {
+      try {
+        const base64Data = signatureDataURL.split(",")[1];
+        const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
+          c.charCodeAt(0)
+        );
+
+        const signatureImage = await pdfDoc.embedPng(signatureBytes);
+
+        secondPage.drawImage(signatureImage, {
+          x: baseX * 3.5,
+          y: 80,
+          // width: 140, // Slightly smaller signature
+          // height: 20, // Reduced height
+        });
+      } catch (imageError) {
+        console.error("Error embedding signature image:", imageError);
+      }
+    }
+
+    // Add date using calculated position
+    const currentDate = new Date().toLocaleDateString("en-US");
+    secondPage.drawText(currentDate, {
+      x: baseX,
+      y: 114,
+      size: 10, // Consistent font size
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
+    const encryptedPdf = CryptoJS.AES.encrypt(
+      pdfBase64,
+      encryptionKey
+    ).toString();
+
+    return encryptedPdf;
+  } catch (error) {
+    console.error("Error generating signed waiver:", error);
+    throw new Error("Failed to generate signed waiver");
+  }
+}
+
+/**
+ * Decrypts an encrypted waiver PDF document back to its original binary format
+ *
+ * This function reverses the encryption process used by generateSignedWaiver(),
+ * returning a Buffer containing the original PDF bytes that can be saved or displayed.
+ *
+ * @param encryptedData - AES encrypted string containing the PDF data (from generateSignedWaiver)
+ * @returns Buffer - Binary PDF data ready for file writing or streaming
+ *
+ * @throws Error - Throws "Failed to decrypt waiver" if decryption fails or data is malformed
+ *
+ * @example
+ * ```typescript
+ * const pdfBuffer = decryptWaiver(user.waiverSignature);
+ * fs.writeFileSync('signed-waiver.pdf', pdfBuffer);
+ * ```
+ *
+ * @security
+ * - Uses same AES decryption key as generateSignedWaiver()
+ * - Key retrieved from WAIVER_ENCRYPTION_KEY environment variable
+ * - Falls back to default key if environment variable not set
+ *
+ * @dependencies
+ * - Uses crypto-js for AES decryption
+ * - Requires valid encrypted data format from generateSignedWaiver()
+ *
+ * @see generateSignedWaiver - For the encryption counterpart of this function
+ */
+function decryptWaiver(encryptedData: string): Buffer {
+  try {
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
+    const decryptedBase64 = CryptoJS.AES.decrypt(
+      encryptedData,
+      encryptionKey
+    ).toString(CryptoJS.enc.Utf8);
+    return Buffer.from(decryptedBase64, "base64");
+  } catch (error) {
+    console.error("Error decrypting waiver:", error);
+    throw new Error("Failed to decrypt waiver");
+  }
+}
+
+/**
+ * Registers a new user account with validation
+ * @param data - User registration data including email, password, and profile information
+ * @returns Promise<Object> - User object or error object with validation errors
+ */
 export async function register(rawValues: Record<string, any>) {
   try {
     // Validate the incoming form data using the Zod schema
@@ -19,34 +182,29 @@ export async function register(rawValues: Record<string, any>) {
     if (!parsed.success) {
       // If validation fails, return errors
       const errors = parsed.error.flatten();
+      console.log("Validation errors:", errors.fieldErrors);
       return { errors: errors.fieldErrors };
     }
 
     const data = parsed.data;
 
-    const guardianSignedConsent = rawValues.guardianSignedConsent;
+    // Handle waiver signature and PDF generation
+    let waiverSignatureData = null;
+    const waiverSignature = rawValues.waiverSignature;
+
     if (
-      guardianSignedConsent instanceof File &&
-      guardianSignedConsent.size > 0
+      typeof waiverSignature === "string" &&
+      waiverSignature.trim() !== "" &&
+      waiverSignature.startsWith("data:image/")
     ) {
-      // Define the storage directory relative to project root
-      const storageDir = path.join(process.cwd(), "app", "storage");
-
-      // Ensure the storage directory exists
-      await fs.mkdir(storageDir, { recursive: true });
-
-      // Create a unique file name
-      const fileName = `${Date.now()}_${guardianSignedConsent.name}`;
-      const filePath = path.join(storageDir, fileName);
-
-      // Save the file to the storage directory
-      const fileBuffer = await guardianSignedConsent.arrayBuffer();
-      await fs.writeFile(filePath, Buffer.from(fileBuffer));
-
-      // Add the file name to the data
-      data.guardianSignedConsent = fileName;
+      // Generate signed and encrypted PDF
+      waiverSignatureData = await generateSignedWaiver(
+        data.firstName,
+        data.lastName,
+        waiverSignature
+      );
     } else {
-      data.guardianSignedConsent = null;
+      waiverSignatureData = null;
     }
 
     // Hash the password
@@ -60,22 +218,20 @@ export async function register(rawValues: Record<string, any>) {
         email: data.email,
         password: hashedPassword,
         phone: data.phone || "",
-        address: data.address || "",
-        over18: data.over18 ?? null,
-        photoRelease: data.photoRelease ?? null,
-        dataPrivacy: data.dataPrivacy ?? null,
-        parentGuardianName: data.parentGuardianName || null,
-        parentGuardianPhone: data.parentGuardianPhone || null,
-        parentGuardianEmail: data.parentGuardianEmail || null,
-        guardianSignedConsent: data.guardianSignedConsent || null,
+        dateOfBirth: data.dateOfBirth,
         emergencyContactName: data.emergencyContactName || "",
         emergencyContactPhone: data.emergencyContactPhone || "",
         emergencyContactEmail: data.emergencyContactEmail || "",
-        trainingCardUserNumber: data.trainingCardUserNumber || -1,
+        mediaConsent: data.mediaConsent ?? false,
+        dataPrivacy: data.dataPrivacy ?? false,
+        communityGuidelines: data.communityGuidelines ?? false,
+        operationsPolicy: data.operationsPolicy ?? false,
+        waiverSignature: waiverSignatureData,
       },
       select: {
         id: true,
         email: true,
+        waiverSignature: true,
       },
     });
 
@@ -101,6 +257,11 @@ export async function register(rawValues: Record<string, any>) {
   }
 }
 
+/**
+ * Authenticates a user with email and password
+ * @param data - Object containing email and password
+ * @returns Promise<Object> - User data with id, email, roleUserId, and password, or error object
+ */
 export async function login(rawValues: Record<string, any>) {
   // Validate the incoming form data using the Zod schema
   const parsed = loginSchema.safeParse(rawValues);
@@ -139,7 +300,7 @@ export async function login(rawValues: Record<string, any>) {
     id: user.id,
     email: user.email,
     roleUserId: user.roleUserId,
-    password: data.password
+    password: data.password,
   };
 }
 
@@ -163,10 +324,20 @@ const storage = createCookieSessionStorage({
   },
 });
 
+/**
+ * Retrieves the session from the request cookie
+ * @param request - The HTTP request object
+ * @returns Promise<Session> - The session object from the cookie
+ */
 function getUserSession(request: Request) {
   return storage.getSession(request.headers.get("Cookie"));
 }
 
+/**
+ * Extracts and validates the user ID from the session
+ * @param request - The HTTP request object
+ * @returns Promise<string|null> - The user ID if valid session, null otherwise
+ */
 export async function getUserId(request: Request) {
   const session = await getUserSession(request);
   const userId = session.get("userId");
@@ -198,6 +369,12 @@ export async function getUserId(request: Request) {
   return userId;
 }
 
+/**
+ * Retrieves the current user's basic information from session
+ * @param request - The HTTP request object
+ * @returns Promise<Object|null> - User object with id, email, roleLevel, or null if not found
+ * @throws Logout redirect if user not found
+ */
 export async function getUser(request: Request) {
   const userId = await getUserId(request);
   if (typeof userId !== "string") {
@@ -208,11 +385,10 @@ export async function getUser(request: Request) {
     select: {
       id: true,
       email: true,
-      roleLevel: true, 
+      roleLevel: true,
     },
     where: { id: parseInt(userId) },
   });
-
 
   if (!user) {
     throw await logout(request);
@@ -221,6 +397,11 @@ export async function getUser(request: Request) {
   return user;
 }
 
+/**
+ * Destroys the user session and redirects to login page
+ * @param request - The HTTP request object
+ * @returns Promise<Response> - Redirect response to login page
+ */
 export async function logout(request: Request) {
   const session = await getUserSession(request);
   return redirect("/login", {
@@ -230,7 +411,18 @@ export async function logout(request: Request) {
   });
 }
 
-export async function createUserSession(userId: number, password: string, redirectTo: string) {
+/**
+ * Creates a new user session and redirects to specified URL
+ * @param userId - The ID of the user to create session for
+ * @param password - The user's password to store in session
+ * @param redirectTo - The URL to redirect to after session creation
+ * @returns Promise<Response> - Redirect response with session cookie
+ */
+export async function createUserSession(
+  userId: number,
+  password: string,
+  redirectTo: string
+) {
   const session = await storage.getSession();
   session.set("userId", userId.toString());
   session.set("userPassword", password);
@@ -241,6 +433,11 @@ export async function createUserSession(userId: number, password: string, redire
   });
 }
 
+/**
+ * Retrieves user information with their role details
+ * @param request - The HTTP request object
+ * @returns Promise<Object|null> - Object with userId, roleId, and roleName, or null if not found
+ */
 export async function getRoleUser(request: Request) {
   const userId = await getUserId(request);
 
@@ -269,3 +466,49 @@ export async function getRoleUser(request: Request) {
   return null;
 }
 
+/**
+ * Finds a user from the email
+ * @param email 
+ * @returns user
+ */
+export async function findUserByEmail(email: string) {
+  if (!email) return null;
+
+  const user = await db.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      email: true,
+      roleLevel: true,
+    },
+  });
+
+  return user;
+}
+
+/**
+ * Updates the password of a user
+ * @param email 
+ * @param password 
+ * @returns user
+ */
+export async function updateUserPassword(email: string, password: string) {
+  if (!email || !password) return null;
+  
+  const hashedPassword = await bcrypt.hash(password, 10);
+  
+  const user = await db.user.update({
+    where: { email },
+    data: { password: hashedPassword },
+    select: {
+      id: true,
+      email: true,
+      password: true
+    },
+  });
+
+  return user;
+}
+
+
+export { decryptWaiver };

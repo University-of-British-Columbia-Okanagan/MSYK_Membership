@@ -1,7 +1,6 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminSidebar from "~/components/ui/Dashboard/adminsidebar"; 
-import Footer from "@/components/ui/Home/Footer";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
   getMembershipPlans,
@@ -14,6 +13,7 @@ import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -40,6 +40,7 @@ export async function loader({ request }: { request: Request }) {
   let userMemberships: UserMembershipData[] = [];
   let userRecord: any = null;
 
+  // Only fetch user-specific data if logged in
   if (roleUser?.userId) {
     const rawMemberships = await getUserMemberships(roleUser.userId);
     rawMemberships.sort(
@@ -77,7 +78,7 @@ export async function loader({ request }: { request: Request }) {
     (m) => m.status === "cancelled"
   );
 
-  // NEW: Add a flag to check if the user has any active membership.
+  // Add a flag to check if the user has any active membership.
   const hasActiveSubscription = userMemberships.some(
     (m) => m.status === "active"
   );
@@ -129,7 +130,12 @@ export async function action({ request }: { request: Request }) {
     if (!roleUser?.userId) return null;
     if (planId) {
       await cancelMembership(roleUser.userId, Number(planId));
-      logger.info(`[User: ${roleUser?.userId ?? "unknown"}] Membership for plan ${planId} cancelled successfully.`, {url: request.url,});
+      logger.info(
+        `[User: ${
+          roleUser?.userId ?? "unknown"
+        }] Membership for plan ${planId} cancelled successfully.`,
+        { url: request.url }
+      );
     }
     return redirect("/dashboard/memberships");
   }
@@ -142,7 +148,10 @@ export async function action({ request }: { request: Request }) {
       }
       const result = await deleteMembershipPlan(Number(planId));
       if (confirmationDelete !== "confirmed") {
-        logger.warn(`Deletion of membership plan was not confirmed. Plan id ${planId}`, {url: request.url,});
+        logger.warn(
+          `Deletion of membership plan was not confirmed. Plan id ${planId}`,
+          { url: request.url }
+        );
         return null;
       }
 
@@ -150,7 +159,9 @@ export async function action({ request }: { request: Request }) {
         return redirect("/dashboard/memberships");
       }
     } catch (error) {
-      logger.error(`Error deleting membership plan: ${error}`, {url: request.url,});
+      logger.error(`Error deleting membership plan: ${error}`, {
+        url: request.url,
+      });
     }
   }
 
@@ -170,7 +181,6 @@ export default function MembershipPage() {
     hasCancelledSubscription,
     hasActiveSubscription,
     highestActivePrice,
-    highestCanceledPrice,
   } = useLoaderData<{
     roleUser: any;
     membershipPlans: any[];
@@ -188,12 +198,19 @@ export default function MembershipPage() {
 
   const isAdmin =
     roleUser?.roleId === 2 && roleUser.roleName.toLowerCase() === "admin";
+  const isGuest = !roleUser || !roleUser.userId;
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen">
         {/* Sidebar */}
-        {isAdmin ? <AdminSidebar /> : <AppSidebar />}
+        {isGuest ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminSidebar />
+        ) : (
+          <AppSidebar />
+        )}
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
@@ -217,7 +234,6 @@ export default function MembershipPage() {
               const membership = userMemberships.find(
                 (m) => m.membershipPlanId === plan.id
               );
-              const isSubscribed = Boolean(membership);
               const membershipStatus = membership?.status;
 
               return (
@@ -230,14 +246,13 @@ export default function MembershipPage() {
                   isAdmin={!!isAdmin}
                   planId={plan.id}
                   needAdminPermission={plan.needAdminPermission}
-                  isSubscribed={isSubscribed}
                   membershipStatus={membershipStatus}
                   userRecord={userRecord}
                   hasActiveSubscription={hasActiveSubscription}
                   hasCancelledSubscription={hasCancelledSubscription}
                   highestActivePrice={highestActivePrice}
-                  highestCanceledPrice={highestCanceledPrice}
                   nextPaymentDate={membership?.nextPaymentDate}
+                  roleUser={roleUser}
                 />
               );
             })}

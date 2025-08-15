@@ -109,11 +109,10 @@ export async function loader({ request }: { request: Request }) {
     membershipPlanId,
     userId,
     connectId,
-    compensationPrice,
     equipmentId,
-    slotCount,
     slotsDataKey,
     isEquipmentBooking,
+    variationId,
   } = metadata;
 
   if (equipmentId && userId && isEquipmentBooking === "true") {
@@ -164,13 +163,18 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  // Workshop continuation
+  // Multi-day workshop
   else if (workshopId && connectId && userId) {
     try {
+      const variationId = metadata.variationId
+        ? parseInt(metadata.variationId)
+        : null;
+
       await registerUserForAllOccurrences(
         parseInt(workshopId),
         parseInt(connectId),
-        parseInt(userId)
+        parseInt(userId),
+        variationId
       );
       return new Response(
         JSON.stringify({
@@ -186,7 +190,7 @@ export async function loader({ request }: { request: Request }) {
         JSON.stringify({
           success: false,
           isMembership: false,
-          message: "Registration (continuation) failed: " + error.message,
+          message: "Registration (multi-day) failed: " + error.message,
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -196,10 +200,15 @@ export async function loader({ request }: { request: Request }) {
   // Workshop single occurrence
   else if (workshopId && occurrenceId && userId) {
     try {
+      const variationId = metadata.variationId
+        ? parseInt(metadata.variationId)
+        : null;
+
       await registerForWorkshop(
         parseInt(workshopId),
         parseInt(occurrenceId),
-        parseInt(userId)
+        parseInt(userId),
+        variationId
       );
       return new Response(
         JSON.stringify({
@@ -323,10 +332,10 @@ export default function PaymentSuccess() {
         {data.isQuickCheckout
           ? `Back to ${data.checkoutType}s`
           : data.isEquipment
-          ? "Back to Equipment"
-          : data.isMembership
-          ? "Back to Memberships"
-          : "Back to Workshops"}
+            ? "Back to Equipment"
+            : data.isMembership
+              ? "Back to Memberships"
+              : "Back to Workshops"}
       </button>
     </div>
   );

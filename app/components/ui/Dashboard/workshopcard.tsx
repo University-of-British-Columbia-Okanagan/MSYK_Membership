@@ -1,4 +1,3 @@
-import React from "react";
 import {
   Card,
   CardContent,
@@ -71,23 +70,39 @@ export default function WorkshopCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => navigate(`/dashboard/editworkshop/${id}`)}>
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/dashboard/editworkshop/${id}`)}
+                >
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem
+                {/* <DropdownMenuItem
                   onSelect={(e) => {
                     e.preventDefault();
-                    if (window.confirm("Are you sure you want to duplicate this workshop?")) {
-                      fetcher.submit({ workshopId: id, action: "duplicate" }, { method: "post" });
+                    if (
+                      window.confirm(
+                        "Are you sure you want to duplicate this workshop?"
+                      )
+                    ) {
+                      fetcher.submit(
+                        { workshopId: id, action: "duplicate" },
+                        { method: "post" }
+                      );
                     }
                   }}
                 >
                   Duplicate
-                </DropdownMenuItem>
+                </DropdownMenuItem> */}
                 <DropdownMenuItem
                   onSelect={() => {
-                    if (window.confirm("Are you sure you want to delete this workshop?")) {
-                      fetcher.submit({ workshopId: id, action: "delete" }, { method: "post" });
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete this workshop?"
+                      )
+                    ) {
+                      fetcher.submit(
+                        { workshopId: id, action: "delete" },
+                        { method: "post" }
+                      );
                     }
                   }}
                   className="text-red-600 focus:bg-red-50"
@@ -100,7 +115,9 @@ export default function WorkshopCard({
         </div>
 
         {/* Description Section */}
-        <CardDescription className="text-blue-700 mt-1">{description}</CardDescription>
+        <CardDescription className="text-blue-700 mt-1">
+          {description}
+        </CardDescription>
 
         {/* Price Box */}
         <div className="mt-3 flex justify-start">

@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useLoaderData, redirect } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import {
   Card,
   CardContent,
@@ -17,7 +17,6 @@ import { getRoleUser } from "~/utils/session.server";
 import {
   Table,
   TableBody,
-  TableCaption,
   TableCell,
   TableHead,
   TableHeader,
@@ -26,15 +25,20 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FiSearch } from "react-icons/fi";
 import { Badge } from "@/components/ui/badge";
-import {
-  format,
-  differenceInSeconds,
-  differenceInMinutes,
-  differenceInHours,
-} from "date-fns";
+import { format, differenceInSeconds } from "date-fns";
 import { getIssues, updateIssueStatus } from "~/models/issue.server";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "~/components/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectValue } from "~/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "~/components/ui/select";
 import { SelectTrigger } from "@radix-ui/react-select";
 import { logger } from "~/logging/logger";
 
@@ -98,10 +102,14 @@ const downloadCSV = (csvContent: string, filename: string) => {
 
 function getStatusVariant(status: string) {
   switch (status) {
-    case "open": return "destructive";
-    case "in_progress": return "secondary";
-    case "resolved": return "success";
-    default: return "default";
+    case "open":
+      return "destructive";
+    case "in_progress":
+      return "secondary";
+    case "resolved":
+      return "success";
+    default:
+      return "default";
   }
 }
 
@@ -141,7 +149,6 @@ export async function loader({ request }: { request: Request }) {
   }
 }
 
-
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
@@ -151,7 +158,9 @@ export async function action({ request }: { request: Request }) {
   if (actionType === "change-issue-status") {
     const roleUser = await getRoleUser(request);
     if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      logger.warn(`Unauthorized attempt to change issue status`, { url: request.url });
+      logger.warn(`Unauthorized attempt to change issue status`, {
+        url: request.url,
+      });
       throw new Response("Not Authorized", { status: 419 });
     }
 
@@ -169,18 +178,24 @@ export async function action({ request }: { request: Request }) {
 
     try {
       await updateIssueStatus(issueId, newStatus);
-      logger.info(`[User: ${roleUser.userId}] change-issue-status executed for issue ${issueId} -> ${newStatus}`, {
-        issueId,
-        newStatus,
-        url: request.url,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] change-issue-status executed for issue ${issueId} -> ${newStatus}`,
+        {
+          issueId,
+          newStatus,
+          url: request.url,
+        }
+      );
       return redirect("/dashboard/admin/reports");
     } catch (error) {
-      logger.error(`Error updating issue status for issue ${issueId}: ${error}`, {
-        issueId,
-        newStatus,
-        url: request.url,
-      });
+      logger.error(
+        `Error updating issue status for issue ${issueId}: ${error}`,
+        {
+          issueId,
+          newStatus,
+          url: request.url,
+        }
+      );
       throw new Response("Failed to update issue status", { status: 500 });
     }
   }
@@ -188,7 +203,6 @@ export async function action({ request }: { request: Request }) {
   logger.warn(`Unknown action attempted: ${actionType}`, { url: request.url });
   throw new Response("Unknown action", { status: 400 });
 }
-
 
 // Calculate duration between two dates and return as appropriate unit
 const calculateDuration = (startDateString: string, endDateString: string) => {
@@ -245,6 +259,7 @@ export default function AdminReports() {
         registrationCount: number;
       }>;
     }>;
+    issues: Issue[];
   }>();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -254,21 +269,24 @@ export default function AdminReports() {
   const [issueSearchTerm, setIssueSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const filteredAndSortedIssues = issues
-  .filter(issue =>
-    (statusFilter === "all" || issue.status === statusFilter) &&
-    (
-      issue.title.toLowerCase().includes(issueSearchTerm.toLowerCase()) ||
-      issue.reportedBy?.email?.toLowerCase().includes(issueSearchTerm.toLowerCase()) ||
-      issue.reportedBy?.id?.toString().toLowerCase().includes(issueSearchTerm.toLowerCase())
+    .filter(
+      (issue) =>
+        (statusFilter === "all" || issue.status === statusFilter) &&
+        (issue.title.toLowerCase().includes(issueSearchTerm.toLowerCase()) ||
+          issue.reportedBy?.email
+            ?.toLowerCase()
+            .includes(issueSearchTerm.toLowerCase()) ||
+          issue.reportedBy?.id
+            ?.toString()
+            .toLowerCase()
+            .includes(issueSearchTerm.toLowerCase()))
     )
-  )
-  .sort((a, b) => {
-    if (sortBy === "status") return a.status.localeCompare(b.status);
-    const dateA = new Date(a.createdAt).getTime();
-    const dateB = new Date(b.createdAt).getTime();
-    return sortBy === "oldest" ? dateA - dateB : dateB - dateA;
-  });
-
+    .sort((a, b) => {
+      if (sortBy === "status") return a.status.localeCompare(b.status);
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return sortBy === "oldest" ? dateA - dateB : dateB - dateA;
+    });
 
   // Filter workshops based on search term
   const filteredWorkshops = workshops.filter((workshop) =>
@@ -696,17 +714,24 @@ export default function AdminReports() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Reported Issues</CardTitle>
-                    <CardDescription>View, filter, and manage reported issues.</CardDescription>
+                    <CardDescription>
+                      View, filter, and manage reported issues.
+                    </CardDescription>
 
                     <div className="flex flex-wrap gap-4 mt-4">
-                      <Select onValueChange={setStatusFilter} defaultValue="all">
+                      <Select
+                        onValueChange={setStatusFilter}
+                        defaultValue="all"
+                      >
                         <SelectTrigger className="w-[180px]">
                           <SelectValue placeholder="Filter by status" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">All</SelectItem>
                           <SelectItem value="open">Open</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="in_progress">
+                            In Progress
+                          </SelectItem>
                           <SelectItem value="resolved">Resolved</SelectItem>
                         </SelectContent>
                       </Select>
@@ -714,7 +739,7 @@ export default function AdminReports() {
                       <Input
                         placeholder="Search by title or reporter ID"
                         value={issueSearchTerm}
-                        onChange={e => setIssueSearchTerm(e.target.value)}
+                        onChange={(e) => setIssueSearchTerm(e.target.value)}
                         className="w-[300px]"
                       />
 
@@ -731,44 +756,64 @@ export default function AdminReports() {
                     </div>
                   </CardHeader>
 
-                 <CardContent className="grid gap-4">
-                  {filteredAndSortedIssues.length === 0 ? (
-                    <p className="text-muted-foreground">No issues match the filters.</p>
-                  ) : (
-                    filteredAndSortedIssues.map(issue => (
-                      <Card key={issue.id} className="p-4">
-                        <div className="flex justify-between items-start gap-4">
-                          <div>
-                            <h3 className="text-lg font-semibold">{issue.title}</h3>
-                            <p className="text-sm text-muted-foreground">{issue.description}</p>
-                            <p className="text-xs mt-1">Reported by: {issue.reportedBy.email}</p>
-                            <p className="text-xs text-muted-foreground">Created: {formatDate(issue.createdAt)}</p>
-                            <p className="text-xs text-muted-foreground">Priority: {issue.priority}</p>
+                  <CardContent className="grid gap-4">
+                    {filteredAndSortedIssues.length === 0 ? (
+                      <p className="text-muted-foreground">
+                        No issues match the filters.
+                      </p>
+                    ) : (
+                      filteredAndSortedIssues.map((issue) => (
+                        <Card key={issue.id} className="p-4">
+                          <div className="flex justify-between items-start gap-4">
+                            <div>
+                              <h3 className="text-lg font-semibold">
+                                {issue.title}
+                              </h3>
+                              <p className="text-sm text-muted-foreground">
+                                {issue.description}
+                              </p>
+                              <p className="text-xs mt-1">
+                                Reported by: {issue.reportedBy.email}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Created: {formatDate(issue.createdAt)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Priority: {issue.priority}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge variant={getStatusVariant(issue.status)}>
+                                {issue.status}
+                              </Badge>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="sm" variant="outline">
+                                    Change Status
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                  {["open", "in_progress", "resolved"].map(
+                                    (status) => (
+                                      <DropdownMenuItem
+                                        key={status}
+                                        onClick={() =>
+                                          handleChangeStatus(issue.id, status)
+                                        }
+                                      >
+                                        {status.charAt(0).toUpperCase() +
+                                          status.slice(1)}
+                                      </DropdownMenuItem>
+                                    )
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <Badge variant={getStatusVariant(issue.status)}>{issue.status}</Badge>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="sm" variant="outline">Change Status</Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent>
-                                {["open", "in_progress", "resolved"].map(status => (
-                                  <DropdownMenuItem
-                                    key={status}
-                                    onClick={() => handleChangeStatus(issue.id, status)}
-                                  >
-                                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </div>
-                      </Card>
-                    ))
-                  )}
-                </CardContent>
-
+                        </Card>
+                      ))
+                    )}
+                  </CardContent>
                 </Card>
               </TabsContent>
             </Tabs>

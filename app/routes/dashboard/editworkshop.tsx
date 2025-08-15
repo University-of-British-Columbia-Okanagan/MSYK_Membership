@@ -1,12 +1,11 @@
 import React, { useState } from "react";
 import {
   redirect,
-  useNavigation,
   useActionData,
   useLoaderData,
+  useFetcher,
 } from "react-router";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form,
@@ -26,25 +25,20 @@ import {
   updateWorkshopWithOccurrences,
   cancelWorkshopOccurrence,
   getWorkshops,
-  getWorkshopContinuationUserCount,
+  getMultiDayWorkshopUserCount,
+  getWorkshopWithPriceVariations,
+  getWorkshopRegistrationCounts,
+  cancelWorkshopPriceVariation,
 } from "~/models/workshop.server";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
-import GenericFormField from "~/components/ui/GenericFormField";
-import DateTypeRadioGroup from "~/components/ui/DateTypeRadioGroup";
-import OccurrenceRow from "~/components/ui/OccurrenceRow";
-import RepetitionScheduleInputs from "@/components/ui/RepetitionScheduleInputs";
-import OccurrencesTabs from "~/components/ui/OccurrenceTabs";
-import PrerequisitesField from "@/components/ui/PrerequisitesField";
+import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
+import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
+import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
+import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
+import OccurrencesTabs from "~/components/ui/Dashboard/OccurrenceTabs";
 import { getAvailableEquipment } from "~/models/equipment.server";
-import MultiSelectField from "@/components/ui/MultiSelectField";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import {
   Calendar as CalendarIcon,
   CalendarDays as CalendarDaysIcon,
@@ -67,7 +61,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import {
   getEquipmentSlotsWithStatus,
   bulkBookEquipment,
@@ -75,13 +68,13 @@ import {
 } from "~/models/equipment.server";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import EquipmentBookingGrid from "@/components/ui/Dashboard/equipmentbookinggrid";
-import type { SlotsByDay } from "@/components/ui/Dashboard/equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/EquipmentBookingGrid";
 import { db } from "~/utils/db.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -94,12 +87,9 @@ interface Occurrence {
   status?: string;
   userCount?: number;
   connectId?: number | null;
-  offerId?: number | null; // Add this line
+  offerId?: number | null;
 }
 
-/* ──────────────────────────────────────────────────────────────────────────────
-   1) Loader: fetch the Workshop + its WorkshopOccurrences
-   ---------------------------------------------------------------------------*/
 /* ──────────────────────────────────────────────────────────────────────────────
    1) Loader: fetch the Workshop + its WorkshopOccurrences
    ---------------------------------------------------------------------------*/
@@ -111,7 +101,7 @@ export async function loader({
   request: Request;
 }) {
   const workshopId = Number(params.workshopId);
-  const workshop = await getWorkshopById(workshopId);
+  const workshop = await getWorkshopWithPriceVariations(workshopId);
   if (!workshop) {
     logger.info("Workshop not found", {
       url: request.url,
@@ -121,7 +111,18 @@ export async function loader({
 
   const availableWorkshops = await getWorkshops();
   const availableEquipments = await getAvailableEquipment();
-  const userCounts = await getWorkshopContinuationUserCount(workshopId);
+  const userCounts = await getMultiDayWorkshopUserCount(workshopId);
+
+  // Get registration counts for capacity validation
+  const registrationCounts = await getWorkshopRegistrationCounts(
+    workshopId,
+    workshop.occurrences?.[0]?.id || 0
+  ).catch(() => null);
+
+  const cancelledPriceVariations =
+    workshop.priceVariations?.filter(
+      (variation: any) => variation.status === "cancelled"
+    ) || [];
 
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
@@ -171,12 +172,13 @@ export async function loader({
     selectedSlotsMap,
     equipmentVisibilityDays,
     roleUser,
+    registrationCounts,
+    cancelledPriceVariations,
   };
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────
-   2) Action: convert local occurrences to UTC, then update both Workshop + 
-      WorkshopOccurrences in the DB.
+   2) Action
    ---------------------------------------------------------------------------*/
 export async function action({
   request,
@@ -190,19 +192,24 @@ export async function action({
   const roleUser = await getRoleUser(request);
 
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-    logger.warn(`[User: ${roleUser?.userId ?? "unknown"}] Not authorized to update workshop`, {
-      url: request.url,
-    });
+    logger.warn(
+      `[User: ${
+        roleUser?.userId ?? "unknown"
+      }] Not authorized to update workshop`,
+      {
+        url: request.url,
+      }
+    );
     throw new Response("Not Authorized", { status: 419 });
   }
 
-  // Check if this submission is a cancellation request.
+  // Check if this submission is a cancellation request
   if (rawValues.cancelOccurrenceId) {
     const occurrenceId = parseInt(rawValues.cancelOccurrenceId as string, 10);
-    const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+    const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
 
     try {
-      if (isWorkshopContinuation) {
+      if (isMultiDayWorkshop) {
         const workshop = await getWorkshopById(Number(params.workshopId));
         const activeOccurrences = workshop.occurrences.filter(
           (occ: any) => occ.status === "active"
@@ -213,7 +220,7 @@ export async function action({
         }
 
         logger.info(
-          `[User: ${roleUser.userId}] Cancelled all active occurrences for workshop ${params.workshopId} (continuation)`,
+          `[User: ${roleUser.userId}] Cancelled all active occurrences for workshop ${params.workshopId} (multi-day workshop)`,
           { url: request.url }
         );
       } else {
@@ -234,6 +241,30 @@ export async function action({
     return redirect("/dashboard/admin");
   }
 
+  // Check if this submission is a price variation cancellation request
+  if (rawValues.cancelPriceVariationId) {
+    const variationId = parseInt(
+      rawValues.cancelPriceVariationId as string,
+      10
+    );
+
+    try {
+      await cancelWorkshopPriceVariation(variationId);
+
+      logger.info(
+        `[User: ${roleUser.userId}] Cancelled price variation ${variationId} for workshop ${params.workshopId}`,
+        { url: request.url }
+      );
+    } catch (error: any) {
+      logger.error(
+        `[User: ${roleUser.userId}] Error cancelling price variation ${variationId}: ${error.message}`,
+        { url: request.url }
+      );
+      return { errors: { cancel: ["Failed to cancel price variation"] } };
+    }
+    return redirect("/dashboard/admin");
+  }
+
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
@@ -248,10 +279,38 @@ export async function action({
   // Convert price & capacity
   const price = parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
-  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(Number);
+  const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
+    Number
+  );
   const equipments = JSON.parse(rawValues.equipments as string).map(Number);
 
-  const isWorkshopContinuation = rawValues.isWorkshopContinuation === "true";
+  const isMultiDayWorkshop = rawValues.isMultiDayWorkshop === "true";
+
+  const hasPriceVariations = rawValues.hasPriceVariations === "true";
+  let priceVariations: Array<{
+    name: string;
+    price: number;
+    description: string;
+    capacity: number;
+  }> = [];
+  if (hasPriceVariations && rawValues.priceVariations) {
+    try {
+      const parsedVariations = JSON.parse(rawValues.priceVariations as string);
+      priceVariations = parsedVariations.map((v: any) => ({
+        name: String(v.name || "").trim(),
+        price: parseFloat(v.price) || 0,
+        description: String(v.description || "").trim(),
+        capacity: v.capacity && v.capacity !== "" ? parseInt(v.capacity) : 0,
+      }));
+    } catch (error) {
+      logger.error(`[Edit workshop] Error parsing price variations: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: { priceVariations: ["Invalid price variations format"] },
+      };
+    }
+  }
 
   let occurrences: {
     id?: number;
@@ -318,7 +377,9 @@ export async function action({
     occurrences,
     prerequisites,
     equipments,
-    isWorkshopContinuation,
+    isMultiDayWorkshop,
+    hasPriceVariations: hasPriceVariations,
+    priceVariations: priceVariations,
   });
 
   if (!parsed.success) {
@@ -335,7 +396,7 @@ export async function action({
     // Get the current workshop data to compare with changes
     const currentWorkshop = await getWorkshopById(Number(params.workshopId));
     const currentOccurrences = currentWorkshop.occurrences || [];
-    
+
     // Get the current user ID
     const user = await getUser(request);
     const userId = user?.id || 1;
@@ -346,7 +407,7 @@ export async function action({
       for (const occurrence of currentOccurrences) {
         if (occurrence.id) {
           try {
-              // Delete old equipment bookings for this occurrence
+            // Delete old equipment bookings for this occurrence
             await db.equipmentBooking.deleteMany({
               where: {
                 workshopId: Number(params.workshopId),
@@ -375,7 +436,7 @@ export async function action({
         }
       }
 
-      // COPY PASTE: Additional cleanup - remove any orphaned bookings for this workshop
+      // Remove any orphaned bookings for this workshop
       try {
         await db.equipmentBooking.deleteMany({
           where: {
@@ -401,12 +462,14 @@ export async function action({
       occurrences: parsed.data.occurrences,
       prerequisites: parsed.data.prerequisites,
       equipments: parsed.data.equipments,
-      isWorkshopContinuation: parsed.data.isWorkshopContinuation,
+      isMultiDayWorkshop: parsed.data.isMultiDayWorkshop,
       selectedSlots, // Pass the selected slots
       userId, // Pass the user ID
+      hasPriceVariations,
+      priceVariations,
     });
 
-    // COPY PASTE: Process equipment bookings for the NEW occurrences
+    // Process equipment bookings for the NEW occurrences
     if (parsed.data.equipments && parsed.data.equipments.length > 0) {
       // Get the updated workshop with new occurrence IDs
       const updatedWorkshop = await getWorkshopById(Number(params.workshopId));
@@ -438,7 +501,11 @@ export async function action({
 
     if (validSelectedSlotIds.length > 0) {
       try {
-        await bulkBookEquipment(Number(params.workshopId), validSelectedSlotIds, userId);
+        await bulkBookEquipment(
+          Number(params.workshopId),
+          validSelectedSlotIds,
+          userId
+        );
       } catch (error: any) {
         logger.error(
           `[User: ${roleUser.userId}] Error updating manually selected equipment bookings: ${error.message}`,
@@ -454,9 +521,12 @@ export async function action({
     return { errors: { database: ["Failed to update workshop"] } };
   }
 
-  logger.info(`[User: ${roleUser.userId}] Successfully updated workshop ${params.workshopId}`, {
-    url: request.url,
-  });
+  logger.info(
+    `[User: ${roleUser.userId}] Successfully updated workshop ${params.workshopId}`,
+    {
+      url: request.url,
+    }
+  );
 
   return redirect("/dashboard/admin");
 }
@@ -488,23 +558,6 @@ function formatLocalDatetime(date: Date): string {
 function isDateInPast(date: Date): boolean {
   const now = new Date();
   return date < now && !isNaN(date.getTime());
-}
-
-/**
- * Check if any occurrence dates are in the past
- */
-function hasOccurrencesInPast(occurrences: Occurrence[]): boolean {
-  // Only check active occurrences with valid dates
-  const activeOccurrences = occurrences.filter(
-    (occ) => occ.status === "active" || !occ.status // Include new occurrences with no status
-  );
-
-  return activeOccurrences.some(
-    (occ) =>
-      (isDateInPast(occ.startDate) || isDateInPast(occ.endDate)) &&
-      !isNaN(occ.startDate.getTime()) &&
-      !isNaN(occ.endDate.getTime())
-  );
 }
 
 const getOfferIdColor = (offerId: number | null | undefined): string => {
@@ -713,60 +766,46 @@ function checkForEquipmentOverlaps(
    4) Other functions
    ---------------------------------------------------------------------------*/
 
-function handleCancelOccurrence(occurrenceId?: number) {
-  if (!occurrenceId) return;
-
-  // Set the hidden input's value.
-  const cancelInput = document.getElementById(
-    "cancelOccurrenceId"
-  ) as HTMLInputElement;
-  if (cancelInput) {
-    cancelInput.value = occurrenceId.toString();
-  }
-
-  // Use the native submit() method to trigger the form submission.
-  const formEl = document.querySelector("form") as HTMLFormElement;
-  formEl?.submit();
-}
-
 /* ──────────────────────────────────────────────────────────────────────────────
    5) The EditWorkshop component
    ---------------------------------------------------------------------------*/
 export default function EditWorkshop() {
   const actionData = useActionData<{ errors?: Record<string, string[]> }>();
-  // const workshop = useLoaderData<typeof loader>();
   const {
     workshop,
     availableWorkshops,
     availableEquipments,
     userCounts,
     roleUser,
+    registrationCounts,
+    cancelledPriceVariations,
   } = useLoaderData<Awaited<ReturnType<typeof loader>>>();
 
   const { equipments: equipmentsWithSlots } = useLoaderData<typeof loader>();
 
-  // Convert DB's existing occurrences (UTC) to local Date objects (NOT DOING THIS ANYMORE)
   const initialOccurrences =
-    workshop.occurrences?.map((occ: any) => {
-      const localStart = new Date(occ.startDate);
-      const localEnd = new Date(occ.endDate);
-      return {
-        id: occ.id,
-        startDate: localStart,
-        endDate: localEnd,
-        status: occ.status,
-        userCount: occ.userWorkshops?.length ?? 0,
-        connectId: occ.connectId,
-        offerId: occ.offerId, // Add this line
-      };
-    })
-    // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
-    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
+    workshop.occurrences
+      ?.map((occ: any) => {
+        const localStart = new Date(occ.startDate);
+        const localEnd = new Date(occ.endDate);
+        return {
+          id: occ.id,
+          startDate: localStart,
+          endDate: localEnd,
+          status: occ.status,
+          userCount: occ.userWorkshops?.length ?? 0,
+          connectId: occ.connectId,
+          offerId: occ.offerId,
+        };
+      })
+      // SORT INITIAL OCCURRENCES: Sort by startDate when first loading
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()) || [];
 
-  const defaultContinuation =
+  const isMultiDay =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
 
   const navigate = useNavigate();
+  const fetcher = useFetcher();
 
   // React Hook Form setup
   const form = useForm<WorkshopFormValues>({
@@ -790,7 +829,7 @@ export default function EditWorkshop() {
         typeof workshop.equipments[0] === "object"
           ? workshop.equipments.map((e: any) => e.equipmentId)
           : workshop.equipments || [],
-      isWorkshopContinuation: defaultContinuation,
+      isMultiDayWorkshop: isMultiDay,
     },
   });
 
@@ -816,12 +855,6 @@ export default function EditWorkshop() {
       : workshop.prerequisites || []
   );
 
-  // const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
-  //   Array.isArray(workshop.equipments) &&
-  //     typeof workshop.equipments[0] === "object"
-  //     ? workshop.equipments.map((e: any) => e.equipmentId)
-  //     : workshop.equipments || []
-  // );
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>(
     Array.isArray(workshop.equipments) &&
       typeof workshop.equipments[0] === "object"
@@ -846,14 +879,50 @@ export default function EditWorkshop() {
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
   const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
 
-  const [isWorkshopContinuation, setIsWorkshopContinuation] =
-    useState<boolean>(defaultContinuation);
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
+    useState<boolean>(isMultiDay);
+
+  const [hasPriceVariations, setHasPriceVariations] = useState(() => {
+    return workshop.priceVariations && workshop.priceVariations.length > 0;
+  });
+
+  const [priceVariations, setPriceVariations] = useState(() => {
+    if (workshop.priceVariations && workshop.priceVariations.length > 0) {
+      // Only include active price variations in the editable state
+      const activeVariations = workshop.priceVariations.filter(
+        (variation: any) => variation.status !== "cancelled"
+      );
+      return activeVariations.map((variation: any) => ({
+        name: variation.name,
+        price: variation.price.toString(),
+        description: variation.description,
+        capacity: variation.capacity?.toString() || "",
+      }));
+    }
+    return [];
+  });
+
+  // Track how many price variations existed initially (from database)
+  const [initialPriceVariationsCount, setInitialPriceVariationsCount] =
+    useState(() => {
+      if (workshop.priceVariations) {
+        // Only count active price variations
+        const activeVariations = workshop.priceVariations.filter(
+          (variation: any) => variation.status !== "cancelled"
+        );
+        return activeVariations.length;
+      }
+      return 0;
+    });
+
+  const [showPriceVariationConfirm, setShowPriceVariationConfirm] =
+    useState(false);
 
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // Let's track the date selection approach (custom, weekly, monthly).
-  // Default to "custom" if we already have occurrences, but you can tweak if desired.
+  // Track the date selection approach (custom, weekly, monthly).
+  // Default to "custom" if we already have occurrences
   const [dateSelectionType, setDateSelectionType] = useState<
     "custom" | "weekly" | "monthly"
   >(occurrences.length ? "custom" : "custom");
@@ -871,13 +940,12 @@ export default function EditWorkshop() {
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
   // For custom approach, add an empty row
-  // For custom approach, add an empty row
   const addOccurrence = () => {
     // Check if any users are registered
     let hasUsers = false;
 
-    if (isWorkshopContinuation) {
-      // For workshop continuation, check total users across all occurrences
+    if (isMultiDayWorkshop) {
+      // For multi-day workshop, check total users across all occurrences
       hasUsers = userCounts.totalUsers > 0;
     } else {
       // For regular workshops, check each occurrence
@@ -950,7 +1018,7 @@ export default function EditWorkshop() {
 
     // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
     if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + (2 * 60 * 60 * 1000)); // Add 2 hours
+      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
       updatedOccurrences[index].endDate = endDate;
     }
 
@@ -1009,9 +1077,8 @@ export default function EditWorkshop() {
   }
 
   // Remove a row
-  // Remove a row
   const removeOccurrence = (index: number) => {
-    // COPY PASTE: Clean up equipment slots for the removed occurrence
+    // Clean up equipment slots for the removed occurrence
     const occurrenceToRemove = occurrences[index];
     if (
       selectedEquipments.length > 0 &&
@@ -1060,30 +1127,119 @@ export default function EditWorkshop() {
     });
   };
 
+  function handleCancelOccurrence(occurrenceId?: number) {
+    if (!occurrenceId) return;
+
+    // Create form data for the cancellation
+    const formData = new FormData();
+    formData.append("cancelOccurrenceId", occurrenceId.toString());
+    formData.append(
+      "isMultiDayWorkshop",
+      isMultiDayWorkshop ? "true" : "false"
+    );
+
+    // Add all the other required form fields
+    formData.append("name", form.getValues("name"));
+    formData.append("description", form.getValues("description"));
+    formData.append("price", form.getValues("price").toString());
+    formData.append("location", form.getValues("location"));
+    formData.append("capacity", form.getValues("capacity").toString());
+    formData.append("type", workshop.type);
+    formData.append(
+      "occurrences",
+      JSON.stringify(
+        occurrences.map((occ) => ({
+          id: occ.id,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status: occ.status,
+          userCount: occ.userCount,
+          offerId: occ.offerId,
+        }))
+      )
+    );
+    formData.append(
+      "prerequisites",
+      JSON.stringify([...selectedPrerequisites].sort((a, b) => a - b))
+    );
+    formData.append("equipments", JSON.stringify(selectedEquipments || []));
+    formData.append("selectedSlots", JSON.stringify(selectedSlotsMap));
+    formData.append(
+      "hasPriceVariations",
+      hasPriceVariations ? "true" : "false"
+    );
+    if (hasPriceVariations && priceVariations.length > 0) {
+      formData.append("priceVariations", JSON.stringify(priceVariations));
+    }
+
+    // Use fetcher to submit the form
+    fetcher.submit(formData, {
+      method: "post",
+      action: `/dashboard/editworkshop/${workshop.id}`,
+    });
+  }
+
+  function handleCancelPriceVariation(variationId: number) {
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this price variation? All users registered for this variation will be notified that their registration has been cancelled."
+    );
+
+    if (!confirmed) return;
+
+    // Create form data for the cancellation
+    const formData = new FormData();
+    formData.append("cancelPriceVariationId", variationId.toString());
+
+    // Add all the other required form fields
+    formData.append("name", form.getValues("name"));
+    formData.append("description", form.getValues("description"));
+    formData.append("price", form.getValues("price").toString());
+    formData.append("location", form.getValues("location"));
+    formData.append("capacity", form.getValues("capacity").toString());
+    formData.append("type", workshop.type);
+    formData.append(
+      "occurrences",
+      JSON.stringify(
+        occurrences.map((occ) => ({
+          id: occ.id,
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+          startDatePST: occ.startDatePST,
+          endDatePST: occ.endDatePST,
+          status: occ.status,
+          userCount: occ.userCount,
+          offerId: occ.offerId,
+        }))
+      )
+    );
+    formData.append(
+      "prerequisites",
+      JSON.stringify([...selectedPrerequisites].sort((a, b) => a - b))
+    );
+    formData.append("equipments", JSON.stringify(selectedEquipments || []));
+    formData.append("selectedSlots", JSON.stringify(selectedSlotsMap));
+    formData.append(
+      "hasPriceVariations",
+      hasPriceVariations ? "true" : "false"
+    );
+    if (hasPriceVariations && priceVariations.length > 0) {
+      formData.append("priceVariations", JSON.stringify(priceVariations));
+    }
+
+    // Use fetcher to submit the form
+    fetcher.submit(formData, {
+      method: "post",
+      action: `/dashboard/editworkshop/${workshop.id}`,
+    });
+  }
+
   // Function to check for duplicate dates to avoid adding the same date twice
   const isDuplicateDate = (newDate: Date, existingDates: Date[]): boolean => {
     return existingDates.some(
       (existingDate) => existingDate.getTime() === newDate.getTime()
     );
-  };
-
-  // Helper functions for prerequisites.
-  const handlePrerequisiteSelect = (workshopId: number) => {
-    let updated: number[];
-    if (selectedPrerequisites.includes(workshopId)) {
-      updated = selectedPrerequisites.filter((id) => id !== workshopId);
-    } else {
-      updated = [...selectedPrerequisites, workshopId];
-    }
-    updated.sort((a, b) => a - b);
-    setSelectedPrerequisites(updated);
-    form.setValue("prerequisites", updated);
-  };
-
-  const removePrerequisite = (workshopId: number) => {
-    const updated = selectedPrerequisites.filter((id) => id !== workshopId);
-    setSelectedPrerequisites(updated);
-    form.setValue("prerequisites", updated);
   };
 
   const handleEquipmentSelect = (id: number) => {
@@ -1104,18 +1260,10 @@ export default function EditWorkshop() {
     setSelectedEquipments(updated);
     form.setValue("equipments", updated);
 
-    // COPY PASTE: Also remove this equipment from selectedSlotsMap
+    // Remove this equipment from selectedSlotsMap
     const newSlotsMap = { ...selectedSlotsMap };
     delete newSlotsMap[id];
     setSelectedSlotsMap(newSlotsMap);
-  };
-
-  const getTotalUsersForContinuation = () => {
-    return userCounts.totalUsers;
-  };
-
-  const getUniqueUsersCount = () => {
-    return userCounts.uniqueUsers;
   };
 
   function getSlotStringsForOccurrences(
@@ -1157,7 +1305,7 @@ export default function EditWorkshop() {
       const overlaps = checkForEquipmentOverlaps(
         occurrences,
         selectedEquipments,
-        equipmentsWithSlots, // FIXED: Use the equipmentsWithSlots variable
+        equipmentsWithSlots,
         workshop.name
       );
 
@@ -1186,15 +1334,12 @@ export default function EditWorkshop() {
         // We found active occurrences with past dates, show confirmation dialog
         console.log("Found past dates, showing confirmation dialog");
         setIsConfirmDialogOpen(true);
-        return; // Important: prevent form submission until user confirms
+        return; // Prevent form submission until user confirms
       }
 
       // No issues, proceed with submission
       console.log("Proceeding with form submission");
       setFormSubmitting(true);
-
-      // Use DOM to submit the form
-      // document.forms[0].submit();
 
       const formElement = e.currentTarget as HTMLFormElement;
       formElement.submit();
@@ -1213,7 +1358,7 @@ export default function EditWorkshop() {
     );
 
     if (validOccurrences.length > 0 && selectedEquipments.length > 0) {
-      // COPY PASTE: Completely regenerate the slots map to ensure accuracy
+      // Completely regenerate the slots map to ensure accuracy
       const newSlotsMap: Record<number, number[]> = {};
 
       // For each equipment, add the slots from the occurrences
@@ -1243,7 +1388,7 @@ export default function EditWorkshop() {
       // Update the selected slots map
       setSelectedSlotsMap(newSlotsMap);
     } else if (selectedEquipments.length === 0) {
-      // COPY PASTE: Clear all slots if no equipment is selected
+      // Clear all slots if no equipment is selected
       setSelectedSlotsMap({});
     }
   }, [occurrences, selectedEquipments]); // Remove selectedSlotsMap from dependencies to prevent infinite loop
@@ -1276,6 +1421,51 @@ export default function EditWorkshop() {
                 <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
                   There are some errors in your form. Please review the
                   highlighted fields below.
+                  {actionData.errors.priceVariations && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variations Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Array.isArray(actionData.errors.priceVariations) ? (
+                          actionData.errors.priceVariations.map(
+                            (error: string, index: number) => (
+                              <li key={index}>{error}</li>
+                            )
+                          )
+                        ) : (
+                          <li>{actionData.errors.priceVariations}</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                  {/* CHECK FOR INDIVIDUAL VARIATION FIELD ERRORS */}
+                  {Object.keys(actionData.errors).some((key) =>
+                    key.startsWith("priceVariations.")
+                  ) && (
+                    <div className="mt-2 pt-2 border-t border-red-300">
+                      <strong>Price Variation Field Errors:</strong>
+                      <ul className="list-disc list-inside mt-1">
+                        {Object.entries(actionData.errors)
+                          .filter(([key]) => key.startsWith("priceVariations."))
+                          .map(([key, error]) => {
+                            const match = key.match(
+                              /priceVariations\.(\d+)\.(.+)/
+                            );
+                            const variationIndex = match
+                              ? parseInt(match[1]) + 1
+                              : 0;
+                            const fieldName = match ? match[2] : "field";
+                            return (
+                              <li key={key}>
+                                Variation {variationIndex} - {fieldName}:{" "}
+                                {Array.isArray(error)
+                                  ? error.join(", ")
+                                  : error}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1292,22 +1482,10 @@ export default function EditWorkshop() {
                     error={actionData?.errors?.name}
                   />
 
-                  {/* <GenericFormField
-            control={form.control}
-            name="description"
-            label="Description"
-            placeholder="Workshop Description"
-            required
-            error={actionData?.errors?.description}
-            component={Textarea}
-            className="w-full" // override if needed
-            rows={5}
-          /> */}
-
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label="Price"
+                    label={hasPriceVariations ? "Price (Base)" : "Price"}
                     placeholder="Price"
                     required
                     type="number"
@@ -1348,15 +1526,15 @@ export default function EditWorkshop() {
                   />
                 </div>
 
-                {/* "Is Workshop Continuation" Checkbox */}
+                {/* "Multi-day Workshop" Checkbox */}
                 <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                   <label className="flex items-center space-x-3 cursor-pointer">
                     <div className="relative">
                       <input
                         type="checkbox"
-                        checked={isWorkshopContinuation}
+                        checked={isMultiDayWorkshop}
                         onChange={(e) =>
-                          setIsWorkshopContinuation(e.target.checked)
+                          setIsMultiDayWorkshop(e.target.checked)
                         }
                         className="sr-only peer"
                         disabled={true}
@@ -1370,6 +1548,514 @@ export default function EditWorkshop() {
                     If checked, it is a multi-day workshop
                   </p>
                 </div>
+
+                {/* "Add Workshop Price Variations" Checkbox */}
+                <div className="mt-6 mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
+                  <label className="flex items-center space-x-3 cursor-pointer">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={hasPriceVariations}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+
+                          if (!isChecked && priceVariations.length > 0) {
+                            // Show confirmation dialog if unchecking and there are existing variations
+                            setShowPriceVariationConfirm(true);
+                          } else {
+                            // If checking or no variations exist, proceed normally
+                            setHasPriceVariations(isChecked);
+                            if (!isChecked) {
+                              setPriceVariations([]);
+                            }
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
+                    </div>
+                    <span className="font-small">
+                      Add Workshop Price Variations
+                    </span>
+                  </label>
+                  <p className="mt-2 pl-9 text-sm text-gray-500">
+                    Check this to add different pricing options for this
+                    workshop
+                  </p>
+                </div>
+
+                {/* Price Variations Management */}
+                {hasPriceVariations && (
+                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium">Price Variations</h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setPriceVariations([
+                            ...priceVariations,
+                            {
+                              name: "",
+                              price: "",
+                              description: "",
+                              capacity: "",
+                            },
+                          ])
+                        }
+                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                      >
+                        Add Variation
+                      </Button>
+                    </div>
+
+                    {/* Base Price Display */}
+                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-semibold text-blue-800">
+                            Base Price (Standard Option)
+                          </h4>
+                          <p className="text-xs text-blue-600 mt-1">
+                            This is your workshop's standard pricing that users
+                            can select (editable from the price input box above)
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-bold text-blue-700">
+                            ${form.watch("price") || "0"}
+                          </span>
+                          <p className="text-xs text-blue-600">Base Price</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Pricing Options Header */}
+                    <div className="mb-3">
+                      <h4 className="text-sm font-medium text-gray-700">
+                        Additional Pricing Options
+                      </h4>
+                      <p className="text-xs text-gray-500">
+                        Create alternative pricing tiers
+                      </p>
+                    </div>
+
+                    {/* ERROR DISPLAY: */}
+                    {actionData?.errors?.priceVariations && (
+                      <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
+                        {Array.isArray(actionData.errors.priceVariations)
+                          ? actionData.errors.priceVariations.join(", ")
+                          : actionData.errors.priceVariations}
+                      </div>
+                    )}
+
+                    {priceVariations.map((variation, index) => (
+                      <div
+                        key={index}
+                        className="mb-3 p-3 bg-white rounded-lg border"
+                      >
+                        <div className="grid grid-cols-12 gap-3 items-start">
+                          {/* Variation Name */}
+                          <div className="col-span-12 sm:col-span-3">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Name <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Variation name"
+                              value={variation.name}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].name = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.name`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.name`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Price */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Price <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0"
+                              value={variation.price}
+                              disabled={index < initialPriceVariationsCount}
+                              onChange={
+                                index < initialPriceVariationsCount
+                                  ? undefined
+                                  : (e) => {
+                                      const newVariations = [
+                                        ...priceVariations,
+                                      ];
+                                      newVariations[index].price =
+                                        e.target.value;
+                                      setPriceVariations(newVariations);
+                                    }
+                              }
+                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                                index < initialPriceVariationsCount
+                                  ? "bg-gray-100 text-gray-600 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            />
+                            {index < initialPriceVariationsCount && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                Existing price cannot be modified
+                              </div>
+                            )}
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.price`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.price`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Capacity */}
+                          <div className="col-span-6 sm:col-span-2">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Capacity <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              min={(() => {
+                                // Get current registrations for this variation
+                                const { registrationCounts } =
+                                  useLoaderData<typeof loader>();
+                                if (
+                                  registrationCounts?.variations &&
+                                  index < initialPriceVariationsCount
+                                ) {
+                                  const currentVariation =
+                                    workshop.priceVariations?.[index];
+                                  if (currentVariation) {
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) =>
+                                          v.variationId === currentVariation.id
+                                      )?.registrations || 0;
+                                    return registrationCount;
+                                  }
+                                }
+                                return 1;
+                              })()}
+                              max={form.watch("capacity") || undefined}
+                              placeholder=""
+                              value={variation.capacity}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].capacity = e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 
+                                ${
+                                  actionData?.errors?.[
+                                    `priceVariations.${index}.capacity`
+                                  ]
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }
+                              `}
+                            />
+                            {(() => {
+                              const { registrationCounts } =
+                                useLoaderData<typeof loader>();
+                              if (
+                                registrationCounts?.variations &&
+                                index < initialPriceVariationsCount
+                              ) {
+                                const currentVariation =
+                                  workshop.priceVariations?.[index];
+                                if (currentVariation) {
+                                  const registrationCount =
+                                    registrationCounts.variations.find(
+                                      (v) =>
+                                        v.variationId === currentVariation.id
+                                    )?.registrations || 0;
+                                  if (registrationCount > 0) {
+                                    return (
+                                      <div className="text-xs text-blue-600 mt-1">
+                                        {registrationCount} user
+                                        {registrationCount !== 1
+                                          ? "s"
+                                          : ""}{" "}
+                                        already registered
+                                      </div>
+                                    );
+                                  }
+                                }
+                              }
+                              return null;
+                            })()}
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.capacity`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.capacity`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Description */}
+                          <div className="col-span-10 sm:col-span-4">
+                            <label className="block text-xs font-medium mb-1 text-gray-700">
+                              Description{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Description"
+                              value={variation.description}
+                              onChange={(e) => {
+                                const newVariations = [...priceVariations];
+                                newVariations[index].description =
+                                  e.target.value;
+                                setPriceVariations(newVariations);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                            />
+                            {actionData?.errors?.[
+                              `priceVariations.${index}.description`
+                            ] && (
+                              <p className="text-red-500 text-xs mt-1">
+                                {
+                                  actionData.errors[
+                                    `priceVariations.${index}.description`
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Remove/Cancel Button */}
+                          <div className="col-span-2 sm:col-span-1">
+                            <label className="block text-xs font-medium mb-1 text-transparent">
+                              {(() => {
+                                const { registrationCounts } =
+                                  useLoaderData<typeof loader>();
+                                if (
+                                  registrationCounts?.variations &&
+                                  index < initialPriceVariationsCount
+                                ) {
+                                  const currentVariation =
+                                    workshop.priceVariations?.[index];
+                                  if (currentVariation) {
+                                    const registrationCount =
+                                      registrationCounts.variations.find(
+                                        (v) =>
+                                          v.variationId === currentVariation.id
+                                      )?.registrations || 0;
+                                    return registrationCount > 0
+                                      ? "Cancel"
+                                      : "Remove";
+                                  }
+                                }
+                                return "Remove";
+                              })()}
+                            </label>
+                            {(() => {
+                              const { registrationCounts } =
+                                useLoaderData<typeof loader>();
+                              if (
+                                registrationCounts?.variations &&
+                                index < initialPriceVariationsCount
+                              ) {
+                                const currentVariation =
+                                  workshop.priceVariations?.[index];
+                                if (currentVariation) {
+                                  const registrationCount =
+                                    registrationCounts.variations.find(
+                                      (v) =>
+                                        v.variationId === currentVariation.id
+                                    )?.registrations || 0;
+
+                                  if (registrationCount > 0) {
+                                    // Show Cancel button for variations with registrations
+                                    return (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          handleCancelPriceVariation(
+                                            currentVariation.id
+                                          )
+                                        }
+                                        className="w-full text-blue-600 border-blue-300 hover:bg-blue-50 text-xs py-1.5 h-auto"
+                                      >
+                                        Cancel
+                                      </Button>
+                                    );
+                                  }
+                                }
+                              }
+
+                              // Show Remove button for new variations or those without registrations
+                              return (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newVariations =
+                                      priceVariations.filter(
+                                        (_, i) => i !== index
+                                      );
+                                    setPriceVariations(newVariations);
+                                  }}
+                                  className="w-full text-red-600 border-red-300 hover:bg-red-50 text-xs py-1.5 h-auto"
+                                >
+                                  ✕
+                                </Button>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {priceVariations.length === 0 && (
+                      <p className="text-gray-500 text-center py-4">
+                        No price variations added yet. Click "Add Variation" to
+                        get started.
+                      </p>
+                    )}
+
+                    {/* Cancelled Price Variations Section - Inside the same container */}
+                    {cancelledPriceVariations &&
+                      cancelledPriceVariations.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-red-200">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium text-red-800">
+                              Cancelled Price Variations
+                            </h4>
+                            <span className="text-xs text-red-600 bg-red-100 px-2 py-1 rounded">
+                              {cancelledPriceVariations.length} cancelled
+                            </span>
+                          </div>
+
+                          <div className="mb-3">
+                            <p className="text-xs text-red-700">
+                              These price variations have been cancelled and are
+                              no longer available for registration. All users
+                              registered for these variations have been
+                              notified.
+                            </p>
+                          </div>
+
+                          {cancelledPriceVariations.map(
+                            (variation: any, index: number) => (
+                              <div
+                                key={`cancelled-${variation.id}`}
+                                className="mb-3 p-3 bg-red-100 rounded-lg border border-red-200 opacity-75"
+                              >
+                                <div className="grid grid-cols-12 gap-3 items-start">
+                                  {/* Variation Name */}
+                                  <div className="col-span-12 sm:col-span-3">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Name
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.name}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
+
+                                  {/* Price */}
+                                  <div className="col-span-6 sm:col-span-2">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Price
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={`$${variation.price}`}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
+
+                                  {/* Capacity */}
+                                  <div className="col-span-6 sm:col-span-2">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Capacity
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.capacity || "N/A"}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                    {(() => {
+                                      if (registrationCounts?.variations) {
+                                        const registrationCount =
+                                          registrationCounts.variations.find(
+                                            (v) =>
+                                              v.variationId === variation.id
+                                          )?.registrations || 0;
+                                        if (registrationCount > 0) {
+                                          return (
+                                            <div className="text-xs text-red-600 mt-1 font-medium">
+                                              {registrationCount} user
+                                              {registrationCount !== 1
+                                                ? "s"
+                                                : ""}{" "}
+                                              was registered
+                                            </div>
+                                          );
+                                        }
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
+
+                                  {/* Description */}
+                                  <div className="col-span-10 sm:col-span-4">
+                                    <label className="block text-xs font-medium mb-1 text-red-700">
+                                      Description
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={variation.description}
+                                      disabled
+                                      className="w-full px-2 py-1.5 text-sm border border-red-300 rounded bg-red-50 text-red-800 cursor-not-allowed"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
@@ -1396,7 +2082,7 @@ export default function EditWorkshop() {
                       </div>
                       <FormControl>
                         <div className="flex flex-col items-start space-y-6 w-full">
-                          {/* Radio Buttons for selecting date input type - enhanced version */}
+                          {/* Radio Buttons for selecting date input type */}
                           <div className="w-full p-4 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                             <DateTypeRadioGroup
                               options={[
@@ -1428,7 +2114,7 @@ export default function EditWorkshop() {
                             />
                           </div>
 
-                          {/* Custom Dates Input - keep the implementation but wrapped in a better card */}
+                          {/* Custom Dates Input */}
                           {dateSelectionType === "custom" && (
                             <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
                               {occurrences.length === 0 ? (
@@ -1447,9 +2133,7 @@ export default function EditWorkshop() {
                                     occ.endDate
                                   );
                                   const hasWarning =
-                                    (isStartDatePast || isEndDatePast) &&
-                                    occ.status !== "past" &&
-                                    occ.status !== "cancelled";
+                                    isStartDatePast || isEndDatePast;
 
                                   return (
                                     <div key={index} style={{ width: "100%" }}>
@@ -1491,8 +2175,8 @@ export default function EditWorkshop() {
                                                 isEndDatePast
                                                   ? "Both start and end dates are in the past"
                                                   : isStartDatePast
-                                                  ? "Start date is in the past"
-                                                  : "End date is in the past"}
+                                                    ? "Start date is in the past"
+                                                    : "End date is in the past"}
                                               </p>
                                             </TooltipContent>
                                           )}
@@ -1618,14 +2302,14 @@ export default function EditWorkshop() {
                                                 occ.userCount &&
                                                 occ.userCount > 0;
 
-                                              // For workshop continuations, we'll display user count and cancel button only on the first occurrence
+                                              // For multi-day workshops, we'll display user count and cancel button only on the first occurrence
                                               const isFirstActiveOccurrence =
                                                 index === 0;
                                               const shouldShowUserCount =
-                                                !isWorkshopContinuation ||
+                                                !isMultiDayWorkshop ||
                                                 isFirstActiveOccurrence;
                                               const shouldShowCancelButton =
-                                                !isWorkshopContinuation ||
+                                                !isMultiDayWorkshop ||
                                                 isFirstActiveOccurrence;
 
                                               return (
@@ -1675,7 +2359,7 @@ export default function EditWorkshop() {
                                                               d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
                                                             />
                                                           </svg>
-                                                          {isWorkshopContinuation
+                                                          {isMultiDayWorkshop
                                                             ? `${
                                                                 userCounts.totalUsers
                                                               } ${
@@ -1700,25 +2384,25 @@ export default function EditWorkshop() {
                                                     )}
                                                     {shouldShowCancelButton ? (
                                                       hasUsers ||
-                                                      (isWorkshopContinuation &&
+                                                      (isMultiDayWorkshop &&
                                                         userCounts.totalUsers >
                                                           0) ? (
                                                         <ConfirmButton
                                                           confirmTitle={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Cancel All Occurrences"
                                                               : "Cancel Occurrence"
                                                           }
                                                           confirmDescription={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
                                                               : "Are you sure you want to cancel this occurrence? This action cannot be undone."
                                                           }
                                                           onConfirm={() => {
                                                             if (
-                                                              isWorkshopContinuation
+                                                              isMultiDayWorkshop
                                                             ) {
-                                                              // Cancel all active occurrences for workshop continuations
+                                                              // Cancel all active occurrences for multi-day workshops
                                                               activeOccurrences.forEach(
                                                                 (
                                                                   occurrence
@@ -1740,7 +2424,7 @@ export default function EditWorkshop() {
                                                             }
                                                           }}
                                                           buttonLabel={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Cancel All"
                                                               : "Cancel"
                                                           }
@@ -1749,18 +2433,18 @@ export default function EditWorkshop() {
                                                       ) : (
                                                         <ConfirmButton
                                                           confirmTitle={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Delete All Occurrences"
                                                               : "Delete Occurrence"
                                                           }
                                                           confirmDescription={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
                                                               : "Are you sure you want to delete this occurrence?"
                                                           }
                                                           onConfirm={() => {
                                                             if (
-                                                              isWorkshopContinuation
+                                                              isMultiDayWorkshop
                                                             ) {
                                                               // Create a new array without any of the active occurrences
                                                               const remainingOccurrences =
@@ -1785,9 +2469,9 @@ export default function EditWorkshop() {
                                                             }
                                                           }}
                                                           buttonLabel={
-                                                            isWorkshopContinuation
+                                                            isMultiDayWorkshop
                                                               ? "Delete All"
-                                                              : "X"
+                                                              : "Delete"
                                                           }
                                                           buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
                                                         />
@@ -2051,21 +2735,46 @@ export default function EditWorkshop() {
 
                 {/* Prerequisites */}
                 {workshop.type !== "orientation" ? (
-                  <MultiSelectField
+                  <FormField
                     control={form.control}
                     name="prerequisites"
-                    label="Prerequisites"
-                    options={availableWorkshops}
-                    selectedItems={selectedPrerequisites}
-                    onSelect={handlePrerequisiteSelect}
-                    onRemove={removePrerequisite}
-                    error={actionData?.errors?.prerequisites}
-                    placeholder="Select prerequisites..."
-                    helperText="Select workshops of type Orientation that must be completed before enrolling."
-                    filterFn={(item) =>
-                      item.type.toLowerCase() === "orientation" &&
-                      item.id !== workshop.id
-                    }
+                    render={() => (
+                      <FormItem>
+                        <FormLabel>Prerequisites</FormLabel>
+                        <FormControl>
+                          <div>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {selectedPrerequisites.map((prereqId) => {
+                                const workshopPrereq = availableWorkshops.find(
+                                  (w) => w.id === prereqId
+                                );
+                                return workshopPrereq ? (
+                                  <Badge
+                                    key={prereqId}
+                                    variant="secondary"
+                                    className="py-1 px-2"
+                                  >
+                                    {workshopPrereq.name}
+                                  </Badge>
+                                ) : null;
+                              })}
+                              {selectedPrerequisites.length === 0 && (
+                                <span className="text-gray-500 text-sm">
+                                  No prerequisites set
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </FormControl>
+                        <FormMessage>
+                          {actionData?.errors?.prerequisites}
+                        </FormMessage>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Prerequisites are read-only and cannot be modified
+                          when editing.
+                        </div>
+                      </FormItem>
+                    )}
                   />
                 ) : (
                   <div className="mt-4 mb-4 text-gray-500 text-center text-sm">
@@ -2196,13 +2905,23 @@ export default function EditWorkshop() {
                     }))
                   )}
                 />
+
                 <input type="hidden" name="type" value={workshop.type} />
+
                 <input
                   type="hidden"
                   id="cancelOccurrenceId"
                   name="cancelOccurrenceId"
                   value=""
                 />
+
+                <input
+                  type="hidden"
+                  id="cancelPriceVariationId"
+                  name="cancelPriceVariationId"
+                  value=""
+                />
+
                 <input
                   type="hidden"
                   name="prerequisites"
@@ -2210,15 +2929,28 @@ export default function EditWorkshop() {
                     [...selectedPrerequisites].sort((a, b) => a - b)
                   )}
                 />
+
                 <input
                   type="hidden"
                   name="equipments"
                   value={JSON.stringify(selectedEquipments || [])}
                 />
+
                 <input
                   type="hidden"
-                  name="isWorkshopContinuation"
-                  value={isWorkshopContinuation ? "true" : "false"}
+                  name="isMultiDayWorkshop"
+                  value={isMultiDayWorkshop ? "true" : "false"}
+                />
+
+                <input
+                  type="hidden"
+                  name="hasPriceVariations"
+                  value={hasPriceVariations ? "true" : "false"}
+                />
+                <input
+                  type="hidden"
+                  name="priceVariations"
+                  value={JSON.stringify(priceVariations)}
                 />
 
                 <input
@@ -2248,7 +2980,6 @@ export default function EditWorkshop() {
                               className="border-l-4 border-red-500 pl-3 py-2 bg-red-50"
                             >
                               <p className="font-medium">{overlap.name}</p>
-                              {/* COPY PASTE: Replace the existing list with this enhanced version */}
                               <div className="text-sm mt-1 space-y-1">
                                 {overlap.overlappingTimes
                                   .slice(0, 3)
@@ -2261,8 +2992,8 @@ export default function EditWorkshop() {
                                         {conflict.conflictType === "user"
                                           ? `Conflicted by user: ${conflict.conflictName}`
                                           : conflict.conflictType === "workshop"
-                                          ? `Conflicted by workshop: ${conflict.conflictName}`
-                                          : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
+                                            ? `Conflicted by workshop: ${conflict.conflictName}`
+                                            : `Conflicted by ${conflict.conflictType}: ${conflict.conflictName}`}
                                       </span>
                                     </div>
                                   ))}
@@ -2323,7 +3054,7 @@ export default function EditWorkshop() {
                           );
                           setFormSubmitting(true);
                           setIsConfirmDialogOpen(false);
-                          // FIXED: Use setTimeout to ensure dialog closes and then submit
+                          // Use setTimeout to ensure dialog closes and then submit
                           setTimeout(() => {
                             const formElement = document.querySelector(
                               "form"
@@ -2331,7 +3062,10 @@ export default function EditWorkshop() {
                             if (formElement) {
                               console.log("Submitting form after confirmation");
                               // Create and dispatch a submit event to trigger the action
-                              const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                              const submitEvent = new Event("submit", {
+                                bubbles: true,
+                                cancelable: true,
+                              });
                               formElement.dispatchEvent(submitEvent);
                             }
                           }, 100);
@@ -2343,24 +3077,49 @@ export default function EditWorkshop() {
                   </AlertDialogContent>
                 </AlertDialog>
 
-                {/* <Button
-            type="submit"
-            className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
-            disabled={formSubmitting}
-            onClick={() => {
-              console.log("Submit button clicked");
-              console.log(
-                "Occurrences with past dates:",
-                occurrences.filter(
-                  (occ) =>
-                    occ.status === "active" &&
-                    (isDateInPast(occ.startDate) || isDateInPast(occ.endDate))
-                )
-              );
-            }}
-          >
-            Update Workshop
-          </Button> */}
+                {/* Price Variation Removal Confirmation Dialog */}
+                <AlertDialog
+                  open={showPriceVariationConfirm}
+                  onOpenChange={setShowPriceVariationConfirm}
+                >
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-amber-600">
+                        Remove Price Variations?
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="space-y-2">
+                        <p>
+                          You currently have {priceVariations.length} price
+                          variation{priceVariations.length !== 1 ? "s" : ""}{" "}
+                          configured for this workshop.
+                        </p>
+                        <p className="font-medium">
+                          If you uncheck this option, all existing price
+                          variations will be permanently removed.
+                        </p>
+                        <p>
+                          Are you sure you want to remove all price variations?
+                        </p>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>
+                        Keep Price Variations
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={() => {
+                          // User confirmed removal
+                          setHasPriceVariations(false);
+                          setPriceVariations([]);
+                          setShowPriceVariationConfirm(false);
+                        }}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Remove All Variations
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
 
                 <div className="flex justify-center mt-6">
                   <Button

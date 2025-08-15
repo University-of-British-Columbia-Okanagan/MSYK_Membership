@@ -1,48 +1,9 @@
 import { db } from "../utils/db.server";
-import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
-
-export async function getAllUsers() {
-  return db.user.findMany();
-}
-
-export async function updateUserRole(userId: number, newRoleId: string) {
-  return db.user.update({
-    where: { id: userId },
-    data: { roleLevel: Number(newRoleId) },
-  });
-}
-
-/**
- * Updates the user's allowLevel4 flag and adjusts their roleLevel accordingly.
- * - If newAllow is true, set roleLevel to 4.
- * - If newAllow is false, then:
- *    * Check if the user has any passed orientations.
- *    * If yes, set roleLevel to 2.
- *    * Otherwise, set roleLevel to 1.
- */
-export async function updateUserAllowLevel(userId: number, allow: boolean) {
-  return db.user.update({
-    where: { id: userId },
-    data: { allowLevel4: allow },
-  });
-}
-
-/**
- * Retrieves a user by their ID.
- *
- * @param userId - The ID of the user.
- * @returns The user record or null if not found.
- */
-export async function getUserById(userId: number) {
-  return db.user.findUnique({
-    where: { id: userId },
-  });
-}
 
 export type PaymentMethodData = {
   cardholderName: string;
@@ -60,7 +21,62 @@ export type PaymentMethodData = {
 };
 
 /**
- * Save payment method to the database and create Stripe customer/payment method
+ * Retrieves all users from the database
+ * @returns Promise<User[]> - Array of all user records
+ */
+export async function getAllUsers() {
+  return db.user.findMany();
+}
+
+/**
+ * Updates a user's role level in the database
+ * @param userId - The ID of the user whose role should be updated
+ * @param newRoleId - The new role ID to assign to the user (as string)
+ * @returns Promise<User> - The updated user record
+ */
+export async function updateUserRole(userId: number, newRoleId: string) {
+  return db.user.update({
+    where: { id: userId },
+    data: { roleLevel: Number(newRoleId) },
+  });
+}
+
+/**
+ * Updates the user's allowLevel4 flag and adjusts their roleLevel accordingly
+ * - If newAllow is true, set roleLevel to 4.
+ * - If newAllow is false, then:
+ *    * Check if the user has any passed orientations.
+ *    * If yes, set roleLevel to 2.
+ *    * Otherwise, set roleLevel to 1.
+ * @param userId - The ID of the user whose level 4 access should be updated
+ * @param allow - Boolean indicating whether to allow level 4 access
+ * @returns Promise<User> - The updated user record
+ * @description If allow is true, set roleLevel to 4. If allow is false, check if the user has any passed orientations - if yes, set roleLevel to 2, otherwise set roleLevel to 1.
+ */
+export async function updateUserAllowLevel(userId: number, allow: boolean) {
+  return db.user.update({
+    where: { id: userId },
+    data: { allowLevel4: allow },
+  });
+}
+
+/**
+ * Retrieves a user by their ID.
+ * @param userId - The ID of the user.
+ * @returns The user record or null if not found.
+ */
+export async function getUserById(userId: number) {
+  return db.user.findUnique({
+    where: { id: userId },
+  });
+}
+
+/**
+ * Saves payment method to the database and creates Stripe customer/payment method
+ * @param userId - The ID of the user to save the payment method for
+ * @param paymentData - Payment method data including card details and billing information
+ * @returns Promise<UserPaymentInformation> - The saved payment information record
+ * @throws Error if user not found or payment processing fails
  */
 export async function savePaymentMethod(
   userId: number,
@@ -122,9 +138,9 @@ export async function savePaymentMethod(
     const token = await stripe.tokens.create({
       card: {
         number: paymentData.cardNumber.replace(/\s+/g, ""),
-        exp_month: expMonthStr,  // ← string
-        exp_year: expYearStr,    // ← string
-        cvc: paymentData.cvc,    // ← string
+        exp_month: expMonthStr, // ← string
+        exp_year: expYearStr, // ← string
+        cvc: paymentData.cvc, // ← string
       },
     });
 
@@ -200,7 +216,10 @@ export async function savePaymentMethod(
 }
 
 /**
- * Get saved payment method for a user
+ * Retrieves saved payment method for a user
+ * @param userId - The ID of the user whose payment method to retrieve
+ * @returns Promise<Object|null> - Payment method details or null if not found
+ * @throws Error if database query fails
  */
 export async function getSavedPaymentMethod(userId: number) {
   try {
@@ -233,7 +252,14 @@ export async function getSavedPaymentMethod(userId: number) {
 }
 
 /**
- * Charge a saved payment method
+ * Charges a saved payment method using Stripe
+ * @param params - Object containing payment details
+ * @param params.userId - The ID of the user to charge
+ * @param params.amount - The amount to charge (in dollars)
+ * @param params.description - Description for the payment
+ * @param params.metadata - Additional metadata for the payment (optional)
+ * @returns Promise<Object> - Payment result with success status and payment intent details
+ * @throws Error if no payment method found or payment fails
  */
 export async function chargePaymentMethod({
   userId,
@@ -295,7 +321,10 @@ export async function chargePaymentMethod({
 }
 
 /**
- * Delete a payment method
+ * Deletes a user's saved payment method from both Stripe and the database
+ * @param userId - The ID of the user whose payment method should be deleted
+ * @returns Promise<void> - Resolves when deletion is complete
+ * @throws Error if no payment method found or deletion fails
  */
 export async function deletePaymentMethod(userId: number) {
   const userPaymentInfo = await db.userPaymentInformation.findUnique({
@@ -325,7 +354,10 @@ export async function deletePaymentMethod(userId: number) {
 }
 
 /**
- * Get or create a Stripe customer for a user
+ * Gets or creates a Stripe customer for a user, ensuring the customer exists in both Stripe and the database
+ * @param userId - The ID of the user to get or create a Stripe customer for
+ * @returns Promise<string> - The Stripe customer ID
+ * @throws Error if user not found or Stripe customer creation fails
  */
 export async function getOrCreateStripeCustomer(userId: number) {
   let userPaymentInfo = await db.userPaymentInformation.findUnique({
@@ -385,4 +417,124 @@ export async function getOrCreateStripeCustomer(userId: number) {
   }
 
   return customer.id;
+}
+
+/**
+ * Updates a user's volunteer status by creating or ending volunteer periods
+ * @param userId - The ID of the user whose volunteer status should be updated
+ * @param isVolunteer - Boolean indicating whether the user should be a volunteer
+ * @returns Promise<Volunteer|undefined> - The created or updated volunteer record, or undefined if ending with no active period
+ */
+export async function updateUserVolunteerStatus(
+  userId: number,
+  isVolunteer: boolean
+) {
+  if (isVolunteer) {
+    // Check if user already has an active volunteer period
+    const activeVolunteer = await db.volunteer.findFirst({
+      where: {
+        userId,
+        volunteerEnd: null,
+      },
+    });
+
+    // Only create new volunteer record if not already active
+    if (!activeVolunteer) {
+      return await db.volunteer.create({
+        data: {
+          userId,
+          volunteerStart: new Date(),
+        },
+      });
+    }
+    return activeVolunteer;
+  } else {
+    // End the current volunteer period
+    const activeVolunteer = await db.volunteer.findFirst({
+      where: {
+        userId,
+        volunteerEnd: null,
+      },
+    });
+
+    if (activeVolunteer) {
+      return await db.volunteer.update({
+        where: { id: activeVolunteer.id },
+        data: {
+          volunteerEnd: new Date(),
+        },
+      });
+    }
+  }
+}
+
+/**
+ * Retrieves the complete volunteer history for a user
+ * @param userId - The ID of the user whose volunteer history to retrieve
+ * @returns Promise<Volunteer[]> - Array of volunteer periods ordered by start date (most recent first)
+ */
+export async function getUserVolunteerHistory(userId: number) {
+  return await db.volunteer.findMany({
+    where: { userId },
+    orderBy: { volunteerStart: "desc" },
+  });
+}
+
+/**
+ * Checks if a user is currently an active volunteer
+ * @param userId - The ID of the user to check volunteer status for
+ * @returns Promise<boolean> - True if user has an active volunteer period, false otherwise
+ */
+export async function getUserCurrentVolunteerStatus(userId: number) {
+  const activeVolunteer = await db.volunteer.findFirst({
+    where: {
+      userId,
+      volunteerEnd: null,
+    },
+  });
+  return activeVolunteer !== null;
+}
+
+/**
+ * Retrieves all users with their current volunteer status and history
+ * @returns Promise<Array> - Array of users with computed volunteer status, volunteer start date, and complete volunteer history
+ */
+export async function getAllUsersWithVolunteerStatus() {
+  const users = await db.user.findMany({
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      roleLevel: true,
+      allowLevel4: true,
+      volunteers: {
+        select: {
+          id: true,
+          volunteerStart: true,
+          volunteerEnd: true,
+        },
+        orderBy: {
+          volunteerStart: "desc",
+        },
+      },
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
+
+  // Transform the data to include computed volunteer status
+  return users.map((user) => {
+    const activeVolunteer = user.volunteers.find(
+      (v) => v.volunteerEnd === null
+    );
+    return {
+      ...user,
+      isVolunteer: !!activeVolunteer,
+      volunteerSince: activeVolunteer?.volunteerStart || null,
+      volunteerHistory: user.volunteers,
+    };
+  });
 }

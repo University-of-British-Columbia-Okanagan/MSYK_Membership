@@ -1,3 +1,3 @@
 export default function Events() {
-    return <h1>View Calendar</h1>;
-  }
+  return <h1>View Calendar</h1>;
+}

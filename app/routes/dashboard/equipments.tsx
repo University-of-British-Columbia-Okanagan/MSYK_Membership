@@ -1,12 +1,17 @@
 import { useLoaderData, useNavigate, useFetcher } from "react-router-dom";
-import EquipmentList from "@/components/ui/Dashboard/equipmentlist";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
-import { getRoleUser } from "~/utils/session.server"; 
+import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import { getRoleUser } from "~/utils/session.server";
 import { Button } from "@/components/ui/button";
-import { deleteEquipment, duplicateEquipment, updateEquipment, getAllEquipment } from "~/models/equipment.server";
-import EquipmentCard from "@/components/ui/Dashboard/equipmentcard"; // Adjust the import path as necessary
+import {
+  deleteEquipment,
+  duplicateEquipment,
+  updateEquipment,
+  getAllEquipment,
+} from "~/models/equipment.server";
+import EquipmentCard from "~/components/ui/Dashboard/EquipmentCard";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
 
 export async function loader({ request }: { request: Request }) {
   const equipments = await getAllEquipment();
@@ -15,18 +20,31 @@ export async function loader({ request }: { request: Request }) {
   return { equipments, roleUser };
 }
 
-
 export default function Equipments() {
-  const { equipments, roleUser } = useLoaderData<typeof loader>();
+  const { equipments, roleUser } = useLoaderData<{
+    equipments: any[];
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    } | null;
+  }>();
   const navigate = useNavigate();
   const fetcher = useFetcher();
 
   const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
+  const isGuest = !roleUser || !roleUser.userId;
 
   return (
     <SidebarProvider>
       <div className="flex h-screen">
-        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        {isGuest ? (
+          <GuestAppSidebar />
+        ) : isAdmin ? (
+          <AdminAppSidebar />
+        ) : (
+          <AppSidebar />
+        )}
         <main className="flex-grow p-6">
           <h1 className="text-2xl font-bold mb-6">Available Equipment</h1>
 
@@ -50,7 +68,7 @@ export default function Equipments() {
                   name={equipment.name}
                   description={equipment.description ?? ""}
                   imageUrl={equipment.imageUrl ?? ""}
-                  status={equipment.status} 
+                  status={equipment.status}
                   isAdmin={isAdmin}
                 />
               ))}
@@ -63,7 +81,6 @@ export default function Equipments() {
     </SidebarProvider>
   );
 }
-
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();

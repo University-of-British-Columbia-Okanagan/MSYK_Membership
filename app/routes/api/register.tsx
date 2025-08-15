@@ -1,4 +1,7 @@
-import { registerForWorkshop, checkUserRegistration } from "~/models/workshop.server";
+import {
+  registerForWorkshop,
+  checkUserRegistration,
+} from "~/models/workshop.server";
 import { getUser } from "~/utils/session.server"; // Fetch user details
 import formData from "form-data";
 import Mailgun from "mailgun.js";
@@ -17,7 +20,12 @@ async function sendConfirmationEmail(
   startDate: Date,
   endDate: Date
 ) {
-  const domain = process.env.MAILGUN_DOMAIN; // Ensure this is set in your .env file
+  const domain = process.env.MAILGUN_DOMAIN;
+
+  if (!domain) {
+    console.error("MAILGUN_DOMAIN environment variable is not set");
+    throw new Error("Mailgun domain is not configured");
+  }
 
   const emailData = {
     from: `Makerspace YK <info@${domain}>`,
@@ -37,13 +45,19 @@ async function sendConfirmationEmail(
   }
 }
 
-export async function action({ params, request }: { params: { id: string }, request: Request }) {
+export async function action({
+  params,
+  request,
+}: {
+  params: { id: string };
+  request: Request;
+}) {
   const workshopId = parseInt(params.id);
 
   // Fetch form data
   const formData = await request.formData();
   const userId = parseInt(formData.get("userId") as string);
-  const occurrenceId = parseInt(formData.get("occurrenceId") as string); 
+  const occurrenceId = parseInt(formData.get("occurrenceId") as string);
 
   console.log("🛠 Workshop ID:", workshopId);
   console.log("🛠 Occurrence ID:", occurrenceId);
@@ -67,20 +81,35 @@ export async function action({ params, request }: { params: { id: string }, requ
     }
 
     // Check if the user is already registered for this occurrence
-    const existingRegistration = await checkUserRegistration(workshopId, occurrenceId, user.id);
+    const existingRegistration = await checkUserRegistration(
+      workshopId,
+      occurrenceId,
+      user.id
+    );
 
     if (existingRegistration) {
       return new Response(
-        JSON.stringify({ error: "You are already registered for this workshop occurrence." }),
+        JSON.stringify({
+          error: "You are already registered for this workshop occurrence.",
+        }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
     // Register the user for the selected occurrence
-    const registration = await registerForWorkshop(workshopId, occurrenceId, user.id);
+    const registration = await registerForWorkshop(
+      workshopId,
+      occurrenceId,
+      user.id
+    );
 
     // Send confirmation email to the user with the occurrence details
-    await sendConfirmationEmail(user.email, registration.workshopName, registration.startDate, registration.endDate);
+    await sendConfirmationEmail(
+      user.email,
+      registration.workshopName,
+      registration.startDate,
+      registration.endDate
+    );
 
     console.log("Registration successful:", registration);
 
@@ -92,7 +121,9 @@ export async function action({ params, request }: { params: { id: string }, requ
     console.error("Registration error:", error);
 
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }

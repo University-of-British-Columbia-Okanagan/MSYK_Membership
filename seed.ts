@@ -2,10 +2,9 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
-// run npx tsx seed.ts
+// Run npx tsx seed.ts
 async function main() {
   await prisma.adminSettings.deleteMany();
-  await prisma.userMembershipPayment.deleteMany();
   await prisma.userMembership.deleteMany();
   await prisma.user.deleteMany();
   await prisma.membershipPlan.deleteMany();
@@ -37,19 +36,15 @@ async function main() {
         firstName: "Test1",
         lastName: "User1",
         phone: "1234567890",
-        address: "123 Main St",
-        over18: true,
-        parentGuardianName: "John Doe",
-        parentGuardianPhone: "9876543210",
-        parentGuardianEmail: "guardian1@example.com",
-        guardianSignedConsent: "Base64Placeholder1",
-        photoRelease: true,
-        dataPrivacy: true,
+        dateOfBirth: "1990-01-15",
         emergencyContactName: "Jane Doe",
         emergencyContactPhone: "5551234567",
         emergencyContactEmail: "emergency1@example.com",
-        trainingCardUserNumber: 1001,
-        // roleUser and roleLevel default to 1 but will put roleUser 2 to make admin
+        mediaConsent: true,
+        dataPrivacy: true,
+        communityGuidelines: true,
+        operationsPolicy: true,
+        waiverSignature: "EncryptedWaiverPlaceholder1",
         roleUserId: 2,
       },
       {
@@ -58,18 +53,15 @@ async function main() {
         firstName: "Test2",
         lastName: "User2",
         phone: "2233445566",
-        address: "456 Maple Ave",
-        over18: false,
-        parentGuardianName: "Mary Smith",
-        parentGuardianPhone: "5566778899",
-        parentGuardianEmail: "guardian2@example.com",
-        guardianSignedConsent: "Base64Placeholder2",
-        photoRelease: false,
-        dataPrivacy: true,
+        dateOfBirth: "1995-06-22",
         emergencyContactName: "Mark Smith",
         emergencyContactPhone: "5559876543",
         emergencyContactEmail: "emergency2@example.com",
-        trainingCardUserNumber: 1002,
+        mediaConsent: false,
+        dataPrivacy: true,
+        communityGuidelines: true,
+        operationsPolicy: true,
+        waiverSignature: "EncryptedWaiverPlaceholder2",
       },
       {
         email: "testuser3@gmail.com",
@@ -77,18 +69,15 @@ async function main() {
         firstName: "Test3",
         lastName: "User3",
         phone: "3344556677",
-        address: "789 Oak Blvd",
-        over18: true,
-        parentGuardianName: "Peter Parker",
-        parentGuardianPhone: "6677889900",
-        parentGuardianEmail: "guardian3@example.com",
-        guardianSignedConsent: "Base64Placeholder3",
-        photoRelease: true,
-        dataPrivacy: false,
+        dateOfBirth: "1988-12-03",
         emergencyContactName: "Bruce Wayne",
         emergencyContactPhone: "5551122334",
         emergencyContactEmail: "emergency3@example.com",
-        trainingCardUserNumber: 1003,
+        mediaConsent: true,
+        dataPrivacy: true,
+        communityGuidelines: true,
+        operationsPolicy: true,
+        waiverSignature: "EncryptedWaiverPlaceholder3",
       },
     ],
   });
@@ -183,13 +172,13 @@ async function main() {
     },
     {
       workshopId: 2, // Pottery
-      startDate: new Date("2025-07-10T14:00:00Z"),
-      endDate: new Date("2025-07-10T16:00:00Z"),
+      startDate: new Date("2025-09-10T14:00:00Z"),
+      endDate: new Date("2025-09-10T16:00:00Z"),
     },
     {
       workshopId: 3, // Knitting
-      startDate: new Date("2025-08-10T10:00:00Z"),
-      endDate: new Date("2025-08-10T12:00:00Z"),
+      startDate: new Date("2025-09-10T10:00:00Z"),
+      endDate: new Date("2025-09-10T12:00:00Z"),
     },
   ];
 
@@ -255,6 +244,17 @@ async function main() {
   });
 
   await prisma.adminSettings.upsert({
+    where: { key: "past_workshop_visibility" },
+    update: { value: "180" },
+    create: {
+      key: "past_workshop_visibility",
+      value: "180",
+      description:
+        "Number of days in the past to show entire workshops (in past events section as of 7/14/2025)",
+    },
+  });
+
+  await prisma.adminSettings.upsert({
     where: { key: "equipment_visible_registrable_days" },
     update: { value: "7" },
     create: {
@@ -296,19 +296,20 @@ async function main() {
 
   await prisma.adminSettings.upsert({
     where: { key: "level4_unavaliable_hours" },
-    update: { 
+    update: {
       value: JSON.stringify({
-        start: 0, 
-        end: 0
-      })
+        start: 0,
+        end: 0,
+      }),
     },
     create: {
       key: "level4_unavaliable_hours",
       value: JSON.stringify({
         start: 0,
-        end: 0
+        end: 0,
       }),
-      description: "Hours when level 4 users cannot book equipment. Special case: start=0, end=0 means no restrictions. If start > end (e.g. 22 to 5), it represents a period that crosses midnight.",
+      description:
+        "Hours when level 4 users cannot book equipment. Special case: start=0, end=0 means no restrictions. If start > end (e.g. 22 to 5), it represents a period that crosses midnight.",
     },
   });
 
@@ -318,9 +319,10 @@ async function main() {
     create: {
       key: "max_number_equipment_slots_per_day",
       value: "4",
-      description: "Maximum number of 30-minute slots a user can book equipment per day (stored as slot count, 4 = 2 hours)",
+      description:
+        "Maximum number of 30-minute slots a user can book equipment per day (stored as slot count, 4 = 2 hours)",
     },
-  })
+  });
 
   await prisma.adminSettings.upsert({
     where: { key: "max_number_equipment_slots_per_week" },
@@ -328,9 +330,21 @@ async function main() {
     create: {
       key: "max_number_equipment_slots_per_week",
       value: "14",
-      description: "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
+      description:
+        "Maximum number of 30-minute slots a user can book equipment per week (stored as slot count, 14 = 7 hours)",
     },
-  })
+  });
+
+  await prisma.adminSettings.upsert({
+    where: { key: "gst_percentage" },
+    update: { value: "5" },
+    create: {
+      key: "gst_percentage",
+      value: "5",
+      description:
+        "GST/HST tax percentage applied to all payments in Canada (5% for GST, varies by province for HST)",
+    },
+  });
 
   console.log("Database seeded successfully!");
 }

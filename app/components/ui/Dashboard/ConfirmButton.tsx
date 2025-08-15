@@ -1,6 +1,6 @@
 // ConfirmButton.tsx
 import React from "react";
-import { Button } from "./button";
+import { Button } from "../button";
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -11,7 +11,7 @@ import {
   AlertDialogFooter,
   AlertDialogCancel,
   AlertDialogAction,
-} from "./alert-dialog";
+} from "../alert-dialog";
 
 interface ConfirmButtonProps {
   confirmTitle: string;

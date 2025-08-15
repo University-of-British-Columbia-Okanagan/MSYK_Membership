@@ -7,7 +7,7 @@ import {
   useSubmit,
 } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "@/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
 import {
   Card,
   CardContent,
@@ -19,7 +19,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Settings, Save, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -30,6 +29,7 @@ import {
   getPlannedClosures,
   updatePlannedClosures,
   getAdminSetting,
+  getPastWorkshopVisibility,
 } from "~/models/admin.server";
 import {
   getLevel3ScheduleRestrictions,
@@ -47,24 +47,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Edit2, Check, X } from "lucide-react";
 import { FiSearch } from "react-icons/fi";
 import {
-  getAllUsers,
   updateUserRole,
   updateUserAllowLevel,
+  getAllUsersWithVolunteerStatus,
+  updateUserVolunteerStatus,
 } from "~/models/user.server";
-import { ShadTable, type ColumnDefinition } from "@/components/ui/ShadTable";
-import { ConfirmButton } from "@/components/ui/ConfirmButton";
+import {
+  ShadTable,
+  type ColumnDefinition,
+} from "~/components/ui/Dashboard/ShadTable";
+import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,8 +68,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
+import {
+  getAllVolunteerHours,
+  updateVolunteerHourStatus,
+  getRecentVolunteerHourActions,
+} from "~/models/profile.server";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -90,6 +91,7 @@ export async function loader({ request }: { request: Request }) {
 
   // Load current settings
   const workshopVisibilityDays = await getWorkshopVisibilityDays();
+  const pastWorkshopVisibility = await getPastWorkshopVisibility();
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();
   const plannedClosures = await getPlannedClosures();
   const maxEquipmentSlotsPerDay = await getAdminSetting(
@@ -100,6 +102,7 @@ export async function loader({ request }: { request: Request }) {
     "max_number_equipment_slots_per_week",
     "14"
   );
+  const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
   const workshopsRaw = await getWorkshops();
   // Process workshops to determine which have active occurrences
@@ -117,36 +120,45 @@ export async function loader({ request }: { request: Request }) {
   });
 
   // Fetch all users for the user management tab
-  const users = await getAllUsers();
+  const users = await getAllUsersWithVolunteerStatus();
 
   const level3Schedule = await getLevel3ScheduleRestrictions();
   const level4UnavailableHours = await getLevel4UnavailableHours();
 
-    // Log successful load
-    logger.info(`[User: ${roleUser.userId}] Admin settings page loaded successfully`, {
+  const allVolunteerHours = await getAllVolunteerHours();
+  const recentVolunteerActions = await getRecentVolunteerHourActions(50);
+
+  // Log successful load
+  logger.info(
+    `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
+    {
       url: request.url,
       workshopCount: workshops.length,
       userCount: users.length,
       plannedClosuresCount: plannedClosures.length,
-    });
+    }
+  );
 
-    // Return settings to the component
-    return {
-      roleUser,
-      settings: {
-        workshopVisibilityDays,
-        equipmentVisibilityDays,
-        level3Schedule,
-        level4UnavailableHours,
-        plannedClosures,
-        maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
-        maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10), // this is in slots, not minutes
-      },
-      workshops,
-      users,
-    };
-
-  }
+  // Return settings to the component
+  return {
+    roleUser,
+    settings: {
+      workshopVisibilityDays,
+      pastWorkshopVisibility,
+      equipmentVisibilityDays,
+      level3Schedule,
+      level4UnavailableHours,
+      plannedClosures,
+      maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
+      maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10),
+      gstPercentage: parseFloat(gstPercentage),
+    },
+    workshops,
+    users,
+    volunteerHours: allVolunteerHours,
+    recentVolunteerActions,
+  };
+}
 
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
@@ -166,6 +178,7 @@ export async function action({ request }: { request: Request }) {
     try {
       // Get values from form
       const workshopVisibilityDays = formData.get("workshopVisibilityDays");
+      const pastWorkshopVisibility = formData.get("pastWorkshopVisibility");
       const equipmentVisibilityDays = formData.get("equipmentVisibilityDays");
       const settingType = formData.get("settingType");
 
@@ -175,6 +188,14 @@ export async function action({ request }: { request: Request }) {
           "workshop_visibility_days",
           workshopVisibilityDays.toString(),
           "Number of days to show future workshop dates"
+        );
+      }
+
+      if (settingType === "pastWorkshop" && pastWorkshopVisibility) {
+        await updateAdminSetting(
+          "past_workshop_visibility",
+          pastWorkshopVisibility.toString(),
+          "Number of days in the past to show entire workshops (in past events section as of 7/14/2025)"
         );
       }
 
@@ -231,6 +252,17 @@ export async function action({ request }: { request: Request }) {
         }
       }
 
+      if (settingType === "gstPercentage") {
+        const gstData = formData.get("gstPercentage");
+        if (gstData) {
+          await updateAdminSetting(
+            "gst_percentage",
+            gstData.toString(),
+            "GST/HST tax percentage applied to all payments in Canada"
+          );
+        }
+      }
+
       return {
         success: true,
         message: "Settings updated successfully",
@@ -262,10 +294,13 @@ export async function action({ request }: { request: Request }) {
 
       await updateWorkshopCutoff(workshopId, cutoffMinutes);
 
-      logger.info(`[User: ${roleUser.userId}] Updated cutoff for workshop ${workshopId}`, {
-        url: request.url,
-        cutoffMinutes,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Updated cutoff for workshop ${workshopId}`,
+        {
+          url: request.url,
+          cutoffMinutes,
+        }
+      );
 
       return {
         success: true,
@@ -290,9 +325,12 @@ export async function action({ request }: { request: Request }) {
     try {
       await updateUserRole(Number(userId), String(newRoleId));
 
-      logger.info(`[User: ${roleUser.userId}] Updated role for user ${userId} to ${newRoleId}`, {
-        url: request.url,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Updated role for user ${userId} to ${newRoleId}`,
+        {
+          url: request.url,
+        }
+      );
 
       return {
         success: true,
@@ -316,9 +354,12 @@ export async function action({ request }: { request: Request }) {
     try {
       await updateUserAllowLevel(Number(userId), allowLevel4 === "true");
 
-      logger.info(`[User: ${roleUser.userId}] Updated level 4 access for user ${userId} to ${allowLevel4}`, {
-        url: request.url,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Updated level 4 access for user ${userId} to ${allowLevel4}`,
+        {
+          url: request.url,
+        }
+      );
 
       return {
         success: true,
@@ -359,6 +400,64 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: "Failed to update planned closures",
+      };
+    }
+  }
+
+  if (actionType === "updateVolunteerStatus") {
+    const userId = formData.get("userId");
+    const isVolunteer = formData.get("isVolunteer");
+    try {
+      await updateUserVolunteerStatus(Number(userId), isVolunteer === "true");
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated volunteer status for user ${userId} to ${isVolunteer}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Volunteer status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating volunteer status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update volunteer status",
+      };
+    }
+  }
+
+  if (actionType === "updateVolunteerHourStatus") {
+    const hourId = formData.get("hourId");
+    const newStatus = formData.get("newStatus");
+    try {
+      await updateVolunteerHourStatus(Number(hourId), String(newStatus));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated volunteer hour status for hour ${hourId} to ${newStatus}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Volunteer hour status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating volunteer hour status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update volunteer hour status",
       };
     }
   }
@@ -421,45 +520,411 @@ function RoleControl({
   );
 }
 
-export default function AdminSettings() {
-  const { roleUser, settings, workshops, users } = useLoaderData<{
-    roleUser: { roleId: number; roleName: string };
-    settings: {
-      workshopVisibilityDays: number;
-      equipmentVisibilityDays: number;
-      level3Schedule: {
-        [day: string]: { start: number; end: number; closed?: boolean };
-      };
-      level4UnavailableHours: {
-        start: number;
-        end: number;
-      };
-      plannedClosures: Array<{
-        id: number;
-        startDate: string;
-        endDate: string;
-      }>;
-      maxEquipmentSlotsPerDay: number;
-      maxEquipmentSlotsPerWeek: number;
-    };
-    workshops: Array<{
+// For volunteer control, this component allows toggling volunteer status
+function VolunteerControl({
+  user,
+}: {
+  user: {
+    id: number;
+    isVolunteer: boolean;
+    volunteerSince: Date | null;
+    volunteerHistory?: Array<{
       id: number;
-      name: string;
-      price: number;
-      registrationCutoff: number;
-      hasActiveOccurrences: boolean;
+      volunteerStart: Date;
+      volunteerEnd: Date | null;
     }>;
-    users: Array<{
-      id: number;
+  };
+}) {
+  // Use the actual data from the server instead of maintaining separate state
+  const isActuallyVolunteer = user.isVolunteer;
+
+  const [isVolunteer, setIsVolunteer] = useState<boolean>(isActuallyVolunteer);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingStatus, setPendingStatus] = useState<boolean>(false);
+  const submit = useSubmit();
+
+  // Update local state when the actual data changes (important for pagination)
+  React.useEffect(() => {
+    setIsVolunteer(isActuallyVolunteer);
+  }, [isActuallyVolunteer, user.id]); // Include user.id to reset when user changes
+
+  const updateVolunteerStatus = (newStatus: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateVolunteerStatus");
+    formData.append("userId", user.id.toString());
+    formData.append("isVolunteer", newStatus.toString());
+    submit(formData, { method: "post" });
+    setIsVolunteer(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setPendingStatus(checked);
+    setShowConfirmDialog(true);
+  };
+
+  return (
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        checked={isVolunteer}
+        onChange={(e) => handleCheckboxChange(e.target.checked)}
+        className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+        id={`volunteer-${user.id}`}
+      />
+      <label
+        htmlFor={`volunteer-${user.id}`}
+        className="ml-2 text-sm text-gray-600"
+      >
+        Volunteer
+      </label>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingStatus
+                ? "Start Volunteer Period"
+                : "End Volunteer Period"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatus
+                ? "Are you sure you want to start a new volunteer period for this user? This will mark them as an active volunteer."
+                : "Are you sure you want to end the volunteer period for this user? This will mark their current volunteer period as ended."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateVolunteerStatus(pendingStatus)}
+            >
+              {pendingStatus ? "Start Volunteer" : "End Volunteer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+// For settings that need pagination, this component provides a simple pagination UI
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+  maxVisiblePages = 10,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  maxVisiblePages?: number;
+}) {
+  const getVisiblePageNumbers = () => {
+    // If total pages is less than or equal to max visible, show all
+    if (totalPages <= maxVisiblePages) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const delta = Math.floor(maxVisiblePages / 2) - 1;
+    const range = [];
+    const rangeWithDots = [];
+
+    for (
+      let i = Math.max(2, currentPage - delta);
+      i <= Math.min(totalPages - 1, currentPage + delta);
+      i++
+    ) {
+      range.push(i);
+    }
+
+    if (currentPage - delta > 2) {
+      rangeWithDots.push(1, "...");
+    } else {
+      rangeWithDots.push(1);
+    }
+
+    rangeWithDots.push(...range);
+
+    if (currentPage + delta < totalPages - 1) {
+      rangeWithDots.push("...", totalPages);
+    } else if (totalPages > 1) {
+      rangeWithDots.push(totalPages);
+    }
+
+    return rangeWithDots;
+  };
+
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-center space-x-2 mt-4">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="px-3 py-1"
+      >
+        Previous
+      </Button>
+
+      {getVisiblePageNumbers().map((page, index) => (
+        <React.Fragment key={index}>
+          {page === "..." ? (
+            <span className="px-2 py-1 text-gray-500">...</span>
+          ) : (
+            <Button
+              variant={currentPage === page ? "default" : "outline"}
+              size="sm"
+              onClick={() => onPageChange(page as number)}
+              className={`px-3 py-1 ${
+                currentPage === page
+                  ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+                  : ""
+              }`}
+            >
+              {page}
+            </Button>
+          )}
+        </React.Fragment>
+      ))}
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="px-3 py-1"
+      >
+        Next
+      </Button>
+    </div>
+  );
+}
+
+// For volunteer hour status control, this component allows changing the status of volunteer hours
+function VolunteerHourStatusControl({
+  hour,
+}: {
+  hour: {
+    id: number;
+    status: string;
+    isResubmission?: boolean;
+    user: {
       firstName: string;
       lastName: string;
-      email: string;
-      phone: string;
-      trainingCardUserNumber: string;
-      roleLevel: number;
-      allowLevel4: boolean;
-    }>;
-  }>();
+    };
+  };
+}) {
+  const [status, setStatus] = useState<string>(hour.status);
+  // Sync local state with prop changes from server
+  React.useEffect(() => {
+    setStatus(hour.status);
+  }, [hour.status]);
+
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingNewStatus, setPendingNewStatus] = useState<string>("");
+  const submit = useSubmit();
+
+  const updateStatus = (newStatus: string) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateVolunteerHourStatus");
+    formData.append("hourId", hour.id.toString());
+    formData.append("newStatus", newStatus);
+    submit(formData, { method: "post" });
+    // Don't update local state immediately - let the server response handle it
+    setShowConfirmDialog(false);
+  };
+
+  const handleStatusChange = (newStatus: string) => {
+    // If the status is the same, no confirmation needed
+    if (newStatus === status) {
+      return;
+    }
+
+    // Show confirmation for any status change
+    setPendingNewStatus(newStatus);
+    setShowConfirmDialog(true);
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "denied":
+        return "bg-red-100 text-red-800";
+      case "resolved":
+        return "bg-purple-100 text-purple-800";
+      default:
+        return "bg-yellow-100 text-yellow-800";
+    }
+  };
+
+  const getStatusDisplayName = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getConfirmationMessage = (newStatus: string) => {
+    const userName = `${hour.user.firstName} ${hour.user.lastName}`;
+    const currentStatusName = getStatusDisplayName(status);
+    const newStatusName = getStatusDisplayName(newStatus);
+
+    switch (newStatus) {
+      case "approved":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Approved? This will mark their submission as approved.`;
+      case "denied":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Denied? This will reject their submission.`;
+      case "resolved":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Resolved? This typically means the issue has been addressed.`;
+      case "pending":
+        return `Are you sure you want to change ${userName}'s volunteer hours from ${currentStatusName} to Pending? This will mark their submission as pending review.`;
+      default:
+        return `Are you sure you want to change the status from ${currentStatusName} to ${newStatusName}?`;
+    }
+  };
+
+  const getActionButtonColor = (newStatus: string) => {
+    switch (newStatus) {
+      case "denied":
+        return "bg-red-600 hover:bg-red-700";
+      case "approved":
+        return "bg-green-600 hover:bg-green-700";
+      case "resolved":
+        return "bg-purple-600 hover:bg-purple-700";
+      case "pending":
+        return "bg-yellow-600 hover:bg-yellow-700";
+      default:
+        return "bg-blue-600 hover:bg-blue-700";
+    }
+  };
+
+  return (
+    <>
+      <div className="flex flex-col items-center gap-1">
+        <select
+          value={status}
+          onChange={(e) => handleStatusChange(e.target.value)}
+          className={`px-2 py-1 rounded-full text-xs font-medium border-0 text-center ${getStatusColor(
+            status
+          )}`}
+        >
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="denied">Denied</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </div>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Confirm Status Change to {getStatusDisplayName(pendingNewStatus)}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {getConfirmationMessage(pendingNewStatus)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateStatus(pendingNewStatus)}
+              className={getActionButtonColor(pendingNewStatus)}
+            >
+              Change to {getStatusDisplayName(pendingNewStatus)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+export default function AdminSettings() {
+  const { settings, workshops, users, volunteerHours, recentVolunteerActions } =
+    useLoaderData<{
+      settings: {
+        workshopVisibilityDays: number;
+        pastWorkshopVisibility: number;
+        equipmentVisibilityDays: number;
+        level3Schedule: {
+          [day: string]: { start: number; end: number; closed?: boolean };
+        };
+        level4UnavailableHours: {
+          start: number;
+          end: number;
+        };
+        plannedClosures: Array<{
+          id: number;
+          startDate: string;
+          endDate: string;
+        }>;
+        maxEquipmentSlotsPerDay: number;
+        maxEquipmentSlotsPerWeek: number;
+        gstPercentage: number;
+      };
+      workshops: Array<{
+        id: number;
+        name: string;
+        price: number;
+        registrationCutoff: number;
+        hasActiveOccurrences: boolean;
+      }>;
+      users: Array<{
+        id: number;
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone: string;
+        trainingCardUserNumber: string;
+        roleLevel: number;
+        allowLevel4: boolean;
+        isVolunteer: boolean;
+        volunteerSince: Date | null;
+        volunteerHistory?: Array<{
+          id: number;
+          volunteerStart: Date;
+          volunteerEnd: Date | null;
+        }>;
+      }>;
+      volunteerHours: Array<{
+        id: number;
+        userId: number;
+        startTime: string;
+        endTime: string;
+        description: string | null;
+        status: string;
+        isResubmission: boolean;
+        createdAt: string;
+        updatedAt: string;
+        user: {
+          firstName: string;
+          lastName: string;
+          email: string;
+        };
+      }>;
+      recentVolunteerActions: Array<{
+        id: number;
+        userId: number;
+        startTime: string;
+        endTime: string;
+        description: string | null;
+        status: string;
+        previousStatus: string | null;
+        isResubmission: boolean;
+        createdAt: string;
+        updatedAt: string;
+        user: {
+          firstName: string;
+          lastName: string;
+          email: string;
+        };
+      }>;
+    }>();
 
   const actionData = useActionData<{
     success?: boolean;
@@ -470,6 +935,9 @@ export default function AdminSettings() {
 
   const [workshopVisibilityDays, setWorkshopVisibilityDays] = useState(
     settings.workshopVisibilityDays.toString()
+  );
+  const [pastWorkshopVisibility, setPastWorkshopVisibility] = useState(
+    settings.pastWorkshopVisibility.toString()
   );
   const [equipmentVisibilityDays, setEquipmentVisibilityDays] = useState(
     settings.equipmentVisibilityDays.toString()
@@ -485,6 +953,10 @@ export default function AdminSettings() {
     unit: "slots",
   });
 
+  const [gstPercentage, setGstPercentage] = useState(
+    settings.gstPercentage.toString()
+  );
+
   const [level3Schedule, setLevel3Schedule] = useState(() => {
     const days = [
       "Sunday",
@@ -495,10 +967,13 @@ export default function AdminSettings() {
       "Friday",
       "Saturday",
     ];
-    const defaultSchedule = days.reduce((acc, day) => {
-      acc[day] = { start: 9, end: 17, closed: false };
-      return acc;
-    }, {} as Record<string, { start: number; end: number; closed: boolean }>);
+    const defaultSchedule = days.reduce(
+      (acc, day) => {
+        acc[day] = { start: 9, end: 17, closed: false };
+        return acc;
+      },
+      {} as Record<string, { start: number; end: number; closed: boolean }>
+    );
 
     // Merge the default with settings from the server
     return days.reduce((acc, day) => {
@@ -523,6 +998,45 @@ export default function AdminSettings() {
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
 
   const [searchName, setSearchName] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage] = useState(10);
+
+  // Volunteer hours management state
+  const [volunteerSearchName, setVolunteerSearchName] = useState("");
+  const [volunteerFromDate, setVolunteerFromDate] = useState("");
+  const [volunteerFromTime, setVolunteerFromTime] = useState("");
+  const [volunteerToDate, setVolunteerToDate] = useState("");
+  const [volunteerToTime, setVolunteerToTime] = useState("");
+  const [appliedVolunteerFromDate, setAppliedVolunteerFromDate] = useState("");
+  const [appliedVolunteerFromTime, setAppliedVolunteerFromTime] = useState("");
+  const [appliedVolunteerToDate, setAppliedVolunteerToDate] = useState("");
+  const [appliedVolunteerToTime, setAppliedVolunteerToTime] = useState("");
+  const [volunteerCurrentPage, setVolunteerCurrentPage] = useState(1);
+  const [volunteerHoursPerPage] = useState(10);
+  const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
+  const [actionsPerPage] = useState(10);
+
+  // Recent actions filters state
+  const [actionsSearchName, setActionsSearchName] = useState("");
+  const [actionsFromDate, setActionsFromDate] = useState("");
+  const [actionsFromTime, setActionsFromTime] = useState("");
+  const [actionsToDate, setActionsToDate] = useState("");
+  const [actionsToTime, setActionsToTime] = useState("");
+  const [appliedActionsFromDate, setAppliedActionsFromDate] = useState("");
+  const [appliedActionsFromTime, setAppliedActionsFromTime] = useState("");
+  const [appliedActionsToDate, setAppliedActionsToDate] = useState("");
+  const [appliedActionsToTime, setAppliedActionsToTime] = useState("");
+
+  // Status filters for volunteer hours
+  const [volunteerStatusFilter, setVolunteerStatusFilter] =
+    useState<string>("pending");
+
+  // Show only resubmissions
+  const [showResubmissionsOnly, setShowResubmissionsOnly] = useState(false);
+
+  // Status filters for recent actions
+  const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
+
   // Filter users by first and last name
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -530,10 +1044,272 @@ export default function AdminSettings() {
       return searchName === "" || fullName.includes(searchName.toLowerCase());
     });
   }, [users, searchName]);
+
   // Sort filtered users by user.id in ascending order
   const sortedFilteredUsers = useMemo(() => {
     return filteredUsers.slice().sort((a, b) => a.id - b.id);
   }, [filteredUsers]);
+
+  // Helper function to generate time options
+  const generateVolunteerTimeOptions = () => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute of [0, 15, 30, 45]) {
+        const formattedHour = hour.toString().padStart(2, "0");
+        const formattedMinute = minute.toString().padStart(2, "0");
+        options.push(`${formattedHour}:${formattedMinute}`);
+      }
+    }
+    return options;
+  };
+
+  // Filter volunteer hours
+  const filteredVolunteerHours = useMemo(() => {
+    return volunteerHours.filter((hour) => {
+      // Name filter
+      const fullName =
+        `${hour.user.firstName} ${hour.user.lastName}`.toLowerCase();
+      const nameMatch =
+        volunteerSearchName === "" ||
+        fullName.includes(volunteerSearchName.toLowerCase());
+
+      // Status filter
+      let statusMatch = true;
+      if (showResubmissionsOnly) {
+        // When "Show resubmissions and denied hours only" is checked,
+        // only show pending resubmissions and denied hours
+        statusMatch =
+          (hour.status === "pending" && hour.isResubmission) ||
+          hour.status === "denied";
+      } else {
+        // Normal status filtering when checkbox is unchecked
+        statusMatch =
+          volunteerStatusFilter === "all" ||
+          hour.status === volunteerStatusFilter;
+      }
+
+      // Date/time range filtering
+      let dateTimeMatch = true;
+      if (
+        appliedVolunteerFromDate &&
+        appliedVolunteerFromTime &&
+        appliedVolunteerToDate &&
+        appliedVolunteerToTime
+      ) {
+        const entryStartDate = new Date(hour.startTime);
+        const fromDateTime = new Date(
+          `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
+        );
+        const toDateTime = new Date(
+          `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
+        );
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return nameMatch && statusMatch && dateTimeMatch;
+    });
+  }, [
+    volunteerHours,
+    volunteerSearchName,
+    volunteerStatusFilter,
+    showResubmissionsOnly,
+    appliedVolunteerFromDate,
+    appliedVolunteerFromTime,
+    appliedVolunteerToDate,
+    appliedVolunteerToTime,
+  ]);
+
+  // Sort and paginate volunteer hours
+  const sortedVolunteerHours = useMemo(() => {
+    return filteredVolunteerHours
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
+  }, [filteredVolunteerHours]);
+
+  const volunteerTotalPages = Math.ceil(
+    sortedVolunteerHours.length / volunteerHoursPerPage
+  );
+  const volunteerStartIndex =
+    (volunteerCurrentPage - 1) * volunteerHoursPerPage;
+  const volunteerEndIndex = volunteerStartIndex + volunteerHoursPerPage;
+  const paginatedVolunteerHours = sortedVolunteerHours.slice(
+    volunteerStartIndex,
+    volunteerEndIndex
+  );
+
+  // Filter recent actions
+  const filteredRecentActions = useMemo(() => {
+    return recentVolunteerActions.filter((action) => {
+      // Name filter
+      const fullName =
+        `${action.user.firstName} ${action.user.lastName}`.toLowerCase();
+      const nameMatch =
+        actionsSearchName === "" ||
+        fullName.includes(actionsSearchName.toLowerCase());
+
+      // Status filter
+      const statusMatch =
+        actionsStatusFilter === "all" || action.status === actionsStatusFilter;
+
+      // Date/time range filtering
+      let dateTimeMatch = true;
+      if (
+        appliedActionsFromDate &&
+        appliedActionsFromTime &&
+        appliedActionsToDate &&
+        appliedActionsToTime
+      ) {
+        const entryStartDate = new Date(action.startTime);
+        const fromDateTime = new Date(
+          `${appliedActionsFromDate}T${appliedActionsFromTime}`
+        );
+        const toDateTime = new Date(
+          `${appliedActionsToDate}T${appliedActionsToTime}`
+        );
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return nameMatch && statusMatch && dateTimeMatch;
+    });
+  }, [
+    recentVolunteerActions,
+    actionsSearchName,
+    actionsStatusFilter,
+    appliedActionsFromDate,
+    appliedActionsFromTime,
+    appliedActionsToDate,
+    appliedActionsToTime,
+  ]);
+
+  // Handle recent actions search
+  const handleActionsSearch = () => {
+    setAppliedActionsFromDate(actionsFromDate);
+    setAppliedActionsFromTime(actionsFromTime);
+    setAppliedActionsToDate(actionsToDate);
+    setAppliedActionsToTime(actionsToTime);
+  };
+
+  // Handle clear actions filters
+  const handleClearActionsFilters = () => {
+    setActionsSearchName("");
+    setActionsStatusFilter("all"); // Reset to default
+    setActionsFromDate("");
+    setActionsFromTime("");
+    setActionsToDate("");
+    setActionsToTime("");
+    setAppliedActionsFromDate("");
+    setAppliedActionsFromTime("");
+    setAppliedActionsToDate("");
+    setAppliedActionsToTime("");
+  };
+
+  // Sort and paginate recent actions
+  const sortedRecentActions = useMemo(() => {
+    return filteredRecentActions
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      );
+  }, [filteredRecentActions]);
+
+  const actionsTotalPages = Math.ceil(
+    sortedRecentActions.length / actionsPerPage
+  );
+  const actionsStartIndex = (actionsCurrentPage - 1) * actionsPerPage;
+  const actionsEndIndex = actionsStartIndex + actionsPerPage;
+  const paginatedRecentActions = sortedRecentActions.slice(
+    actionsStartIndex,
+    actionsEndIndex
+  );
+
+  // Handle volunteer hours search
+  const handleVolunteerSearch = () => {
+    setAppliedVolunteerFromDate(volunteerFromDate);
+    setAppliedVolunteerFromTime(volunteerFromTime);
+    setAppliedVolunteerToDate(volunteerToDate);
+    setAppliedVolunteerToTime(volunteerToTime);
+  };
+
+  // Handle clear volunteer filters
+  const handleClearVolunteerFilters = () => {
+    setVolunteerSearchName("");
+    setVolunteerStatusFilter("pending"); // Reset to default
+    setShowResubmissionsOnly(false);
+    setVolunteerFromDate("");
+    setVolunteerFromTime("");
+    setVolunteerToDate("");
+    setVolunteerToTime("");
+    setAppliedVolunteerFromDate("");
+    setAppliedVolunteerFromTime("");
+    setAppliedVolunteerToDate("");
+    setAppliedVolunteerToTime("");
+  };
+
+  // Reset pagination when filters change
+  React.useEffect(() => {
+    setVolunteerCurrentPage(1);
+  }, [
+    volunteerSearchName,
+    volunteerStatusFilter,
+    appliedVolunteerFromDate,
+    appliedVolunteerFromTime,
+    appliedVolunteerToDate,
+    appliedVolunteerToTime,
+  ]);
+
+  React.useEffect(() => {
+    setActionsCurrentPage(1);
+  }, [recentVolunteerActions]);
+
+  // Reset actions pagination when filters change
+  React.useEffect(() => {
+    setActionsCurrentPage(1);
+  }, [
+    actionsSearchName,
+    actionsStatusFilter,
+    appliedActionsFromDate,
+    appliedActionsFromTime,
+    appliedActionsToDate,
+    appliedActionsToTime,
+  ]);
+
+  // Helper function to calculate total hours from volunteer hour entries
+  const calculateTotalHours = (hours: any[]) => {
+    return hours.reduce((total, entry) => {
+      const start = new Date(entry.startTime);
+      const end = new Date(entry.endTime);
+      const durationMs = end.getTime() - start.getTime();
+      const hoursDecimal = durationMs / (1000 * 60 * 60);
+      return total + hoursDecimal;
+    }, 0);
+  };
+
+  // Calculate total hours for filtered volunteer hours
+  const totalVolunteerHours = useMemo(() => {
+    return calculateTotalHours(filteredVolunteerHours);
+  }, [filteredVolunteerHours]);
+
+  // Calculate total hours for filtered recent actions
+  const totalRecentActionHours = useMemo(() => {
+    return calculateTotalHours(filteredRecentActions);
+  }, [filteredRecentActions]);
+
+  // PAGINATION LOGIC
+  const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const paginatedUsers = sortedFilteredUsers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search changes
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchName]);
 
   const [plannedClosures, setPlannedClosures] = useState(
     settings.plannedClosures.map((closure) => ({
@@ -694,7 +1470,6 @@ export default function AdminSettings() {
   };
 
   // Function to add a new planned closure
-  // Function to add a new planned closure
   const handleAddClosure = () => {
     // Create dates from user input, preserving the selected day
     const startDateInput = newClosure.startDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
@@ -845,14 +1620,7 @@ export default function AdminSettings() {
     return true;
   };
 
-  // Keep the old function name for compatibility but call the new one
-  const validateWeeklyLimit = (
-    weeklyValue: number,
-    weeklyUnit: string
-  ): boolean => {
-    return validateLimits();
-  };
-
+  // Validate limits on initial load and when limits change
   React.useEffect(() => {
     validateLimits();
   }, [
@@ -890,16 +1658,41 @@ export default function AdminSettings() {
             )}
 
             <Tabs defaultValue="workshops" className="w-full">
-              <TabsList className="mb-4">
-                <TabsTrigger value="workshops">Workshop Settings</TabsTrigger>
-                <TabsTrigger value="users">User Settings</TabsTrigger>
-                <TabsTrigger value="equipment">Equipment Settings</TabsTrigger>
-                <TabsTrigger value="plannedClosures">
-                  Planned Closures
-                </TabsTrigger>
-                <TabsTrigger value="placeholder">Other Settings</TabsTrigger>
-                {/* Add more tabs here in the future */}
-              </TabsList>
+              <div className="w-full overflow-x-auto mb-4">
+                <TabsList className="inline-flex w-max min-w-full">
+                  <TabsTrigger value="workshops" className="whitespace-nowrap">
+                    Workshop Settings
+                  </TabsTrigger>
+                  <TabsTrigger value="users" className="whitespace-nowrap">
+                    User Settings
+                  </TabsTrigger>
+                  <TabsTrigger value="volunteers" className="whitespace-nowrap">
+                    Volunteer Settings
+                  </TabsTrigger>
+                  <TabsTrigger value="equipment" className="whitespace-nowrap">
+                    Equipment Settings
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="plannedClosures"
+                    className="whitespace-nowrap"
+                  >
+                    Planned Closures
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="miscellaneous"
+                    className="whitespace-nowrap"
+                  >
+                    Miscellaneous Settings
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="placeholder"
+                    className="whitespace-nowrap"
+                  >
+                    Other Settings
+                  </TabsTrigger>
+                  {/* Add more tabs here in the future */}
+                </TabsList>
+              </div>
 
               {/* Tab 1: All Workshop Settings */}
               <TabsContent value="workshops">
@@ -913,7 +1706,7 @@ export default function AdminSettings() {
                   <input type="hidden" name="settingType" value="workshop" />
                   <Card>
                     <CardHeader>
-                      <CardTitle>Workshop Visibility Settings</CardTitle>
+                      <CardTitle>Workshop Visibility Days Settings</CardTitle>
                       <CardDescription>
                         Configure how far ahead users can see workshops
                       </CardDescription>
@@ -950,6 +1743,62 @@ export default function AdminSettings() {
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Visibility Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+
+                {/* Past Workshop Visibility Section */}
+                <Form method="post" className="space-y-6 mb-8">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="pastWorkshop"
+                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Past Workshop Visibility</CardTitle>
+                      <CardDescription>
+                        Configure how far back users can see past workshops
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="pastWorkshopVisibility">
+                          Past Workshop Visibility (In Days)
+                        </Label>
+                        <Input
+                          id="pastWorkshopVisibility"
+                          name="pastWorkshopVisibility"
+                          type="number"
+                          value={pastWorkshopVisibility}
+                          onChange={(e) =>
+                            setPastWorkshopVisibility(e.target.value)
+                          }
+                          min="1"
+                          max="365"
+                          className="w-full max-w-xs"
+                        />
+                        <p className="text-sm text-gray-500">
+                          Number of days in the past to show entire workshops in
+                          past events. If any workshop date falls within this
+                          period, the entire workshop will appear in past
+                          events.
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Past Visibility Settings
                       </Button>
                     </CardFooter>
                   </Card>
@@ -1007,12 +1856,13 @@ export default function AdminSettings() {
                                 );
                                 const displayValue =
                                   editingWorkshop === workshop.id
-                                    ? cutoffValues[workshop.id] ??
-                                      bestUnit.value
+                                    ? (cutoffValues[workshop.id] ??
+                                      bestUnit.value)
                                     : bestUnit.value;
                                 const displayUnit =
                                   editingWorkshop === workshop.id
-                                    ? cutoffUnits[workshop.id] ?? bestUnit.unit
+                                    ? (cutoffUnits[workshop.id] ??
+                                      bestUnit.unit)
                                     : bestUnit.unit;
 
                                 return (
@@ -1162,12 +2012,13 @@ export default function AdminSettings() {
                                 );
                                 const displayValue =
                                   editingWorkshop === workshop.id
-                                    ? cutoffValues[workshop.id] ??
-                                      bestUnit.value
+                                    ? (cutoffValues[workshop.id] ??
+                                      bestUnit.value)
                                     : bestUnit.value;
                                 const displayUnit =
                                   editingWorkshop === workshop.id
-                                    ? cutoffUnits[workshop.id] ?? bestUnit.unit
+                                    ? (cutoffUnits[workshop.id] ??
+                                      bestUnit.unit)
                                     : bestUnit.unit;
 
                                 return (
@@ -1296,19 +2147,32 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center gap-2 mb-6">
-                      <FiSearch className="text-gray-500" />
-                      <Input
-                        placeholder="Search by first or last name"
-                        value={searchName}
-                        onChange={(e) => setSearchName(e.target.value)}
-                        className="w-full md:w-64"
-                      />
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="Search by first or last name"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          className="w-full md:w-64"
+                        />
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Showing {startIndex + 1}-
+                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
+                        {sortedFilteredUsers.length} users
+                      </div>
                     </div>
                     <ShadTable
                       columns={columns}
-                      data={sortedFilteredUsers}
+                      data={paginatedUsers}
                       emptyMessage="No users found"
+                    />
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                      maxVisiblePages={50}
                     />
                   </CardContent>
                 </Card>
@@ -1404,7 +2268,7 @@ export default function AdminSettings() {
                         </Alert>
                       )}
 
-                      {/* ADD ERROR DISPLAY FOR DAILY FORM TOO */}
+                      {/* ADD ERROR DISPLAY FOR DAILY FORM  */}
                       {weeklyLimitError && (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
@@ -1418,7 +2282,6 @@ export default function AdminSettings() {
                         <Label htmlFor="maxEquipmentSlotsPerDay">
                           Maximum Equipment Booking Time Per Day
                         </Label>
-                        {/* CHANGE: Simplified to only handle slots */}
                         <div className="flex items-center space-x-2">
                           <Input
                             id="maxEquipmentSlotsPerDay"
@@ -1430,7 +2293,10 @@ export default function AdminSettings() {
                             onChange={(e) => {
                               const inputValue = parseInt(e.target.value) || 1;
                               // For slots: minimum 1, maximum 48 (24 hours * 2 slots per hour)
-                              const validValue = Math.max(1, Math.min(48, inputValue));
+                              const validValue = Math.max(
+                                1,
+                                Math.min(48, inputValue)
+                              );
 
                               const newDailyState = {
                                 ...maxEquipmentSlotsPerDay,
@@ -1440,7 +2306,8 @@ export default function AdminSettings() {
 
                               // Validate with the new values immediately
                               const dailyInSlots = validValue;
-                              const weeklyInSlots = maxEquipmentSlotsPerWeek.value;
+                              const weeklyInSlots =
+                                maxEquipmentSlotsPerWeek.value;
 
                               if (weeklyInSlots < dailyInSlots) {
                                 setWeeklyLimitError(
@@ -1467,8 +2334,12 @@ export default function AdminSettings() {
                         </div>
                         {/* Updated description for slots */}
                         <p className="text-sm text-gray-500">
-                          Maximum number of 30-minute slots a user can book per day. 
-                          Range: 1-48 slots (each slot = 30 minutes). Current setting: {maxEquipmentSlotsPerDay.value} slots ({maxEquipmentSlotsPerDay.value * 30} minutes). Must be no greater than {maxEquipmentSlotsPerWeek.value} slots (weekly limit).
+                          Maximum number of 30-minute slots a user can book per
+                          day. Range: 1-48 slots (each slot = 30 minutes).
+                          Current setting: {maxEquipmentSlotsPerDay.value} slots
+                          ({maxEquipmentSlotsPerDay.value * 30} minutes). Must
+                          be no greater than {maxEquipmentSlotsPerWeek.value}{" "}
+                          slots (weekly limit).
                         </p>
                       </div>
                     </CardContent>
@@ -1500,11 +2371,6 @@ export default function AdminSettings() {
                   <input
                     type="hidden"
                     name="maxEquipmentSlotsPerWeek"
-                    // value={
-                    //   maxEquipmentSlotsPerWeek.unit === "hours"
-                    //     ? maxEquipmentSlotsPerWeek.value * 2 // Convert hours to 30-min slots
-                    //     : maxEquipmentSlotsPerWeek.value
-                    // }
                     value={maxEquipmentSlotsPerWeek.value}
                   />
                   <Card>
@@ -1599,7 +2465,8 @@ export default function AdminSettings() {
                           minutes). Current setting:{" "}
                           {maxEquipmentSlotsPerWeek.value} slots (
                           {maxEquipmentSlotsPerWeek.value / 2} hours). Must be
-                          at least {maxEquipmentSlotsPerDay.value} slots (daily limit).
+                          at least {maxEquipmentSlotsPerDay.value} slots (daily
+                          limit).
                         </p>
                       </div>
                     </CardContent>
@@ -1914,6 +2781,766 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="volunteers">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Manage All Volunteers</CardTitle>
+                    <CardDescription>
+                      View and manage volunteer status for all users
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="Search by first or last name"
+                          value={searchName}
+                          onChange={(e) => setSearchName(e.target.value)}
+                          className="w-full md:w-64"
+                        />
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        Showing {startIndex + 1}-
+                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
+                        {sortedFilteredUsers.length} users
+                      </div>
+                    </div>
+
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "First Name",
+                          render: (user: any) => user.firstName,
+                        },
+                        {
+                          header: "Last Name",
+                          render: (user: any) => user.lastName,
+                        },
+                        { header: "Email", render: (user: any) => user.email },
+                        {
+                          header: "Phone Number",
+                          render: (user: any) => user.phone,
+                        },
+                        {
+                          header: "Volunteer Status",
+                          render: (user: any) => (
+                            <div className="space-y-1">
+                              <VolunteerControl user={user} />
+                              {user.volunteerHistory &&
+                                user.volunteerHistory.length > 0 && (
+                                  <details className="text-xs text-gray-500">
+                                    <summary className="cursor-pointer hover:text-gray-700">
+                                      History ({user.volunteerHistory.length})
+                                    </summary>
+                                    <div className="mt-1 space-y-1">
+                                      {user.volunteerHistory
+                                        .slice(0, 3)
+                                        .map((period: any) => (
+                                          <div
+                                            key={period.id}
+                                            className="text-xs"
+                                          >
+                                            {new Date(
+                                              period.volunteerStart
+                                            ).toLocaleDateString()}{" "}
+                                            -{" "}
+                                            {period.volunteerEnd
+                                              ? new Date(
+                                                  period.volunteerEnd
+                                                ).toLocaleDateString()
+                                              : "Active"}
+                                          </div>
+                                        ))}
+                                      {user.volunteerHistory.length > 3 && (
+                                        <div className="text-xs">
+                                          ...and{" "}
+                                          {user.volunteerHistory.length - 3}{" "}
+                                          more
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                )}
+                            </div>
+                          ),
+                        },
+                      ]}
+                      data={paginatedUsers}
+                      emptyMessage="No users found"
+                    />
+
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                      maxVisiblePages={10}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Volunteer Hours Management */}
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Manage Volunteer Hours</CardTitle>
+                    <CardDescription>
+                      Review and approve/deny/resolve/pending volunteer hour
+                      submissions. Use the "Show resubmissions and denied hours
+                      only" filter to focus on hours that need attention -
+                      denied hours that need feedback and resubmissions that
+                      need review.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {/* Search and Filter Controls */}
+                      <div className="space-y-4 mb-6">
+                        {/* Name Search and Status Filter Row */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Name Search */}
+                          <div className="w-full">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Search by volunteer name
+                            </label>
+                            <div className="relative">
+                              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                              <Input
+                                placeholder="Enter first name or last name to search..."
+                                value={volunteerSearchName}
+                                onChange={(e) =>
+                                  setVolunteerSearchName(e.target.value)
+                                }
+                                className="pl-10 h-10 text-base"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Status Filter */}
+                          <div className="w-full">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Filter by status
+                            </label>
+                            <select
+                              value={volunteerStatusFilter}
+                              onChange={(e) =>
+                                setVolunteerStatusFilter(e.target.value)
+                              }
+                              disabled={showResubmissionsOnly}
+                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base ${
+                                showResubmissionsOnly
+                                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              <option value="all">All Status</option>
+                              <option value="pending">Pending</option>
+                              <option value="approved">Approved</option>
+                              <option value="denied">Denied</option>
+                              <option value="resolved">Resolved</option>
+                            </select>
+                            {showResubmissionsOnly && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Status filter is disabled when showing
+                                resubmissions and denied hours only
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mb-6">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              id="showResubmissionsOnly"
+                              checked={showResubmissionsOnly}
+                              onChange={(e) =>
+                                setShowResubmissionsOnly(e.target.checked)
+                              }
+                              className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <label
+                              htmlFor="showResubmissionsOnly"
+                              className="text-sm font-medium text-gray-700"
+                            >
+                              Show resubmissions and denied hours only
+                            </label>
+                            <span className="text-xs text-gray-500">
+                              (Shows only pending resubmissions and denied hours
+                              - overrides status filter)
+                            </span>
+                          </div>
+                          {showResubmissionsOnly && (
+                            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                              <strong>Active:</strong> Showing only pending
+                              hours marked as resubmissions and denied hours.
+                              Status filter is disabled. Uncheck to use normal
+                              filtering.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Date and Time Filters - Two Rows */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* From Date and Time */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                              Filter From
+                            </h4>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  Start Date
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={volunteerFromDate}
+                                  onChange={(e) =>
+                                    setVolunteerFromDate(e.target.value)
+                                  }
+                                  className="w-full h-10"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  Start Time
+                                </label>
+                                <select
+                                  value={volunteerFromTime}
+                                  onChange={(e) =>
+                                    setVolunteerFromTime(e.target.value)
+                                  }
+                                  disabled={!volunteerFromDate}
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                >
+                                  <option value="">
+                                    {!volunteerFromDate
+                                      ? "Select start date first"
+                                      : "Choose start time"}
+                                  </option>
+                                  {generateVolunteerTimeOptions().map(
+                                    (time) => (
+                                      <option key={time} value={time}>
+                                        {time}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* To Date and Time */}
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                              Filter To
+                            </h4>
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  End Date
+                                </label>
+                                <Input
+                                  type="date"
+                                  value={volunteerToDate}
+                                  onChange={(e) =>
+                                    setVolunteerToDate(e.target.value)
+                                  }
+                                  className="w-full h-10"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm text-gray-600 mb-1">
+                                  End Time
+                                </label>
+                                <select
+                                  value={volunteerToTime}
+                                  onChange={(e) =>
+                                    setVolunteerToTime(e.target.value)
+                                  }
+                                  disabled={!volunteerToDate}
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                >
+                                  <option value="">
+                                    {!volunteerToDate
+                                      ? "Select end date first"
+                                      : "Choose end time"}
+                                  </option>
+                                  {generateVolunteerTimeOptions().map(
+                                    (time) => (
+                                      <option key={time} value={time}>
+                                        {time}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                          <Button
+                            onClick={handleVolunteerSearch}
+                            disabled={
+                              !volunteerFromDate ||
+                              !volunteerFromTime ||
+                              !volunteerToDate ||
+                              !volunteerToTime
+                            }
+                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                          >
+                            Apply Date/Time Filter
+                          </Button>
+
+                          {(volunteerSearchName ||
+                            volunteerStatusFilter !== "pending" ||
+                            showResubmissionsOnly ||
+                            appliedVolunteerFromDate ||
+                            appliedVolunteerFromTime ||
+                            appliedVolunteerToDate ||
+                            appliedVolunteerToTime) && (
+                            <Button
+                              variant="outline"
+                              onClick={handleClearVolunteerFilters}
+                              className="h-10 px-6"
+                            >
+                              Clear All Filters
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Volunteer Hours Table */}
+                      <ShadTable
+                        key={`volunteer-table-${volunteerStatusFilter}-${volunteerSearchName}-${volunteerCurrentPage}`}
+                        columns={[
+                          {
+                            header: "User",
+                            render: (hour: any) => (
+                              <div>
+                                <div className="font-medium">
+                                  {hour.user.firstName} {hour.user.lastName}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {hour.user.email}
+                                </div>
+                              </div>
+                            ),
+                          },
+                          {
+                            header: "Date",
+                            render: (hour: any) =>
+                              new Date(hour.startTime).toLocaleDateString(),
+                          },
+                          {
+                            header: "Time",
+                            render: (hour: any) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              return `${start.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })} - ${end.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}`;
+                            },
+                          },
+                          {
+                            header: "Hours",
+                            render: (hour: any) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              const durationMs =
+                                end.getTime() - start.getTime();
+                              const hours =
+                                Math.round(
+                                  (durationMs / (1000 * 60 * 60)) * 10
+                                ) / 10;
+                              return `${hours} hours`;
+                            },
+                          },
+                          {
+                            header: "Description",
+                            render: (hour: any) => hour.description || "—",
+                          },
+                          {
+                            header: "Status",
+                            render: (hour: any) => (
+                              <div className="flex flex-col items-center gap-1">
+                                <VolunteerHourStatusControl hour={hour} />
+                                {hour.isResubmission && (
+                                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    Resubmission
+                                  </span>
+                                )}
+                              </div>
+                            ),
+                          },
+                          {
+                            header: "Logged",
+                            render: (hour: any) =>
+                              new Date(hour.createdAt).toLocaleDateString(),
+                          },
+                        ]}
+                        data={paginatedVolunteerHours}
+                        emptyMessage="No volunteer hours found"
+                      />
+
+                      {/* Pagination for Volunteer Hours */}
+                      <Pagination
+                        currentPage={volunteerCurrentPage}
+                        totalPages={volunteerTotalPages}
+                        onPageChange={setVolunteerCurrentPage}
+                        maxVisiblePages={10}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recent Actions */}
+                <Card className="mt-8">
+                  <CardHeader>
+                    <CardTitle>Recently Managed Volunteer Actions</CardTitle>
+                    <CardDescription>
+                      Recently modified volunteer hour statuses and number of
+                      total hours per filter
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Search and Filter Controls for Recent Actions */}
+                    <div className="space-y-4 mb-6">
+                      {/* Name Search and Status Filter Row */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Name Search */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Search by volunteer name
+                          </label>
+                          <div className="relative">
+                            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                            <Input
+                              placeholder="Enter first name or last name to search..."
+                              value={actionsSearchName}
+                              onChange={(e) =>
+                                setActionsSearchName(e.target.value)
+                              }
+                              className="pl-10 h-10 text-base"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="w-full">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Filter by status
+                          </label>
+                          <select
+                            value={actionsStatusFilter}
+                            onChange={(e) =>
+                              setActionsStatusFilter(e.target.value)
+                            }
+                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                          >
+                            <option value="all">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="denied">Denied</option>
+                            <option value="resolved">Resolved</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Date and Time Filters - Two Rows */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* From Date and Time */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                            Filter From
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                Start Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={actionsFromDate}
+                                onChange={(e) =>
+                                  setActionsFromDate(e.target.value)
+                                }
+                                className="w-full h-10"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                Start Time
+                              </label>
+                              <select
+                                value={actionsFromTime}
+                                onChange={(e) =>
+                                  setActionsFromTime(e.target.value)
+                                }
+                                disabled={!actionsFromDate}
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                              >
+                                <option value="">
+                                  {!actionsFromDate
+                                    ? "Select start date first"
+                                    : "Choose start time"}
+                                </option>
+                                {generateVolunteerTimeOptions().map((time) => (
+                                  <option key={time} value={time}>
+                                    {time}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* To Date and Time */}
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700 border-b border-gray-200 pb-1">
+                            Filter To
+                          </h4>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                End Date
+                              </label>
+                              <Input
+                                type="date"
+                                value={actionsToDate}
+                                onChange={(e) =>
+                                  setActionsToDate(e.target.value)
+                                }
+                                className="w-full h-10"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm text-gray-600 mb-1">
+                                End Time
+                              </label>
+                              <select
+                                value={actionsToTime}
+                                onChange={(e) =>
+                                  setActionsToTime(e.target.value)
+                                }
+                                disabled={!actionsToDate}
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                              >
+                                <option value="">
+                                  {!actionsToDate
+                                    ? "Select end date first"
+                                    : "Choose end time"}
+                                </option>
+                                {generateVolunteerTimeOptions().map((time) => (
+                                  <option key={time} value={time}>
+                                    {time}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <Button
+                          onClick={handleActionsSearch}
+                          disabled={
+                            !actionsFromDate ||
+                            !actionsFromTime ||
+                            !actionsToDate ||
+                            !actionsToTime
+                          }
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                        >
+                          Apply Date/Time Filter
+                        </Button>
+
+                        {(actionsSearchName ||
+                          actionsStatusFilter !== "all" ||
+                          appliedActionsFromDate ||
+                          appliedActionsFromTime ||
+                          appliedActionsToDate ||
+                          appliedActionsToTime) && (
+                          <Button
+                            variant="outline"
+                            onClick={handleClearActionsFilters}
+                            className="h-10 px-6"
+                          >
+                            Clear All Filters
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats for Recently Managed Volunteer Actions */}
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex flex-col space-y-2">
+                        <div className="flex items-center justify-between text-sm text-gray-600">
+                          <span>
+                            Showing {actionsStartIndex + 1}-
+                            {Math.min(
+                              actionsEndIndex,
+                              sortedRecentActions.length
+                            )}{" "}
+                            of {sortedRecentActions.length} entries
+                            {appliedActionsFromDate &&
+                              appliedActionsFromTime &&
+                              appliedActionsToDate &&
+                              appliedActionsToTime && (
+                                <span className="ml-2 text-yellow-600">
+                                  (filtered from{" "}
+                                  {new Date(
+                                    `${appliedActionsFromDate}T${appliedActionsFromTime}`
+                                  ).toLocaleString()}{" "}
+                                  to{" "}
+                                  {new Date(
+                                    `${appliedActionsToDate}T${appliedActionsToTime}`
+                                  ).toLocaleString()}
+                                  )
+                                </span>
+                              )}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4 text-sm">
+                            <span className="text-blue-700 font-medium">
+                              {actionsStatusFilter === "all"
+                                ? "Total Hours (All Status)"
+                                : `Total Hours (${
+                                    actionsStatusFilter
+                                      .charAt(0)
+                                      .toUpperCase() +
+                                    actionsStatusFilter.slice(1)
+                                  } Status)`}
+                              : {totalRecentActionHours.toFixed(1)} hours
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Recent Actions Table */}
+                    <ShadTable
+                      key={`actions-table-${actionsStatusFilter}-${actionsSearchName}-${actionsCurrentPage}`}
+                      columns={[
+                        {
+                          header: "User",
+                          render: (action: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {action.user.firstName} {action.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {action.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Date",
+                          render: (action: any) =>
+                            new Date(action.startTime).toLocaleDateString(),
+                        },
+                        {
+                          header: "Time",
+                          render: (action: any) => {
+                            const start = new Date(action.startTime);
+                            const end = new Date(action.endTime);
+                            return `${start.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })} - ${end.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}`;
+                          },
+                        },
+                        {
+                          header: "Status History",
+                          render: (action: any) => {
+                            const currentStatus = action.status;
+                            const previousStatus = action.previousStatus;
+
+                            return (
+                              <div className="flex flex-col items-center space-y-1">
+                                {/* Status Change Display */}
+                                <div className="flex items-center justify-center space-x-2">
+                                  {previousStatus && (
+                                    <>
+                                      <span
+                                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                          previousStatus === "approved"
+                                            ? "bg-green-100 text-green-800"
+                                            : previousStatus === "denied"
+                                              ? "bg-red-100 text-red-800"
+                                              : previousStatus === "resolved"
+                                                ? "bg-purple-100 text-purple-800"
+                                                : "bg-yellow-100 text-yellow-800"
+                                        }`}
+                                      >
+                                        {previousStatus
+                                          .charAt(0)
+                                          .toUpperCase() +
+                                          previousStatus.slice(1)}
+                                      </span>
+                                      <span className="text-gray-400">→</span>
+                                    </>
+                                  )}
+                                  <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      currentStatus === "approved"
+                                        ? "bg-green-100 text-green-800"
+                                        : currentStatus === "denied"
+                                          ? "bg-red-100 text-red-800"
+                                          : currentStatus === "resolved"
+                                            ? "bg-purple-100 text-purple-800"
+                                            : "bg-yellow-100 text-yellow-800"
+                                    }`}
+                                  >
+                                    {currentStatus.charAt(0).toUpperCase() +
+                                      currentStatus.slice(1)}
+                                  </span>
+                                </div>
+
+                                {action.isResubmission && (
+                                  <div className="flex justify-center">
+                                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                      Resubmission
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Last Modified",
+                          render: (action: any) =>
+                            new Date(action.updatedAt).toLocaleString(),
+                        },
+                      ]}
+                      data={paginatedRecentActions}
+                      emptyMessage="No recent actions found"
+                    />
+
+                    {/* Pagination for Recent Actions */}
+                    <Pagination
+                      currentPage={actionsCurrentPage}
+                      totalPages={actionsTotalPages}
+                      onPageChange={setActionsCurrentPage}
+                      maxVisiblePages={50}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               <TabsContent value="plannedClosures">
                 <Card>
                   <CardHeader>
@@ -2154,7 +3781,68 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
-              {/* Tab 2: Placeholder for Future Settings */}
+              {/* Tab: Miscellaneous Settings */}
+              <TabsContent value="miscellaneous">
+                <Form method="post" className="space-y-6">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="gstPercentage"
+                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Tax Settings</CardTitle>
+                      <CardDescription>
+                        Configure tax rates applied to all payments
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="gstPercentage">
+                          GST/HST Percentage
+                        </Label>
+                        <div className="flex items-center space-x-2">
+                          <Input
+                            id="gstPercentage"
+                            name="gstPercentage"
+                            type="number"
+                            value={gstPercentage}
+                            onChange={(e) => setGstPercentage(e.target.value)}
+                            min="0"
+                            max="20"
+                            step="0.1"
+                            className="w-24"
+                          />
+                          <span className="text-sm text-gray-600">%</span>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          GST/HST tax percentage applied to all payments.
+                          Standard Canadian GST is 5%. HST varies by province
+                          (13% in Ontario, 15% in Atlantic Canada). This rate
+                          will be applied to all memberships, workshops, and
+                          equipment bookings.
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Tax Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+              </TabsContent>
+
+              {/* Tabb Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
                   <CardHeader>
