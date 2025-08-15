@@ -7,7 +7,7 @@ import {
   useSubmit,
 } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import {
   Card,
   CardContent,

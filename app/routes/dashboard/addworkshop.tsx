@@ -34,8 +34,8 @@ import {
   CalendarRange as CalendarRangeIcon,
   Check as CheckIcon,
 } from "lucide-react";
-import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
-import type { SlotsByDay } from "~/components/ui/Dashboard/EquipmentBookingGrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/Equipmentbookinggrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/Equipmentbookinggrid";
 import {
   bulkBookEquipment,
   createEquipmentSlotsForOccurrence,
@@ -60,7 +60,7 @@ import { getUser, getRoleUser } from "../../utils/session.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 

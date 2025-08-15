@@ -48,8 +48,8 @@ import {
 import { logger } from "~/logging/logger";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 
 interface Occurrence {
   id: number;

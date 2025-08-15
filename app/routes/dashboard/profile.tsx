@@ -32,8 +32,8 @@ import {
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {

@@ -3,7 +3,7 @@ import { useLoaderData, redirect } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import { getUserWorkshopRegistrationsByWorkshopId } from "~/models/workshop.server";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import {
   ShadTable,

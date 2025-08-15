@@ -35,7 +35,7 @@ import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import { useState } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 

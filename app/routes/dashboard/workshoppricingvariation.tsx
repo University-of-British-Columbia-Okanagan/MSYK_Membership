@@ -3,8 +3,8 @@ import { useLoaderData, useNavigate, useSearchParams } from "react-router";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import {
   getWorkshopWithPriceVariations,

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Outlet, redirect, useLoaderData } from "react-router";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { getRoleUser } from "~/utils/session.server";
 import {

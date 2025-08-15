@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
 import { json } from "@remix-run/node";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { AppSidebar } from "~/components/ui/Dashboard/Sidebar";
 import { createIssue } from "~/models/issue.server";
 import { logger } from "~/logging/logger";

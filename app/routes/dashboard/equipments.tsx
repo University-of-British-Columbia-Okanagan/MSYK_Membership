@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate, useFetcher } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/AdminSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { getRoleUser } from "~/utils/session.server";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,8 +10,8 @@ import {
   updateEquipment,
   getAllEquipment,
 } from "~/models/equipment.server";
-import EquipmentCard from "~/components/ui/Dashboard/EquipmentCard";
-import GuestAppSidebar from "~/components/ui/Dashboard/GuestSidebar";
+import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
+import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const equipments = await getAllEquipment();
