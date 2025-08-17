@@ -1206,7 +1206,6 @@ export default function AddWorkshop() {
                             // Re-enable the price field when unchecking
                             form.setValue("price", 0);
                           } else {
-                            // When checking, auto-create first pricing option
                             setPriceVariations([
                               {
                                 name: "",
