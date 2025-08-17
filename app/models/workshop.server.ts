@@ -67,6 +67,15 @@ export async function getWorkshops() {
           userWorkshops: true, // Include user workshops to count registrations
         },
       },
+      // Include price variations
+      priceVariations: {
+        where: {
+          status: "active", // Only include active price variations
+        },
+        orderBy: {
+          price: "asc", // Order by price to easily find the lowest
+        },
+      },
     },
   });
 
@@ -94,6 +103,12 @@ export async function getWorkshops() {
       }
     );
 
+    // Calculate display price: use lowest price variation if available, otherwise use base price
+    const displayPrice =
+      workshop.hasPriceVariations && workshop.priceVariations.length > 0
+        ? workshop.priceVariations[0].price // Already ordered by price asc, so first is lowest
+        : workshop.price;
+
     // Keep all existing fields in 'workshop',
     // then add/override status, and ensure 'type' is included.
     return {
@@ -101,6 +116,7 @@ export async function getWorkshops() {
       status: latestStatus,
       type: workshop.type, // explicitly include workshop.type
       occurrences: occurrencesWithCounts, // Replace occurrences with our version that includes counts
+      displayPrice, // calculated display price
     };
   });
 }

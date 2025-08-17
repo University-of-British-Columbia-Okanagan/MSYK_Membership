@@ -21,6 +21,7 @@ interface WorkshopProps {
   name: string;
   description: string;
   price: number;
+  displayPrice?: number;
   type: "workshop" | "orientation" | string;
   isAdmin: boolean;
   imageUrl?: string;
@@ -34,6 +35,7 @@ export default function WorkshopCard({
   type,
   isAdmin,
   imageUrl,
+  displayPrice,
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -122,7 +124,7 @@ export default function WorkshopCard({
         {/* Price Box */}
         <div className="mt-3 flex justify-start">
           <span className="border border-purple-500 text-purple-700 font-semibold text-lg px-3 py-1 rounded-md">
-            ${price}
+            ${displayPrice !== undefined ? displayPrice : price}
           </span>
         </div>
       </CardHeader>

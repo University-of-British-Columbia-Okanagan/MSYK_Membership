@@ -1,9 +1,10 @@
-import WorkshopCard from "./workshopcard";
+import WorkshopCard from "./WorkshopCard";
 
 interface Workshop {
   id: number;
   name: string;
   description: string;
+  displayPrice?: number;
   price: number;
   type: string;
   occurrences: { id: number; startDate: string; endDate: string }[];
