@@ -731,11 +731,9 @@ export default function WorkshopDetails() {
                 <CardTitle className="text-2xl font-bold">
                   {workshop.name}
                 </CardTitle>
-                {workshop.priceVariations.length === 0 && (
-                  <CardDescription className="text-gray-600 max-w-2xl mx-auto">
-                    {workshop.description}
-                  </CardDescription>
-                )}
+                <CardDescription className="text-gray-600 max-w-2xl mx-auto">
+                  {workshop.description}
+                </CardDescription>
 
                 {/* Admin Only: View Users Button */}
                 {isAdmin && (
@@ -802,14 +800,8 @@ export default function WorkshopDetails() {
                   workshop.priceVariations &&
                   workshop.priceVariations.length > 0 ? (
                     <div className="w-full">
-                      {/* Base price display */}
+                      {/* Location display */}
                       <div className="flex items-center gap-4 mb-4">
-                        <Badge
-                          variant="outline"
-                          className="px-4 py-2 text-lg font-medium bg-yellow-50 border-yellow-300 text-yellow-800"
-                        >
-                          Base price of ${workshop.price}
-                        </Badge>
                         <Badge
                           variant="outline"
                           className="px-4 py-2 text-lg font-medium"
