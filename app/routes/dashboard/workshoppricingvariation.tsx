@@ -52,14 +52,20 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   return { workshop, user, isAdmin, capacityInfo };
 }
+
 export default function WorkshopPricingVariation() {
   const { workshop, user, isAdmin, capacityInfo } =
     useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const occurrenceId = searchParams.get("occurrenceId");
+
+  // Only select from active (non-cancelled) variations for default selection
+  const activeVariations = workshop.priceVariations.filter(
+    (variation: any) => variation.status !== "cancelled"
+  );
   const [selectedVariation, setSelectedVariation] = useState<number | null>(
-    workshop.priceVariations.length > 0 ? workshop.priceVariations[0].id : null
+    activeVariations.length > 0 ? activeVariations[0].id : null
   );
 
   const handleContinue = () => {
@@ -154,18 +160,23 @@ export default function WorkshopPricingVariation() {
                     variationCapacityInfo.capacity
                   : false;
 
+                const isCancelled = variation.status === "cancelled";
+                const isDisabled = isVariationFull || isCancelled;
+
                 return (
                   <div
                     key={variation.id}
                     className={`border rounded-lg p-6 transition-all ${
-                      isVariationFull
-                        ? "opacity-50 cursor-not-allowed border-gray-300"
-                        : selectedVariation === variation.id
-                          ? "border-blue-500 bg-blue-50 cursor-pointer"
-                          : "border-gray-200 hover:border-gray-300 cursor-pointer"
+                      isCancelled
+                        ? "opacity-50 cursor-not-allowed border-red-300 bg-red-50"
+                        : isVariationFull
+                          ? "opacity-50 cursor-not-allowed border-gray-300"
+                          : selectedVariation === variation.id
+                            ? "border-blue-500 bg-blue-50 cursor-pointer"
+                            : "border-gray-200 hover:border-gray-300 cursor-pointer"
                     }`}
                     onClick={() => {
-                      if (!isVariationFull) {
+                      if (!isDisabled) {
                         setSelectedVariation(variation.id);
                       }
                     }}
@@ -175,45 +186,66 @@ export default function WorkshopPricingVariation() {
                         type="radio"
                         name="variation"
                         value={variation.id}
-                        checked={selectedVariation === variation.id}
+                        checked={
+                          selectedVariation === variation.id && !isCancelled
+                        }
                         onChange={() => {
-                          if (!isVariationFull) {
+                          if (!isDisabled) {
                             setSelectedVariation(variation.id);
                           }
                         }}
-                        disabled={isVariationFull}
+                        disabled={isDisabled}
                         className="mr-4"
                       />
                       <div className="flex-1">
                         <div className="flex justify-between items-start">
                           <div>
                             <div className="flex items-center gap-2 mb-2">
-                              <h3 className="text-xl font-semibold">
+                              <h3
+                                className={`text-xl font-semibold ${isCancelled ? "text-gray-500 line-through" : ""}`}
+                              >
                                 {variation.name}
                               </h3>
-                              {index === 0 && (
+                              {index === 0 && !isCancelled && (
                                 <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
                                   Standard
                                 </span>
                               )}
-                              {isVariationFull && (
+                              {isCancelled && (
                                 <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                  Cancelled
+                                </span>
+                              )}
+                              {!isCancelled && isVariationFull && (
+                                <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded">
                                   Full
                                 </span>
                               )}
                             </div>
-                            <p className="text-gray-600">
-                              {variation.description}
+                            <p
+                              className={`${isCancelled ? "text-gray-400" : "text-gray-600"}`}
+                            >
+                              {isCancelled
+                                ? "This pricing option has been cancelled and is no longer available."
+                                : variation.description}
                             </p>
-                            {variationCapacityInfo && (
+                            {!isCancelled && variationCapacityInfo && (
                               <p className="text-sm text-gray-500 mt-1">
                                 {variationCapacityInfo.registrations}/
                                 {variationCapacityInfo.capacity} registered
                               </p>
                             )}
+                            {isCancelled && (
+                              <p className="text-sm text-red-500 mt-1">
+                                All users registered for this option have been
+                                notified.
+                              </p>
+                            )}
                           </div>
                           <div className="text-right">
-                            <span className="text-2xl font-bold text-blue-600">
+                            <span
+                              className={`text-2xl font-bold ${isCancelled ? "text-gray-400 line-through" : "text-blue-600"}`}
+                            >
                               ${variation.price}
                             </span>
                           </div>
@@ -232,10 +264,12 @@ export default function WorkshopPricingVariation() {
               >
                 Cancel
               </Button>
+
               <Button
                 onClick={handleContinue}
                 disabled={
                   selectedVariation === null ||
+                  activeVariations.length === 0 ||
                   !!(
                     capacityInfo &&
                     capacityInfo.totalRegistrations >=
@@ -244,6 +278,7 @@ export default function WorkshopPricingVariation() {
                 }
                 className={`${
                   selectedVariation === null ||
+                  activeVariations.length === 0 ||
                   (capacityInfo &&
                     capacityInfo.totalRegistrations >=
                       capacityInfo.workshopCapacity)
@@ -251,10 +286,13 @@ export default function WorkshopPricingVariation() {
                     : "bg-yellow-500 hover:bg-yellow-600"
                 } text-white px-6 py-2 rounded-lg`}
               >
-                {capacityInfo &&
-                capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity
-                  ? "Workshop Full"
-                  : "Continue to Payment"}
+                {activeVariations.length === 0
+                  ? "No Options Available"
+                  : capacityInfo &&
+                      capacityInfo.totalRegistrations >=
+                        capacityInfo.workshopCapacity
+                    ? "Workshop Full"
+                    : "Continue to Payment"}
               </Button>
             </div>
           </div>
