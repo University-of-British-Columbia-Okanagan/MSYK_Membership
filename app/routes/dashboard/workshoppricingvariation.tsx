@@ -267,32 +267,73 @@ export default function WorkshopPricingVariation() {
 
               <Button
                 onClick={handleContinue}
-                disabled={
-                  selectedVariation === null ||
-                  activeVariations.length === 0 ||
-                  !!(
-                    capacityInfo &&
-                    capacityInfo.totalRegistrations >=
-                      capacityInfo.workshopCapacity
-                  )
-                }
+                disabled={(() => {
+                  // Check if no variation is selected
+                  if (selectedVariation === null) return true;
+                  
+                  // Check if no active variations exist
+                  if (activeVariations.length === 0) return true;
+                  
+                  // Check if workshop is full
+                  if (capacityInfo && capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) return true;
+                  
+                  // Check if all active variations are full
+                  const selectableVariations = activeVariations.filter(variation => {
+                    const variationCapacityInfo = capacityInfo?.variations?.find(
+                      (v) => v.variationId === variation.id
+                    );
+                    const isVariationFull = variationCapacityInfo
+                      ? variationCapacityInfo.registrations >= variationCapacityInfo.capacity
+                      : false;
+                    return !isVariationFull;
+                  });
+                  
+                  if (selectableVariations.length === 0) return true;
+                  
+                  return false;
+                })()}
                 className={`${
-                  selectedVariation === null ||
-                  activeVariations.length === 0 ||
-                  (capacityInfo &&
-                    capacityInfo.totalRegistrations >=
-                      capacityInfo.workshopCapacity)
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-yellow-500 hover:bg-yellow-600"
+                  (() => {
+                    // Same logic as disabled check
+                    if (selectedVariation === null) return "bg-gray-400 cursor-not-allowed";
+                    if (activeVariations.length === 0) return "bg-gray-400 cursor-not-allowed";
+                    if (capacityInfo && capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) return "bg-gray-400 cursor-not-allowed";
+                    
+                    const selectableVariations = activeVariations.filter(variation => {
+                      const variationCapacityInfo = capacityInfo?.variations?.find(
+                        (v) => v.variationId === variation.id
+                      );
+                      const isVariationFull = variationCapacityInfo
+                        ? variationCapacityInfo.registrations >= variationCapacityInfo.capacity
+                        : false;
+                      return !isVariationFull;
+                    });
+                    
+                    if (selectableVariations.length === 0) return "bg-gray-400 cursor-not-allowed";
+                    
+                    return "bg-yellow-500 hover:bg-yellow-600";
+                  })()
                 } text-white px-6 py-2 rounded-lg`}
               >
-                {activeVariations.length === 0
-                  ? "No Options Available"
-                  : capacityInfo &&
-                      capacityInfo.totalRegistrations >=
-                        capacityInfo.workshopCapacity
-                    ? "Workshop Full"
-                    : "Continue to Payment"}
+                {(() => {
+                  // Check conditions and return appropriate text
+                  if (activeVariations.length === 0) return "No Options Available";
+                  if (capacityInfo && capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) return "Workshop Full";
+                  
+                  const selectableVariations = activeVariations.filter(variation => {
+                    const variationCapacityInfo = capacityInfo?.variations?.find(
+                      (v) => v.variationId === variation.id
+                    );
+                    const isVariationFull = variationCapacityInfo
+                      ? variationCapacityInfo.registrations >= variationCapacityInfo.capacity
+                      : false;
+                    return !isVariationFull;
+                  });
+                  
+                  if (selectableVariations.length === 0) return "All Options Unavailable";
+                  
+                  return "Continue to Payment";
+                })()}
               </Button>
             </div>
           </div>
