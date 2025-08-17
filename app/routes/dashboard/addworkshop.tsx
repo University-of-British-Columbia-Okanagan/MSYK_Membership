@@ -1271,7 +1271,7 @@ export default function AddWorkshop() {
                       {priceVariations.length > 0 && (
                         <p className="text-xs text-blue-600 mt-1">
                           <strong>Note:</strong> The first option will be the
-                          default selection for users.
+                          standard selection for users
                         </p>
                       )}
                     </div>
