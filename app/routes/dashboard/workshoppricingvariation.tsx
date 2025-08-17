@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { useLoaderData, useNavigate, useSearchParams } from "react-router";
+import {
+  useLoaderData,
+  useNavigate,
+  useSearchParams,
+  redirect,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
@@ -10,6 +15,8 @@ import {
   getWorkshopWithPriceVariations,
   getWorkshopRegistrationCounts,
   getMultiDayWorkshopRegistrationCounts,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
 } from "~/models/workshop.server";
 import type { Route } from "./+types/workshoppricingvariation";
 
@@ -17,6 +24,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
   const isAdmin = roleUser?.roleName === "Admin";
+
+  // Determine redirect path based on user role
+  const getRedirectPath = () => {
+    if (!user) return "/dashboard";
+    if (isAdmin) return "/dashboard/admin";
+    return "/dashboard/user";
+  };
 
   const workshopId = Number(params.workshopId);
   if (isNaN(workshopId)) {
@@ -37,12 +51,60 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   let capacityInfo = null;
 
   if (connectId) {
+    // Multi-day workshop validation
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      Number(connectId)
+    );
+
+    if (!occurrences || occurrences.length === 0) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if ANY occurrence is cancelled
+    const hasAnyCancelledOccurrence = occurrences.some(
+      (occ) => occ.status === "cancelled"
+    );
+    if (hasAnyCancelledOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if ANY occurrence is in the past
+    const now = new Date();
+    const hasAnyPastOccurrence = occurrences.some(
+      (occ) => new Date(occ.endDate) < now
+    );
+    if (hasAnyPastOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
     // Multi-day workshop capacity
     capacityInfo = await getMultiDayWorkshopRegistrationCounts(
       workshopId,
       Number(connectId)
     );
   } else if (occurrenceId) {
+    // Regular workshop validation
+    const occurrence = await getWorkshopOccurrence(
+      workshopId,
+      Number(occurrenceId)
+    );
+
+    if (!occurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if occurrence is cancelled
+    if (occurrence.status === "cancelled") {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if occurrence is in the past
+    const now = new Date();
+    if (new Date(occurrence.endDate) < now) {
+      throw redirect(getRedirectPath());
+    }
+
     // Regular workshop capacity
     capacityInfo = await getWorkshopRegistrationCounts(
       workshopId,
@@ -270,68 +332,98 @@ export default function WorkshopPricingVariation() {
                 disabled={(() => {
                   // Check if no variation is selected
                   if (selectedVariation === null) return true;
-                  
+
                   // Check if no active variations exist
                   if (activeVariations.length === 0) return true;
-                  
+
                   // Check if workshop is full
-                  if (capacityInfo && capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) return true;
-                  
+                  if (
+                    capacityInfo &&
+                    capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity
+                  )
+                    return true;
+
                   // Check if all active variations are full
-                  const selectableVariations = activeVariations.filter(variation => {
-                    const variationCapacityInfo = capacityInfo?.variations?.find(
-                      (v) => v.variationId === variation.id
-                    );
-                    const isVariationFull = variationCapacityInfo
-                      ? variationCapacityInfo.registrations >= variationCapacityInfo.capacity
-                      : false;
-                    return !isVariationFull;
-                  });
-                  
-                  if (selectableVariations.length === 0) return true;
-                  
-                  return false;
-                })()}
-                className={`${
-                  (() => {
-                    // Same logic as disabled check
-                    if (selectedVariation === null) return "bg-gray-400 cursor-not-allowed";
-                    if (activeVariations.length === 0) return "bg-gray-400 cursor-not-allowed";
-                    if (capacityInfo && capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) return "bg-gray-400 cursor-not-allowed";
-                    
-                    const selectableVariations = activeVariations.filter(variation => {
-                      const variationCapacityInfo = capacityInfo?.variations?.find(
-                        (v) => v.variationId === variation.id
-                      );
+                  const selectableVariations = activeVariations.filter(
+                    (variation) => {
+                      const variationCapacityInfo =
+                        capacityInfo?.variations?.find(
+                          (v) => v.variationId === variation.id
+                        );
                       const isVariationFull = variationCapacityInfo
-                        ? variationCapacityInfo.registrations >= variationCapacityInfo.capacity
+                        ? variationCapacityInfo.registrations >=
+                          variationCapacityInfo.capacity
                         : false;
                       return !isVariationFull;
-                    });
-                    
-                    if (selectableVariations.length === 0) return "bg-gray-400 cursor-not-allowed";
-                    
-                    return "bg-yellow-500 hover:bg-yellow-600";
-                  })()
-                } text-white px-6 py-2 rounded-lg`}
+                    }
+                  );
+
+                  if (selectableVariations.length === 0) return true;
+
+                  return false;
+                })()}
+                className={`${(() => {
+                  // Same logic as disabled check
+                  if (selectedVariation === null)
+                    return "bg-gray-400 cursor-not-allowed";
+                  if (activeVariations.length === 0)
+                    return "bg-gray-400 cursor-not-allowed";
+                  if (
+                    capacityInfo &&
+                    capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity
+                  )
+                    return "bg-gray-400 cursor-not-allowed";
+
+                  const selectableVariations = activeVariations.filter(
+                    (variation) => {
+                      const variationCapacityInfo =
+                        capacityInfo?.variations?.find(
+                          (v) => v.variationId === variation.id
+                        );
+                      const isVariationFull = variationCapacityInfo
+                        ? variationCapacityInfo.registrations >=
+                          variationCapacityInfo.capacity
+                        : false;
+                      return !isVariationFull;
+                    }
+                  );
+
+                  if (selectableVariations.length === 0)
+                    return "bg-gray-400 cursor-not-allowed";
+
+                  return "bg-yellow-500 hover:bg-yellow-600";
+                })()} text-white px-6 py-2 rounded-lg`}
               >
                 {(() => {
                   // Check conditions and return appropriate text
-                  if (activeVariations.length === 0) return "No Options Available";
-                  if (capacityInfo && capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity) return "Workshop Full";
-                  
-                  const selectableVariations = activeVariations.filter(variation => {
-                    const variationCapacityInfo = capacityInfo?.variations?.find(
-                      (v) => v.variationId === variation.id
-                    );
-                    const isVariationFull = variationCapacityInfo
-                      ? variationCapacityInfo.registrations >= variationCapacityInfo.capacity
-                      : false;
-                    return !isVariationFull;
-                  });
-                  
-                  if (selectableVariations.length === 0) return "All Options Unavailable";
-                  
+                  if (activeVariations.length === 0)
+                    return "No Options Available";
+                  if (
+                    capacityInfo &&
+                    capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity
+                  )
+                    return "Workshop Full";
+
+                  const selectableVariations = activeVariations.filter(
+                    (variation) => {
+                      const variationCapacityInfo =
+                        capacityInfo?.variations?.find(
+                          (v) => v.variationId === variation.id
+                        );
+                      const isVariationFull = variationCapacityInfo
+                        ? variationCapacityInfo.registrations >=
+                          variationCapacityInfo.capacity
+                        : false;
+                      return !isVariationFull;
+                    }
+                  );
+
+                  if (selectableVariations.length === 0)
+                    return "All Options Unavailable";
+
                   return "Continue to Payment";
                 })()}
               </Button>
