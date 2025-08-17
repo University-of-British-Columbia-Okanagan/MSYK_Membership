@@ -27,8 +27,9 @@ import {
   getWorkshops,
   getMultiDayWorkshopUserCount,
   getWorkshopWithPriceVariations,
-  getWorkshopRegistrationCounts,
   cancelWorkshopPriceVariation,
+  getMaxRegistrationCountsPerWorkshopPriceVariation,
+  getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -113,11 +114,54 @@ export async function loader({
   const availableEquipments = await getAvailableEquipment();
   const userCounts = await getMultiDayWorkshopUserCount(workshopId);
 
-  // Get registration counts for capacity validation
-  const registrationCounts = await getWorkshopRegistrationCounts(
-    workshopId,
-    workshop.occurrences?.[0]?.id || 0
-  ).catch(() => null);
+  // Check if this is a multi-day workshop
+  const isMultiDayWorkshop =
+    workshop.occurrences && workshop.occurrences.length > 0
+      ? workshop.occurrences.some((occ: any) => occ.connectId != null)
+      : false;
+
+  // Get registration counts with proper logic for regular vs multi-day workshops
+  let registrationCounts = null;
+  if (workshop.occurrences && workshop.occurrences.length > 0) {
+    try {
+      if (isMultiDayWorkshop) {
+        // For multi-day workshops: use unique user count logic
+        const firstConnectId = workshop.occurrences.find(
+          (occ: any) => occ.connectId
+        )?.connectId;
+        if (firstConnectId) {
+          registrationCounts = await getMultiDayWorkshopRegistrationCounts(
+            workshopId,
+            firstConnectId
+          );
+        }
+      } else {
+        // For regular workshops: use max registrations per occurrence logic
+        registrationCounts =
+          await getMaxRegistrationCountsPerWorkshopPriceVariation(workshopId);
+      }
+    } catch (error) {
+      console.error("Error getting registration counts:", error);
+      // Fallback to empty counts
+      registrationCounts = {
+        workshopCapacity: workshop.capacity,
+        totalRegistrations: 0,
+        baseRegistrations: 0,
+        hasBaseCapacity: true,
+        variations: workshop.priceVariations
+          ? workshop.priceVariations
+              .filter((v: any) => v.status !== "cancelled")
+              .map((variation: any) => ({
+                variationId: variation.id,
+                name: variation.name,
+                capacity: variation.capacity,
+                registrations: 0,
+                hasCapacity: true,
+              }))
+          : [],
+      };
+    }
+  }
 
   const cancelledPriceVariations =
     workshop.priceVariations?.filter(
