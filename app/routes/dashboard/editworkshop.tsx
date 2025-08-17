@@ -988,18 +988,25 @@ export default function EditWorkshop() {
 
   // For custom approach, add an empty row
   const addOccurrence = () => {
-    // Check if any users are registered
+    // Check if any users are registered (only for active/non-cancelled occurrences)
     let hasUsers = false;
 
     if (isMultiDayWorkshop) {
-      // For multi-day workshop, check total users across all occurrences
-      hasUsers = userCounts.totalUsers > 0;
+      // For multi-day workshop, check if there are active occurrences with users
+      const activeOccurrencesWithUsers = activeOccurrences.some(
+        (occ) => occ.userCount && occ.userCount > 0
+      );
+      hasUsers = activeOccurrencesWithUsers;
     } else {
-      // For regular workshops, check each occurrence
-      hasUsers = occurrences.some((occ) => occ.userCount && occ.userCount > 0);
+      // For regular workshops, check only active occurrences
+      const activeOccurrencesWithUsers = occurrences.some(
+        (occ) =>
+          occ.status !== "cancelled" && occ.userCount && occ.userCount > 0
+      );
+      hasUsers = activeOccurrencesWithUsers;
     }
 
-    // If users are registered, show confirmation dialog
+    // If users are registered for active occurrences, show confirmation dialog
     if (hasUsers) {
       const confirmed = window.confirm(
         "Are you sure you want to add new dates? There are users registered."
@@ -2139,15 +2146,22 @@ export default function EditWorkshop() {
                           Edit Workshop Dates{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
-                        {occurrences.length > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="ml-2 bg-yellow-100 border-yellow-200"
-                          >
-                            {occurrences.length} date
-                            {occurrences.length !== 1 ? "s" : ""} added
-                          </Badge>
-                        )}
+                        {(() => {
+                          const nonCancelledCount = occurrences.filter(
+                            (occ) => occ.status !== "cancelled"
+                          ).length;
+                          return (
+                            nonCancelledCount > 0 && (
+                              <Badge
+                                variant="outline"
+                                className="ml-2 bg-yellow-100 border-yellow-200"
+                              >
+                                {nonCancelledCount} date
+                                {nonCancelledCount !== 1 ? "s" : ""} added
+                              </Badge>
+                            )
+                          );
+                        })()}
                       </div>
                       <FormControl>
                         <div className="flex flex-col items-start space-y-6 w-full">
@@ -2186,7 +2200,9 @@ export default function EditWorkshop() {
                           {/* Custom Dates Input */}
                           {dateSelectionType === "custom" && (
                             <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
-                              {occurrences.length === 0 ? (
+                              {occurrences.filter(
+                                (occ) => occ.status !== "cancelled"
+                              ).length === 0 ? (
                                 <div className="text-center py-6 text-gray-500">
                                   <p className="text-sm">
                                     No dates added yet. Click the button below
@@ -2194,66 +2210,90 @@ export default function EditWorkshop() {
                                   </p>
                                 </div>
                               ) : (
-                                occurrences.map((occ, index) => {
-                                  const isStartDatePast = isDateInPast(
-                                    occ.startDate
-                                  );
-                                  const isEndDatePast = isDateInPast(
-                                    occ.endDate
-                                  );
-                                  const hasWarning =
-                                    isStartDatePast || isEndDatePast;
+                                (() => {
+                                  // Create a filtered list with correct indices
+                                  const nonCancelledOccurrences: Occurrence[] =
+                                    [];
+                                  const indexMapping: number[] = [];
 
-                                  return (
-                                    <div key={index} style={{ width: "100%" }}>
-                                      <TooltipProvider>
-                                        <Tooltip
-                                          open={hasWarning ? undefined : false}
+                                  occurrences.forEach((occ, originalIndex) => {
+                                    if (occ.status !== "cancelled") {
+                                      nonCancelledOccurrences.push(occ);
+                                      indexMapping.push(originalIndex);
+                                    }
+                                  });
+
+                                  return nonCancelledOccurrences.map(
+                                    (occ, displayIndex) => {
+                                      const originalIndex =
+                                        indexMapping[displayIndex];
+
+                                      const isStartDatePast = isDateInPast(
+                                        occ.startDate
+                                      );
+                                      const isEndDatePast = isDateInPast(
+                                        occ.endDate
+                                      );
+                                      const hasWarning =
+                                        isStartDatePast || isEndDatePast;
+
+                                      return (
+                                        <div
+                                          key={`occurrence-${originalIndex}`}
+                                          style={{ width: "100%" }}
                                         >
-                                          <TooltipTrigger asChild>
-                                            <div
-                                              style={{
-                                                borderLeft: hasWarning
-                                                  ? "4px solid #f59e0b"
-                                                  : "none",
-                                                paddingLeft: hasWarning
-                                                  ? "8px"
-                                                  : "0",
-                                                width: "100%",
-                                              }}
+                                          <TooltipProvider>
+                                            <Tooltip
+                                              open={
+                                                hasWarning ? undefined : false
+                                              }
                                             >
-                                              <OccurrenceRow
-                                                index={index}
-                                                occurrence={occ}
-                                                updateOccurrence={
-                                                  updateOccurrence
-                                                }
-                                                formatLocalDatetime={
-                                                  formatLocalDatetime
-                                                }
-                                              />
-                                            </div>
-                                          </TooltipTrigger>
-                                          {hasWarning && (
-                                            <TooltipContent
-                                              side="right"
-                                              className="bg-amber-100 text-amber-800 border border-amber-300"
-                                            >
-                                              <p className="text-sm font-medium">
-                                                {isStartDatePast &&
-                                                isEndDatePast
-                                                  ? "Both start and end dates are in the past"
-                                                  : isStartDatePast
-                                                    ? "Start date is in the past"
-                                                    : "End date is in the past"}
-                                              </p>
-                                            </TooltipContent>
-                                          )}
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    </div>
+                                              <TooltipTrigger asChild>
+                                                <div
+                                                  style={{
+                                                    borderLeft: hasWarning
+                                                      ? "4px solid #f59e0b"
+                                                      : "none",
+                                                    paddingLeft: hasWarning
+                                                      ? "8px"
+                                                      : "0",
+                                                    width: "100%",
+                                                  }}
+                                                >
+                                                  <OccurrenceRow
+                                                    index={originalIndex}
+                                                    occurrence={occ}
+                                                    updateOccurrence={
+                                                      updateOccurrence
+                                                    }
+                                                    formatLocalDatetime={
+                                                      formatLocalDatetime
+                                                    }
+                                                  />
+                                                </div>
+                                              </TooltipTrigger>
+                                              {hasWarning && (
+                                                <TooltipContent
+                                                  side="right"
+                                                  className="bg-amber-100 text-amber-800 border border-amber-300"
+                                                >
+                                                  <p className="text-sm font-medium">
+                                                    {isStartDatePast &&
+                                                    isEndDatePast
+                                                      ? "Both start and end dates are in the past"
+                                                      : isStartDatePast
+                                                        ? "Start date is in the past"
+                                                        : "End date is in the past"}
+                                                  </p>
+                                                </TooltipContent>
+                                              )}
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        </div>
+                                      );
+                                    }
                                   );
-                                })
+                                })()
                               )}
                               <Button
                                 type="button"
@@ -2652,7 +2692,7 @@ export default function EditWorkshop() {
                                       "data-[state=active]:bg-gray-500 data-[state=active]:text-white font-medium",
                                     content:
                                       pastOccurrences.length > 0 ? (
-                                        <div className="space-y-3 px-4">
+                                        <div className="space-y-3">
                                           {pastOccurrences.map((occ, index) => {
                                             const originalIndex =
                                               occurrences.findIndex(
@@ -2665,7 +2705,7 @@ export default function EditWorkshop() {
                                             return (
                                               <div
                                                 key={index}
-                                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 border-l-4 border-l-amber-500 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
+                                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                               >
                                                 <div className="text-sm">
                                                   <div className="font-medium text-gray-700 flex items-center">
@@ -2697,41 +2737,44 @@ export default function EditWorkshop() {
                                                     )}
                                                   </div>
                                                 </div>
-                                                <div className="flex items-center mr-2 px-3 py-1 bg-gray-100 border border-gray-300 rounded-full">
-                                                  <span className="flex items-center text-sm font-medium text-gray-700">
-                                                    <svg
-                                                      xmlns="http://www.w3.org/2000/svg"
-                                                      className="h-4 w-4 mr-1"
-                                                      fill="none"
-                                                      viewBox="0 0 24 24"
-                                                      stroke="currentColor"
-                                                    >
-                                                      <path
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                        strokeWidth={2}
-                                                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                                                      />
-                                                    </svg>
-                                                    {occ.userCount ?? 0}{" "}
-                                                    {occ.userCount === 1 ||
-                                                    occ.userCount === undefined
-                                                      ? "user"
-                                                      : "users"}{" "}
-                                                    registered
-                                                  </span>
+                                                <div className="flex items-center">
+                                                  <div className="flex items-center mr-2 px-3 py-1 bg-gray-100 border border-gray-300 rounded-full">
+                                                    <span className="flex items-center text-sm font-medium text-gray-700">
+                                                      <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        className="h-4 w-4 mr-1"
+                                                        fill="none"
+                                                        viewBox="0 0 24 24"
+                                                        stroke="currentColor"
+                                                      >
+                                                        <path
+                                                          strokeLinecap="round"
+                                                          strokeLinejoin="round"
+                                                          strokeWidth={2}
+                                                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                                        />
+                                                      </svg>
+                                                      {occ.userCount ?? 0}{" "}
+                                                      {occ.userCount === 1 ||
+                                                      occ.userCount ===
+                                                        undefined
+                                                        ? "user"
+                                                        : "users"}{" "}
+                                                      registered
+                                                    </span>
+                                                  </div>
+                                                  <ConfirmButton
+                                                    confirmTitle="Delete Occurrence"
+                                                    confirmDescription="Are you sure you want to delete this occurrence?"
+                                                    onConfirm={() =>
+                                                      removeOccurrence(
+                                                        originalIndex
+                                                      )
+                                                    }
+                                                    buttonLabel="Delete"
+                                                    buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                  />
                                                 </div>
-                                                <ConfirmButton
-                                                  confirmTitle="Delete Occurrence"
-                                                  confirmDescription="Are you sure you want to delete this occurrence?"
-                                                  onConfirm={() =>
-                                                    removeOccurrence(
-                                                      originalIndex
-                                                    )
-                                                  }
-                                                  buttonLabel="X"
-                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                                />
                                               </div>
                                             );
                                           })}
