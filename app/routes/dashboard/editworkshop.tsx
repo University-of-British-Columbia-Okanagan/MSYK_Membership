@@ -2243,20 +2243,22 @@ export default function EditWorkshop() {
                                           style={{ width: "100%" }}
                                         >
                                           <TooltipProvider>
-                                            <Tooltip
-                                              open={
-                                                hasWarning ? undefined : false
-                                              }
-                                            >
+                                            <Tooltip>
                                               <TooltipTrigger asChild>
                                                 <div
                                                   style={{
                                                     borderLeft: hasWarning
                                                       ? "4px solid #f59e0b"
-                                                      : "none",
-                                                    paddingLeft: hasWarning
-                                                      ? "8px"
-                                                      : "0",
+                                                      : occ.userCount &&
+                                                          occ.userCount > 0
+                                                        ? "4px solid #dc2626"
+                                                        : "none",
+                                                    paddingLeft:
+                                                      hasWarning ||
+                                                      (occ.userCount &&
+                                                        occ.userCount > 0)
+                                                        ? "8px"
+                                                        : "0",
                                                     width: "100%",
                                                   }}
                                                 >
@@ -2269,13 +2271,40 @@ export default function EditWorkshop() {
                                                     formatLocalDatetime={
                                                       formatLocalDatetime
                                                     }
+                                                    disabled={
+                                                      !!(
+                                                        occ.userCount &&
+                                                        occ.userCount > 0
+                                                      )
+                                                    }
                                                   />
                                                 </div>
                                               </TooltipTrigger>
-                                              {hasWarning && (
+                                              {occ.userCount &&
+                                              occ.userCount > 0 ? (
                                                 <TooltipContent
-                                                  side="right"
-                                                  className="bg-amber-100 text-amber-800 border border-amber-300"
+                                                  side="top"
+                                                  align="start"
+                                                  className="bg-red-100 text-red-800 border border-red-300 max-w-sm z-50"
+                                                  sideOffset={5}
+                                                >
+                                                  <p className="text-sm font-medium">
+                                                    You cannot edit a workshop
+                                                    time which has users
+                                                    registered in it (
+                                                    {occ.userCount} user
+                                                    {occ.userCount !== 1
+                                                      ? "s"
+                                                      : ""}{" "}
+                                                    registered)
+                                                  </p>
+                                                </TooltipContent>
+                                              ) : hasWarning ? (
+                                                <TooltipContent
+                                                  side="top"
+                                                  align="start"
+                                                  className="bg-amber-100 text-amber-800 border border-amber-300 max-w-sm z-50"
+                                                  sideOffset={5}
                                                 >
                                                   <p className="text-sm font-medium">
                                                     {isStartDatePast &&
@@ -2286,7 +2315,7 @@ export default function EditWorkshop() {
                                                         : "End date is in the past"}
                                                   </p>
                                                 </TooltipContent>
-                                              )}
+                                              ) : null}
                                             </Tooltip>
                                           </TooltipProvider>
                                         </div>
