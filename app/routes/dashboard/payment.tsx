@@ -17,7 +17,7 @@ import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
 import { getSavedPaymentMethod } from "../../models/user.server";
-import QuickCheckout from "~/components/ui/Dashboard/Quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
 import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
 
@@ -149,6 +149,12 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw redirect(getRedirectPath());
     }
 
+    // CHECK: If occurrence is in the past, redirect user
+    const now = new Date();
+    if (new Date(occurrence.endDate) < now) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
@@ -199,6 +205,12 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw redirect(getRedirectPath());
     }
 
+    // CHECK: If occurrence is in the past, redirect user
+    const now = new Date();
+    if (new Date(occurrence.endDate) < now) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
@@ -241,6 +253,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       connectId
     );
     if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If ANY occurrence is in the past, redirect user
+    const now = new Date();
+    const hasAnyPastOccurrence = occurrences.some(
+      (occ) => new Date(occ.endDate) < now
+    );
+    if (hasAnyPastOccurrence) {
       throw redirect(getRedirectPath());
     }
 
@@ -297,6 +318,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       variationId
     );
     if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If ANY occurrence is in the past, redirect user
+    const now = new Date();
+    const hasAnyPastOccurrence = occurrences.some(
+      (occ) => new Date(occ.endDate) < now
+    );
+    if (hasAnyPastOccurrence) {
       throw redirect(getRedirectPath());
     }
 

@@ -390,8 +390,11 @@ export async function action({ request }: { request: Request }) {
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
-  // Parse price and capacity
-  const price = parseFloat(rawValues.price as string);
+  // Parse price and capacity - handle price variations case
+  const hasPriceVariationsCheck = rawValues.hasPriceVariations === "true";
+  const price = hasPriceVariationsCheck
+    ? -1
+    : parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
   // Parse prerequisites from JSON string
@@ -910,8 +913,8 @@ export default function AddWorkshop() {
     }
 
     setFormSubmitting(true);
-    const form = e.currentTarget as HTMLFormElement;
-    form.submit();
+    const formElement = e.currentTarget as HTMLFormElement;
+    formElement.submit();
   };
 
   {
@@ -1116,11 +1119,22 @@ export default function AddWorkshop() {
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label={hasPriceVariations ? "Price (Base)" : "Price"}
-                    placeholder="Price"
-                    required
-                    error={actionData?.errors?.price}
+                    label="Price"
+                    placeholder={
+                      hasPriceVariations
+                        ? "Managed through pricing options below"
+                        : "Price"
+                    }
+                    required={!hasPriceVariations}
                     type="number"
+                    error={actionData?.errors?.price}
+                    disabled={hasPriceVariations}
+                    className={`w-full lg:w-[500px] ${hasPriceVariations ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                    tooltip={
+                      hasPriceVariations
+                        ? "Price is managed through pricing options below."
+                        : undefined
+                    }
                   />
                   <GenericFormField
                     control={form.control}
@@ -1185,9 +1199,23 @@ export default function AddWorkshop() {
                         type="checkbox"
                         checked={hasPriceVariations}
                         onChange={(e) => {
-                          setHasPriceVariations(e.target.checked);
-                          if (!e.target.checked) {
+                          const isChecked = e.target.checked;
+                          setHasPriceVariations(isChecked);
+                          if (!isChecked) {
                             setPriceVariations([]);
+                            // Re-enable the price field when unchecking
+                            form.setValue("price", 0);
+                          } else {
+                            setPriceVariations([
+                              {
+                                name: "",
+                                price: "",
+                                description: "",
+                                capacity: "",
+                              },
+                            ]);
+                            // Clear the base price since it's now managed in variations
+                            form.setValue("price", -1);
                           }
                         }}
                         className="sr-only peer"
@@ -1200,8 +1228,9 @@ export default function AddWorkshop() {
                     </span>
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
-                    Check this to add different pricing options for this
-                    workshop
+                    Enable this to create multiple pricing options. The first
+                    price field will be disabled and pricing will be managed through
+                    price variations
                   </p>
                 </div>
 
@@ -1230,35 +1259,20 @@ export default function AddWorkshop() {
                       </Button>
                     </div>
 
-                    {/* Base Price Display */}
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-semibold text-blue-800">
-                            Base Price (Standard Option)
-                          </h4>
-                          <p className="text-xs text-blue-600 mt-1">
-                            This is your workshop's standard pricing that users
-                            can select (editable from the price input box above)
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-lg font-bold text-blue-700">
-                            ${form.watch("price") || "0"}
-                          </span>
-                          <p className="text-xs text-blue-600">Base Price</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Additional Pricing Options Header */}
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-700">
-                        Additional Pricing Options
+                    {/* Pricing Options Header */}
+                    <div className="mb-4">
+                      <h4 className="text-l font-medium text-gray-700">
+                        Pricing Options
                       </h4>
                       <p className="text-xs text-gray-500">
-                        Create alternative pricing tiers
+                        Create different pricing options for this workshop
                       </p>
+                      {priceVariations.length > 0 && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          <strong>Note:</strong> The first option will be the
+                          standard selection for users
+                        </p>
+                      )}
                     </div>
 
                     {actionData?.errors?.priceVariations && (

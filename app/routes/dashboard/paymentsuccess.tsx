@@ -3,6 +3,11 @@ import { Stripe } from "stripe";
 import {
   registerForWorkshop,
   registerUserForAllOccurrences,
+  getWorkshopById,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
+  checkWorkshopCapacity,
+  checkMultiDayWorkshopCapacity,
 } from "../../models/workshop.server";
 import { registerMembershipSubscription } from "../../models/membership.server";
 import { useState, useEffect } from "react";
@@ -166,9 +171,75 @@ export async function loader({ request }: { request: Request }) {
   // Multi-day workshop
   else if (workshopId && connectId && userId) {
     try {
+      // Get workshop and occurrences to check status and time
+      const workshop = await getWorkshopById(parseInt(workshopId));
+      const occurrences = await getWorkshopOccurrencesByConnectId(
+        parseInt(workshopId),
+        parseInt(connectId)
+      );
+
+      if (!workshop || !occurrences || occurrences.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop or occurrences not found",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if ANY occurrence is cancelled
+      const hasAnyCancelledOccurrence = occurrences.some(
+        (occ) => occ.status === "cancelled"
+      );
+      if (hasAnyCancelledOccurrence) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop has been cancelled",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if ANY occurrence is in the past
+      const now = new Date();
+      const hasAnyPastOccurrence = occurrences.some(
+        (occ) => new Date(occ.endDate) < now
+      );
+      if (hasAnyPastOccurrence) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop time has passed",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       const variationId = metadata.variationId
         ? parseInt(metadata.variationId)
         : null;
+
+      // Check if workshop is full
+      const capacityCheck = await checkMultiDayWorkshopCapacity(
+        parseInt(workshopId),
+        parseInt(connectId),
+        variationId
+      );
+      if (!capacityCheck.hasCapacity) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop is full",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
 
       await registerUserForAllOccurrences(
         parseInt(workshopId),
@@ -200,9 +271,69 @@ export async function loader({ request }: { request: Request }) {
   // Workshop single occurrence
   else if (workshopId && occurrenceId && userId) {
     try {
+      // Get workshop and occurrence to check status and time
+      const workshop = await getWorkshopById(parseInt(workshopId));
+      const occurrence = await getWorkshopOccurrence(
+        parseInt(workshopId),
+        parseInt(occurrenceId)
+      );
+
+      if (!workshop || !occurrence) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop or occurrence not found",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if occurrence is cancelled
+      if (occurrence.status === "cancelled") {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop has been cancelled",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if occurrence is in the past
+      const now = new Date();
+      if (new Date(occurrence.endDate) < now) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop time has passed",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       const variationId = metadata.variationId
         ? parseInt(metadata.variationId)
         : null;
+
+      // Check if workshop is full
+      const capacityCheck = await checkWorkshopCapacity(
+        parseInt(workshopId),
+        parseInt(occurrenceId),
+        variationId
+      );
+      if (!capacityCheck.hasCapacity) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop is full",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
 
       await registerForWorkshop(
         parseInt(workshopId),

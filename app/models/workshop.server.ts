@@ -67,6 +67,15 @@ export async function getWorkshops() {
           userWorkshops: true, // Include user workshops to count registrations
         },
       },
+      // Include price variations
+      priceVariations: {
+        where: {
+          status: "active", // Only include active price variations
+        },
+        orderBy: {
+          price: "asc", // Order by price to easily find the lowest
+        },
+      },
     },
   });
 
@@ -94,6 +103,12 @@ export async function getWorkshops() {
       }
     );
 
+    // Calculate display price: use lowest price variation if available, otherwise use base price
+    const displayPrice =
+      workshop.hasPriceVariations && workshop.priceVariations.length > 0
+        ? workshop.priceVariations[0].price // Already ordered by price asc, so first is lowest
+        : workshop.price;
+
     // Keep all existing fields in 'workshop',
     // then add/override status, and ensure 'type' is included.
     return {
@@ -101,6 +116,7 @@ export async function getWorkshops() {
       status: latestStatus,
       type: workshop.type, // explicitly include workshop.type
       occurrences: occurrencesWithCounts, // Replace occurrences with our version that includes counts
+      displayPrice, // calculated display price
     };
   });
 }
@@ -413,31 +429,110 @@ export async function updateWorkshopWithOccurrences(
     },
   });
 
-  // Update price variations
-  // Update price variations (preserve cancelled ones)
+  // Update price variations (preserve existing IDs to maintain UserWorkshop references)
   if (data.hasPriceVariations !== undefined) {
-    // Get existing cancelled variations to preserve them
-    const cancelledVariations = await db.workshopPriceVariation.findMany({
-      where: { workshopId, status: "cancelled" },
-    });
-
-    // Delete only active price variations
-    await db.workshopPriceVariation.deleteMany({
-      where: { workshopId, status: "active" },
-    });
-
-    // Add new active price variations if any
-    if (data.priceVariations && data.priceVariations.length > 0) {
-      await db.workshopPriceVariation.createMany({
-        data: data.priceVariations.map((variation) => ({
-          workshopId,
-          name: variation.name,
-          price: variation.price,
-          description: variation.description,
-          capacity: variation.capacity,
-          status: "active",
-        })),
+    if (
+      data.hasPriceVariations &&
+      data.priceVariations &&
+      data.priceVariations.length > 0
+    ) {
+      // Get existing active price variations
+      const existingVariations = await db.workshopPriceVariation.findMany({
+        where: { workshopId, status: "active" },
+        orderBy: { id: "asc" },
       });
+
+      // Update existing variations and create new ones
+      for (let i = 0; i < data.priceVariations.length; i++) {
+        const variationData = data.priceVariations[i];
+
+        if (i < existingVariations.length) {
+          // Update existing variation (preserve the ID and existing registrations)
+          // Allow capacity updates but preserve price for existing variations
+          await db.workshopPriceVariation.update({
+            where: { id: existingVariations[i].id },
+            data: {
+              name: variationData.name,
+              // Don't update price for existing variations with registrations
+              description: variationData.description,
+              capacity: variationData.capacity, // Allow capacity updates
+            },
+          });
+        } else {
+          // Create new variation
+          await db.workshopPriceVariation.create({
+            data: {
+              workshopId,
+              name: variationData.name,
+              price: variationData.price,
+              description: variationData.description,
+              capacity: variationData.capacity,
+              status: "active",
+            },
+          });
+        }
+      }
+
+      // Remove extra existing variations if the new array is smaller
+      if (existingVariations.length > data.priceVariations.length) {
+        const variationsToRemove = existingVariations.slice(
+          data.priceVariations.length
+        );
+        for (const variation of variationsToRemove) {
+          // Check if this variation has registrations
+          const hasRegistrations = await db.userWorkshop.findFirst({
+            where: { priceVariationId: variation.id },
+          });
+
+          if (hasRegistrations) {
+            // Cancel the variation instead of deleting it
+            await db.workshopPriceVariation.update({
+              where: { id: variation.id },
+              data: { status: "cancelled" },
+            });
+            // Update related registrations to cancelled
+            await db.userWorkshop.updateMany({
+              where: { priceVariationId: variation.id },
+              data: { result: "cancelled" },
+            });
+          } else {
+            // Safe to delete if no registrations
+            await db.workshopPriceVariation.delete({
+              where: { id: variation.id },
+            });
+          }
+        }
+      }
+    } else {
+      // Price variations disabled - cancel all existing active variations
+      const existingVariations = await db.workshopPriceVariation.findMany({
+        where: { workshopId, status: "active" },
+      });
+
+      for (const variation of existingVariations) {
+        // Check if this variation has registrations
+        const hasRegistrations = await db.userWorkshop.findFirst({
+          where: { priceVariationId: variation.id },
+        });
+
+        if (hasRegistrations) {
+          // Cancel the variation instead of deleting it
+          await db.workshopPriceVariation.update({
+            where: { id: variation.id },
+            data: { status: "cancelled" },
+          });
+          // Update related registrations to cancelled
+          await db.userWorkshop.updateMany({
+            where: { priceVariationId: variation.id },
+            data: { result: "cancelled" },
+          });
+        } else {
+          // Safe to delete if no registrations
+          await db.workshopPriceVariation.delete({
+            where: { id: variation.id },
+          });
+        }
+      }
     }
   }
 
@@ -2177,4 +2272,109 @@ export async function getUserWorkshopRegistrationInfo(
     occurrence: userRegistration.occurrence,
     registrationDate: userRegistration.date,
   };
+}
+
+/**
+ * Gets maximum registration counts per price variation across all workshop occurrences
+ * For regular workshops, capacity should be based on the highest number of registrations
+ * for each price variation in any single occurrence, not the total across all occurrences
+ * @param workshopId - The ID of the workshop
+ * @returns Promise<Object> - Object with capacity information based on max registrations per occurrence
+ */
+export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
+  workshopId: number
+) {
+  try {
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        priceVariations: true,
+        occurrences: {
+          include: {
+            userWorkshops: {
+              include: {
+                priceVariation: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!workshop || workshop.occurrences.length === 0) {
+      throw new Error("Workshop or occurrences not found");
+    }
+
+    // For each occurrence, count registrations by variation
+    const occurrenceCounts = workshop.occurrences.map((occurrence) => {
+      const registrations = occurrence.userWorkshops;
+
+      // Count base registrations (no price variation) for this occurrence
+      const baseRegistrations = registrations.filter(
+        (uw) => !uw.priceVariationId
+      ).length;
+
+      // Count registrations by variation for this occurrence
+      const variationCounts = workshop.priceVariations.map((variation) => {
+        const count = registrations.filter(
+          (uw) => uw.priceVariationId === variation.id
+        ).length;
+
+        return {
+          variationId: variation.id,
+          registrations: count,
+        };
+      });
+
+      return {
+        occurrenceId: occurrence.id,
+        totalRegistrations: registrations.length,
+        baseRegistrations,
+        variationCounts,
+      };
+    });
+
+    // Find the maximum registrations for each variation across all occurrences
+    const maxTotalRegistrations = Math.max(
+      ...occurrenceCounts.map((oc) => oc.totalRegistrations),
+      0
+    );
+
+    const maxBaseRegistrations = Math.max(
+      ...occurrenceCounts.map((oc) => oc.baseRegistrations),
+      0
+    );
+
+    // Calculate max registrations per variation
+    const variationCounts = workshop.priceVariations.map((variation) => {
+      const maxRegistrationsForThisVariation = Math.max(
+        ...occurrenceCounts.map((oc) => {
+          const variationCount = oc.variationCounts.find(
+            (vc) => vc.variationId === variation.id
+          );
+          return variationCount ? variationCount.registrations : 0;
+        }),
+        0
+      );
+
+      return {
+        variationId: variation.id,
+        name: variation.name,
+        capacity: variation.capacity,
+        registrations: maxRegistrationsForThisVariation,
+        hasCapacity: maxRegistrationsForThisVariation < variation.capacity,
+      };
+    });
+
+    return {
+      workshopCapacity: workshop.capacity,
+      totalRegistrations: maxTotalRegistrations,
+      baseRegistrations: maxBaseRegistrations,
+      hasBaseCapacity: maxTotalRegistrations < workshop.capacity,
+      variations: variationCounts,
+    };
+  } catch (error) {
+    console.error("Error getting regular workshop registration counts:", error);
+    throw error;
+  }
 }

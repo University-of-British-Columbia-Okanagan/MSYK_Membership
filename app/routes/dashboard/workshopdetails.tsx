@@ -731,11 +731,9 @@ export default function WorkshopDetails() {
                 <CardTitle className="text-2xl font-bold">
                   {workshop.name}
                 </CardTitle>
-                {workshop.priceVariations.length === 0 && (
-                  <CardDescription className="text-gray-600 max-w-2xl mx-auto">
-                    {workshop.description}
-                  </CardDescription>
-                )}
+                <CardDescription className="text-gray-600 max-w-2xl mx-auto">
+                  {workshop.description}
+                </CardDescription>
 
                 {/* Admin Only: View Users Button */}
                 {isAdmin && (
@@ -802,14 +800,8 @@ export default function WorkshopDetails() {
                   workshop.priceVariations &&
                   workshop.priceVariations.length > 0 ? (
                     <div className="w-full">
-                      {/* Base price display */}
+                      {/* Location display */}
                       <div className="flex items-center gap-4 mb-4">
-                        <Badge
-                          variant="outline"
-                          className="px-4 py-2 text-lg font-medium bg-yellow-50 border-yellow-300 text-yellow-800"
-                        >
-                          Base price of ${workshop.price}
-                        </Badge>
                         <Badge
                           variant="outline"
                           className="px-4 py-2 text-lg font-medium"
@@ -826,45 +818,38 @@ export default function WorkshopDetails() {
                         </h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Base Price Card */}
-                          <div className="border p-4 rounded-lg shadow-md bg-blue-50 border-blue-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <h3 className="text-lg font-medium text-gray-800">
-                                Standard pricing for {workshop.name}
-                              </h3>
-                              <span className="text-xl font-bold text-blue-600">
-                                ${workshop.price}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600">
-                              {workshop.description}
-                            </p>
-                            <div className="mt-2">
-                              <Badge className="bg-blue-100 text-blue-800 border-blue-300">
-                                Default Option
-                              </Badge>
-                            </div>
-                          </div>
-
-                          {/* Price Variations */}
-                          {workshop.priceVariations.map((variation: any) => (
-                            <div
-                              key={variation.id}
-                              className="border p-4 rounded-lg shadow-md bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-lg font-medium text-gray-800">
-                                  {variation.name}
-                                </h3>
-                                <span className="text-xl font-bold text-blue-600">
-                                  ${variation.price}
-                                </span>
+                          {/* Render only price variations */}
+                          {workshop.priceVariations.map(
+                            (variation: any, index: number) => (
+                              <div
+                                key={variation.id}
+                                className={`border p-4 rounded-lg shadow-md ${
+                                  index === 0
+                                    ? "bg-blue-50 border-blue-200"
+                                    : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                                } transition-colors cursor-pointer`}
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="text-lg font-medium text-gray-800">
+                                      {variation.name}
+                                    </h3>
+                                    {index === 0 && (
+                                      <Badge className="bg-blue-100 text-blue-800 border-blue-300">
+                                        Standard Option
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <span className="text-xl font-bold text-blue-600">
+                                    ${variation.price}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600">
+                                  {variation.description}
+                                </p>
                               </div>
-                              <p className="text-sm text-gray-600">
-                                {variation.description}
-                              </p>
-                            </div>
-                          ))}
+                            )
+                          )}
                         </div>
 
                         {/* Instruction message */}
@@ -888,7 +873,7 @@ export default function WorkshopDetails() {
                               <p className="text-blue-700 mt-1">
                                 After clicking to register for the workshop
                                 time(s), you'll be able to choose from these
-                                pricing options during the checkout process.
+                                pricing options during the checkout process
                               </p>
                             </div>
                           </div>
