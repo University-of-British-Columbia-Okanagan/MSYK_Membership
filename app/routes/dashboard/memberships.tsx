@@ -231,9 +231,18 @@ export default function MembershipPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {membershipPlans.map((plan) => {
-              const membership = userMemberships.find(
+              // Find the most recent membership for this plan, prioritizing active status
+              const allMembershipsForPlan = userMemberships.filter(
                 (m) => m.membershipPlanId === plan.id
               );
+
+              // Prioritize active memberships, then cancelled, then inactive
+              const membership =
+                allMembershipsForPlan.find((m) => m.status === "active") ||
+                allMembershipsForPlan.find((m) => m.status === "cancelled") ||
+                allMembershipsForPlan.find((m) => m.status === "inactive") ||
+                allMembershipsForPlan[0]; // fallback to first if none match
+
               const membershipStatus = membership?.status;
 
               return (
@@ -253,6 +262,7 @@ export default function MembershipPage() {
                   highestActivePrice={highestActivePrice}
                   nextPaymentDate={membership?.nextPaymentDate}
                   roleUser={roleUser}
+                  isCurrentlyActivePlan={membershipStatus === "active"}
                 />
               );
             })}
