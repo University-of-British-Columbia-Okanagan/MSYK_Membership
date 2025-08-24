@@ -146,10 +146,15 @@ export async function loader({ request }: { request: Request }) {
         ? parseInt(metadata.currentMembershipId)
         : null;
 
+      const paymentIntentId = session.payment_intent as string;
+
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        currentMembershipId
+        currentMembershipId,
+        false, // Not a downgrade
+        false, // Not a resubscription
+        paymentIntentId
       );
 
       return new Response(
