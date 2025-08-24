@@ -109,6 +109,16 @@ export async function getWorkshops() {
         ? workshop.priceVariations[0].price // Already ordered by price asc, so first is lowest
         : workshop.price;
 
+    // Calculate price range for display
+    const priceRange =
+      workshop.hasPriceVariations && workshop.priceVariations.length > 1
+        ? {
+            min: workshop.priceVariations[0].price, // First is lowest
+            max: workshop.priceVariations[workshop.priceVariations.length - 1]
+              .price, // Last is highest
+          }
+        : null;
+
     // Keep all existing fields in 'workshop',
     // then add/override status, and ensure 'type' is included.
     return {
@@ -117,6 +127,7 @@ export async function getWorkshops() {
       type: workshop.type, // explicitly include workshop.type
       occurrences: occurrencesWithCounts, // Replace occurrences with our version that includes counts
       displayPrice, // calculated display price
+      priceRange, // calculated price range for display
     };
   });
 }
