@@ -201,6 +201,7 @@ model EquipmentBooking {
   workshopId  Int?
   status      String @default("pending")
   bookedFor   String @default("user") // "user" or "workshop"
+  paymentIntentId String? // Stripe Payment Intent ID
 
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
@@ -218,6 +219,7 @@ model UserWorkshop {
   priceVariationId Int?
   result           String   @default("passed")
   date             DateTime @default(now())
+  paymentIntentId  String? // Stripe Payment Intent ID
 
   user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   workshop   Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
@@ -268,6 +270,7 @@ model UserMembership {
   date             DateTime @default(now())
   nextPaymentDate  DateTime
   status           String   @default("active") // "active", "cancelled"
+  paymentIntentId  String? // Stripe Payment Intent ID
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
