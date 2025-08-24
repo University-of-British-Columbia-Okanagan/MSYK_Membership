@@ -1,4 +1,4 @@
-import WorkshopCard from "./WorkshopCard";
+import WorkshopCard from "./workshopcard";
 
 interface Workshop {
   id: number;
@@ -9,6 +9,8 @@ interface Workshop {
   type: string;
   occurrences: { id: number; startDate: string; endDate: string }[];
   isRegistered: boolean;
+  priceRange?: { min: number; max: number } | null;
+  hasPriceVariations?: boolean;
 }
 
 interface WorkshopListProps {

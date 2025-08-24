@@ -25,6 +25,8 @@ interface WorkshopProps {
   type: "workshop" | "orientation" | string;
   isAdmin: boolean;
   imageUrl?: string;
+  priceRange?: { min: number; max: number } | null;
+  hasPriceVariations?: boolean;
 }
 
 export default function WorkshopCard({
@@ -36,6 +38,8 @@ export default function WorkshopCard({
   isAdmin,
   imageUrl,
   displayPrice,
+  priceRange,
+  hasPriceVariations,
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -124,7 +128,11 @@ export default function WorkshopCard({
         {/* Price Box */}
         <div className="mt-3 flex justify-start">
           <span className="border border-purple-500 text-purple-700 font-semibold text-lg px-3 py-1 rounded-md">
-            ${displayPrice !== undefined ? displayPrice : price}
+            {hasPriceVariations &&
+            priceRange &&
+            priceRange.min !== priceRange.max
+              ? `$${priceRange.min} - $${priceRange.max}`
+              : `$${displayPrice !== undefined ? displayPrice : price}`}
           </span>
         </div>
       </CardHeader>
