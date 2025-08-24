@@ -241,11 +241,14 @@ export async function loader({ request }: { request: Request }) {
         );
       }
 
+      const paymentIntentId = session.payment_intent as string;
+
       await registerUserForAllOccurrences(
         parseInt(workshopId),
         parseInt(connectId),
         parseInt(userId),
-        variationId
+        variationId,
+        paymentIntentId
       );
       return new Response(
         JSON.stringify({
@@ -335,11 +338,14 @@ export async function loader({ request }: { request: Request }) {
         );
       }
 
+      const paymentIntentId = session.payment_intent as string;
+
       await registerForWorkshop(
         parseInt(workshopId),
         parseInt(occurrenceId),
         parseInt(userId),
-        variationId
+        variationId,
+        paymentIntentId
       );
       return new Response(
         JSON.stringify({

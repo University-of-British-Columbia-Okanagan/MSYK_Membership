@@ -884,7 +884,8 @@ export async function registerForWorkshop(
   workshopId: number,
   occurrenceId: number,
   userId: number,
-  variationId?: number | null
+  variationId?: number | null,
+  paymentIntentId?: string
 ) {
   try {
     // Check if already registered
@@ -939,6 +940,7 @@ export async function registerForWorkshop(
         occurrenceId,
         priceVariationId: variationId,
         ...(registrationResult ? { result: registrationResult } : {}),
+        ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
 
@@ -1607,7 +1609,8 @@ export async function registerUserForAllOccurrences(
   workshopId: number,
   connectId: number,
   userId: number,
-  variationId?: number | null
+  variationId?: number | null,
+  paymentIntentId?: string
 ) {
   try {
     // Check capacity before registering for multi-day workshop
@@ -1670,6 +1673,7 @@ export async function registerUserForAllOccurrences(
             occurrenceId: occurrence.id,
             priceVariationId: variationId,
             ...(registrationResult ? { result: registrationResult } : {}),
+            ...(paymentIntentId ? { paymentIntentId } : {}),
           },
         });
 

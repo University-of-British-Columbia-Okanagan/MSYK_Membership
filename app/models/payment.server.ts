@@ -214,7 +214,8 @@ export async function quickCheckout(
               checkoutData.workshopId!,
               checkoutData.connectId,
               userId,
-              checkoutData.variationId || null
+              checkoutData.variationId || null,
+              paymentIntent.id
             );
           } else if (checkoutData.occurrenceId) {
             // Single occurrence registration
@@ -222,7 +223,8 @@ export async function quickCheckout(
               checkoutData.workshopId!,
               checkoutData.occurrenceId,
               userId,
-              checkoutData.variationId || null
+              checkoutData.variationId || null,
+              paymentIntent.id
             );
           }
         } else if (checkoutData.type === "membership") {
@@ -446,36 +448,36 @@ export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
   // Check if user wants to use saved card
-if (body.useSavedCard && body.userId) {
-  // Determine checkout type and prepare data
-  let checkoutData: any = { userId: body.userId };
+  if (body.useSavedCard && body.userId) {
+    // Determine checkout type and prepare data
+    let checkoutData: any = { userId: body.userId };
 
-  if (body.workshopId) {
-    checkoutData = {
-      type: "workshop",
-      workshopId: body.workshopId,
-      occurrenceId: body.occurrenceId,
-      connectId: body.connectId,
-      variationId: body.variationId, 
-    };
-  } else if (body.equipmentId) {
-    checkoutData = {
-      type: "equipment",
-      equipmentId: body.equipmentId,
-      slotCount: body.slotCount,
-      price: body.price,
-      slots: body.slots,
-      slotsDataKey: body.slotsDataKey,
-    };
-  } else if (body.membershipPlanId) {
-    checkoutData = {
-      type: "membership",
-      membershipPlanId: body.membershipPlanId,
-      price: body.price,
-      currentMembershipId: body.currentMembershipId,
-      upgradeFee: body.upgradeFee,
-    };
-  }
+    if (body.workshopId) {
+      checkoutData = {
+        type: "workshop",
+        workshopId: body.workshopId,
+        occurrenceId: body.occurrenceId,
+        connectId: body.connectId,
+        variationId: body.variationId,
+      };
+    } else if (body.equipmentId) {
+      checkoutData = {
+        type: "equipment",
+        equipmentId: body.equipmentId,
+        slotCount: body.slotCount,
+        price: body.price,
+        slots: body.slots,
+        slotsDataKey: body.slotsDataKey,
+      };
+    } else if (body.membershipPlanId) {
+      checkoutData = {
+        type: "membership",
+        membershipPlanId: body.membershipPlanId,
+        price: body.price,
+        currentMembershipId: body.currentMembershipId,
+        upgradeFee: body.upgradeFee,
+      };
+    }
 
     if (checkoutData.type) {
       return quickCheckout(body.userId, checkoutData);
@@ -749,5 +751,74 @@ if (body.useSavedCard && body.userId) {
     });
   } else {
     throw new Error("Missing required payment parameters");
+  }
+}
+
+/**
+ * Processes a refund for a workshop registration
+ * @param userId - The ID of the user requesting the refund
+ * @param workshopId - The ID of the workshop
+ * @param occurrenceId - The ID of the specific occurrence (optional for multi-day workshops)
+ * @returns Promise<Object> - Refund result with success status
+ * @throws Error if refund processing fails
+ */
+export async function refundWorkshopRegistration(
+  userId: number,
+  workshopId: number,
+  occurrenceId?: number
+) {
+  try {
+    // Find the registration(s) with payment intent ID
+    const registrations = await db.userWorkshop.findMany({
+      where: {
+        userId,
+        workshopId,
+        ...(occurrenceId ? { occurrenceId } : {}),
+        paymentIntentId: { not: null },
+      },
+    });
+
+    if (registrations.length === 0) {
+      throw new Error("No paid registration found for refund");
+    }
+
+    // Get the payment intent ID (should be the same for all registrations of a multi-day workshop)
+    const paymentIntentId = registrations[0].paymentIntentId;
+
+    if (!paymentIntentId) {
+      throw new Error("No payment intent ID found for this registration");
+    }
+
+    // Process the refund with Stripe
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      metadata: {
+        userId: userId.toString(),
+        workshopId: workshopId.toString(),
+        ...(occurrenceId ? { occurrenceId: occurrenceId.toString() } : {}),
+      },
+    });
+
+    // If refund is successful, remove the registration(s)
+    if (refund.status === "succeeded") {
+      await db.userWorkshop.deleteMany({
+        where: {
+          userId,
+          workshopId,
+          ...(occurrenceId ? { occurrenceId } : {}),
+          paymentIntentId,
+        },
+      });
+    }
+
+    return {
+      success: refund.status === "succeeded",
+      refundId: refund.id,
+      amount: refund.amount / 100, // Convert back from cents
+      status: refund.status,
+    };
+  } catch (error: any) {
+    console.error("Refund processing failed:", error);
+    throw new Error(`Refund failed: ${error.message}`);
   }
 }
