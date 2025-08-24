@@ -2015,31 +2015,38 @@ export async function getWorkshopRegistrationCounts(
     const occurrence = workshop.occurrences[0];
     const registrations = occurrence.userWorkshops;
 
+    // Filter out cancelled registrations
+    const activeRegistrations = registrations.filter(
+      (uw) => uw.result !== "cancelled"
+    );
+
     // Count base registrations (no price variation)
-    const baseRegistrations = registrations.filter(
+    const baseRegistrations = activeRegistrations.filter(
       (uw) => !uw.priceVariationId
     ).length;
 
-    // Count registrations by variation
-    const variationCounts = workshop.priceVariations.map((variation) => {
-      const count = registrations.filter(
-        (uw) => uw.priceVariationId === variation.id
-      ).length;
+    // Count registrations by variation (only for active variations)
+    const variationCounts = workshop.priceVariations
+      .filter((variation) => variation.status !== "cancelled")
+      .map((variation) => {
+        const count = activeRegistrations.filter(
+          (uw) => uw.priceVariationId === variation.id
+        ).length;
 
-      return {
-        variationId: variation.id,
-        name: variation.name,
-        capacity: variation.capacity,
-        registrations: count,
-        hasCapacity: count < variation.capacity,
-      };
-    });
+        return {
+          variationId: variation.id,
+          name: variation.name,
+          capacity: variation.capacity,
+          registrations: count,
+          hasCapacity: count < variation.capacity,
+        };
+      });
 
     return {
       workshopCapacity: workshop.capacity,
-      totalRegistrations: registrations.length,
+      totalRegistrations: activeRegistrations.length,
       baseRegistrations,
-      hasBaseCapacity: registrations.length < workshop.capacity,
+      hasBaseCapacity: activeRegistrations.length < workshop.capacity,
       variations: variationCounts,
     };
   } catch (error) {
@@ -2176,9 +2183,9 @@ export async function getMultiDayWorkshopRegistrationCounts(
       throw new Error("Workshop or occurrences not found");
     }
 
-    // Get all registrations across all occurrences
-    const allRegistrations = workshop.occurrences.flatMap(
-      (occ) => occ.userWorkshops
+    // Get all registrations across all occurrences, filtering out cancelled ones
+    const allRegistrations = workshop.occurrences.flatMap((occ) =>
+      occ.userWorkshops.filter((uw) => uw.result !== "cancelled")
     );
 
     // Count unique users (multi-day workshop = one registration per user)
@@ -2193,22 +2200,24 @@ export async function getMultiDayWorkshopRegistrationCounts(
     const uniqueBaseUserIds = [...new Set(baseUserIds)];
     const baseRegistrations = uniqueBaseUserIds.length;
 
-    // Count registrations by variation - unique users per variation
-    const variationCounts = workshop.priceVariations.map((variation) => {
-      const variationUserIds = allRegistrations
-        .filter((uw) => uw.priceVariationId === variation.id)
-        .map((uw) => uw.userId);
-      const uniqueVariationUserIds = [...new Set(variationUserIds)];
-      const count = uniqueVariationUserIds.length;
+    // Count registrations by variation - unique users per variation (only for active variations)
+    const variationCounts = workshop.priceVariations
+      .filter((variation) => variation.status !== "cancelled")
+      .map((variation) => {
+        const variationUserIds = allRegistrations
+          .filter((uw) => uw.priceVariationId === variation.id)
+          .map((uw) => uw.userId);
+        const uniqueVariationUserIds = [...new Set(variationUserIds)];
+        const count = uniqueVariationUserIds.length;
 
-      return {
-        variationId: variation.id,
-        name: variation.name,
-        capacity: variation.capacity,
-        registrations: count,
-        hasCapacity: count < variation.capacity,
-      };
-    });
+        return {
+          variationId: variation.id,
+          name: variation.name,
+          capacity: variation.capacity,
+          registrations: count,
+          hasCapacity: count < variation.capacity,
+        };
+      });
 
     return {
       workshopCapacity: workshop.capacity,
@@ -2318,28 +2327,33 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
 
     // For each occurrence, count registrations by variation
     const occurrenceCounts = workshop.occurrences.map((occurrence) => {
-      const registrations = occurrence.userWorkshops;
+      // Filter out cancelled registrations
+      const activeRegistrations = occurrence.userWorkshops.filter(
+        (uw) => uw.result !== "cancelled"
+      );
 
       // Count base registrations (no price variation) for this occurrence
-      const baseRegistrations = registrations.filter(
+      const baseRegistrations = activeRegistrations.filter(
         (uw) => !uw.priceVariationId
       ).length;
 
-      // Count registrations by variation for this occurrence
-      const variationCounts = workshop.priceVariations.map((variation) => {
-        const count = registrations.filter(
-          (uw) => uw.priceVariationId === variation.id
-        ).length;
+      // Count registrations by variation for this occurrence (only for active variations)
+      const variationCounts = workshop.priceVariations
+        .filter((variation) => variation.status !== "cancelled")
+        .map((variation) => {
+          const count = activeRegistrations.filter(
+            (uw) => uw.priceVariationId === variation.id
+          ).length;
 
-        return {
-          variationId: variation.id,
-          registrations: count,
-        };
-      });
+          return {
+            variationId: variation.id,
+            registrations: count,
+          };
+        });
 
       return {
         occurrenceId: occurrence.id,
-        totalRegistrations: registrations.length,
+        totalRegistrations: activeRegistrations.length,
         baseRegistrations,
         variationCounts,
       };
@@ -2356,26 +2370,28 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
       0
     );
 
-    // Calculate max registrations per variation
-    const variationCounts = workshop.priceVariations.map((variation) => {
-      const maxRegistrationsForThisVariation = Math.max(
-        ...occurrenceCounts.map((oc) => {
-          const variationCount = oc.variationCounts.find(
-            (vc) => vc.variationId === variation.id
-          );
-          return variationCount ? variationCount.registrations : 0;
-        }),
-        0
-      );
+    // Calculate max registrations per variation (only for active variations)
+    const variationCounts = workshop.priceVariations
+      .filter((variation) => variation.status !== "cancelled")
+      .map((variation) => {
+        const maxRegistrationsForThisVariation = Math.max(
+          ...occurrenceCounts.map((oc) => {
+            const variationCount = oc.variationCounts.find(
+              (vc) => vc.variationId === variation.id
+            );
+            return variationCount ? variationCount.registrations : 0;
+          }),
+          0
+        );
 
-      return {
-        variationId: variation.id,
-        name: variation.name,
-        capacity: variation.capacity,
-        registrations: maxRegistrationsForThisVariation,
-        hasCapacity: maxRegistrationsForThisVariation < variation.capacity,
-      };
-    });
+        return {
+          variationId: variation.id,
+          name: variation.name,
+          capacity: variation.capacity,
+          registrations: maxRegistrationsForThisVariation,
+          hasCapacity: maxRegistrationsForThisVariation < variation.capacity,
+        };
+      });
 
     return {
       workshopCapacity: workshop.capacity,
