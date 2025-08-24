@@ -44,6 +44,7 @@ interface MembershipCardProps {
     roleName: string;
     userId: number;
   } | null;
+  isCurrentlyActivePlan?: boolean;
 }
 
 export default function MembershipCard({
@@ -62,6 +63,7 @@ export default function MembershipCard({
   membershipRecordId,
   needAdminPermission,
   roleUser,
+  isCurrentlyActivePlan = false,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -77,6 +79,8 @@ export default function MembershipCard({
         return ArrowUp;
       case "Downgrade":
         return ArrowDown;
+      case "Current Plan":
+        return CheckCircle;
       default:
         return null;
     }
@@ -311,15 +315,27 @@ export default function MembershipCard({
               );
             }
 
-            // 3) Normal upgrade/downgrade when not mid‑cycle
+            // 3) Normal upgrade/downgrade
             if (hasActiveSubscription) {
-              const buttonLabel =
-                price > highestActivePrice ? "Upgrade" : "Downgrade";
+              // Check if this plan is currently active (not just compare prices)
+
+              const buttonLabel = isCurrentlyActivePlan
+                ? "Current Plan"
+                : price > highestActivePrice
+                  ? "Upgrade"
+                  : "Downgrade";
               const Icon = getIconForLabel(buttonLabel);
               return (
                 <Button
-                  onClick={handleSelect}
-                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
+                  onClick={
+                    buttonLabel === "Current Plan" ? undefined : handleSelect
+                  }
+                  disabled={buttonLabel === "Current Plan"}
+                  className={`px-6 py-2 rounded-full shadow-md transition flex items-center justify-center ${
+                    buttonLabel === "Current Plan"
+                      ? "bg-green-500 text-white cursor-default"
+                      : "bg-yellow-500 text-white hover:bg-yellow-600"
+                  }`}
                 >
                   {Icon && <Icon className="w-5 h-5 mr-2" />}
                   {buttonLabel}
