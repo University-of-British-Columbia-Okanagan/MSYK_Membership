@@ -72,8 +72,8 @@ export default function QuickCheckout({
         // Redirect to success page after a brief delay
         setTimeout(() => {
           if (checkoutData.type === "equipment") {
-            // For equipment, include equipment_id and slots_data_key in the URL
-            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}&equipment_id=${checkoutData.equipmentId}&slots_data_key=${checkoutData.slotsDataKey}`;
+            // For equipment, include equipment_id and slots_data_key in the URL and include payment intent ID in the redirect URL
+            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}&equipment_id=${checkoutData.equipmentId}&slots_data_key=${checkoutData.slotsDataKey}&payment_intent_id=${result.paymentIntentId}`;
           } else {
             // For other types (workshop, membership), use the regular redirect
             window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}`;

@@ -245,6 +245,8 @@ export async function quickCheckout(
           console.log(
             `Equipment payment successful for user ${userId}, equipment ${checkoutData.equipmentId}`
           );
+          // We store the payment intent ID in the frontend handling
+          // The actual booking with payment intent ID happens in paymentsuccess.tsx
         }
       } catch (registrationError) {
         console.error(
@@ -820,5 +822,105 @@ export async function refundWorkshopRegistration(
   } catch (error: any) {
     console.error("Refund processing failed:", error);
     throw new Error(`Refund failed: ${error.message}`);
+  }
+}
+
+/**
+ * Processes a refund for equipment bookings
+ * @param userId - The ID of the user requesting the refund
+ * @param equipmentId - The ID of the equipment
+ * @param slotIds - Optional array of specific slot IDs to refund (if not provided, refunds all user's bookings for this equipment)
+ * @returns Promise<Object> - Refund result with success status
+ * @throws Error if refund processing fails
+ */
+export async function refundEquipmentBooking(
+  userId: number,
+  equipmentId?: number,
+  slotIds?: number[]
+) {
+  try {
+    // Find the booking(s) with payment intent ID
+    const whereClause: any = {
+      userId,
+      bookedFor: "user", // Only individual user bookings, not workshop bookings
+      paymentIntentId: { not: null },
+    };
+
+    if (equipmentId) {
+      whereClause.equipmentId = equipmentId;
+    }
+
+    if (slotIds && slotIds.length > 0) {
+      whereClause.slotId = { in: slotIds };
+    }
+
+    const bookings = await db.equipmentBooking.findMany({
+      where: whereClause,
+      include: {
+        slot: true,
+        equipment: true,
+      },
+    });
+
+    if (bookings.length === 0) {
+      throw new Error("No paid equipment bookings found for refund");
+    }
+
+    // Get the payment intent ID (should be the same for all bookings made in the same payment)
+    const paymentIntentId = bookings[0].paymentIntentId;
+
+    if (!paymentIntentId) {
+      throw new Error("No payment intent ID found for these bookings");
+    }
+
+    // Verify all bookings have the same payment intent ID
+    const differentPaymentIntents = bookings.filter(
+      (booking) => booking.paymentIntentId !== paymentIntentId
+    );
+
+    if (differentPaymentIntents.length > 0) {
+      throw new Error(
+        "Cannot refund bookings from different payments together"
+      );
+    }
+
+    // Process the refund with Stripe
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      metadata: {
+        userId: userId.toString(),
+        bookingIds: bookings.map((b) => b.id.toString()).join(","),
+        ...(equipmentId ? { equipmentId: equipmentId.toString() } : {}),
+      },
+    });
+
+    // If refund is successful, remove the bookings and free up the slots
+    if (refund.status === "succeeded") {
+      const bookingIds = bookings.map((booking) => booking.id);
+      const slotIdsToFree = bookings.map((booking) => booking.slotId);
+
+      // Free up the equipment slots
+      await db.equipmentSlot.updateMany({
+        where: { id: { in: slotIdsToFree } },
+        data: { isBooked: false },
+      });
+
+      // Remove the booking records
+      await db.equipmentBooking.deleteMany({
+        where: { id: { in: bookingIds } },
+      });
+    }
+
+    return {
+      success: refund.status === "succeeded",
+      refundId: refund.id,
+      amount: refund.amount / 100, // Convert back from cents
+      status: refund.status,
+      bookingsRefunded: bookings.length,
+      slotsFreed: bookings.length,
+    };
+  } catch (error: any) {
+    console.error("Equipment refund processing failed:", error);
+    throw new Error(`Equipment refund failed: ${error.message}`);
   }
 }
