@@ -851,6 +851,9 @@ export default function EditWorkshop() {
   const isMultiDay =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
 
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
+    useState<boolean>(isMultiDay);
+
   const navigate = useNavigate();
   const fetcher = useFetcher();
 
@@ -892,6 +895,14 @@ export default function EditWorkshop() {
     (occ) => occ.status === "cancelled"
   );
 
+  // Check if all occurrences are cancelled for multi-day workshop
+  const allCancelled =
+    occurrences.length > 0 &&
+    occurrences.every((occ) => occ.status === "cancelled");
+
+  // Determine if "Add Date" button should be disabled
+  const shouldDisableAddDate = isMultiDayWorkshop && allCancelled;
+
   // New state for prerequisites – initialize from the workshop data.
   // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
@@ -925,9 +936,6 @@ export default function EditWorkshop() {
   >([]);
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
   const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
-
-  const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
-    useState<boolean>(isMultiDay);
 
   const [hasPriceVariations, setHasPriceVariations] = useState(() => {
     return workshop.priceVariations && workshop.priceVariations.length > 0;
@@ -986,8 +994,12 @@ export default function EditWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  // For custom approach, add an empty row
   const addOccurrence = () => {
+    // Prevent adding dates if all are cancelled in multi-day workshop
+    if (shouldDisableAddDate) {
+      return;
+    }
+
     // Check if any users are registered (only for active/non-cancelled occurrences)
     let hasUsers = false;
 
@@ -2324,13 +2336,39 @@ export default function EditWorkshop() {
                                   );
                                 })()
                               )}
-                              <Button
-                                type="button"
-                                onClick={addOccurrence}
-                                className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
-                              >
-                                <span className="mr-1">+</span> Add Date
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        type="button"
+                                        onClick={addOccurrence}
+                                        disabled={shouldDisableAddDate}
+                                        className={`mt-1 px-6 py-2 rounded-md shadow transition text-sm flex items-center ${
+                                          shouldDisableAddDate
+                                            ? "bg-gray-400 hover:bg-gray-400 text-gray-600 cursor-not-allowed"
+                                            : "bg-yellow-500 hover:bg-yellow-600 text-white"
+                                        }`}
+                                      >
+                                        <span className="mr-1">+</span> Add Date
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {shouldDisableAddDate && (
+                                    <TooltipContent
+                                      side="top"
+                                      align="center"
+                                      className="bg-gray-100 text-gray-800 border border-gray-300 max-w-sm z-50"
+                                      sideOffset={5}
+                                    >
+                                      <p className="text-sm font-medium">
+                                        You cannot add dates after cancelling
+                                        all dates in a multi-day workshop
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                           )}
 
@@ -2588,6 +2626,30 @@ export default function EditWorkshop() {
                                                                   confirmTitle="Cancel All Occurrences"
                                                                   confirmDescription="Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
                                                                   onConfirm={() => {
+                                                                    // Update local state to mark all active occurrences as cancelled
+                                                                    const updatedOccurrences =
+                                                                      occurrences.map(
+                                                                        (
+                                                                          occ
+                                                                        ) =>
+                                                                          occ.status ===
+                                                                          "active"
+                                                                            ? {
+                                                                                ...occ,
+                                                                                status:
+                                                                                  "cancelled" as const,
+                                                                              }
+                                                                            : occ
+                                                                      );
+                                                                    setOccurrences(
+                                                                      updatedOccurrences
+                                                                    );
+                                                                    form.setValue(
+                                                                      "occurrences",
+                                                                      updatedOccurrences
+                                                                    );
+
+                                                                    // Also handle the server-side cancellation
                                                                     activeOccurrences.forEach(
                                                                       (
                                                                         occurrence
