@@ -65,8 +65,8 @@ export async function getAvailableEquipment() {
           eq.slots.length === 0
             ? "unavailable" // No slots exist
             : eq.slots.every((slot) => slot.isBooked)
-            ? "unavailable" // All slots taken
-            : "available", // Some slots are free
+              ? "unavailable" // All slots taken
+              : "available", // Some slots are free
       }))
     );
 }
@@ -83,7 +83,8 @@ export async function bookEquipment(
   request: Request,
   equipmentId: number,
   startTime: string,
-  endTime: string
+  endTime: string,
+  paymentIntentId?: string
 ) {
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
@@ -105,11 +106,11 @@ export async function bookEquipment(
 
   if (user.roleLevel === 3) {
     // Level 3 can't book on Monday (1) or Tuesday (2)
-    if (day === 1 || day === 2) {
-      throw new Error(
-        "Level 3 members cannot book equipment on Monday or Tuesday."
-      );
-    }
+    // if (day === 1 || day === 2) {
+    //   throw new Error(
+    //     "Level 3 members cannot book equipment on Monday or Tuesday."
+    //   );
+    // }
 
     // Optional: Add specific hour restrictions if needed for DROP-IN HOURS
     if (hour < 9 || hour >= 17) {
@@ -150,6 +151,7 @@ export async function bookEquipment(
       equipmentId,
       slotId: slot.id,
       status: "pending",
+      ...(paymentIntentId ? { paymentIntentId } : {}),
     },
   });
 }

@@ -1,6 +1,7 @@
 import { db } from "../utils/db.server";
 import cron from "node-cron";
 import Stripe from "stripe";
+import { getAdminSetting } from "./admin.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -44,10 +45,13 @@ export async function getMembershipPlans() {
 export async function addMembershipPlan(data: MembershipPlanData) {
   try {
     // Convert the features array into a JSON object
-    const featuresJson = data.features.reduce((acc, feature, index) => {
-      acc[`Feature${index + 1}`] = feature;
-      return acc;
-    }, {} as Record<string, string>);
+    const featuresJson = data.features.reduce(
+      (acc, feature, index) => {
+        acc[`Feature${index + 1}`] = feature;
+        return acc;
+      },
+      {} as Record<string, string>
+    );
 
     const newPlan = await db.membershipPlan.create({
       data: {
@@ -158,7 +162,8 @@ export async function registerMembershipSubscription(
   membershipPlanId: number,
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
-  isResubscription: boolean = false
+  isResubscription: boolean = false,
+  paymentIntentId?: string
 ) {
   let subscription;
   const now = new Date();
@@ -235,6 +240,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
       subscription = newMembership;
@@ -247,6 +253,7 @@ export async function registerMembershipSubscription(
           date: startDate, // starts at old membership's nextPaymentDate
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
     }
@@ -295,6 +302,7 @@ export async function registerMembershipSubscription(
           date: startDate, // new membership starts when the old membership ends
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
       subscription = newMembership;
@@ -307,6 +315,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
     }
@@ -349,6 +358,7 @@ export async function registerMembershipSubscription(
         date: startDate,
         nextPaymentDate,
         status: "active",
+        ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
   }
@@ -507,7 +517,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("00 00 * * *", async () => {
+  cron.schedule("23 14 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -534,8 +544,13 @@ export function startMonthlyMembershipCheck() {
         }
 
         if (membership.status === "active") {
-          // Process active memberships.
-          const chargeAmount = Number(membership.membershipPlan.price);
+          // UPDATE THIS PART: Calculate charge amount with GST
+          const baseAmount = Number(membership.membershipPlan.price);
+
+          // Get GST percentage from admin settings
+          const gstPercentage = await getAdminSetting("gst_percentage", "5");
+          const gstRate = parseFloat(gstPercentage) / 100;
+          const chargeAmount = baseAmount * (1 + gstRate);
 
           // Get user's saved payment method from UserPaymentInformation
           const savedPayment = await db.userPaymentInformation.findUnique({
@@ -553,19 +568,26 @@ export function startMonthlyMembershipCheck() {
           }
 
           try {
-            // Create payment intent using saved payment method
+            // UPDATE THIS PART: Create payment intent with GST-inclusive amount and metadata
             const pi = await stripe.paymentIntents.create({
-              amount: Math.round(chargeAmount * 100),
-              currency: "usd",
+              amount: Math.round(chargeAmount * 100), // Now includes GST
+              currency: "cad", // Changed from "usd" to match your other payments
               customer: savedPayment.stripeCustomerId,
               payment_method: savedPayment.stripePaymentMethodId,
               off_session: true,
               confirm: true,
               receipt_email: user.email,
+              description: `${membership.membershipPlan.title} - Monthly Payment (Includes ${gstPercentage}% GST)`, // Add description
               metadata: {
                 userId: String(membership.userId),
                 membershipId: String(membership.id),
                 planId: String(membership.membershipPlanId),
+                // Add GST breakdown to metadata
+                original_amount: baseAmount.toString(),
+                gst_amount: (chargeAmount - baseAmount).toString(),
+                total_with_gst: chargeAmount.toString(),
+                gst_percentage: gstPercentage,
+                payment_type: "monthly_membership",
               },
             });
 
@@ -574,7 +596,7 @@ export function startMonthlyMembershipCheck() {
               console.log(
                 `✅ Payment intent succeeded for user ${
                   membership.userId
-                }, charged $${chargeAmount.toFixed(2)}`
+                }, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
               );
 
               // Update the next payment date after successful payment
@@ -582,6 +604,7 @@ export function startMonthlyMembershipCheck() {
                 where: { id: membership.id },
                 data: {
                   nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+                  paymentIntentId: pi.id,
                 },
               });
             } else {
