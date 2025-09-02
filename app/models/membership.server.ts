@@ -2,6 +2,7 @@ import { db } from "../utils/db.server";
 import cron from "node-cron";
 import Stripe from "stripe";
 import { getAdminSetting } from "./admin.server";
+import { sendMembershipPaymentReminderEmail } from "~/utils/email.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -522,6 +523,8 @@ export function startMonthlyMembershipCheck() {
 
     try {
       const now = new Date();
+      // Reminder window: send for charges occurring within the next 24 hours
+      const reminderWindowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
       // Find memberships due for charge with status "active", "ending", or "cancelled"
       const dueMemberships = await db.userMembership.findMany({
@@ -533,6 +536,40 @@ export function startMonthlyMembershipCheck() {
           membershipPlan: true, // so we can access the plan's price
         },
       });
+
+      // Send reminders for memberships that will be charged within the next 24 hours (only for active)
+      const reminderCandidates = await db.userMembership.findMany({
+        where: {
+          status: "active",
+          nextPaymentDate: { gt: now, lte: reminderWindowEnd },
+        },
+        include: { membershipPlan: true },
+      });
+
+      for (const membership of reminderCandidates) {
+        const user = await db.user.findUnique({ where: { id: membership.userId } });
+        if (!user) continue;
+
+        const baseAmount = Number(membership.membershipPlan.price);
+        const gstPercentage = await getAdminSetting("gst_percentage", "5");
+        const gstRate = parseFloat(gstPercentage) / 100;
+        const chargeAmount = baseAmount * (1 + gstRate);
+
+        try {
+          await sendMembershipPaymentReminderEmail({
+            userEmail: user.email,
+            planTitle: membership.membershipPlan.title,
+            nextPaymentDate: membership.nextPaymentDate,
+            amountDue: chargeAmount,
+            gstPercentage: parseFloat(gstPercentage),
+          });
+        } catch (emailErr) {
+          console.error(
+            `Failed to send membership payment reminder to user ${membership.userId}:`,
+            emailErr
+          );
+        }
+      }
 
       for (const membership of dueMemberships) {
         const user = await db.user.findUnique({
