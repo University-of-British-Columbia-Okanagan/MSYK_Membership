@@ -22,6 +22,7 @@ import {
   getUserCompletedPrerequisites,
   cancelUserWorkshopRegistration,
   getUserWorkshopRegistrationInfo,
+  getWorkshopOccurrence,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
@@ -46,6 +47,7 @@ import {
   getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
+import { sendWorkshopCancellationEmail } from "~/utils/email.server";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
@@ -277,6 +279,24 @@ export async function action({ request }: { request: Request }) {
         occurrenceId: Number(occurrenceId),
         userId: user.id,
       });
+      // Send cancellation confirmation email (non-blocking)
+      try {
+        const workshop = await getWorkshopById(Number(workshopId));
+        const occurrence = await getWorkshopOccurrence(
+          Number(workshopId),
+          Number(occurrenceId)
+        );
+        await sendWorkshopCancellationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          startDate: new Date(occurrence.startDate),
+          endDate: new Date(occurrence.endDate),
+        });
+      } catch (emailErr) {
+        logger.error(`Failed to send workshop cancellation email: ${emailErr}`, {
+          url: request.url,
+        });
+      }
       logger.info(
         `User ${user.id}'s workshop registration cancelled successfully.`,
         { url: request.url }
