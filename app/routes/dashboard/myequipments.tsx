@@ -6,6 +6,8 @@ import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
+import { db } from "~/utils/db.server";
+import { sendEquipmentCancellationEmail } from "~/utils/email.server";
 import { json } from "@remix-run/node";
 import { logger } from "~/logging/logger";
 
@@ -56,7 +58,33 @@ export async function action({ request }: { request: Request }) {
 
   if (actionType === "cancel" && bookingId) {
     try {
+      // Getting the details for email composition before
+      const booking = await db.equipmentBooking.findUnique({
+        where: { id: bookingId },
+        include: {
+          slot: true,
+          equipment: true,
+          user: { select: { email: true } },
+        },
+      });
+
       await cancelEquipmentBooking(bookingId);
+
+      // Send email after successful cancellation (non-blocking)
+      if (booking && booking.user?.email && booking.slot && booking.equipment) {
+        try {
+          await sendEquipmentCancellationEmail({
+            userEmail: booking.user.email,
+            equipmentName: booking.equipment.name,
+            startTime: new Date(booking.slot.startTime),
+            endTime: new Date(booking.slot.endTime),
+          });
+        } catch (emailErr) {
+          logger.error(`Failed to send equipment cancellation email: ${emailErr}`, {
+            url: request.url,
+          });
+        }
+      }
       return json({ success: "Booking cancelled successfully!" });
     } catch (error) {
       return json(
