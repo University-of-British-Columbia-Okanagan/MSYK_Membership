@@ -59,16 +59,23 @@ export async function action({ request }: { request: Request }) {
   if (actionType === "cancel" && bookingId) {
     try {
       // Getting the details for email composition before
-      const booking = await db.equipmentBooking.findUnique({
-        where: { id: bookingId },
+      const isAdmin = roleUser.roleName.toLowerCase() === "admin";
+      const booking = await db.equipmentBooking.findFirst({
+        where: isAdmin
+          ? { id: bookingId }
+          : { id: bookingId, userId: roleUser.userId },
         include: {
           slot: true,
           equipment: true,
           user: { select: { email: true } },
         },
       });
-
-      await cancelEquipmentBooking(bookingId);
+      if (!booking) {
+        return json(
+          { errors: { message: "Booking not found." } },
+          { status: 404 }
+        );
+      }      await cancelEquipmentBooking(bookingId);
 
       // Send email after successful cancellation (non-blocking)
       if (booking && booking.user?.email && booking.slot && booking.equipment) {
