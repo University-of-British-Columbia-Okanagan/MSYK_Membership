@@ -62,14 +62,28 @@ async function sendPasswordResetEmail(
 }
 
 function generateResetToken(email: string): string {
-  return jwt.sign({ email }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  return jwt.sign({ email }, secret, { expiresIn: '1h' });
 }
 
 export async function sendResetEmail(email: string): Promise<void> {
   const token = generateResetToken(email);
-  const baseUrl = process.env.BASE_URL ?? "";
-  const resetLink = `${baseUrl}/passwordReset?token=${token}`;
-  await sendPasswordResetEmail(email, resetLink);
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+  }
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("BASE_URL must be a valid absolute URL origin");
+  }
+  const resetUrl = new URL('/passwordReset', origin);
+  resetUrl.searchParams.set('token', token);
+  await sendPasswordResetEmail(email, resetUrl.toString());
 }
 
 export async function sendWorkshopCancellationEmail(params: {
