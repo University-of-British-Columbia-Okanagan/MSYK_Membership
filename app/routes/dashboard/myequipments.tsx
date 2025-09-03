@@ -6,7 +6,7 @@ import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
-import { db } from "~/utils/db.server";
+import { getBookingEmailDetails } from "~/models/equipment.server";
 import { sendEquipmentCancellationEmail } from "~/utils/email.server";
 import { json } from "@remix-run/node";
 import { logger } from "~/logging/logger";
@@ -58,33 +58,20 @@ export async function action({ request }: { request: Request }) {
 
   if (actionType === "cancel" && bookingId) {
     try {
-      // Getting the details for email composition before
-      const isAdmin = roleUser.roleName.toLowerCase() === "admin";
-      const booking = await db.equipmentBooking.findFirst({
-        where: isAdmin
-          ? { id: bookingId }
-          : { id: bookingId, userId: roleUser.userId },
-        include: {
-          slot: true,
-          equipment: true,
-          user: { select: { email: true } },
-        },
-      });
-      if (!booking) {
-        return json(
-          { errors: { message: "Booking not found." } },
-          { status: 404 }
-        );
-      }      await cancelEquipmentBooking(bookingId);
+      // Get details before deletion for email composition
+      const emailDetails = await getBookingEmailDetails(bookingId);
+
+      await cancelEquipmentBooking(bookingId);
 
       // Send email after successful cancellation (non-blocking)
-      if (booking && booking.user?.email && booking.slot && booking.equipment) {
+      if (emailDetails) {
+        const { userEmail, equipmentName, startTime, endTime } = emailDetails;
         try {
           await sendEquipmentCancellationEmail({
-            userEmail: booking.user.email,
-            equipmentName: booking.equipment.name,
-            startTime: new Date(booking.slot.startTime),
-            endTime: new Date(booking.slot.endTime),
+            userEmail,
+            equipmentName,
+            startTime: new Date(startTime),
+            endTime: new Date(endTime),
           });
         } catch (emailErr) {
           logger.error(`Failed to send equipment cancellation email: ${emailErr}`, {
