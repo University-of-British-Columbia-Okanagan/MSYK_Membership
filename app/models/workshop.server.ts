@@ -86,11 +86,14 @@ export async function getWorkshops() {
         ? workshop.occurrences[workshop.occurrences.length - 1].status
         : "expired"; // Default to expired if no occurrences exist
 
-    // Map occurrences to include registration count
+    // Map occurrences to include registration count (excluding cancelled)
     const occurrencesWithCounts = workshop.occurrences.map(
       (occurrence: any) => {
-        // Use type assertion (any) to bypass TypeScript checking
-        const registrationCount = occurrence.userWorkshops?.length || 0;
+        // Count only non-cancelled registrations
+        const registrationCount =
+          occurrence.userWorkshops?.filter(
+            (uw: any) => uw.result !== "cancelled"
+          ).length || 0;
 
         // Create a new object without the userWorkshops property
         const { userWorkshops, ...occWithoutUserWorkshops } = occurrence;
@@ -967,7 +970,11 @@ export async function checkUserRegistration(
   workshopId: number,
   userId: number,
   occurrenceId: number
-): Promise<{ registered: boolean; registeredAt: Date | null }> {
+): Promise<{
+  registered: boolean;
+  registeredAt: Date | null;
+  status?: string;
+}> {
   const userWorkshop = await db.userWorkshop.findFirst({
     where: {
       userId: userId,
@@ -980,7 +987,20 @@ export async function checkUserRegistration(
     return { registered: false, registeredAt: null };
   }
 
-  return { registered: true, registeredAt: userWorkshop.date };
+  // Check if registration is cancelled
+  if (userWorkshop.result === "cancelled") {
+    return {
+      registered: true,
+      registeredAt: userWorkshop.date,
+      status: "cancelled",
+    };
+  }
+
+  return {
+    registered: true,
+    registeredAt: userWorkshop.date,
+    status: userWorkshop.result,
+  };
 }
 
 /**
@@ -1550,12 +1570,12 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
 }
 
 /**
- * Cancels a user's registration for a specific workshop occurrence
+ * Cancels a user's registration for a specific workshop occurrence by marking as cancelled
  * @param params - Object containing workshopId, occurrenceId, and userId
  * @param params.workshopId - The ID of the workshop
  * @param params.occurrenceId - The ID of the occurrence
  * @param params.userId - The ID of the user to cancel registration for
- * @returns Promise<Object> - Database deletion result
+ * @returns Promise<Object> - Database update result
  */
 export async function cancelUserWorkshopRegistration({
   workshopId,
@@ -1566,11 +1586,14 @@ export async function cancelUserWorkshopRegistration({
   occurrenceId: number;
   userId: number;
 }) {
-  return await db.userWorkshop.deleteMany({
+  return await db.userWorkshop.updateMany({
     where: {
       workshopId,
       occurrenceId,
       userId,
+    },
+    data: {
+      result: "cancelled",
     },
   });
 }
