@@ -35,7 +35,11 @@ import {
   getLevel3ScheduleRestrictions,
   getLevel4UnavailableHours,
 } from "~/models/equipment.server";
-import { getWorkshops } from "~/models/workshop.server";
+import {
+  getWorkshops,
+  getAllWorkshopCancellations,
+  updateWorkshopCancellationResolved,
+} from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import {
   Table,
@@ -128,6 +132,8 @@ export async function loader({ request }: { request: Request }) {
   const allVolunteerHours = await getAllVolunteerHours();
   const recentVolunteerActions = await getRecentVolunteerHourActions(50);
 
+  const workshopCancellations = await getAllWorkshopCancellations();
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -157,6 +163,7 @@ export async function loader({ request }: { request: Request }) {
     users,
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
+    workshopCancellations,
   };
 }
 
@@ -458,6 +465,38 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: "Failed to update volunteer hour status",
+      };
+    }
+  }
+
+  if (actionType === "updateWorkshopCancellationResolved") {
+    const cancellationId = formData.get("cancellationId");
+    const resolved = formData.get("resolved");
+    try {
+      await updateWorkshopCancellationResolved(
+        Number(cancellationId),
+        resolved === "true"
+      );
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated workshop cancellation resolved status for cancellation ${cancellationId} to ${resolved}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Workshop cancellation status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating workshop cancellation status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update workshop cancellation status",
       };
     }
   }
@@ -844,87 +883,201 @@ function VolunteerHourStatusControl({
   );
 }
 
+function WorkshopCancellationResolvedControl({
+  cancellation,
+}: {
+  cancellation: {
+    id: number;
+    resolved: boolean;
+    user: {
+      firstName: string;
+      lastName: string;
+    };
+  };
+}) {
+  const [resolved, setResolved] = useState<boolean>(cancellation.resolved);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingStatus, setPendingStatus] = useState<boolean>(false);
+  const submit = useSubmit();
+
+  // Update local state when the actual data changes
+  React.useEffect(() => {
+    setResolved(cancellation.resolved);
+  }, [cancellation.resolved, cancellation.id]);
+
+  const updateResolvedStatus = (newStatus: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateWorkshopCancellationResolved");
+    formData.append("cancellationId", cancellation.id.toString());
+    formData.append("resolved", newStatus.toString());
+    submit(formData, { method: "post" });
+    setResolved(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setPendingStatus(checked);
+    setShowConfirmDialog(true);
+  };
+
+  return (
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        checked={resolved}
+        onChange={(e) => handleCheckboxChange(e.target.checked)}
+        className="h-4 w-4 rounded border-gray-300 text-green-500 focus:ring-green-500"
+        id={`resolved-${cancellation.id}`}
+      />
+      <label
+        htmlFor={`resolved-${cancellation.id}`}
+        className="ml-2 text-sm text-gray-600"
+      >
+        Resolved
+      </label>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingStatus ? "Mark as Resolved" : "Mark as Unresolved"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatus
+                ? "Are you sure you want to mark this workshop cancellation as resolved? This indicates the user's situation has been dealt with."
+                : "Are you sure you want to mark this workshop cancellation as unresolved? This indicates the user's situation still needs attention."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateResolvedStatus(pendingStatus)}
+            >
+              {pendingStatus ? "Mark Resolved" : "Mark Unresolved"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 export default function AdminSettings() {
-  const { settings, workshops, users, volunteerHours, recentVolunteerActions } =
-    useLoaderData<{
-      settings: {
-        workshopVisibilityDays: number;
-        pastWorkshopVisibility: number;
-        equipmentVisibilityDays: number;
-        level3Schedule: {
-          [day: string]: { start: number; end: number; closed?: boolean };
-        };
-        level4UnavailableHours: {
-          start: number;
-          end: number;
-        };
-        plannedClosures: Array<{
-          id: number;
-          startDate: string;
-          endDate: string;
-        }>;
-        maxEquipmentSlotsPerDay: number;
-        maxEquipmentSlotsPerWeek: number;
-        gstPercentage: number;
+  const {
+    settings,
+    workshops,
+    users,
+    volunteerHours,
+    recentVolunteerActions,
+    workshopCancellations,
+  } = useLoaderData<{
+    settings: {
+      workshopVisibilityDays: number;
+      pastWorkshopVisibility: number;
+      equipmentVisibilityDays: number;
+      level3Schedule: {
+        [day: string]: { start: number; end: number; closed?: boolean };
       };
-      workshops: Array<{
+      level4UnavailableHours: {
+        start: number;
+        end: number;
+      };
+      plannedClosures: Array<{
         id: number;
-        name: string;
-        price: number;
-        registrationCutoff: number;
-        hasActiveOccurrences: boolean;
+        startDate: string;
+        endDate: string;
       }>;
-      users: Array<{
+      maxEquipmentSlotsPerDay: number;
+      maxEquipmentSlotsPerWeek: number;
+      gstPercentage: number;
+    };
+    workshops: Array<{
+      id: number;
+      name: string;
+      price: number;
+      registrationCutoff: number;
+      hasActiveOccurrences: boolean;
+    }>;
+    users: Array<{
+      id: number;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      trainingCardUserNumber: string;
+      roleLevel: number;
+      allowLevel4: boolean;
+      isVolunteer: boolean;
+      volunteerSince: Date | null;
+      volunteerHistory?: Array<{
         id: number;
+        volunteerStart: Date;
+        volunteerEnd: Date | null;
+      }>;
+    }>;
+    volunteerHours: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      isResubmission: boolean;
+      createdAt: string;
+      updatedAt: string;
+      user: {
         firstName: string;
         lastName: string;
         email: string;
-        phone: string;
-        trainingCardUserNumber: string;
-        roleLevel: number;
-        allowLevel4: boolean;
-        isVolunteer: boolean;
-        volunteerSince: Date | null;
-        volunteerHistory?: Array<{
-          id: number;
-          volunteerStart: Date;
-          volunteerEnd: Date | null;
-        }>;
-      }>;
-      volunteerHours: Array<{
+      };
+    }>;
+    recentVolunteerActions: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      previousStatus: string | null;
+      isResubmission: boolean;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+    }>;
+    workshopCancellations: Array<{
+      id: number;
+      userId: number;
+      workshopId: number;
+      workshopOccurrenceId: number;
+      registrationDate: string;
+      cancellationDate: string;
+      priceVariation: string | null;
+      resolved: boolean;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+      workshop: {
         id: number;
-        userId: number;
-        startTime: string;
-        endTime: string;
-        description: string | null;
-        status: string;
-        isResubmission: boolean;
-        createdAt: string;
-        updatedAt: string;
-        user: {
-          firstName: string;
-          lastName: string;
-          email: string;
-        };
-      }>;
-      recentVolunteerActions: Array<{
+        name: string;
+        type: string;
+      };
+      occurrence: {
         id: number;
-        userId: number;
-        startTime: string;
-        endTime: string;
-        description: string | null;
-        status: string;
-        previousStatus: string | null;
-        isResubmission: boolean;
-        createdAt: string;
-        updatedAt: string;
-        user: {
-          firstName: string;
-          lastName: string;
-          email: string;
-        };
-      }>;
-    }>();
+        startDate: string;
+        endDate: string;
+      };
+    }>;
+  }>();
 
   const actionData = useActionData<{
     success?: boolean;
@@ -1677,6 +1830,12 @@ export default function AdminSettings() {
                     className="whitespace-nowrap"
                   >
                     Planned Closures
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="cancelledEvents"
+                    className="whitespace-nowrap"
+                  >
+                    Cancelled Events
                   </TabsTrigger>
                   <TabsTrigger
                     value="miscellaneous"
@@ -3777,6 +3936,174 @@ export default function AdminSettings() {
                         )}
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="cancelledEvents">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Workshop Cancelled Events</CardTitle>
+                    <CardDescription>
+                      View and manage workshop cancellations to track refunds
+                      and resolve user issues
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Workshop Name",
+                          render: (cancellation: any) =>
+                            cancellation.workshop.name,
+                        },
+                        {
+                          header: "Workshop Time(s)",
+                          render: (cancellation: any) => {
+                            const startDate = new Date(
+                              cancellation.workshopOccurrence.startDate
+                            );
+                            const endDate = new Date(
+                              cancellation.workshopOccurrence.endDate
+                            );
+
+                            if (cancellation.workshop.type === "multi_day") {
+                              // Show compact date range for multi-day workshops
+                              if (
+                                startDate.toDateString() ===
+                                endDate.toDateString()
+                              ) {
+                                // Same day
+                                return (
+                                  <div className="text-sm">
+                                    <div>{startDate.toLocaleDateString()}</div>
+                                    <div className="text-gray-500">
+                                      {startDate.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}{" "}
+                                      -{" "}
+                                      {endDate.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              } else {
+                                // Multiple days
+                                return (
+                                  <div className="text-sm">
+                                    <div>
+                                      {startDate.toLocaleDateString()} -{" "}
+                                      {endDate.toLocaleDateString()}
+                                    </div>
+                                    <div className="text-gray-500">
+                                      {startDate.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}{" "}
+                                      -{" "}
+                                      {endDate.toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            } else {
+                              // Regular workshop - show just time
+                              return (
+                                <div className="text-sm">
+                                  <div>{startDate.toLocaleDateString()}</div>
+                                  <div className="text-gray-500">
+                                    {startDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}{" "}
+                                    -{" "}
+                                    {endDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          },
+                        },
+                        {
+                          header: "Price Variation",
+                          render: (cancellation: any) =>
+                            cancellation.priceVariation || (
+                              <span className="text-gray-400 text-sm">
+                                Standard
+                              </span>
+                            ),
+                        },
+                        {
+                          header: "Registration Duration",
+                          render: (cancellation: any) => {
+                            const registrationDate = new Date(
+                              cancellation.registrationDate
+                            );
+                            const cancellationDate = new Date(
+                              cancellation.cancellationDate
+                            );
+                            const durationMs =
+                              cancellationDate.getTime() -
+                              registrationDate.getTime();
+                            const durationHours =
+                              Math.round((durationMs / (1000 * 60 * 60)) * 10) /
+                              10;
+
+                            return (
+                              <div className="text-sm">
+                                <div className="font-medium">
+                                  {durationHours} hours
+                                </div>
+                                <div className="text-gray-500 text-xs">
+                                  {registrationDate.toLocaleDateString()} →{" "}
+                                  {cancellationDate.toLocaleDateString()}
+                                </div>
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Resolved?",
+                          render: (cancellation: any) => (
+                            <WorkshopCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                        {
+                          header: "Cancelled On",
+                          render: (cancellation: any) =>
+                            new Date(
+                              cancellation.cancellationDate
+                            ).toLocaleDateString(),
+                        },
+                      ]}
+                      data={workshopCancellations}
+                      emptyMessage="No workshop cancellations found"
+                    />
                   </CardContent>
                 </Card>
               </TabsContent>
