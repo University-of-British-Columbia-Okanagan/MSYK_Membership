@@ -900,8 +900,28 @@ export default function EditWorkshop() {
     occurrences.length > 0 &&
     occurrences.every((occ) => occ.status === "cancelled");
 
-  // Determine if "Add Date" button should be disabled
-  const shouldDisableAddDate = isMultiDayWorkshop && allCancelled;
+  const shouldDisableAddDate = (() => {
+    // Original logic: disable if all dates are cancelled in multi-day workshop
+    if (isMultiDayWorkshop && allCancelled) {
+      return true;
+    }
+
+    // New logic: disable if any users are registered in multi-day workshop
+    if (isMultiDayWorkshop) {
+      // Check if there are existing occurrences (saved to database) with users
+      const hasExistingOccurrences = activeOccurrences.some(
+        (occ) => occ.id !== undefined
+      );
+
+      if (hasExistingOccurrences) {
+        // Use the first occurrence's user count for multi-day workshops
+        const userCount = activeOccurrences[0]?.userCount ?? 0;
+        return userCount > 0;
+      }
+    }
+
+    return false;
+  })();
 
   // New state for prerequisites – initialize from the workshop data.
   // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
@@ -2362,8 +2382,9 @@ export default function EditWorkshop() {
                                       sideOffset={5}
                                     >
                                       <p className="text-sm font-medium">
-                                        You cannot add dates after cancelling
-                                        all dates in a multi-day workshop
+                                        {isMultiDayWorkshop && allCancelled
+                                          ? "You cannot add dates after cancelling a multi-day workshop"
+                                          : "You cannot add dates when users are registered for this multi-day workshop"}
                                       </p>
                                     </TooltipContent>
                                   )}
