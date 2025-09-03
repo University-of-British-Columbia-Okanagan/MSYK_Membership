@@ -95,8 +95,7 @@ export async function sendWorkshopCancellationEmail(params: {
   const { userEmail, workshopName, startDate, endDate } = params;
   const start = new Date(startDate).toLocaleString();
   const end = new Date(endDate).toLocaleString();
-  const text = `Your registration for "${workshopName}" has been cancelled.\nSession: ${start} - ${end}.\nIf this was a mistake, please re‑register from your dashboard.`;
-  await sendMail({
+  const text = `Your registration for "${workshopName}" has been cancelled.\nSession: ${start} - ${end}.\nIf this was a mistake, please re-register from your dashboard.`;  await sendMail({
     to: userEmail,
     subject: `Cancellation confirmed: ${workshopName}`,
     text,
