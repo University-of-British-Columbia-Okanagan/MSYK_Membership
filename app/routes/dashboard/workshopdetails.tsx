@@ -1947,6 +1947,24 @@ export default function WorkshopDetails() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
+                                  ) : registrations[occurrence.id]?.status ===
+                                    "cancelled" ? (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Badge className="bg-red-500 text-white border-red-600 px-3 py-1">
+                                            Registration Cancelled
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>
+                                            Your registration was cancelled.
+                                            Contact support if this was
+                                            unexpected.
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
                                   ) : (
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
