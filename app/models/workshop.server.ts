@@ -1571,11 +1571,12 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
 
 /**
  * Cancels a user's registration for a specific workshop occurrence by marking as cancelled
+ * and creates a cancellation record for admin tracking
  * @param params - Object containing workshopId, occurrenceId, and userId
  * @param params.workshopId - The ID of the workshop
  * @param params.occurrenceId - The ID of the occurrence
  * @param params.userId - The ID of the user to cancel registration for
- * @returns Promise<Object> - Database update result
+ * @returns Promise<Object> - Database update result with cancellation tracking
  */
 export async function cancelUserWorkshopRegistration({
   workshopId,
@@ -1586,7 +1587,25 @@ export async function cancelUserWorkshopRegistration({
   occurrenceId: number;
   userId: number;
 }) {
-  return await db.userWorkshop.updateMany({
+  // First, get the original registration to capture the registration date and price variation
+  const existingRegistration = await db.userWorkshop.findFirst({
+    where: {
+      workshopId,
+      occurrenceId,
+      userId,
+      result: { not: "cancelled" }, // Only get active registrations
+    },
+    include: {
+      priceVariation: true,
+    },
+  });
+
+  if (!existingRegistration) {
+    throw new Error("No active registration found to cancel");
+  }
+
+  // Update the registration to cancelled
+  const updateResult = await db.userWorkshop.updateMany({
     where: {
       workshopId,
       occurrenceId,
@@ -1596,6 +1615,90 @@ export async function cancelUserWorkshopRegistration({
       result: "cancelled",
     },
   });
+
+  // Create a cancellation record for admin tracking
+  await createWorkshopCancellation({
+    userId,
+    workshopId,
+    workshopOccurrenceId: occurrenceId,
+    priceVariationId: existingRegistration.priceVariationId,
+    registrationDate: existingRegistration.date,
+    cancellationDate: new Date(),
+  });
+
+  return updateResult;
+}
+
+/**
+ * Cancels all registrations for a multi-day workshop using connectId
+ * and creates cancellation records for admin tracking
+ * @param params - Object containing workshopId, connectId, and userId
+ * @param params.workshopId - The ID of the workshop
+ * @param params.connectId - The connect ID linking all workshop occurrences
+ * @param params.userId - The ID of the user to cancel registration for
+ * @returns Promise<Object> - Database update result with cancellation tracking
+ */
+export async function cancelMultiDayWorkshopRegistration({
+  workshopId,
+  connectId,
+  userId,
+}: {
+  workshopId: number;
+  connectId: number;
+  userId: number;
+}) {
+  // Get all occurrences for this multi-day workshop
+  const occurrences = await getWorkshopOccurrencesByConnectId(
+    workshopId,
+    connectId
+  );
+
+  if (occurrences.length === 0) {
+    throw new Error("No occurrences found for this multi-day workshop");
+  }
+
+  // Get all existing registrations for this user across all occurrences
+  const existingRegistrations = await db.userWorkshop.findMany({
+    where: {
+      workshopId,
+      userId,
+      occurrenceId: { in: occurrences.map((occ) => occ.id) },
+      result: { not: "cancelled" }, // Only get active registrations
+    },
+    include: {
+      priceVariation: true,
+    },
+  });
+
+  if (existingRegistrations.length === 0) {
+    throw new Error("No active registrations found to cancel");
+  }
+
+  // Update all registrations to cancelled
+  const updateResult = await db.userWorkshop.updateMany({
+    where: {
+      workshopId,
+      userId,
+      occurrenceId: { in: occurrences.map((occ) => occ.id) },
+    },
+    data: {
+      result: "cancelled",
+    },
+  });
+
+  // For multi-day workshops, create only one cancellation record using the first occurrence
+  // but store all occurrence IDs in a way that can be retrieved later
+  const firstRegistration = existingRegistrations[0];
+  await createWorkshopCancellation({
+    userId,
+    workshopId,
+    workshopOccurrenceId: firstRegistration.occurrenceId, // Use first occurrence as primary
+    priceVariationId: firstRegistration.priceVariationId,
+    registrationDate: firstRegistration.date,
+    cancellationDate: new Date(),
+  });
+
+  return updateResult;
 }
 
 /**
@@ -2315,7 +2418,15 @@ export async function getUserWorkshopRegistrationInfo(
 
   return {
     registered: true,
-    priceVariation: userRegistration.priceVariation,
+    priceVariation: userRegistration.priceVariation
+      ? {
+          id: userRegistration.priceVariation.id,
+          name: userRegistration.priceVariation.name,
+          price: userRegistration.priceVariation.price,
+          description: userRegistration.priceVariation.description,
+          status: userRegistration.priceVariation.status,
+        }
+      : null,
     occurrence: userRegistration.occurrence,
     registrationDate: userRegistration.date,
   };
@@ -2470,6 +2581,7 @@ export async function getAllWorkshopCancellations() {
           id: true,
           startDate: true,
           endDate: true,
+          connectId: true,
         },
       },
       priceVariation: {

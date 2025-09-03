@@ -39,6 +39,7 @@ import {
   getWorkshops,
   getAllWorkshopCancellations,
   updateWorkshopCancellationResolved,
+  getWorkshopOccurrencesByConnectId,
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import {
@@ -134,6 +135,24 @@ export async function loader({ request }: { request: Request }) {
 
   const workshopCancellations = await getAllWorkshopCancellations();
 
+  // **ADD THIS SECTION - Enhance cancellations with all occurrences for multi-day workshops**
+  const enhancedWorkshopCancellations = await Promise.all(
+    workshopCancellations.map(async (cancellation) => {
+      if (cancellation.workshopOccurrence.connectId) {
+        // This is a multi-day workshop, fetch all occurrences
+        const allOccurrences = await getWorkshopOccurrencesByConnectId(
+          cancellation.workshopId,
+          cancellation.workshopOccurrence.connectId
+        );
+        return {
+          ...cancellation,
+          allOccurrences, // Add all occurrences to the cancellation data
+        };
+      }
+      return cancellation;
+    })
+  );
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -163,7 +182,7 @@ export async function loader({ request }: { request: Request }) {
     users,
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
-    workshopCancellations,
+    workshopCancellations: enhancedWorkshopCancellations, // **CHANGE THIS LINE - Use enhanced data instead of raw data**
   };
 }
 
@@ -3981,66 +4000,49 @@ export default function AdminSettings() {
                               cancellation.workshopOccurrence.endDate
                             );
 
-                            if (cancellation.workshop.type === "multi_day") {
-                              // Show compact date range for multi-day workshops
-                              if (
-                                startDate.toDateString() ===
-                                endDate.toDateString()
-                              ) {
-                                // Same day
-                                return (
-                                  <div className="text-sm">
-                                    <div>{startDate.toLocaleDateString()}</div>
-                                    <div className="text-gray-500">
-                                      {startDate.toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}{" "}
-                                      -{" "}
-                                      {endDate.toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              } else {
-                                // Multiple days
-                                return (
-                                  <div className="text-sm">
-                                    <div>
-                                      {startDate.toLocaleDateString()} -{" "}
-                                      {endDate.toLocaleDateString()}
-                                    </div>
-                                    <div className="text-gray-500">
-                                      {startDate.toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}{" "}
-                                      -{" "}
-                                      {endDate.toLocaleTimeString([], {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              }
-                            } else {
-                              // Regular workshop - show just time
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            if (
+                              isMultiDay &&
+                              cancellation.workshopOccurrence.connectId
+                            ) {
+                              // Show a placeholder that indicates multiple sessions
                               return (
                                 <div className="text-sm">
-                                  <div>{startDate.toLocaleDateString()}</div>
-                                  <div className="text-gray-500">
+                                  <div className="font-medium text-blue-600">
+                                    Multi-Day Workshop
+                                  </div>
+                                  <div className="text-xs text-gray-600">
+                                    Multiple sessions - Connect ID:{" "}
+                                    {cancellation.workshopOccurrence.connectId}
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              // Single occurrence workshop
+                              return (
+                                <div className="text-sm">
+                                  <div>
+                                    {startDate.toLocaleDateString()} at{" "}
                                     {startDate.toLocaleTimeString([], {
                                       hour: "2-digit",
                                       minute: "2-digit",
-                                    })}{" "}
-                                    -{" "}
-                                    {endDate.toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
                                     })}
+                                  </div>
+                                  <div className="text-xs text-gray-600">
+                                    Duration:{" "}
+                                    {Math.round(
+                                      (endDate.getTime() -
+                                        startDate.getTime()) /
+                                        (1000 * 60 * 60)
+                                    )}{" "}
+                                    hours
                                   </div>
                                 </div>
                               );
@@ -4050,7 +4052,19 @@ export default function AdminSettings() {
                         {
                           header: "Price Variation",
                           render: (cancellation: any) =>
-                            cancellation.priceVariation || (
+                            cancellation.priceVariation ? (
+                              <div>
+                                <div className="font-medium">
+                                  {cancellation.priceVariation.name ||
+                                    "Unknown Option"}
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  CA$
+                                  {Number(cancellation.priceVariation.price) ||
+                                    0}
+                                </div>
+                              </div>
+                            ) : (
                               <span className="text-gray-400 text-sm">
                                 Standard
                               </span>

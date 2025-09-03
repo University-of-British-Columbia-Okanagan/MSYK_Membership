@@ -22,6 +22,7 @@ import {
   getUserCompletedPrerequisites,
   cancelUserWorkshopRegistration,
   getUserWorkshopRegistrationInfo,
+  cancelMultiDayWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
@@ -289,6 +290,35 @@ export async function action({ request }: { request: Request }) {
         url: request.url,
       });
       return { error: "Failed to cancel registration" };
+    }
+  }
+
+  if (actionType === "cancelAllRegistrations") {
+    const workshopId = formData.get("workshopId");
+    const connectId = formData.get("connectId");
+
+    // Retrieve user from session
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+
+    try {
+      await cancelMultiDayWorkshopRegistration({
+        workshopId: Number(workshopId),
+        connectId: Number(connectId),
+        userId: user.id,
+      });
+      logger.info(
+        `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
+        { url: request.url }
+      );
+      return { success: true, cancelled: true };
+    } catch (error) {
+      logger.error(`Error cancelling multi-day registration: ${error}`, {
+        url: request.url,
+      });
+      return { error: "Failed to cancel multi-day registration" };
     }
   }
 
@@ -666,19 +696,42 @@ export default function WorkshopDetails() {
 
   function handleCancelAll() {
     if (!user) return;
-    // Cancel each active occurrence
-    workshop.occurrences.forEach((occ: any) => {
-      if (occ.status !== "past" && occ.status !== "cancelled") {
-        fetcher.submit(
-          {
-            workshopId: String(workshop.id),
-            occurrenceId: occ.id.toString(),
-            actionType: "cancelRegistration",
-          },
-          { method: "post" }
-        );
-      }
-    });
+
+    // Find the first registered occurrence to get the connectId
+    const firstRegisteredOcc = workshop.occurrences.find(
+      (occ: any) => registrations[occ.id]?.registered
+    );
+
+    if (!firstRegisteredOcc || !firstRegisteredOcc.connectId) {
+      // Fallback to individual cancellations if no connectId found
+      workshop.occurrences.forEach((occ: any) => {
+        if (
+          occ.status !== "past" &&
+          occ.status !== "cancelled" &&
+          registrations[occ.id]?.registered
+        ) {
+          fetcher.submit(
+            {
+              workshopId: String(workshop.id),
+              occurrenceId: occ.id.toString(),
+              actionType: "cancelRegistration",
+            },
+            { method: "post" }
+          );
+        }
+      });
+      return;
+    }
+
+    // For multi-day workshops with connectId, use the new multi-day cancellation action
+    fetcher.submit(
+      {
+        workshopId: String(workshop.id),
+        connectId: firstRegisteredOcc.connectId.toString(),
+        actionType: "cancelAllRegistrations",
+      },
+      { method: "post" }
+    );
   }
 
   const sortedOccurrences = [...workshop.occurrences].sort((a, b) => {
@@ -1123,8 +1176,11 @@ export default function WorkshopDetails() {
                                           </span>
                                           <span className="text-sm font-medium text-red-800">
                                             {userRegistrationInfo.priceVariation
-                                              ? userRegistrationInfo
-                                                  .priceVariation.name
+                                              ? String(
+                                                  userRegistrationInfo
+                                                    .priceVariation.name ||
+                                                    "Unknown Option"
+                                                )
                                               : "Base Price"}
                                           </span>
                                         </div>
@@ -1135,8 +1191,10 @@ export default function WorkshopDetails() {
                                           <span className="text-sm font-bold text-red-600">
                                             CA$
                                             {userRegistrationInfo.priceVariation
-                                              ? userRegistrationInfo
-                                                  .priceVariation.price
+                                              ? Number(
+                                                  userRegistrationInfo
+                                                    .priceVariation.price
+                                                ) || 0
                                               : workshop.price}
                                           </span>
                                         </div>
