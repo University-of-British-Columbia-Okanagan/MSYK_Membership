@@ -1571,11 +1571,12 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
 
 /**
  * Cancels a user's registration for a specific workshop occurrence by marking as cancelled
+ * and creates a cancellation record for admin tracking
  * @param params - Object containing workshopId, occurrenceId, and userId
  * @param params.workshopId - The ID of the workshop
  * @param params.occurrenceId - The ID of the occurrence
  * @param params.userId - The ID of the user to cancel registration for
- * @returns Promise<Object> - Database update result
+ * @returns Promise<Object> - Database update result with cancellation tracking
  */
 export async function cancelUserWorkshopRegistration({
   workshopId,
@@ -1586,7 +1587,25 @@ export async function cancelUserWorkshopRegistration({
   occurrenceId: number;
   userId: number;
 }) {
-  return await db.userWorkshop.updateMany({
+  // First, get the original registration to capture the registration date and price variation
+  const existingRegistration = await db.userWorkshop.findFirst({
+    where: {
+      workshopId,
+      occurrenceId,
+      userId,
+      result: { not: "cancelled" }, // Only get active registrations
+    },
+    include: {
+      priceVariation: true,
+    },
+  });
+
+  if (!existingRegistration) {
+    throw new Error("No active registration found to cancel");
+  }
+
+  // Update the registration to cancelled
+  const updateResult = await db.userWorkshop.updateMany({
     where: {
       workshopId,
       occurrenceId,
@@ -1596,6 +1615,90 @@ export async function cancelUserWorkshopRegistration({
       result: "cancelled",
     },
   });
+
+  // Create a cancellation record for admin tracking
+  await createWorkshopCancellation({
+    userId,
+    workshopId,
+    workshopOccurrenceId: occurrenceId,
+    priceVariationId: existingRegistration.priceVariationId,
+    registrationDate: existingRegistration.date,
+    cancellationDate: new Date(),
+  });
+
+  return updateResult;
+}
+
+/**
+ * Cancels all registrations for a multi-day workshop using connectId
+ * and creates cancellation records for admin tracking
+ * @param params - Object containing workshopId, connectId, and userId
+ * @param params.workshopId - The ID of the workshop
+ * @param params.connectId - The connect ID linking all workshop occurrences
+ * @param params.userId - The ID of the user to cancel registration for
+ * @returns Promise<Object> - Database update result with cancellation tracking
+ */
+export async function cancelMultiDayWorkshopRegistration({
+  workshopId,
+  connectId,
+  userId,
+}: {
+  workshopId: number;
+  connectId: number;
+  userId: number;
+}) {
+  // Get all occurrences for this multi-day workshop
+  const occurrences = await getWorkshopOccurrencesByConnectId(
+    workshopId,
+    connectId
+  );
+
+  if (occurrences.length === 0) {
+    throw new Error("No occurrences found for this multi-day workshop");
+  }
+
+  // Get all existing registrations for this user across all occurrences
+  const existingRegistrations = await db.userWorkshop.findMany({
+    where: {
+      workshopId,
+      userId,
+      occurrenceId: { in: occurrences.map((occ) => occ.id) },
+      result: { not: "cancelled" }, // Only get active registrations
+    },
+    include: {
+      priceVariation: true,
+    },
+  });
+
+  if (existingRegistrations.length === 0) {
+    throw new Error("No active registrations found to cancel");
+  }
+
+  // Update all registrations to cancelled
+  const updateResult = await db.userWorkshop.updateMany({
+    where: {
+      workshopId,
+      userId,
+      occurrenceId: { in: occurrences.map((occ) => occ.id) },
+    },
+    data: {
+      result: "cancelled",
+    },
+  });
+
+  // For multi-day workshops, create only one cancellation record using the first occurrence
+  // but store all occurrence IDs in a way that can be retrieved later
+  const firstRegistration = existingRegistrations[0];
+  await createWorkshopCancellation({
+    userId,
+    workshopId,
+    workshopOccurrenceId: firstRegistration.occurrenceId, // Use first occurrence as primary
+    priceVariationId: firstRegistration.priceVariationId,
+    registrationDate: firstRegistration.date,
+    cancellationDate: new Date(),
+  });
+
+  return updateResult;
 }
 
 /**
@@ -2315,7 +2418,15 @@ export async function getUserWorkshopRegistrationInfo(
 
   return {
     registered: true,
-    priceVariation: userRegistration.priceVariation,
+    priceVariation: userRegistration.priceVariation
+      ? {
+          id: userRegistration.priceVariation.id,
+          name: userRegistration.priceVariation.name,
+          price: userRegistration.priceVariation.price,
+          description: userRegistration.priceVariation.description,
+          status: userRegistration.priceVariation.status,
+        }
+      : null,
     occurrence: userRegistration.occurrence,
     registrationDate: userRegistration.date,
   };
@@ -2431,4 +2542,195 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
     console.error("Error getting regular workshop registration counts:", error);
     throw error;
   }
+}
+
+/**
+ * Retrieves all workshop cancellation records with associated user, workshop, occurrence, and price variation data.
+ * Used by admin interface to view and manage workshop cancellations.
+ *
+ * @returns {Promise<Array>} Array of workshop cancellation records including:
+ *   - User information (firstName, lastName, email)
+ *   - Workshop details (id, name, type)
+ *   - Occurrence information (id, startDate, endDate)
+ *   - Price variation details (if applicable)
+ *   - Cancellation metadata (registrationDate, cancellationDate, resolved status)
+ *
+ * @example
+ * const cancellations = await getAllWorkshopCancellations();
+ * console.log(`Found ${cancellations.length} workshop cancellations`);
+ */
+export async function getAllWorkshopCancellations() {
+  return await db.workshopCancelledRegistration.findMany({
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      workshop: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      },
+      workshopOccurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          connectId: true,
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
+}
+
+/**
+ * Updates the resolved status of a workshop cancellation record.
+ * Used by administrators to mark cancellation issues as resolved or unresolved.
+ *
+ * @param {number} cancellationId - The unique identifier of the cancellation record
+ * @param {boolean} resolved - The new resolved status (true = resolved, false = unresolved)
+ *
+ * @returns {Promise<Object>} The updated workshop cancellation record
+ *
+ * @throws {Error} If the cancellation record is not found or database operation fails
+ *
+ * @example
+ * // Mark a cancellation as resolved
+ * await updateWorkshopCancellationResolved(123, true);
+ *
+ * // Mark a cancellation as unresolved (needs attention)
+ * await updateWorkshopCancellationResolved(123, false);
+ */
+export async function updateWorkshopCancellationResolved(
+  cancellationId: number,
+  resolved: boolean
+) {
+  return await db.workshopCancelledRegistration.update({
+    where: { id: cancellationId },
+    data: { resolved },
+  });
+}
+
+/**
+ * Creates a new workshop cancellation record when a user cancels their workshop registration.
+ * This function should be called from the workshop cancellation logic to track the cancellation
+ * for admin review and potential refund processing.
+ *
+ * @param {Object} cancellationData - The cancellation data object
+ * @param {number} cancellationData.userId - The ID of the user cancelling the workshop
+ * @param {number} cancellationData.workshopId - The ID of the workshop being cancelled
+ * @param {number} cancellationData.workshopOccurrenceId - The ID of the specific workshop occurrence
+ * @param {number|null} cancellationData.priceVariationId - The ID of the price variation (if applicable)
+ * @param {Date} cancellationData.registrationDate - When the user originally registered
+ * @param {Date} cancellationData.cancellationDate - When the user cancelled (defaults to now)
+ *
+ * @returns {Promise<Object>} The created workshop cancellation record
+ *
+ * @throws {Error} If required data is missing or database operation fails
+ *
+ * @example
+ * const cancellationRecord = await createWorkshopCancellation({
+ *   userId: 123,
+ *   workshopId: 456,
+ *   workshopOccurrenceId: 789,
+ *   priceVariationId: 101, // or null for standard pricing
+ *   registrationDate: userWorkshop.date,
+ *   cancellationDate: new Date()
+ * });
+ */
+export async function createWorkshopCancellation({
+  userId,
+  workshopId,
+  workshopOccurrenceId,
+  priceVariationId,
+  registrationDate,
+  cancellationDate = new Date(),
+}: {
+  userId: number;
+  workshopId: number;
+  workshopOccurrenceId: number;
+  priceVariationId?: number | null;
+  registrationDate: Date;
+  cancellationDate?: Date;
+}) {
+  return await db.workshopCancelledRegistration.create({
+    data: {
+      userId,
+      workshopId,
+      workshopOccurrenceId,
+      priceVariationId,
+      registrationDate,
+      cancellationDate,
+      resolved: false, // Default to unresolved for admin review
+    },
+  });
+}
+
+/**
+ * Retrieves workshop cancellations filtered by resolved status.
+ * Useful for admin dashboards to show only unresolved cancellations that need attention.
+ *
+ * @param {boolean} resolved - Filter by resolved status (true = resolved, false = unresolved)
+ *
+ * @returns {Promise<Array>} Array of filtered workshop cancellation records with full details
+ *
+ * @example
+ * // Get all unresolved cancellations for admin attention
+ * const unresolvedCancellations = await getWorkshopCancellationsByStatus(false);
+ *
+ * // Get all resolved cancellations for reporting
+ * const resolvedCancellations = await getWorkshopCancellationsByStatus(true);
+ */
+export async function getWorkshopCancellationsByStatus(resolved: boolean) {
+  return await db.workshopCancelledRegistration.findMany({
+    where: { resolved },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      workshop: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      },
+      workshopOccurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
 }
