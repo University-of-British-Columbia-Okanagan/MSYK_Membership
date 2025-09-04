@@ -333,6 +333,82 @@ export async function action({ request }: { request: Request }) {
     const workshopId = formData.get("workshopId");
     const connectId = formData.get("connectId");
 
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+
+    try {
+      const ws = await getWorkshopById(Number(workshopId));
+      const occurrences = ws.occurrences
+        .filter(
+          (occ: any) => occ.connectId && occ.connectId === Number(connectId)
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        );
+
+      // Cancel all user registrations for these occurrences
+      for (const occ of occurrences) {
+        await cancelUserWorkshopRegistration({
+          workshopId: Number(workshopId),
+          occurrenceId: Number(occ.id),
+          userId: user.id,
+        });
+      }
+
+      // Build sessions list for email
+      const sessions = occurrences.map((occ: any) => ({
+        startDate: new Date(occ.startDate),
+        endDate: new Date(occ.endDate),
+      }));
+
+      // Price variation (if any)
+      const registrationInfo = await getUserWorkshopRegistrationInfo(
+        user.id,
+        Number(workshopId)
+      );
+      const priceVariation = registrationInfo?.priceVariation
+        ? {
+            name: registrationInfo.priceVariation.name,
+            description: registrationInfo.priceVariation.description,
+            price: registrationInfo.priceVariation.price,
+          }
+        : null;
+
+      try {
+        await sendWorkshopCancellationEmail({
+          userEmail: user.email,
+          workshopName: ws.name,
+          sessions,
+          basePrice: ws.price,
+          priceVariation,
+        });
+      } catch (emailErr) {
+        logger.error(
+          `Failed to send multi-day workshop cancellation email: ${emailErr}`,
+          { url: request.url }
+        );
+      }
+
+      logger.info(
+        `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
+        { url: request.url }
+      );
+      return { success: true, cancelled: true };
+    } catch (error) {
+      logger.error(`Error cancelling multi-day registration: ${error}`, {
+        url: request.url,
+      });
+      return { error: "Failed to cancel registration" };
+    }
+  }
+
+  if (actionType === "cancelAllRegistrations") {
+    const workshopId = formData.get("workshopId");
+    const connectId = formData.get("connectId");
+
     // Retrieve user from session
     const user = await getUser(request);
     if (!user) {

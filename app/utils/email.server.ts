@@ -89,14 +89,16 @@ export async function sendResetEmail(email: string): Promise<void> {
 export async function sendWorkshopCancellationEmail(params: {
   userEmail: string;
   workshopName: string;
-  startDate: Date;
-  endDate: Date;
+  // Single-session fields (regular workshop)
+  startDate?: Date;
+  endDate?: Date;
+  // Multi-session fields (multi-day workshop)
+  sessions?: Array<{ startDate: Date; endDate: Date }>;
+  // Pricing
   basePrice?: number;
   priceVariation?: { name: string; description?: string | null; price: number } | null;
 }): Promise<void> {
-  const { userEmail, workshopName, startDate, endDate, basePrice, priceVariation } = params;
-  const start = new Date(startDate).toLocaleString();
-  const end = new Date(endDate).toLocaleString();
+  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation } = params;
 
   const pricingLines: string[] = [];
   if (priceVariation) {
@@ -108,9 +110,19 @@ export async function sendWorkshopCancellationEmail(params: {
     pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
   }
 
+  let detailsBlock = "";
+  if (sessions && sessions.length > 0) {
+    const lines = sessions
+      .map((s, idx) => `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`)
+      .join("\n");
+    detailsBlock = sessions.length > 1 ? `Sessions cancelled:\n${lines}` : `Session cancelled:\n${lines}`;
+  } else if (startDate && endDate) {
+    detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
+  }
+
   const parts = [
     `Your registration for "${workshopName}" has been cancelled.`,
-    `Session: ${start} - ${end}.`,
+    detailsBlock,
     pricingLines.join("\n"),
     `If this was a mistake, please re-register from your dashboard.`,
   ].filter(Boolean);
