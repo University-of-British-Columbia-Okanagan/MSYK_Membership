@@ -91,14 +91,34 @@ export async function sendWorkshopCancellationEmail(params: {
   workshopName: string;
   startDate: Date;
   endDate: Date;
+  basePrice?: number;
+  priceVariation?: { name: string; description?: string | null; price: number } | null;
 }): Promise<void> {
-  const { userEmail, workshopName, startDate, endDate } = params;
+  const { userEmail, workshopName, startDate, endDate, basePrice, priceVariation } = params;
   const start = new Date(startDate).toLocaleString();
   const end = new Date(endDate).toLocaleString();
-  const text = `Your registration for "${workshopName}" has been cancelled.\nSession: ${start} - ${end}.\nIf this was a mistake, please re-register from your dashboard.`;  await sendMail({
+
+  const pricingLines: string[] = [];
+  if (priceVariation) {
+    pricingLines.push(`Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`);
+    if (priceVariation.description) {
+      pricingLines.push(`Details: ${priceVariation.description}`);
+    }
+  } else if (typeof basePrice === "number") {
+    pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
+  }
+
+  const parts = [
+    `Your registration for "${workshopName}" has been cancelled.`,
+    `Session: ${start} - ${end}.`,
+    pricingLines.join("\n"),
+    `If this was a mistake, please re-register from your dashboard.`,
+  ].filter(Boolean);
+
+  await sendMail({
     to: userEmail,
     subject: `Cancellation confirmed: ${workshopName}`,
-    text,
+    text: parts.join("\n\n"),
   });
 }
 
