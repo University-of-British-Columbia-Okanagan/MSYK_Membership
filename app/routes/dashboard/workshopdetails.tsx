@@ -289,11 +289,27 @@ export async function action({ request }: { request: Request }) {
           Number(workshopId),
           Number(occurrenceId)
         );
+
+        // Include price variation info if present for this user
+        const registrationInfo = await getUserWorkshopRegistrationInfo(
+          user.id,
+          Number(workshopId)
+        );
+        const priceVariation = registrationInfo?.priceVariation
+          ? {
+              name: registrationInfo.priceVariation.name,
+              description: registrationInfo.priceVariation.description,
+              price: registrationInfo.priceVariation.price,
+            }
+          : null;
+
         await sendWorkshopCancellationEmail({
           userEmail: user.email,
           workshopName: workshop.name,
           startDate: new Date(occurrence.startDate),
           endDate: new Date(occurrence.endDate),
+          basePrice: workshop.price,
+          priceVariation,
         });
       } catch (emailErr) {
         logger.error(`Failed to send workshop cancellation email: ${emailErr}`, {
