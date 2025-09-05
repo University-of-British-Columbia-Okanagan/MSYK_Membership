@@ -16,7 +16,7 @@ import {
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
-import { getSavedPaymentMethod } from "../../models/user.server";
+import { getSavedPaymentMethod, getUserById } from "../../models/user.server";
 import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
 import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
@@ -56,6 +56,18 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     // Get user's active membership if any
     const userActiveMembership = await getUserActiveMembership(user.id);
+
+    // Enforce server-side gating for plans requiring admin permission
+    if (membershipPlan.needAdminPermission) {
+      const userRecord = await getUserById(user.id);
+      const hasActiveSubscription = !!userActiveMembership;
+      const meetsLevelRequirement = (userRecord?.roleLevel ?? 0) >= 3;
+      const hasAdminPermission = userRecord?.allowLevel4 === true;
+
+      if (!hasActiveSubscription || !meetsLevelRequirement || !hasAdminPermission) {
+        throw redirect("/dashboard/memberships");
+      }
+    }
 
     let upgradeFee = 0;
     let oldMembershipTitle = null;
@@ -841,7 +853,7 @@ export default function Payment() {
             </p>
           )}
 
-          {/* 
+          {/*
             If it's a resubscription, show a special message that no payment is required.
             If it's a downgrade, show the existing message that no payment is required.
             If it's an upgrade, show compensation details, etc.
@@ -912,7 +924,7 @@ export default function Payment() {
             </p>
           ) : null}
 
-          {/* 
+          {/*
             If it's not a downgrade or resubscription, show "Total due now" message
             (in case of upgrade or brand-new membership).
           */}
