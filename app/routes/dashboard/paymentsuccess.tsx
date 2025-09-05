@@ -9,8 +9,11 @@ import {
   checkWorkshopCapacity,
   checkMultiDayWorkshopCapacity,
 } from "../../models/workshop.server";
-import { registerMembershipSubscription } from "../../models/membership.server";
+import { getMembershipPlanById, registerMembershipSubscription } from "../../models/membership.server";
 import { useState, useEffect } from "react";
+import { sendEmailConfirmation } from "~/utils/email.server";
+import { getUserById } from "~/models/user.server";
+import { getEquipmentById } from "~/models/equipment.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -122,9 +125,27 @@ export async function loader({ request }: { request: Request }) {
     variationId,
   } = metadata;
 
-  if (equipmentId && userId && isEquipmentBooking === "true") {
-    const paymentIntentId = session.payment_intent as string;
+  let user = await getUserById(Number(userId));
+  if (!user) {
+    return new Response(
+        JSON.stringify({
+          success: false,
+          message: "User not found",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+  }
 
+  if (equipmentId && userId && isEquipmentBooking === "true") {
+    try {
+        let equipment = await getEquipmentById(Number(equipmentId));
+        await sendEmailConfirmation(user.email, "equipment", {
+          description: equipment.name,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
+    const paymentIntentId = session.payment_intent as string;
     return new Response(
       JSON.stringify({
         success: true,
@@ -156,6 +177,15 @@ export async function loader({ request }: { request: Request }) {
         false, // Not a resubscription
         paymentIntentId
       );
+
+      try {
+        let membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
+        await sendEmailConfirmation(user.email, "membership", {
+          description: `Your membership plan is ${membershipPlan?.title}`,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
 
       return new Response(
         JSON.stringify({
@@ -260,6 +290,15 @@ export async function loader({ request }: { request: Request }) {
         variationId,
         paymentIntentId
       );
+
+      try {
+        await sendEmailConfirmation(user.email, "workshop", {
+          description: workshop.name,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -357,6 +396,13 @@ export async function loader({ request }: { request: Request }) {
         variationId,
         paymentIntentId
       );
+      try {
+        await sendEmailConfirmation(user.email, "workshop", {
+          description: workshop.name,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
       return new Response(
         JSON.stringify({
           success: true,

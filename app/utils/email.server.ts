@@ -38,3 +38,54 @@ export async function sendResetEmail(email: string) {
   const resetLink = `${process.env.BASE_URL}/passwordReset?token=${token}`;
   await sendPasswordResetEmail(email, resetLink);
 }
+
+export async function sendEmailConfirmation(
+  userEmail: string,
+  bookingType: "workshop" | "equipment" | "membership",
+  details: {
+    description: string;
+    extra?: string;
+  }
+) {
+  let subject = "";
+  let text = "";
+
+  switch (bookingType) {
+    case "workshop":
+      subject = "Workshop Booking Confirmation";
+      text = `Thank you for registering for the workshop: ${details.description}.
+You have successfully booked your spot.
+${details.extra ? `\n\nAdditional Info: ${details.extra}` : ""}`;
+      break;
+
+    case "equipment":
+      subject = "Equipment Booking Confirmation";
+      text = `Your equipment booking is confirmed: ${details.description}.
+You have successfully reserved your equipment.
+${details.extra ? `\n\nAdditional Info: ${details.extra}` : ""}`;
+      break;
+
+    case "membership":
+      subject = "Membership Subscription Confirmation";
+      text = `Your membership subscription is confirmed: ${details.description}.
+${details.extra ? `\n\nAdditional Info: ${details.extra}` : ""}`;
+      break;
+
+    default:
+      throw new Error("Invalid booking type for email confirmation");
+  }
+
+  const emailData = {
+    from: `Makerspace YK <info@makerspaceyk.com>`,
+    to: userEmail,
+    subject,
+    text,
+  };
+
+  try {
+    await mg.messages.create("makerspaceyk.com", emailData);
+  } catch (error) {
+    console.error("Email confirmation failed:", error);
+    throw new Error("Failed to send confirmation email.");
+  }
+}
