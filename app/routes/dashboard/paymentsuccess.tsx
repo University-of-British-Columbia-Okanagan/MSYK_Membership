@@ -40,6 +40,7 @@ export async function loader({ request }: { request: Request }) {
         // For equipment quick checkout, we need to handle the booking
         const equipmentId = url.searchParams.get("equipment_id");
         const slotsDataKey = url.searchParams.get("slots_data_key");
+        const paymentIntentId = url.searchParams.get("payment_intent_id");
 
         if (equipmentId && slotsDataKey) {
           return new Response(
@@ -52,6 +53,7 @@ export async function loader({ request }: { request: Request }) {
               message,
               equipmentId: parseInt(equipmentId),
               slotsDataKey: slotsDataKey,
+              paymentIntentId: paymentIntentId,
             }),
             { headers: { "Content-Type": "application/json" } }
           );
@@ -143,12 +145,14 @@ export async function loader({ request }: { request: Request }) {
       } catch (emailConfirmationFailedError) {
         console.error("Email confirmation failed:", emailConfirmationFailedError);
       }
+    const paymentIntentId = session.payment_intent as string;
     return new Response(
       JSON.stringify({
         success: true,
         isEquipment: true,
         slotsDataKey: slotsDataKey,
         equipmentId: parseInt(equipmentId),
+        paymentIntentId: paymentIntentId,
         message:
           "🎉 Equipment payment successful! Your booking slots will be processed.",
       }),
@@ -163,10 +167,15 @@ export async function loader({ request }: { request: Request }) {
         ? parseInt(metadata.currentMembershipId)
         : null;
 
+      const paymentIntentId = session.payment_intent as string;
+
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        currentMembershipId
+        currentMembershipId,
+        false, // Not a downgrade
+        false, // Not a resubscription
+        paymentIntentId
       );
 
       try {
@@ -272,11 +281,14 @@ export async function loader({ request }: { request: Request }) {
         );
       }
 
+      const paymentIntentId = session.payment_intent as string;
+
       await registerUserForAllOccurrences(
         parseInt(workshopId),
         parseInt(connectId),
         parseInt(userId),
-        variationId
+        variationId,
+        paymentIntentId
       );
 
       try {
@@ -375,11 +387,14 @@ export async function loader({ request }: { request: Request }) {
         );
       }
 
+      const paymentIntentId = session.payment_intent as string;
+
       await registerForWorkshop(
         parseInt(workshopId),
         parseInt(occurrenceId),
         parseInt(userId),
-        variationId
+        variationId,
+        paymentIntentId
       );
       try {
         await sendEmailConfirmation(user.email, "workshop", {
@@ -425,6 +440,7 @@ export default function PaymentSuccess() {
     message: string;
     slotsDataKey?: string;
     equipmentId?: number;
+    paymentIntentId?: string;
   };
   const navigate = useNavigate();
   const [bookingStatus, setBookingStatus] = useState<string>("");
@@ -443,7 +459,9 @@ export default function PaymentSuccess() {
             return;
           }
 
+          // Use paymentIntentId from data instead of session
           const slots = JSON.parse(slotsData);
+          const paymentIntentId = data.paymentIntentId;
 
           // Book each slot by making individual requests to the equipment booking endpoint
           for (const slotString of slots) {
@@ -457,6 +475,7 @@ export default function PaymentSuccess() {
                 equipmentId: data.equipmentId,
                 startTime,
                 endTime,
+                paymentIntentId,
               }),
             });
 

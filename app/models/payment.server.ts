@@ -214,7 +214,8 @@ export async function quickCheckout(
               checkoutData.workshopId!,
               checkoutData.connectId,
               userId,
-              checkoutData.variationId || null
+              checkoutData.variationId || null,
+              paymentIntent.id
             );
           } else if (checkoutData.occurrenceId) {
             // Single occurrence registration
@@ -222,7 +223,8 @@ export async function quickCheckout(
               checkoutData.workshopId!,
               checkoutData.occurrenceId,
               userId,
-              checkoutData.variationId || null
+              checkoutData.variationId || null,
+              paymentIntent.id
             );
           }
         } else if (checkoutData.type === "membership") {
@@ -235,7 +237,10 @@ export async function quickCheckout(
           await registerMembershipSubscription(
             userId,
             checkoutData.membershipPlanId!,
-            currentMembershipId
+            currentMembershipId,
+            false, // Not a downgrade
+            false, // Not a resubscription
+            paymentIntent.id
           );
         } else if (checkoutData.type === "equipment") {
           // Equipment booking will be handled by the frontend after success
@@ -243,6 +248,8 @@ export async function quickCheckout(
           console.log(
             `Equipment payment successful for user ${userId}, equipment ${checkoutData.equipmentId}`
           );
+          // We store the payment intent ID in the frontend handling
+          // The actual booking with payment intent ID happens in paymentsuccess.tsx
         }
       } catch (registrationError) {
         console.error(
@@ -446,36 +453,36 @@ export async function createCheckoutSession(request: Request) {
   const body = await request.json();
 
   // Check if user wants to use saved card
-if (body.useSavedCard && body.userId) {
-  // Determine checkout type and prepare data
-  let checkoutData: any = { userId: body.userId };
+  if (body.useSavedCard && body.userId) {
+    // Determine checkout type and prepare data
+    let checkoutData: any = { userId: body.userId };
 
-  if (body.workshopId) {
-    checkoutData = {
-      type: "workshop",
-      workshopId: body.workshopId,
-      occurrenceId: body.occurrenceId,
-      connectId: body.connectId,
-      variationId: body.variationId, 
-    };
-  } else if (body.equipmentId) {
-    checkoutData = {
-      type: "equipment",
-      equipmentId: body.equipmentId,
-      slotCount: body.slotCount,
-      price: body.price,
-      slots: body.slots,
-      slotsDataKey: body.slotsDataKey,
-    };
-  } else if (body.membershipPlanId) {
-    checkoutData = {
-      type: "membership",
-      membershipPlanId: body.membershipPlanId,
-      price: body.price,
-      currentMembershipId: body.currentMembershipId,
-      upgradeFee: body.upgradeFee,
-    };
-  }
+    if (body.workshopId) {
+      checkoutData = {
+        type: "workshop",
+        workshopId: body.workshopId,
+        occurrenceId: body.occurrenceId,
+        connectId: body.connectId,
+        variationId: body.variationId,
+      };
+    } else if (body.equipmentId) {
+      checkoutData = {
+        type: "equipment",
+        equipmentId: body.equipmentId,
+        slotCount: body.slotCount,
+        price: body.price,
+        slots: body.slots,
+        slotsDataKey: body.slotsDataKey,
+      };
+    } else if (body.membershipPlanId) {
+      checkoutData = {
+        type: "membership",
+        membershipPlanId: body.membershipPlanId,
+        price: body.price,
+        currentMembershipId: body.currentMembershipId,
+        upgradeFee: body.upgradeFee,
+      };
+    }
 
     if (checkoutData.type) {
       return quickCheckout(body.userId, checkoutData);
@@ -749,5 +756,282 @@ if (body.useSavedCard && body.userId) {
     });
   } else {
     throw new Error("Missing required payment parameters");
+  }
+}
+
+/**
+ * Processes a refund for a workshop registration
+ * @param userId - The ID of the user requesting the refund
+ * @param workshopId - The ID of the workshop
+ * @param occurrenceId - The ID of the specific occurrence (optional for multi-day workshops)
+ * @returns Promise<Object> - Refund result with success status
+ * @throws Error if refund processing fails
+ */
+export async function refundWorkshopRegistration(
+  userId: number,
+  workshopId: number,
+  occurrenceId?: number
+) {
+  try {
+    // Find the registration(s) with payment intent ID
+    const registrations = await db.userWorkshop.findMany({
+      where: {
+        userId,
+        workshopId,
+        ...(occurrenceId ? { occurrenceId } : {}),
+        paymentIntentId: { not: null },
+      },
+    });
+
+    if (registrations.length === 0) {
+      throw new Error("No paid registration found for refund");
+    }
+
+    // Get the payment intent ID (should be the same for all registrations of a multi-day workshop)
+    const paymentIntentId = registrations[0].paymentIntentId;
+
+    if (!paymentIntentId) {
+      throw new Error("No payment intent ID found for this registration");
+    }
+
+    // Process the refund with Stripe
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      metadata: {
+        userId: userId.toString(),
+        workshopId: workshopId.toString(),
+        ...(occurrenceId ? { occurrenceId: occurrenceId.toString() } : {}),
+      },
+    });
+
+    // If refund is successful, remove the registration(s)
+    if (refund.status === "succeeded") {
+      await db.userWorkshop.deleteMany({
+        where: {
+          userId,
+          workshopId,
+          ...(occurrenceId ? { occurrenceId } : {}),
+          paymentIntentId,
+        },
+      });
+    }
+
+    return {
+      success: refund.status === "succeeded",
+      refundId: refund.id,
+      amount: refund.amount / 100, // Convert back from cents
+      status: refund.status,
+    };
+  } catch (error: any) {
+    console.error("Refund processing failed:", error);
+    throw new Error(`Refund failed: ${error.message}`);
+  }
+}
+
+/**
+ * Processes a refund for equipment bookings
+ * @param userId - The ID of the user requesting the refund
+ * @param equipmentId - The ID of the equipment
+ * @param slotIds - Optional array of specific slot IDs to refund (if not provided, refunds all user's bookings for this equipment)
+ * @returns Promise<Object> - Refund result with success status
+ * @throws Error if refund processing fails
+ */
+export async function refundEquipmentBooking(
+  userId: number,
+  equipmentId?: number,
+  slotIds?: number[]
+) {
+  try {
+    // Find the booking(s) with payment intent ID
+    const whereClause: any = {
+      userId,
+      bookedFor: "user", // Only individual user bookings, not workshop bookings
+      paymentIntentId: { not: null },
+    };
+
+    if (equipmentId) {
+      whereClause.equipmentId = equipmentId;
+    }
+
+    if (slotIds && slotIds.length > 0) {
+      whereClause.slotId = { in: slotIds };
+    }
+
+    const bookings = await db.equipmentBooking.findMany({
+      where: whereClause,
+      include: {
+        slot: true,
+        equipment: true,
+      },
+    });
+
+    if (bookings.length === 0) {
+      throw new Error("No paid equipment bookings found for refund");
+    }
+
+    // Get the payment intent ID (should be the same for all bookings made in the same payment)
+    const paymentIntentId = bookings[0].paymentIntentId;
+
+    if (!paymentIntentId) {
+      throw new Error("No payment intent ID found for these bookings");
+    }
+
+    // Verify all bookings have the same payment intent ID
+    const differentPaymentIntents = bookings.filter(
+      (booking) => booking.paymentIntentId !== paymentIntentId
+    );
+
+    if (differentPaymentIntents.length > 0) {
+      throw new Error(
+        "Cannot refund bookings from different payments together"
+      );
+    }
+
+    // Process the refund with Stripe
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      metadata: {
+        userId: userId.toString(),
+        bookingIds: bookings.map((b) => b.id.toString()).join(","),
+        ...(equipmentId ? { equipmentId: equipmentId.toString() } : {}),
+      },
+    });
+
+    // If refund is successful, remove the bookings and free up the slots
+    if (refund.status === "succeeded") {
+      const bookingIds = bookings.map((booking) => booking.id);
+      const slotIdsToFree = bookings.map((booking) => booking.slotId);
+
+      // Free up the equipment slots
+      await db.equipmentSlot.updateMany({
+        where: { id: { in: slotIdsToFree } },
+        data: { isBooked: false },
+      });
+
+      // Remove the booking records
+      await db.equipmentBooking.deleteMany({
+        where: { id: { in: bookingIds } },
+      });
+    }
+
+    return {
+      success: refund.status === "succeeded",
+      refundId: refund.id,
+      amount: refund.amount / 100, // Convert back from cents
+      status: refund.status,
+      bookingsRefunded: bookings.length,
+      slotsFreed: bookings.length,
+    };
+  } catch (error: any) {
+    console.error("Equipment refund processing failed:", error);
+    throw new Error(`Equipment refund failed: ${error.message}`);
+  }
+}
+
+/**
+ * Processes a refund for a membership subscription
+ * @param userId - The ID of the user requesting the refund
+ * @param membershipId - The ID of the specific membership to refund (optional)
+ * @returns Promise<Object> - Refund result with success status
+ * @throws Error if refund processing fails
+ */
+export async function refundMembershipSubscription(
+  userId: number,
+  membershipId?: number
+) {
+  try {
+    // Find the membership(s) with payment intent ID
+    const whereClause: any = {
+      userId,
+      paymentIntentId: { not: null },
+      status: { in: ["active", "ending"] }, // Only refund active or ending memberships
+    };
+
+    if (membershipId) {
+      whereClause.id = membershipId;
+    }
+
+    const memberships = await db.userMembership.findMany({
+      where: whereClause,
+      include: {
+        membershipPlan: true,
+      },
+      orderBy: {
+        date: "desc", // Most recent first
+      },
+    });
+
+    if (memberships.length === 0) {
+      throw new Error("No paid membership found for refund");
+    }
+
+    // For membership refunds, we typically want to refund the most recent payment
+    const membershipToRefund = memberships[0];
+    const paymentIntentId = membershipToRefund.paymentIntentId;
+
+    if (!paymentIntentId) {
+      throw new Error("No payment intent ID found for this membership");
+    }
+
+    // Process the refund with Stripe
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntentId,
+      metadata: {
+        userId: userId.toString(),
+        membershipId: membershipToRefund.id.toString(),
+        membershipPlanId: membershipToRefund.membershipPlanId.toString(),
+        refundType: "membership_cancellation",
+      },
+    });
+
+    // If refund is successful, cancel the membership
+    if (refund.status === "succeeded") {
+      await db.userMembership.update({
+        where: { id: membershipToRefund.id },
+        data: {
+          status: "cancelled",
+          // Keep the paymentIntentId for record keeping, but it's now refunded
+        },
+      });
+
+      // Update user's role level since membership is cancelled
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { roleLevel: true },
+      });
+
+      if (user && user.roleLevel >= 3) {
+        // Check if user has passed orientations to determine new role level
+        const passedOrientationsCount = await db.userWorkshop.count({
+          where: {
+            userId,
+            result: { equals: "passed", mode: "insensitive" },
+            workshop: {
+              type: { equals: "orientation", mode: "insensitive" },
+            },
+          },
+        });
+
+        // Set role level based on orientation status (3 with membership, 2 without)
+        const newRoleLevel = passedOrientationsCount > 0 ? 2 : 1;
+
+        await db.user.update({
+          where: { id: userId },
+          data: { roleLevel: newRoleLevel },
+        });
+      }
+    }
+
+    return {
+      success: refund.status === "succeeded",
+      refundId: refund.id,
+      amount: refund.amount / 100, // Convert back from cents
+      status: refund.status,
+      membershipPlan: membershipToRefund.membershipPlan.title,
+      membershipCancelled: refund.status === "succeeded",
+    };
+  } catch (error: any) {
+    console.error("Membership refund processing failed:", error);
+    throw new Error(`Membership refund failed: ${error.message}`);
   }
 }

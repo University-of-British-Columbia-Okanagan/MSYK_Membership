@@ -86,11 +86,14 @@ export async function getWorkshops() {
         ? workshop.occurrences[workshop.occurrences.length - 1].status
         : "expired"; // Default to expired if no occurrences exist
 
-    // Map occurrences to include registration count
+    // Map occurrences to include registration count (excluding cancelled)
     const occurrencesWithCounts = workshop.occurrences.map(
       (occurrence: any) => {
-        // Use type assertion (any) to bypass TypeScript checking
-        const registrationCount = occurrence.userWorkshops?.length || 0;
+        // Count only non-cancelled registrations
+        const registrationCount =
+          occurrence.userWorkshops?.filter(
+            (uw: any) => uw.result !== "cancelled"
+          ).length || 0;
 
         // Create a new object without the userWorkshops property
         const { userWorkshops, ...occWithoutUserWorkshops } = occurrence;
@@ -109,6 +112,16 @@ export async function getWorkshops() {
         ? workshop.priceVariations[0].price // Already ordered by price asc, so first is lowest
         : workshop.price;
 
+    // Calculate price range for display
+    const priceRange =
+      workshop.hasPriceVariations && workshop.priceVariations.length > 1
+        ? {
+            min: workshop.priceVariations[0].price, // First is lowest
+            max: workshop.priceVariations[workshop.priceVariations.length - 1]
+              .price, // Last is highest
+          }
+        : null;
+
     // Keep all existing fields in 'workshop',
     // then add/override status, and ensure 'type' is included.
     return {
@@ -117,6 +130,7 @@ export async function getWorkshops() {
       type: workshop.type, // explicitly include workshop.type
       occurrences: occurrencesWithCounts, // Replace occurrences with our version that includes counts
       displayPrice, // calculated display price
+      priceRange, // calculated price range for display
     };
   });
 }
@@ -873,7 +887,8 @@ export async function registerForWorkshop(
   workshopId: number,
   occurrenceId: number,
   userId: number,
-  variationId?: number | null
+  variationId?: number | null,
+  paymentIntentId?: string
 ) {
   try {
     // Check if already registered
@@ -928,6 +943,7 @@ export async function registerForWorkshop(
         occurrenceId,
         priceVariationId: variationId,
         ...(registrationResult ? { result: registrationResult } : {}),
+        ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
 
@@ -954,7 +970,11 @@ export async function checkUserRegistration(
   workshopId: number,
   userId: number,
   occurrenceId: number
-): Promise<{ registered: boolean; registeredAt: Date | null }> {
+): Promise<{
+  registered: boolean;
+  registeredAt: Date | null;
+  status?: string;
+}> {
   const userWorkshop = await db.userWorkshop.findFirst({
     where: {
       userId: userId,
@@ -967,7 +987,20 @@ export async function checkUserRegistration(
     return { registered: false, registeredAt: null };
   }
 
-  return { registered: true, registeredAt: userWorkshop.date };
+  // Check if registration is cancelled
+  if (userWorkshop.result === "cancelled") {
+    return {
+      registered: true,
+      registeredAt: userWorkshop.date,
+      status: "cancelled",
+    };
+  }
+
+  return {
+    registered: true,
+    registeredAt: userWorkshop.date,
+    status: userWorkshop.result,
+  };
 }
 
 /**
@@ -1537,12 +1570,13 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
 }
 
 /**
- * Cancels a user's registration for a specific workshop occurrence
+ * Cancels a user's registration for a specific workshop occurrence by marking as cancelled
+ * and creates a cancellation record for admin tracking
  * @param params - Object containing workshopId, occurrenceId, and userId
  * @param params.workshopId - The ID of the workshop
  * @param params.occurrenceId - The ID of the occurrence
  * @param params.userId - The ID of the user to cancel registration for
- * @returns Promise<Object> - Database deletion result
+ * @returns Promise<Object> - Database update result with cancellation tracking
  */
 export async function cancelUserWorkshopRegistration({
   workshopId,
@@ -1553,13 +1587,118 @@ export async function cancelUserWorkshopRegistration({
   occurrenceId: number;
   userId: number;
 }) {
-  return await db.userWorkshop.deleteMany({
+  // First, get the original registration to capture the registration date and price variation
+  const existingRegistration = await db.userWorkshop.findFirst({
+    where: {
+      workshopId,
+      occurrenceId,
+      userId,
+      result: { not: "cancelled" }, // Only get active registrations
+    },
+    include: {
+      priceVariation: true,
+    },
+  });
+
+  if (!existingRegistration) {
+    throw new Error("No active registration found to cancel");
+  }
+
+  // Update the registration to cancelled
+  const updateResult = await db.userWorkshop.updateMany({
     where: {
       workshopId,
       occurrenceId,
       userId,
     },
+    data: {
+      result: "cancelled",
+    },
   });
+
+  // Create a cancellation record for admin tracking
+  await createWorkshopCancellation({
+    userId,
+    workshopId,
+    workshopOccurrenceId: occurrenceId,
+    priceVariationId: existingRegistration.priceVariationId,
+    registrationDate: existingRegistration.date,
+    cancellationDate: new Date(),
+  });
+
+  return updateResult;
+}
+
+/**
+ * Cancels all registrations for a multi-day workshop using connectId
+ * and creates cancellation records for admin tracking
+ * @param params - Object containing workshopId, connectId, and userId
+ * @param params.workshopId - The ID of the workshop
+ * @param params.connectId - The connect ID linking all workshop occurrences
+ * @param params.userId - The ID of the user to cancel registration for
+ * @returns Promise<Object> - Database update result with cancellation tracking
+ */
+export async function cancelMultiDayWorkshopRegistration({
+  workshopId,
+  connectId,
+  userId,
+}: {
+  workshopId: number;
+  connectId: number;
+  userId: number;
+}) {
+  // Get all occurrences for this multi-day workshop
+  const occurrences = await getWorkshopOccurrencesByConnectId(
+    workshopId,
+    connectId
+  );
+
+  if (occurrences.length === 0) {
+    throw new Error("No occurrences found for this multi-day workshop");
+  }
+
+  // Get all existing registrations for this user across all occurrences
+  const existingRegistrations = await db.userWorkshop.findMany({
+    where: {
+      workshopId,
+      userId,
+      occurrenceId: { in: occurrences.map((occ) => occ.id) },
+      result: { not: "cancelled" }, // Only get active registrations
+    },
+    include: {
+      priceVariation: true,
+    },
+  });
+
+  if (existingRegistrations.length === 0) {
+    throw new Error("No active registrations found to cancel");
+  }
+
+  // Update all registrations to cancelled
+  const updateResult = await db.userWorkshop.updateMany({
+    where: {
+      workshopId,
+      userId,
+      occurrenceId: { in: occurrences.map((occ) => occ.id) },
+    },
+    data: {
+      result: "cancelled",
+    },
+  });
+
+  // For multi-day workshops, create only one cancellation record using the first occurrence
+  // but store all occurrence IDs in a way that can be retrieved later
+  const firstRegistration = existingRegistrations[0];
+  await createWorkshopCancellation({
+    userId,
+    workshopId,
+    workshopOccurrenceId: firstRegistration.occurrenceId, // Use first occurrence as primary
+    priceVariationId: firstRegistration.priceVariationId,
+    registrationDate: firstRegistration.date,
+    cancellationDate: new Date(),
+  });
+
+  return updateResult;
 }
 
 /**
@@ -1596,7 +1735,8 @@ export async function registerUserForAllOccurrences(
   workshopId: number,
   connectId: number,
   userId: number,
-  variationId?: number | null
+  variationId?: number | null,
+  paymentIntentId?: string
 ) {
   try {
     // Check capacity before registering for multi-day workshop
@@ -1659,6 +1799,7 @@ export async function registerUserForAllOccurrences(
             occurrenceId: occurrence.id,
             priceVariationId: variationId,
             ...(registrationResult ? { result: registrationResult } : {}),
+            ...(paymentIntentId ? { paymentIntentId } : {}),
           },
         });
 
@@ -2004,31 +2145,38 @@ export async function getWorkshopRegistrationCounts(
     const occurrence = workshop.occurrences[0];
     const registrations = occurrence.userWorkshops;
 
+    // Filter out cancelled registrations
+    const activeRegistrations = registrations.filter(
+      (uw) => uw.result !== "cancelled"
+    );
+
     // Count base registrations (no price variation)
-    const baseRegistrations = registrations.filter(
+    const baseRegistrations = activeRegistrations.filter(
       (uw) => !uw.priceVariationId
     ).length;
 
-    // Count registrations by variation
-    const variationCounts = workshop.priceVariations.map((variation) => {
-      const count = registrations.filter(
-        (uw) => uw.priceVariationId === variation.id
-      ).length;
+    // Count registrations by variation (only for active variations)
+    const variationCounts = workshop.priceVariations
+      .filter((variation) => variation.status !== "cancelled")
+      .map((variation) => {
+        const count = activeRegistrations.filter(
+          (uw) => uw.priceVariationId === variation.id
+        ).length;
 
-      return {
-        variationId: variation.id,
-        name: variation.name,
-        capacity: variation.capacity,
-        registrations: count,
-        hasCapacity: count < variation.capacity,
-      };
-    });
+        return {
+          variationId: variation.id,
+          name: variation.name,
+          capacity: variation.capacity,
+          registrations: count,
+          hasCapacity: count < variation.capacity,
+        };
+      });
 
     return {
       workshopCapacity: workshop.capacity,
-      totalRegistrations: registrations.length,
+      totalRegistrations: activeRegistrations.length,
       baseRegistrations,
-      hasBaseCapacity: registrations.length < workshop.capacity,
+      hasBaseCapacity: activeRegistrations.length < workshop.capacity,
       variations: variationCounts,
     };
   } catch (error) {
@@ -2165,9 +2313,9 @@ export async function getMultiDayWorkshopRegistrationCounts(
       throw new Error("Workshop or occurrences not found");
     }
 
-    // Get all registrations across all occurrences
-    const allRegistrations = workshop.occurrences.flatMap(
-      (occ) => occ.userWorkshops
+    // Get all registrations across all occurrences, filtering out cancelled ones
+    const allRegistrations = workshop.occurrences.flatMap((occ) =>
+      occ.userWorkshops.filter((uw) => uw.result !== "cancelled")
     );
 
     // Count unique users (multi-day workshop = one registration per user)
@@ -2182,22 +2330,24 @@ export async function getMultiDayWorkshopRegistrationCounts(
     const uniqueBaseUserIds = [...new Set(baseUserIds)];
     const baseRegistrations = uniqueBaseUserIds.length;
 
-    // Count registrations by variation - unique users per variation
-    const variationCounts = workshop.priceVariations.map((variation) => {
-      const variationUserIds = allRegistrations
-        .filter((uw) => uw.priceVariationId === variation.id)
-        .map((uw) => uw.userId);
-      const uniqueVariationUserIds = [...new Set(variationUserIds)];
-      const count = uniqueVariationUserIds.length;
+    // Count registrations by variation - unique users per variation (only for active variations)
+    const variationCounts = workshop.priceVariations
+      .filter((variation) => variation.status !== "cancelled")
+      .map((variation) => {
+        const variationUserIds = allRegistrations
+          .filter((uw) => uw.priceVariationId === variation.id)
+          .map((uw) => uw.userId);
+        const uniqueVariationUserIds = [...new Set(variationUserIds)];
+        const count = uniqueVariationUserIds.length;
 
-      return {
-        variationId: variation.id,
-        name: variation.name,
-        capacity: variation.capacity,
-        registrations: count,
-        hasCapacity: count < variation.capacity,
-      };
-    });
+        return {
+          variationId: variation.id,
+          name: variation.name,
+          capacity: variation.capacity,
+          registrations: count,
+          hasCapacity: count < variation.capacity,
+        };
+      });
 
     return {
       workshopCapacity: workshop.capacity,
@@ -2268,7 +2418,15 @@ export async function getUserWorkshopRegistrationInfo(
 
   return {
     registered: true,
-    priceVariation: userRegistration.priceVariation,
+    priceVariation: userRegistration.priceVariation
+      ? {
+          id: userRegistration.priceVariation.id,
+          name: userRegistration.priceVariation.name,
+          price: userRegistration.priceVariation.price,
+          description: userRegistration.priceVariation.description,
+          status: userRegistration.priceVariation.status,
+        }
+      : null,
     occurrence: userRegistration.occurrence,
     registrationDate: userRegistration.date,
   };
@@ -2307,28 +2465,33 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
 
     // For each occurrence, count registrations by variation
     const occurrenceCounts = workshop.occurrences.map((occurrence) => {
-      const registrations = occurrence.userWorkshops;
+      // Filter out cancelled registrations
+      const activeRegistrations = occurrence.userWorkshops.filter(
+        (uw) => uw.result !== "cancelled"
+      );
 
       // Count base registrations (no price variation) for this occurrence
-      const baseRegistrations = registrations.filter(
+      const baseRegistrations = activeRegistrations.filter(
         (uw) => !uw.priceVariationId
       ).length;
 
-      // Count registrations by variation for this occurrence
-      const variationCounts = workshop.priceVariations.map((variation) => {
-        const count = registrations.filter(
-          (uw) => uw.priceVariationId === variation.id
-        ).length;
+      // Count registrations by variation for this occurrence (only for active variations)
+      const variationCounts = workshop.priceVariations
+        .filter((variation) => variation.status !== "cancelled")
+        .map((variation) => {
+          const count = activeRegistrations.filter(
+            (uw) => uw.priceVariationId === variation.id
+          ).length;
 
-        return {
-          variationId: variation.id,
-          registrations: count,
-        };
-      });
+          return {
+            variationId: variation.id,
+            registrations: count,
+          };
+        });
 
       return {
         occurrenceId: occurrence.id,
-        totalRegistrations: registrations.length,
+        totalRegistrations: activeRegistrations.length,
         baseRegistrations,
         variationCounts,
       };
@@ -2345,26 +2508,28 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
       0
     );
 
-    // Calculate max registrations per variation
-    const variationCounts = workshop.priceVariations.map((variation) => {
-      const maxRegistrationsForThisVariation = Math.max(
-        ...occurrenceCounts.map((oc) => {
-          const variationCount = oc.variationCounts.find(
-            (vc) => vc.variationId === variation.id
-          );
-          return variationCount ? variationCount.registrations : 0;
-        }),
-        0
-      );
+    // Calculate max registrations per variation (only for active variations)
+    const variationCounts = workshop.priceVariations
+      .filter((variation) => variation.status !== "cancelled")
+      .map((variation) => {
+        const maxRegistrationsForThisVariation = Math.max(
+          ...occurrenceCounts.map((oc) => {
+            const variationCount = oc.variationCounts.find(
+              (vc) => vc.variationId === variation.id
+            );
+            return variationCount ? variationCount.registrations : 0;
+          }),
+          0
+        );
 
-      return {
-        variationId: variation.id,
-        name: variation.name,
-        capacity: variation.capacity,
-        registrations: maxRegistrationsForThisVariation,
-        hasCapacity: maxRegistrationsForThisVariation < variation.capacity,
-      };
-    });
+        return {
+          variationId: variation.id,
+          name: variation.name,
+          capacity: variation.capacity,
+          registrations: maxRegistrationsForThisVariation,
+          hasCapacity: maxRegistrationsForThisVariation < variation.capacity,
+        };
+      });
 
     return {
       workshopCapacity: workshop.capacity,
@@ -2377,4 +2542,195 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
     console.error("Error getting regular workshop registration counts:", error);
     throw error;
   }
+}
+
+/**
+ * Retrieves all workshop cancellation records with associated user, workshop, occurrence, and price variation data.
+ * Used by admin interface to view and manage workshop cancellations.
+ *
+ * @returns {Promise<Array>} Array of workshop cancellation records including:
+ *   - User information (firstName, lastName, email)
+ *   - Workshop details (id, name, type)
+ *   - Occurrence information (id, startDate, endDate)
+ *   - Price variation details (if applicable)
+ *   - Cancellation metadata (registrationDate, cancellationDate, resolved status)
+ *
+ * @example
+ * const cancellations = await getAllWorkshopCancellations();
+ * console.log(`Found ${cancellations.length} workshop cancellations`);
+ */
+export async function getAllWorkshopCancellations() {
+  return await db.workshopCancelledRegistration.findMany({
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      workshop: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      },
+      workshopOccurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          connectId: true,
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
+}
+
+/**
+ * Updates the resolved status of a workshop cancellation record.
+ * Used by administrators to mark cancellation issues as resolved or unresolved.
+ *
+ * @param {number} cancellationId - The unique identifier of the cancellation record
+ * @param {boolean} resolved - The new resolved status (true = resolved, false = unresolved)
+ *
+ * @returns {Promise<Object>} The updated workshop cancellation record
+ *
+ * @throws {Error} If the cancellation record is not found or database operation fails
+ *
+ * @example
+ * // Mark a cancellation as resolved
+ * await updateWorkshopCancellationResolved(123, true);
+ *
+ * // Mark a cancellation as unresolved (needs attention)
+ * await updateWorkshopCancellationResolved(123, false);
+ */
+export async function updateWorkshopCancellationResolved(
+  cancellationId: number,
+  resolved: boolean
+) {
+  return await db.workshopCancelledRegistration.update({
+    where: { id: cancellationId },
+    data: { resolved },
+  });
+}
+
+/**
+ * Creates a new workshop cancellation record when a user cancels their workshop registration.
+ * This function should be called from the workshop cancellation logic to track the cancellation
+ * for admin review and potential refund processing.
+ *
+ * @param {Object} cancellationData - The cancellation data object
+ * @param {number} cancellationData.userId - The ID of the user cancelling the workshop
+ * @param {number} cancellationData.workshopId - The ID of the workshop being cancelled
+ * @param {number} cancellationData.workshopOccurrenceId - The ID of the specific workshop occurrence
+ * @param {number|null} cancellationData.priceVariationId - The ID of the price variation (if applicable)
+ * @param {Date} cancellationData.registrationDate - When the user originally registered
+ * @param {Date} cancellationData.cancellationDate - When the user cancelled (defaults to now)
+ *
+ * @returns {Promise<Object>} The created workshop cancellation record
+ *
+ * @throws {Error} If required data is missing or database operation fails
+ *
+ * @example
+ * const cancellationRecord = await createWorkshopCancellation({
+ *   userId: 123,
+ *   workshopId: 456,
+ *   workshopOccurrenceId: 789,
+ *   priceVariationId: 101, // or null for standard pricing
+ *   registrationDate: userWorkshop.date,
+ *   cancellationDate: new Date()
+ * });
+ */
+export async function createWorkshopCancellation({
+  userId,
+  workshopId,
+  workshopOccurrenceId,
+  priceVariationId,
+  registrationDate,
+  cancellationDate = new Date(),
+}: {
+  userId: number;
+  workshopId: number;
+  workshopOccurrenceId: number;
+  priceVariationId?: number | null;
+  registrationDate: Date;
+  cancellationDate?: Date;
+}) {
+  return await db.workshopCancelledRegistration.create({
+    data: {
+      userId,
+      workshopId,
+      workshopOccurrenceId,
+      priceVariationId,
+      registrationDate,
+      cancellationDate,
+      resolved: false, // Default to unresolved for admin review
+    },
+  });
+}
+
+/**
+ * Retrieves workshop cancellations filtered by resolved status.
+ * Useful for admin dashboards to show only unresolved cancellations that need attention.
+ *
+ * @param {boolean} resolved - Filter by resolved status (true = resolved, false = unresolved)
+ *
+ * @returns {Promise<Array>} Array of filtered workshop cancellation records with full details
+ *
+ * @example
+ * // Get all unresolved cancellations for admin attention
+ * const unresolvedCancellations = await getWorkshopCancellationsByStatus(false);
+ *
+ * // Get all resolved cancellations for reporting
+ * const resolvedCancellations = await getWorkshopCancellationsByStatus(true);
+ */
+export async function getWorkshopCancellationsByStatus(resolved: boolean) {
+  return await db.workshopCancelledRegistration.findMany({
+    where: { resolved },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      workshop: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      },
+      workshopOccurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
 }

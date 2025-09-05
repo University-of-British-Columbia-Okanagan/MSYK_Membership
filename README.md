@@ -5,6 +5,8 @@ A comprehensive membership management platform built with React Router, TypeScri
 ## Table of Contents
 
 - [Local Development Setup](#local-development-setup)
+- [User Documentation](#user-documentation)
+- [Technical Documentation](#technical-documentation)
 - [System Architecture & Database Schema](#system-architecture--database-schema)
 - [Components Architecture](#components-architecture)
 - [Backend Models & Data Layer](#backend-models--data-layer)
@@ -79,6 +81,225 @@ A comprehensive membership management platform built with React Router, TypeScri
 - **Database Seeding:** `npx tsx seed.ts`
 - **Prisma Studio:** `npx prisma studio`
 
+## User Documentation
+
+### For Unregistered Users (Guests)
+
+**Public Website Access:**
+- View public pages: Home, About, Programming, Spaces & Services, Get Involved
+- Access information about workshops, equipment, and membership plans
+- View event calendar and past workshops
+- Contact information and staff details
+
+**Registration Process:**
+1. Navigate to `/register` to create an account
+2. Fill in personal information, emergency contacts, and consent forms
+3. Complete required consent agreements (media, data privacy, community guidelines)
+4. Login with credentials at `/login`
+
+### For Registered Users (Members)
+
+**Dashboard Access:**
+After login, users are redirected to role-appropriate dashboards:
+- Regular users: `/dashboard/user`
+- Admins: `/dashboard/admin`
+
+**Core Features:**
+
+**Workshop Management:**
+- Browse available workshops and orientations in `/dashboard/workshops`
+- Register for workshops with automatic prerequisite checking
+- View workshop details, pricing, and capacity information
+- Handle multi-day workshops with connected occurrences
+- Cancel registrations within the allowed timeframe
+- Access workshop history and completion status in `/dashboard/myworkshops`
+
+**Equipment Booking System:**
+- View all available equipment in `/dashboard/equipments`
+- Book equipment slots through time-based booking grid in `/dashboard/equipmentbooking/:id`
+- Check equipment prerequisites and completion status
+- View personal equipment bookings in `/dashboard/myequipments`
+- Role-based access restrictions for Level 3 and Level 4 users
+
+**Membership Management:**
+- View and manage membership plans in `/dashboard/memberships`
+- Upgrade, downgrade, or cancel memberships
+- Automated monthly billing with Stripe integration
+- Membership status tracking and payment history
+- Access level changes based on membership status
+
+**Profile & Volunteer System:**
+- Manage personal profile information in `/dashboard/profile`
+- Log volunteer hours with approval workflow in `/dashboard/volunteer`
+- Track volunteer status and activity history
+- Update payment information and download waivers
+
+**Payment Integration:**
+- Secure payment processing through Stripe
+- Saved payment methods for recurring charges
+- GST calculation and billing address management
+- Payment success confirmations and receipt handling
+
+### For Administrators
+
+**Extended Dashboard Features:**
+
+**User Management:**
+- View all registered users in `/dashboard/admin/users`
+- Modify user roles and permission levels
+- Track volunteer status across all users
+- Manage user-specific settings and overrides
+
+**Workshop Administration:**
+- Create new workshops in `/dashboard/addworkshop`
+- Edit existing workshops with occurrence management in `/dashboard/editworkshop/:id`
+- Offer workshops again with new occurrence scheduling in `/dashboard/workshops/offer/:id`
+- Manage workshop prerequisites and pricing variations
+- View workshop registrations and user management in `/dashboard/admin/workshop/users`
+
+**Equipment Administration:**
+- Add new equipment in `/dashboard/addequipment`
+- Edit equipment details and availability in `/dashboard/equipment/edit/:id`
+- Configure equipment prerequisites and booking restrictions
+- Monitor all equipment bookings in `/dashboard/allequipmentbooking`
+
+**System Configuration:**
+- Configure system settings in `/dashboard/admin/settings`
+- Set visibility days for workshops and equipment booking windows
+- Manage GST percentages and operational hours
+- Configure planned closures and maintenance schedules
+
+**Reporting & Monitoring:**
+- Access system reports in `/dashboard/admin/reports`
+- View server logs and system status in `/dashboard/logs`
+- Monitor issue reports and user feedback in `/dashboard/report`
+
+## Technical Documentation
+
+### Recent Implementation Changes
+
+**Workshop Offer Again Functionality:**
+We implemented the workshop offer system to address the need for recurring workshop scheduling while maintaining historical data integrity. The system now uses an `offerId` approach where:
+- Each workshop can have multiple "offers" (sets of occurrences)
+- Users see only the latest active offer when browsing
+- Historical registrations and data are preserved across offers
+- Admins can easily reschedule workshops without losing registration history
+- Equipment conflicts are checked across all active offers to prevent double-booking
+
+**Enhanced Equipment Booking System:**
+The equipment booking system was redesigned to support both individual user bookings and workshop-integrated equipment usage:
+- Time-slot based booking with 30-minute intervals
+- Role-based restrictions for Level 3 and Level 4 users
+- Workshop prerequisite validation for equipment access
+- Bulk equipment booking during workshop registration
+- Real-time conflict detection and availability checking
+
+**Membership System Improvements:**
+The membership management system was enhanced with:
+- Flexible upgrade and downgrade paths with prorated billing
+- Automated monthly payment processing with GST calculation
+- Payment method storage and recurring billing integration
+- Membership status impact on user role levels and access permissions
+- Comprehensive cancellation and refund handling through Stripe
+
+**Volunteer Hour Tracking:**
+Implemented a comprehensive volunteer management system featuring:
+- Time logging with overlap detection to prevent duplicate entries
+- Approval workflow for volunteer hour validation
+- Resubmission capability for denied or modified entries
+- Integration with user role levels and membership benefits
+- Historical tracking and reporting for volunteer activities
+
+### Project Structure
+
+**Root Level Configuration:**
+- `prisma/schema.prisma`: Database schema and model definitions
+- `package.json`: Dependencies and scripts configuration
+- `routes.ts`: Application routing configuration
+- `.env`: Environment variables and configuration settings
+
+**Application Structure:**
+```
+~/routes/
+├── authentication/          # Login, registration, password reset
+├── api/                     # Server-side API endpoints
+├── dashboard/              # Protected user and admin interfaces
+
+~/components/
+├── ui/
+│   ├── Dashboard/         # Dashboard-specific components
+│   └── [shadcn-ui]/      # Design system components
+
+~/models/                  # Server-side business logic
+├── user.server.ts         # User management and authentication
+├── workshop.server.ts     # Workshop lifecycle and registration
+├── equipment.server.ts    # Equipment booking and management
+├── membership.server.ts   # Membership plans and billing
+├── payment.server.ts      # Stripe integration and payments
+├── profile.server.ts      # User profiles and volunteer tracking
+└── admin.server.ts        # Administrative settings and controls
+
+~/utils/                   # Utility functions and helpers
+├── session.server.ts      # Authentication and session management
+├── db.server.ts          # Database connection and configuration
+└── [other utilities]     # Various helper functions
+```
+
+**Key Implementation Details:**
+
+**Role-Based Access Control (RBAC):**
+The system implements a sophisticated RBAC system with:
+- Role levels 1-4 with increasing privileges
+- Special `allowLevel4` flag for advanced equipment access
+- Dynamic permission checking throughout the application
+- Role-dependent navigation and feature access
+
+**Database Design Patterns:**
+- Soft deletion patterns for data integrity
+- Cascade relationships for related entity cleanup
+- Unique constraints to prevent duplicate bookings
+- Indexed fields for performance optimization on frequent queries
+- JSON fields for flexible feature storage in membership plans
+
+**Security Implementation:**
+- Prisma ORM for SQL injection prevention
+- Input validation using Zod schemas throughout
+- Session-based authentication with secure cookie handling
+- Payment information encryption and PCI compliance considerations
+- Role-based data isolation ensuring users can only access appropriate data
+
+**Performance Optimizations:**
+- Strategic database indexing on frequently queried fields
+- Efficient relationship loading with Prisma include/select
+- Caching strategies for frequently accessed admin settings
+- Optimized query patterns to minimize N+1 problems
+
+**Integration Architecture:**
+- Stripe webhooks for reliable payment processing
+- Email integration through Mailgun for notifications
+- PDF generation for waivers and documentation
+- Server-side rendering with React Router for SEO and performance
+
+**Error Handling and Logging:**
+- Comprehensive error logging with structured context
+- User-friendly error messages while preserving technical details
+- Graceful degradation for external service failures
+- Database transaction handling for data consistency
+
+### Testing and Quality Assurance
+
+**Development Workflow:**
+- TypeScript for compile-time type checking
+- Prisma Client for type-safe database operations
+- Real-time development server with hot reloading
+- Database migrations with rollback capability
+
+**Database Management:**
+- Migration-based schema changes for version control
+- Seeding scripts for development and testing data
+- Prisma Studio for visual database management
+- Backup and restore procedures for production environments
+
 ## System Architecture & Database Schema
 
 The MYSK Membership system is built on a robust PostgreSQL database with the following core entities and relationships:
@@ -99,6 +320,7 @@ The MYSK Membership system is built on a robust PostgreSQL database with the fol
 - **WorkshopOccurrence**: Specific workshop instances with date/time scheduling
 - **UserWorkshop**: Workshop enrollment tracking with completion results
 - **WorkshopPrerequisite**: Prerequisite chain management for advanced workshops
+- **WorkshopPriceVariation**: Flexible pricing options for different workshop configurations
 
 #### Equipment Management
 - **Equipment**: Equipment inventory with descriptions and availability status
@@ -185,9 +407,8 @@ The project leverages **shadcn/ui** as its design system foundation, configured 
 **Directory Structure:**
 ```
 ~/components/
-├── ui/
-│   ├── Dashboard/          # Admin & user dashboard components
-│
+└── ui/
+    └── Dashboard/          # Admin & user dashboard components
 ```
 
 ### Dashboard Components (`~/components/ui/Dashboard/`)
@@ -276,6 +497,7 @@ Most backend models are located in the `~/models/` directory and follow the nami
 - `updateWorkshopWithOccurrences()`: Workshop editing with occurrence management
 - `getUserWorkshopRegistrations()`: User-specific workshop enrollment tracking
 - `getMultiDayWorkshopUserCount()`: Capacity management for multi-day events
+- `offerWorkshopAgain()`: Create new workshop offers with unique offer IDs
 
 #### Equipment Management (`equipment.server.ts`)
 **Responsibilities:**

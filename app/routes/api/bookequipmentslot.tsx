@@ -4,7 +4,7 @@ import { bookEquipment } from "~/models/equipment.server";
 export async function action({ request }: { request: Request }) {
   try {
     const body = await request.json();
-    const { equipmentId, startTime, endTime } = body;
+    const { equipmentId, startTime, endTime, paymentIntentId } = body;
 
     if (!equipmentId || !startTime || !endTime) {
       return new Response(JSON.stringify({ error: "Missing required data" }), {
@@ -17,7 +17,13 @@ export async function action({ request }: { request: Request }) {
       url: request.url,
     });
 
-    await bookEquipment(request, equipmentId, startTime, endTime);
+    await bookEquipment(
+      request,
+      equipmentId,
+      startTime,
+      endTime,
+      paymentIntentId
+    );
 
     logger.info("Equipment booked successfully", {
       url: request.url,
