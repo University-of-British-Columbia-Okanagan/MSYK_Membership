@@ -2760,3 +2760,49 @@ export async function getWorkshopCancellationsByStatus(resolved: boolean) {
     },
   });
 }
+
+/**
+ * Gets user's completed orientation history with price variation and occurrence details
+ * @param userId - The ID of the user to get orientation history for
+ * @returns Promise<Array> - Array of completed orientations with details
+ */
+export async function getUserCompletedOrientations(userId: number) {
+  return await db.userWorkshop.findMany({
+    where: {
+      userId,
+      result: "passed", // Only get completed/passed orientations
+      workshop: {
+        type: { equals: "orientation", mode: "insensitive" },
+      },
+    },
+    include: {
+      workshop: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          price: true,
+          type: true,
+        },
+      },
+      occurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          description: true,
+        },
+      },
+    },
+    orderBy: {
+      date: "desc", // Most recent first
+    },
+  });
+}
