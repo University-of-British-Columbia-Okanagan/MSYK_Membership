@@ -3965,12 +3965,13 @@ export default function AdminSettings() {
               </TabsContent>
 
               <TabsContent value="cancelledEvents">
-                <Card>
+                {/* Unresolved Workshop Cancelled Events Card */}
+                <Card className="mb-6">
                   <CardHeader>
                     <CardTitle>Workshop Cancelled Events</CardTitle>
                     <CardDescription>
-                      View and manage workshop cancellations to track refunds
-                      and resolve user issues
+                      View and manage unresolved workshop cancellations to track
+                      refunds and resolve user issues
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -4153,8 +4154,206 @@ export default function AdminSettings() {
                           ),
                         },
                       ]}
-                      data={workshopCancellations}
-                      emptyMessage="No cancelled workshop events found"
+                      data={workshopCancellations.filter(
+                        (cancellation: any) => !cancellation.resolved
+                      )}
+                      emptyMessage="No unresolved cancelled workshop events found"
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Resolved Workshop Cancelled Events Card */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Resolved Workshop Cancelled Events</CardTitle>
+                    <CardDescription>
+                      Previously resolved workshop cancellations for reference
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Workshop Name",
+                          render: (cancellation: any) =>
+                            cancellation.workshop.name,
+                        },
+                        {
+                          header: "Workshop Time(s)",
+                          render: (cancellation: any) => {
+                            const startDate = new Date(
+                              cancellation.workshopOccurrence.startDate
+                            );
+                            const endDate = new Date(
+                              cancellation.workshopOccurrence.endDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            if (isMultiDay) {
+                              // Multi-day workshop with clickable link - show Connect ID
+                              return (
+                                <div className="text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={`/dashboard/workshops/${cancellation.workshop.id}`}
+                                      className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      Multi-Day Workshop
+                                    </a>
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    Connect ID:{" "}
+                                    {cancellation.workshopOccurrence.connectId}
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              // Single occurrence workshop
+                              return (
+                                <div className="text-sm">
+                                  <div className="font-medium">
+                                    {startDate.toLocaleDateString()}
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    {startDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}{" "}
+                                    →{" "}
+                                    {endDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          },
+                        },
+                        {
+                          header: "Price Variation",
+                          render: (cancellation: any) =>
+                            cancellation.priceVariation ? (
+                              <span className="text-sm font-medium">
+                                {cancellation.priceVariation.name}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-sm">N/A</span>
+                            ),
+                        },
+                        {
+                          header: "Stripe Intent ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.stripePaymentIntentId || "N/A"}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => {
+                            const cancellationDate = new Date(
+                              cancellation.cancellationDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            let workshopStartDate: Date;
+
+                            if (
+                              isMultiDay &&
+                              cancellation.allOccurrences &&
+                              cancellation.allOccurrences.length > 0
+                            ) {
+                              // For multi-day workshops, find the earliest start date from all occurrences
+                              const earliestOccurrence =
+                                cancellation.allOccurrences.reduce(
+                                  (earliest: any, current: any) => {
+                                    const currentStart = new Date(
+                                      current.startDate
+                                    );
+                                    const earliestStart = new Date(
+                                      earliest.startDate
+                                    );
+                                    return currentStart < earliestStart
+                                      ? current
+                                      : earliest;
+                                  }
+                                );
+                              workshopStartDate = new Date(
+                                earliestOccurrence.startDate
+                              );
+                            } else {
+                              // For regular workshops, use the single occurrence start date
+                              workshopStartDate = new Date(
+                                cancellation.workshopOccurrence.startDate
+                              );
+                            }
+
+                            // Check if cancelled at least 2 days before the workshop start time
+                            const eligibleDate = new Date(
+                              workshopStartDate.getTime() -
+                                2 * 24 * 60 * 60 * 1000
+                            );
+                            const isEligible = cancellationDate <= eligibleDate;
+
+                            return (
+                              <div className="flex items-center">
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    isEligible
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {isEligible ? "Yes" : "No"}
+                                </span>
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Resolved",
+                          render: (cancellation: any) => (
+                            <WorkshopCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={workshopCancellations.filter(
+                        (cancellation: any) => cancellation.resolved
+                      )}
+                      emptyMessage="No resolved cancelled workshop events found"
                     />
                   </CardContent>
                 </Card>
