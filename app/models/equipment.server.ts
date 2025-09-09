@@ -184,6 +184,41 @@ export async function cancelEquipmentBooking(bookingId: number) {
 }
 
 /**
+ * Fetch the booking details required for cancellation email
+ * @param bookingId The booking ID to fetch
+ * @returns Object with userEmail, equipmentName, startTime, endTime or null
+ */
+export async function getBookingEmailDetails(bookingId: number): Promise<
+  | {
+      userEmail: string;
+      equipmentName: string;
+      startTime: Date;
+      endTime: Date;
+    }
+  | null
+> {
+  const booking = await db.equipmentBooking.findUnique({
+    where: { id: bookingId },
+    include: {
+      slot: true,
+      equipment: true,
+      user: { select: { email: true } },
+    },
+  });
+
+  if (!booking || !booking.user?.email || !booking.slot || !booking.equipment) {
+    return null;
+  }
+
+  return {
+    userEmail: booking.user.email,
+    equipmentName: booking.equipment.name,
+    startTime: booking.slot.startTime,
+    endTime: booking.slot.endTime,
+  };
+}
+
+/**
  * Approve an equipment booking (Admin only)
  * @param bookingId The ID of the booking to approve
  * @returns Updated booking record with approved status

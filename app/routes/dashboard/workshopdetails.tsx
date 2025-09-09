@@ -22,6 +22,7 @@ import {
   getUserCompletedPrerequisites,
   cancelUserWorkshopRegistration,
   getUserWorkshopRegistrationInfo,
+  getWorkshopOccurrence,
   cancelMultiDayWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
@@ -47,6 +48,7 @@ import {
   getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
+import { sendWorkshopCancellationEmail } from "~/utils/email.server";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
@@ -280,6 +282,40 @@ export async function action({ request }: { request: Request }) {
         occurrenceId: Number(occurrenceId),
         userId: user.id,
       });
+      // Send cancellation confirmation email (non-blocking)
+      try {
+        const workshop = await getWorkshopById(Number(workshopId));
+        const occurrence = await getWorkshopOccurrence(
+          Number(workshopId),
+          Number(occurrenceId)
+        );
+
+        // Include price variation info if present for this user
+        const registrationInfo = await getUserWorkshopRegistrationInfo(
+          user.id,
+          Number(workshopId)
+        );
+        const priceVariation = registrationInfo?.priceVariation
+          ? {
+              name: registrationInfo.priceVariation.name,
+              description: registrationInfo.priceVariation.description,
+              price: registrationInfo.priceVariation.price,
+            }
+          : null;
+
+        await sendWorkshopCancellationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          startDate: new Date(occurrence.startDate),
+          endDate: new Date(occurrence.endDate),
+          basePrice: workshop.price,
+          priceVariation,
+        });
+      } catch (emailErr) {
+        logger.error(`Failed to send workshop cancellation email: ${emailErr}`, {
+          url: request.url,
+        });
+      }
       logger.info(
         `User ${user.id}'s workshop registration cancelled successfully.`,
         { url: request.url }
@@ -287,6 +323,82 @@ export async function action({ request }: { request: Request }) {
       return { success: true, cancelled: true };
     } catch (error) {
       logger.error(`Error cancelling registration: ${error}`, {
+        url: request.url,
+      });
+      return { error: "Failed to cancel registration" };
+    }
+  }
+
+  if (actionType === "cancelAllRegistrations") {
+    const workshopId = formData.get("workshopId");
+    const connectId = formData.get("connectId");
+
+    const user = await getUser(request);
+    if (!user) {
+      return { error: "User not authenticated" };
+    }
+
+    try {
+      const ws = await getWorkshopById(Number(workshopId));
+      const occurrences = ws.occurrences
+        .filter(
+          (occ: any) => occ.connectId && occ.connectId === Number(connectId)
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        );
+
+      // Cancel all user registrations for these occurrences
+      for (const occ of occurrences) {
+        await cancelUserWorkshopRegistration({
+          workshopId: Number(workshopId),
+          occurrenceId: Number(occ.id),
+          userId: user.id,
+        });
+      }
+
+      // Build sessions list for email
+      const sessions = occurrences.map((occ: any) => ({
+        startDate: new Date(occ.startDate),
+        endDate: new Date(occ.endDate),
+      }));
+
+      // Price variation (if any)
+      const registrationInfo = await getUserWorkshopRegistrationInfo(
+        user.id,
+        Number(workshopId)
+      );
+      const priceVariation = registrationInfo?.priceVariation
+        ? {
+            name: registrationInfo.priceVariation.name,
+            description: registrationInfo.priceVariation.description,
+            price: registrationInfo.priceVariation.price,
+          }
+        : null;
+
+      try {
+        await sendWorkshopCancellationEmail({
+          userEmail: user.email,
+          workshopName: ws.name,
+          sessions,
+          basePrice: ws.price,
+          priceVariation,
+        });
+      } catch (emailErr) {
+        logger.error(
+          `Failed to send multi-day workshop cancellation email: ${emailErr}`,
+          { url: request.url }
+        );
+      }
+
+      logger.info(
+        `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
+        { url: request.url }
+      );
+      return { success: true, cancelled: true };
+    } catch (error) {
+      logger.error(`Error cancelling multi-day registration: ${error}`, {
         url: request.url,
       });
       return { error: "Failed to cancel registration" };
