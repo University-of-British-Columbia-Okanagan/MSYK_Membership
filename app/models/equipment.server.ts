@@ -145,7 +145,7 @@ export async function bookEquipment(
     data: { isBooked: true },
   });
 
-  return await db.equipmentBooking.create({
+  const booking = await db.equipmentBooking.create({
     data: {
       userId: parseInt(userId),
       equipmentId,
@@ -154,6 +154,29 @@ export async function bookEquipment(
       ...(paymentIntentId ? { paymentIntentId } : {}),
     },
   });
+
+  // Send confirmation email
+  try {
+    const { sendEquipmentConfirmationEmail } = await import("../utils/email.server");
+    const equipment = await db.equipment.findUnique({
+      where: { id: equipmentId },
+      select: { name: true, price: true }
+    });
+
+    if (equipment) {
+      await sendEquipmentConfirmationEmail({
+        userEmail: user.email,
+        equipmentName: equipment.name,
+        startTime: parsedStartTime,
+        endTime: parsedEndTime,
+        price: equipment.price,
+      });
+    }
+  } catch (emailError) {
+    console.error("Failed to send equipment confirmation email:", emailError);
+  }
+
+  return booking;
 }
 
 /**
