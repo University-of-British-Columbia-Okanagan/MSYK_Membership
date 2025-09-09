@@ -760,6 +760,70 @@ function Pagination({
   );
 }
 
+const WorkshopCancellationsPagination = ({
+  currentPage,
+  totalPages,
+  setCurrentPage,
+}: {
+  currentPage: number;
+  totalPages: number;
+  setCurrentPage: (page: number) => void;
+}) => {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <div className="text-sm text-gray-500">
+        Page {currentPage} of {totalPages}
+      </div>
+      <div className="flex items-center space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+        >
+          Previous
+        </Button>
+
+        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+          let pageNumber;
+          if (totalPages <= 5) {
+            pageNumber = i + 1;
+          } else if (currentPage <= 3) {
+            pageNumber = i + 1;
+          } else if (currentPage >= totalPages - 2) {
+            pageNumber = totalPages - 4 + i;
+          } else {
+            pageNumber = currentPage - 2 + i;
+          }
+
+          return (
+            <Button
+              key={pageNumber}
+              variant={currentPage === pageNumber ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCurrentPage(pageNumber)}
+              className="w-8 h-8"
+            >
+              {pageNumber}
+            </Button>
+          );
+        })}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 // For volunteer hour status control, this component allows changing the status of volunteer hours
 function VolunteerHourStatusControl({
   hour,
@@ -1193,6 +1257,41 @@ export default function AdminSettings() {
   const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
   const [actionsPerPage] = useState(10);
 
+  // Workshop cancellations
+  const [unresolvedCurrentPage, setUnresolvedCurrentPage] = useState(1);
+  const [resolvedCurrentPage, setResolvedCurrentPage] = useState(1);
+  const [workshopCancellationsPerPage] = useState(10);
+
+  const unresolvedCancellations = workshopCancellations.filter(
+    (cancellation: any) => !cancellation.resolved
+  );
+  const resolvedCancellations = workshopCancellations.filter(
+    (cancellation: any) => cancellation.resolved
+  );
+
+  const unresolvedTotalPages = Math.ceil(
+    unresolvedCancellations.length / workshopCancellationsPerPage
+  );
+  const unresolvedStartIndex =
+    (unresolvedCurrentPage - 1) * workshopCancellationsPerPage;
+  const unresolvedEndIndex =
+    unresolvedStartIndex + workshopCancellationsPerPage;
+  const paginatedUnresolvedCancellations = unresolvedCancellations.slice(
+    unresolvedStartIndex,
+    unresolvedEndIndex
+  );
+
+  const resolvedTotalPages = Math.ceil(
+    resolvedCancellations.length / workshopCancellationsPerPage
+  );
+  const resolvedStartIndex =
+    (resolvedCurrentPage - 1) * workshopCancellationsPerPage;
+  const resolvedEndIndex = resolvedStartIndex + workshopCancellationsPerPage;
+  const paginatedResolvedCancellations = resolvedCancellations.slice(
+    resolvedStartIndex,
+    resolvedEndIndex
+  );
+
   // Recent actions filters state
   const [actionsSearchName, setActionsSearchName] = useState("");
   const [actionsFromDate, setActionsFromDate] = useState("");
@@ -1455,6 +1554,15 @@ export default function AdminSettings() {
     appliedActionsToDate,
     appliedActionsToTime,
   ]);
+
+  // Reset workshop cancellations pagination when data changes
+  React.useEffect(() => {
+    setUnresolvedCurrentPage(1);
+  }, [workshopCancellations]);
+
+  React.useEffect(() => {
+    setResolvedCurrentPage(1);
+  }, [workshopCancellations]);
 
   // Helper function to calculate total hours from volunteer hour entries
   const calculateTotalHours = (hours: any[]) => {
@@ -4154,10 +4262,13 @@ export default function AdminSettings() {
                           ),
                         },
                       ]}
-                      data={workshopCancellations.filter(
-                        (cancellation: any) => !cancellation.resolved
-                      )}
+                      data={paginatedUnresolvedCancellations}
                       emptyMessage="No unresolved cancelled workshop events found"
+                    />
+                    <WorkshopCancellationsPagination
+                      currentPage={unresolvedCurrentPage}
+                      totalPages={unresolvedTotalPages}
+                      setCurrentPage={setUnresolvedCurrentPage}
                     />
                   </CardContent>
                 </Card>
@@ -4350,10 +4461,13 @@ export default function AdminSettings() {
                           ),
                         },
                       ]}
-                      data={workshopCancellations.filter(
-                        (cancellation: any) => cancellation.resolved
-                      )}
+                      data={paginatedResolvedCancellations}
                       emptyMessage="No resolved cancelled workshop events found"
+                    />
+                    <WorkshopCancellationsPagination
+                      currentPage={resolvedCurrentPage}
+                      totalPages={resolvedTotalPages}
+                      setCurrentPage={setResolvedCurrentPage}
                     />
                   </CardContent>
                 </Card>
