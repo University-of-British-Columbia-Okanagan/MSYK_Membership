@@ -35,6 +35,7 @@ import { getRoleUser } from "~/utils/session.server";
 import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
+import { getUserCompletedOrientations } from "~/models/workshop.server";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   const user = await getProfileDetails(request);
@@ -43,6 +44,7 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   // Check if user is an active volunteer and get their hours
   let isActiveVolunteer = false;
   let volunteerHours: VolunteerHourEntry[] = [];
+  let completedOrientations: any[] = [];
 
   if (roleUser?.userId) {
     isActiveVolunteer = await checkActiveVolunteerStatus(roleUser.userId);
@@ -50,9 +52,18 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
     if (isActiveVolunteer) {
       volunteerHours = await getVolunteerHours(roleUser.userId, 10);
     }
+
+    // Get user's completed orientations
+    completedOrientations = await getUserCompletedOrientations(roleUser.userId);
   }
 
-  return { user, roleUser, isActiveVolunteer, volunteerHours };
+  return {
+    user,
+    roleUser,
+    isActiveVolunteer,
+    volunteerHours,
+    completedOrientations,
+  };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -144,11 +155,18 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function ProfilePage() {
-  const { user, roleUser, isActiveVolunteer, volunteerHours } = useLoaderData<{
+  const {
+    user,
+    roleUser,
+    isActiveVolunteer,
+    volunteerHours,
+    completedOrientations,
+  } = useLoaderData<{
     user: UserProfileData;
     roleUser: { roleId: number; roleName: string; userId: number };
     isActiveVolunteer: boolean;
     volunteerHours: VolunteerHourEntry[];
+    completedOrientations: any[];
   }>();
 
   const actionData = useActionData<{
@@ -666,6 +684,174 @@ export default function ProfilePage() {
                     No recent activity to display
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Training/Orientations History */}
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Medal className="h-5 w-5 text-green-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Training/Orientations History
+                  </h3>
+                </div>
+              </div>
+              <div className="p-6">
+                {completedOrientations.length > 0 ? (
+                  <div className="space-y-4">
+                    {completedOrientations.map((orientation, index) => {
+                      // Check if this is a multi-day orientation by grouping by workshop
+                      const workshopGroup = completedOrientations.filter(
+                        (item) => item.workshop.id === orientation.workshop.id
+                      );
+
+                      // Only render the first occurrence of each workshop
+                      const isFirstOccurrence =
+                        completedOrientations.findIndex(
+                          (item) => item.workshop.id === orientation.workshop.id
+                        ) === index;
+
+                      if (!isFirstOccurrence) return null;
+
+                      return (
+                        <div
+                          key={orientation.workshop.id}
+                          className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900 mb-1">
+                                {orientation.workshop.name}
+                              </h4>
+                              {orientation.workshop.description && (
+                                <p className="text-sm text-gray-600 mb-2">
+                                  {orientation.workshop.description}
+                                </p>
+                              )}
+
+                              {/* Price Variation Display */}
+                              <div className="flex flex-wrap items-center gap-4 text-sm">
+                                <span className="text-green-600 font-medium">
+                                  ✓ Completed
+                                </span>
+
+                                {orientation.priceVariation ? (
+                                  <span className="text-blue-600">
+                                    Variation: {orientation.priceVariation.name}{" "}
+                                    - CA$
+                                    {orientation.priceVariation.price.toFixed(
+                                      2
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="text-blue-600">
+                                    No variation - CA$
+                                    {orientation.workshop.price.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Date(s) Display */}
+                            <div className="text-right">
+                              {workshopGroup.length > 1 ? (
+                                <div className="text-sm text-gray-600">
+                                  <p className="font-medium">
+                                    Multi-day training/orientation:
+                                  </p>
+                                  {workshopGroup
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(
+                                          a.occurrence.startDate
+                                        ).getTime() -
+                                        new Date(
+                                          b.occurrence.startDate
+                                        ).getTime()
+                                    )
+                                    .map((item, idx) => (
+                                      <p key={idx}>
+                                        {new Date(
+                                          item.occurrence.startDate
+                                        ).toLocaleDateString("en-CA", {
+                                          year: "numeric",
+                                          month: "short",
+                                          day: "numeric",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                        {item.occurrence.startDate !==
+                                          item.occurrence.endDate && (
+                                          <span className="text-gray-500">
+                                            {" - "}
+                                            {new Date(
+                                              item.occurrence.endDate
+                                            ).toLocaleDateString("en-CA", {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        )}
+                                      </p>
+                                    ))}
+                                </div>
+                              ) : (
+                                <div className="text-sm text-gray-600">
+                                  <p>
+                                    {new Date(
+                                      orientation.occurrence.startDate
+                                    ).toLocaleDateString("en-CA", {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </p>
+                                  {orientation.occurrence.startDate !==
+                                    orientation.occurrence.endDate && (
+                                    <p className="text-gray-500">
+                                      to{" "}
+                                      {new Date(
+                                        orientation.occurrence.endDate
+                                      ).toLocaleDateString("en-CA", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">
+                                Registered:{" "}
+                                {new Date(orientation.date).toLocaleDateString(
+                                  "en-CA"
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="bg-gray-50 rounded-lg p-6 border-2 border-dashed border-gray-300">
+                      <Medal className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h4 className="text-lg font-medium text-gray-900 mb-2">
+                        No Training History
+                      </h4>
+                      <p className="text-gray-600 mb-4">
+                        Complete orientations to see your training history here.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
