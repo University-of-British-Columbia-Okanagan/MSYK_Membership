@@ -144,7 +144,7 @@ export async function loader({ request }: { request: Request }) {
         );
         return {
           ...cancellation,
-          allOccurrences, // Add all occurrences to the cancellation data
+          allOccurrences,
         };
       }
       return cancellation;
@@ -4081,9 +4081,6 @@ export default function AdminSettings() {
                             const cancellationDate = new Date(
                               cancellation.cancellationDate
                             );
-                            const workshopStartDate = new Date(
-                              cancellation.workshopOccurrence.startDate
-                            );
 
                             // Check if this is a multi-day workshop
                             const isMultiDay =
@@ -4093,8 +4090,39 @@ export default function AdminSettings() {
                                 cancellation.workshopOccurrence.connectId !==
                                   undefined);
 
-                            // For both regular and multi-day workshops, use 2 days before the workshop time
-                            // For multi-day, this uses the first occurrence time (which is what we have)
+                            let workshopStartDate: Date;
+
+                            if (
+                              isMultiDay &&
+                              cancellation.allOccurrences &&
+                              cancellation.allOccurrences.length > 0
+                            ) {
+                              // For multi-day workshops, find the earliest start date from all occurrences
+                              const earliestOccurrence =
+                                cancellation.allOccurrences.reduce(
+                                  (earliest: any, current: any) => {
+                                    const currentStart = new Date(
+                                      current.startDate
+                                    );
+                                    const earliestStart = new Date(
+                                      earliest.startDate
+                                    );
+                                    return currentStart < earliestStart
+                                      ? current
+                                      : earliest;
+                                  }
+                                );
+                              workshopStartDate = new Date(
+                                earliestOccurrence.startDate
+                              );
+                            } else {
+                              // For regular workshops, use the single occurrence start date
+                              workshopStartDate = new Date(
+                                cancellation.workshopOccurrence.startDate
+                              );
+                            }
+
+                            // Check if cancelled at least 2 days before the workshop start time
                             const eligibleDate = new Date(
                               workshopStartDate.getTime() -
                                 2 * 24 * 60 * 60 * 1000
