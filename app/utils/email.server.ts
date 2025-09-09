@@ -86,46 +86,78 @@ export async function sendResetEmail(email: string): Promise<void> {
   await sendPasswordResetEmail(email, resetUrl.toString());
 }
 
-export async function sendEmailConfirmation(
-  userEmail: string,
-  bookingType: "workshop" | "equipment" | "membership",
-  details: {
-    description: string;
-    extra?: string;
+
+export async function sendWorkshopConfirmationEmail(params: {
+  userEmail: string;
+  workshopName: string;
+  // Single-session fields (regular workshop)
+  startDate?: Date;
+  endDate?: Date;
+  // Multi-session fields (multi-day workshop)
+  sessions?: Array<{ startDate: Date; endDate: Date }>;
+  // Pricing
+  basePrice?: number;
+  priceVariation?: { name: string; description?: string | null; price: number } | null;
+}): Promise<void> {
+  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation } = params;
+
+  const pricingLines: string[] = [];
+  if (priceVariation) {
+    pricingLines.push(`Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`);
+    if (priceVariation.description) {
+      pricingLines.push(`Details: ${priceVariation.description}`);
+    }
+  } else if (typeof basePrice === "number") {
+    pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
   }
-) {
-  let subject = "";
-  let text = "";
 
-  switch (bookingType) {
-    case "workshop":
-      subject = "Workshop Booking Confirmation";
-      text = `Thank you for registering for the workshop: ${details.description}.
-You have successfully booked your spot.
-${details.extra ? `\n\nAdditional Info: ${details.extra}` : ""}`;
-      break;
-
-    case "equipment":
-      subject = "Equipment Booking Confirmation";
-      text = `Your equipment booking is confirmed: ${details.description}.
-You have successfully reserved your equipment.
-${details.extra ? `\n\nAdditional Info: ${details.extra}` : ""}`;
-      break;
-
-    case "membership":
-      subject = "Membership Subscription Confirmation";
-      text = `Your membership subscription is confirmed: ${details.description}.
-${details.extra ? `\n\nAdditional Info: ${details.extra}` : ""}`;
-      break;
-
-    default:
-      throw new Error("Invalid booking type for email confirmation");
+  let detailsBlock = "";
+  if (sessions && sessions.length > 0) {
+    const lines = sessions
+      .map((s, idx) => `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`)
+      .join("\n");
+    detailsBlock = sessions.length > 1 ? `Sessions confirmed:\n${lines}` : `Session confirmed:\n${lines}`;
+  } else if (startDate && endDate) {
+    detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
   }
+
+  const parts = [
+    `Thank you for registering for "${workshopName}".`,
+    `Your registration has been confirmed.`,
+    detailsBlock,
+    pricingLines.join("\n"),
+    `We look forward to seeing you there!`,
+  ].filter(Boolean);
 
   await sendMail({
     to: userEmail,
-    subject,
-    text,
+    subject: `Registration confirmed: ${workshopName}`,
+    text: parts.join("\n\n"),
+  });
+}
+
+export async function sendEquipmentConfirmationEmail(params: {
+  userEmail: string;
+  equipmentName: string;
+  startTime: Date;
+  endTime: Date;
+  price?: number;
+}): Promise<void> {
+  const { userEmail, equipmentName, startTime, endTime, price } = params;
+  const start = new Date(startTime).toLocaleString();
+  const end = new Date(endTime).toLocaleString();
+
+  const parts = [
+    `Your equipment booking for "${equipmentName}" has been confirmed.`,
+    `Time: ${start} - ${end}`,
+    ...(typeof price === "number" ? [`Price: $${price.toFixed(2)}`] : []),
+    `We look forward to seeing you there!`,
+  ].filter(Boolean);
+
+  await sendMail({
+    to: userEmail,
+    subject: `Equipment booking confirmed: ${equipmentName}`,
+    text: parts.join("\n\n"),
   });
 }
 
@@ -191,6 +223,48 @@ export async function sendEquipmentCancellationEmail(params: {
     to: userEmail,
     subject: `Equipment booking cancelled: ${equipmentName}`,
     text,
+  });
+}
+
+export async function sendMembershipConfirmationEmail(params: {
+  userEmail: string;
+  planTitle: string;
+  planDescription: string;
+  monthlyPrice: number;
+  features: Record<string, string>;
+  accessHours?: string;
+  gstPercentage?: number;
+  nextBillingDate?: Date;
+}): Promise<void> {
+  const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate } = params;
+
+  const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
+  const billingInfo = nextBillingDate ? `\nNext billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : "";
+
+  // Format features list
+  const featuresList = Object.values(features)
+    .filter(feature => feature && feature.trim() !== "")
+    .map(feature => `• ${feature}`)
+    .join("\n");
+
+  const accessInfo = accessHours ? `\nAccess Hours: ${accessHours}` : "";
+
+  const parts = [
+    `Welcome to your new membership: "${planTitle}"!`,
+    `Your membership subscription has been confirmed.`,
+    `Plan Details:`,
+    `Description: ${planDescription}`,
+    `Monthly Price: $${monthlyPrice.toFixed(2)}${gstLine}${billingInfo}`,
+    `Features included:`,
+    featuresList,
+    accessInfo,
+    `Thank you for joining Makerspace YK! We're excited to have you as a member.`,
+  ].filter(Boolean);
+
+  await sendMail({
+    to: userEmail,
+    subject: `Membership confirmed: ${planTitle}`,
+    text: parts.join("\n\n"),
   });
 }
 
