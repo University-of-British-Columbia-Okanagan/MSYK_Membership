@@ -4014,7 +4014,7 @@ export default function AdminSettings() {
                                   undefined);
 
                             if (isMultiDay) {
-                              // Multi-day workshop with clickable link
+                              // Multi-day workshop with clickable link - show Connect ID
                               return (
                                 <div className="text-sm">
                                   <div className="flex items-center gap-2">
@@ -4028,26 +4028,8 @@ export default function AdminSettings() {
                                     </a>
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {startDate.toDateString() ===
-                                    endDate.toDateString() ? (
-                                      <>
-                                        {startDate.toLocaleDateString()}{" "}
-                                        {startDate.toLocaleTimeString([], {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}{" "}
-                                        →{" "}
-                                        {endDate.toLocaleTimeString([], {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
-                                      </>
-                                    ) : (
-                                      <>
-                                        {startDate.toLocaleDateString()} →{" "}
-                                        {endDate.toLocaleDateString()}
-                                      </>
-                                    )}
+                                    Connect ID:{" "}
+                                    {cancellation.workshopOccurrence.connectId}
                                   </div>
                                 </div>
                               );
