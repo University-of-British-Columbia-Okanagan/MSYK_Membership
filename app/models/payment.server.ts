@@ -217,6 +217,41 @@ export async function quickCheckout(
               checkoutData.variationId || null,
               paymentIntent.id
             );
+
+            // Send confirmation email for multi-day workshop
+            try {
+              const { sendWorkshopConfirmationEmail } = await import("../utils/email.server");
+              const { getWorkshopById, getWorkshopOccurrencesByConnectId, getWorkshopPriceVariation } = await import("./workshop.server");
+
+              const workshop = await getWorkshopById(checkoutData.workshopId!);
+              const occurrences = await getWorkshopOccurrencesByConnectId(checkoutData.workshopId!, checkoutData.connectId);
+
+              if (workshop && occurrences) {
+                let priceVariation = null;
+                if (checkoutData.variationId) {
+                  priceVariation = await getWorkshopPriceVariation(checkoutData.variationId);
+                }
+
+                const sessions = occurrences.map(occ => ({
+                  startDate: occ.startDate,
+                  endDate: occ.endDate
+                }));
+
+                await sendWorkshopConfirmationEmail({
+                  userEmail: user.email,
+                  workshopName: workshop.name,
+                  sessions,
+                  basePrice: workshop.price,
+                  priceVariation: priceVariation ? {
+                    name: priceVariation.name,
+                    description: priceVariation.description,
+                    price: priceVariation.price
+                  } : null,
+                });
+              }
+            } catch (emailError) {
+              console.error("Failed to send workshop confirmation email:", emailError);
+            }
           } else if (checkoutData.occurrenceId) {
             // Single occurrence registration
             await registerForWorkshop(
@@ -226,10 +261,41 @@ export async function quickCheckout(
               checkoutData.variationId || null,
               paymentIntent.id
             );
+
+            // Send confirmation email for single occurrence workshop
+            try {
+              const { sendWorkshopConfirmationEmail } = await import("../utils/email.server");
+              const { getWorkshopById, getWorkshopOccurrence, getWorkshopPriceVariation } = await import("./workshop.server");
+
+              const workshop = await getWorkshopById(checkoutData.workshopId!);
+              const occurrence = await getWorkshopOccurrence(checkoutData.workshopId!, checkoutData.occurrenceId);
+
+              if (workshop && occurrence) {
+                let priceVariation = null;
+                if (checkoutData.variationId) {
+                  priceVariation = await getWorkshopPriceVariation(checkoutData.variationId);
+                }
+
+                await sendWorkshopConfirmationEmail({
+                  userEmail: user.email,
+                  workshopName: workshop.name,
+                  startDate: occurrence.startDate,
+                  endDate: occurrence.endDate,
+                  basePrice: workshop.price,
+                  priceVariation: priceVariation ? {
+                    name: priceVariation.name,
+                    description: priceVariation.description,
+                    price: priceVariation.price
+                  } : null,
+                });
+              }
+            } catch (emailError) {
+              console.error("Failed to send workshop confirmation email:", emailError);
+            }
           }
         } else if (checkoutData.type === "membership") {
           // Handle membership subscription
-          const { registerMembershipSubscription } = await import(
+          const { registerMembershipSubscription, getMembershipPlanById } = await import(
             "./membership.server"
           );
 
@@ -242,6 +308,30 @@ export async function quickCheckout(
             false, // Not a resubscription
             paymentIntent.id
           );
+
+          // Send confirmation email for membership
+          try {
+            const { sendMembershipConfirmationEmail } = await import("../utils/email.server");
+            const membershipPlan = await getMembershipPlanById(checkoutData.membershipPlanId!);
+
+            if (membershipPlan) {
+              // Calculate next billing date (one month from now)
+              const nextBillingDate = new Date();
+              nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+
+              await sendMembershipConfirmationEmail({
+                userEmail: user.email,
+                planTitle: membershipPlan.title,
+                planDescription: membershipPlan.description,
+                monthlyPrice: membershipPlan.price,
+                features: membershipPlan.feature as Record<string, string>,
+                accessHours: membershipPlan.accessHours as string,
+                nextBillingDate,
+              });
+            }
+          } catch (emailError) {
+            console.error("Failed to send membership confirmation email:", emailError);
+          }
         } else if (checkoutData.type === "equipment") {
           // Equipment booking will be handled by the frontend after success
           // Just mark it as successful here - the actual booking happens in the frontend

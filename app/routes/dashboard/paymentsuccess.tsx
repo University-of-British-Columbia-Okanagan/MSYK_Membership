@@ -8,10 +8,11 @@ import {
   getWorkshopOccurrencesByConnectId,
   checkWorkshopCapacity,
   checkMultiDayWorkshopCapacity,
+  getWorkshopPriceVariation,
 } from "../../models/workshop.server";
 import { getMembershipPlanById, registerMembershipSubscription } from "../../models/membership.server";
 import { useState, useEffect } from "react";
-import { sendEmailConfirmation } from "~/utils/email.server";
+import { sendWorkshopConfirmationEmail, sendEquipmentConfirmationEmail, sendMembershipConfirmationEmail } from "~/utils/email.server";
 import { getUserById } from "~/models/user.server";
 import { getEquipmentById } from "~/models/equipment.server";
 
@@ -137,14 +138,6 @@ export async function loader({ request }: { request: Request }) {
   }
 
   if (equipmentId && userId && isEquipmentBooking === "true") {
-    try {
-        let equipment = await getEquipmentById(Number(equipmentId));
-        await sendEmailConfirmation(user.email, "equipment", {
-          description: equipment.name,
-        });
-      } catch (emailConfirmationFailedError) {
-        console.error("Email confirmation failed:", emailConfirmationFailedError);
-      }
     const paymentIntentId = session.payment_intent as string;
     return new Response(
       JSON.stringify({
@@ -180,9 +173,21 @@ export async function loader({ request }: { request: Request }) {
 
       try {
         let membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
-        await sendEmailConfirmation(user.email, "membership", {
-          description: `Your membership plan is ${membershipPlan?.title}`,
-        });
+        if (membershipPlan) {
+          // Calculate next billing date (one month from now)
+          const nextBillingDate = new Date();
+          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+
+          await sendMembershipConfirmationEmail({
+            userEmail: user.email,
+            planTitle: membershipPlan.title,
+            planDescription: membershipPlan.description,
+            monthlyPrice: membershipPlan.price,
+            features: membershipPlan.feature as Record<string, string>,
+            accessHours: membershipPlan.accessHours as string,
+            nextBillingDate,
+          });
+        }
       } catch (emailConfirmationFailedError) {
         console.error("Email confirmation failed:", emailConfirmationFailedError);
       }
@@ -292,8 +297,28 @@ export async function loader({ request }: { request: Request }) {
       );
 
       try {
-        await sendEmailConfirmation(user.email, "workshop", {
-          description: workshop.name,
+        // Get price variation details if applicable
+        let priceVariation = null;
+        if (variationId) {
+          priceVariation = await getWorkshopPriceVariation(variationId);
+        }
+
+        // Prepare sessions data for multi-day workshop
+        const sessions = occurrences.map(occ => ({
+          startDate: occ.startDate,
+          endDate: occ.endDate
+        }));
+
+        await sendWorkshopConfirmationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          sessions,
+          basePrice: workshop.price,
+          priceVariation: priceVariation ? {
+            name: priceVariation.name,
+            description: priceVariation.description,
+            price: priceVariation.price
+          } : null,
         });
       } catch (emailConfirmationFailedError) {
         console.error("Email confirmation failed:", emailConfirmationFailedError);
@@ -397,8 +422,23 @@ export async function loader({ request }: { request: Request }) {
         paymentIntentId
       );
       try {
-        await sendEmailConfirmation(user.email, "workshop", {
-          description: workshop.name,
+        // Get price variation details if applicable
+        let priceVariation = null;
+        if (variationId) {
+          priceVariation = await getWorkshopPriceVariation(variationId);
+        }
+
+        await sendWorkshopConfirmationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          startDate: occurrence.startDate,
+          endDate: occurrence.endDate,
+          basePrice: workshop.price,
+          priceVariation: priceVariation ? {
+            name: priceVariation.name,
+            description: priceVariation.description,
+            price: priceVariation.price
+          } : null,
         });
       } catch (emailConfirmationFailedError) {
         console.error("Email confirmation failed:", emailConfirmationFailedError);
