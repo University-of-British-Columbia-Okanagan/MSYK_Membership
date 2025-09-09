@@ -2560,7 +2560,7 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
  * console.log(`Found ${cancellations.length} workshop cancellations`);
  */
 export async function getAllWorkshopCancellations() {
-  return await db.workshopCancelledRegistration.findMany({
+  const cancellations = await db.workshopCancelledRegistration.findMany({
     include: {
       user: {
         select: {
@@ -2596,6 +2596,32 @@ export async function getAllWorkshopCancellations() {
       cancellationDate: "desc",
     },
   });
+
+  // Add payment intent ID to each cancellation
+  const cancellationsWithPaymentIntent = await Promise.all(
+    cancellations.map(async (cancellation) => {
+      const userWorkshop = await db.userWorkshop.findFirst({
+        where: {
+          userId: cancellation.userId,
+          workshopId: cancellation.workshopId,
+          occurrenceId: cancellation.workshopOccurrenceId,
+        },
+        select: {
+          paymentIntentId: true,
+        },
+        orderBy: {
+          date: "desc",
+        },
+      });
+
+      return {
+        ...cancellation,
+        stripePaymentIntentId: userWorkshop?.paymentIntentId || null,
+      };
+    })
+  );
+
+  return cancellationsWithPaymentIntent;
 }
 
 /**

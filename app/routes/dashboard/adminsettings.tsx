@@ -134,8 +134,6 @@ export async function loader({ request }: { request: Request }) {
   const recentVolunteerActions = await getRecentVolunteerHourActions(50);
 
   const workshopCancellations = await getAllWorkshopCancellations();
-
-  // **ADD THIS SECTION - Enhance cancellations with all occurrences for multi-day workshops**
   const enhancedWorkshopCancellations = await Promise.all(
     workshopCancellations.map(async (cancellation) => {
       if (cancellation.workshopOccurrence.connectId) {
@@ -182,7 +180,7 @@ export async function loader({ request }: { request: Request }) {
     users,
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
-    workshopCancellations: enhancedWorkshopCancellations, // **CHANGE THIS LINE - Use enhanced data instead of raw data**
+    workshopCancellations: enhancedWorkshopCancellations,
   };
 }
 
@@ -1076,10 +1074,10 @@ export default function AdminSettings() {
       workshopOccurrenceId: number;
       registrationDate: string;
       cancellationDate: string;
-      priceVariation: string | null;
       resolved: boolean;
       createdAt: string;
       updatedAt: string;
+      stripePaymentIntentId: string | null;
       user: {
         firstName: string;
         lastName: string;
@@ -1090,11 +1088,18 @@ export default function AdminSettings() {
         name: string;
         type: string;
       };
-      occurrence: {
+      workshopOccurrence: {
         id: number;
         startDate: string;
         endDate: string;
+        connectId: number | null;
       };
+      priceVariation: {
+        id: number;
+        name: string;
+        price: number;
+      } | null;
+      allOccurrences?: Array<any>;
     }>;
   }>();
 
@@ -4008,19 +4013,41 @@ export default function AdminSettings() {
                                 cancellation.workshopOccurrence.connectId !==
                                   undefined);
 
-                            if (
-                              isMultiDay &&
-                              cancellation.workshopOccurrence.connectId
-                            ) {
-                              // Show a placeholder that indicates multiple sessions
+                            if (isMultiDay) {
+                              // Multi-day workshop with clickable link
                               return (
                                 <div className="text-sm">
-                                  <div className="font-medium text-blue-600">
-                                    Multi-Day Workshop
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={`/dashboard/workshops/${cancellation.workshop.id}`}
+                                      className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      Multi-Day Workshop
+                                    </a>
                                   </div>
-                                  <div className="text-xs text-gray-600">
-                                    Multiple sessions - Connect ID:{" "}
-                                    {cancellation.workshopOccurrence.connectId}
+                                  <div className="text-gray-500 text-xs">
+                                    {startDate.toDateString() ===
+                                    endDate.toDateString() ? (
+                                      <>
+                                        {startDate.toLocaleDateString()}{" "}
+                                        {startDate.toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}{" "}
+                                        →{" "}
+                                        {endDate.toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </>
+                                    ) : (
+                                      <>
+                                        {startDate.toLocaleDateString()} →{" "}
+                                        {endDate.toLocaleDateString()}
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -4028,21 +4055,19 @@ export default function AdminSettings() {
                               // Single occurrence workshop
                               return (
                                 <div className="text-sm">
-                                  <div>
-                                    {startDate.toLocaleDateString()} at{" "}
+                                  <div className="font-medium">
+                                    {startDate.toLocaleDateString()}
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
                                     {startDate.toLocaleTimeString([], {
                                       hour: "2-digit",
                                       minute: "2-digit",
+                                    })}{" "}
+                                    →{" "}
+                                    {endDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
                                     })}
-                                  </div>
-                                  <div className="text-xs text-gray-600">
-                                    Duration:{" "}
-                                    {Math.round(
-                                      (endDate.getTime() -
-                                        startDate.getTime()) /
-                                        (1000 * 60 * 60)
-                                    )}{" "}
-                                    hours
                                   </div>
                                 </div>
                               );
@@ -4053,48 +4078,58 @@ export default function AdminSettings() {
                           header: "Price Variation",
                           render: (cancellation: any) =>
                             cancellation.priceVariation ? (
-                              <div>
-                                <div className="font-medium">
-                                  {cancellation.priceVariation.name ||
-                                    "Unknown Option"}
-                                </div>
-                                <div className="text-sm text-gray-600">
-                                  CA$
-                                  {Number(cancellation.priceVariation.price) ||
-                                    0}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400 text-sm">
-                                Standard
+                              <span className="text-sm font-medium">
+                                {cancellation.priceVariation.name}
                               </span>
+                            ) : (
+                              <span className="text-gray-400 text-sm">N/A</span>
                             ),
                         },
                         {
-                          header: "Registration Duration",
+                          header: "Stripe Intent ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.stripePaymentIntentId || "N/A"}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
                           render: (cancellation: any) => {
-                            const registrationDate = new Date(
-                              cancellation.registrationDate
-                            );
                             const cancellationDate = new Date(
                               cancellation.cancellationDate
                             );
-                            const durationMs =
-                              cancellationDate.getTime() -
-                              registrationDate.getTime();
-                            const durationHours =
-                              Math.round((durationMs / (1000 * 60 * 60)) * 10) /
-                              10;
+                            const workshopStartDate = new Date(
+                              cancellation.workshopOccurrence.startDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            // For both regular and multi-day workshops, use 2 days before the workshop time
+                            // For multi-day, this uses the first occurrence time (which is what we have)
+                            const eligibleDate = new Date(
+                              workshopStartDate.getTime() -
+                                2 * 24 * 60 * 60 * 1000
+                            );
+                            const isEligible = cancellationDate <= eligibleDate;
 
                             return (
-                              <div className="text-sm">
-                                <div className="font-medium">
-                                  {durationHours} hours
-                                </div>
-                                <div className="text-gray-500 text-xs">
-                                  {registrationDate.toLocaleDateString()} →{" "}
-                                  {cancellationDate.toLocaleDateString()}
-                                </div>
+                              <div className="flex items-center">
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    isEligible
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {isEligible ? "Yes" : "No"}
+                                </span>
                               </div>
                             );
                           },
@@ -4107,16 +4142,9 @@ export default function AdminSettings() {
                             />
                           ),
                         },
-                        {
-                          header: "Cancelled On",
-                          render: (cancellation: any) =>
-                            new Date(
-                              cancellation.cancellationDate
-                            ).toLocaleDateString(),
-                        },
                       ]}
                       data={workshopCancellations}
-                      emptyMessage="No workshop cancellations found"
+                      emptyMessage="No cancelled workshop events found"
                     />
                   </CardContent>
                 </Card>
