@@ -2560,7 +2560,7 @@ export async function getMaxRegistrationCountsPerWorkshopPriceVariation(
  * console.log(`Found ${cancellations.length} workshop cancellations`);
  */
 export async function getAllWorkshopCancellations() {
-  return await db.workshopCancelledRegistration.findMany({
+  const cancellations = await db.workshopCancelledRegistration.findMany({
     include: {
       user: {
         select: {
@@ -2596,6 +2596,32 @@ export async function getAllWorkshopCancellations() {
       cancellationDate: "desc",
     },
   });
+
+  // Add payment intent ID to each cancellation
+  const cancellationsWithPaymentIntent = await Promise.all(
+    cancellations.map(async (cancellation) => {
+      const userWorkshop = await db.userWorkshop.findFirst({
+        where: {
+          userId: cancellation.userId,
+          workshopId: cancellation.workshopId,
+          occurrenceId: cancellation.workshopOccurrenceId,
+        },
+        select: {
+          paymentIntentId: true,
+        },
+        orderBy: {
+          date: "desc",
+        },
+      });
+
+      return {
+        ...cancellation,
+        stripePaymentIntentId: userWorkshop?.paymentIntentId || null,
+      };
+    })
+  );
+
+  return cancellationsWithPaymentIntent;
 }
 
 /**
@@ -2731,6 +2757,52 @@ export async function getWorkshopCancellationsByStatus(resolved: boolean) {
     },
     orderBy: {
       cancellationDate: "desc",
+    },
+  });
+}
+
+/**
+ * Gets user's completed orientation history with price variation and occurrence details
+ * @param userId - The ID of the user to get orientation history for
+ * @returns Promise<Array> - Array of completed orientations with details
+ */
+export async function getUserCompletedOrientations(userId: number) {
+  return await db.userWorkshop.findMany({
+    where: {
+      userId,
+      result: "passed", // Only get completed/passed orientations
+      workshop: {
+        type: { equals: "orientation", mode: "insensitive" },
+      },
+    },
+    include: {
+      workshop: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          price: true,
+          type: true,
+        },
+      },
+      occurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          description: true,
+        },
+      },
+    },
+    orderBy: {
+      date: "desc", // Most recent first
     },
   });
 }
