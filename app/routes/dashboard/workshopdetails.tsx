@@ -332,16 +332,94 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  // if (actionType === "cancelAllRegistrations") {
+  //   const workshopId = formData.get("workshopId");
+  //   const connectId = formData.get("connectId");
+
+  //   const user = await getUser(request);
+  //   if (!user) {
+  //     return { error: "User not authenticated" };
+  //   }
+
+  //   try {
+  //     const ws = await getWorkshopById(Number(workshopId));
+  //     const occurrences = ws.occurrences
+  //       .filter(
+  //         (occ: any) => occ.connectId && occ.connectId === Number(connectId)
+  //       )
+  //       .sort(
+  //         (a: any, b: any) =>
+  //           new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+  //       );
+
+  //     // Cancel all user registrations for these occurrences
+  //     for (const occ of occurrences) {
+  //       await cancelUserWorkshopRegistration({
+  //         workshopId: Number(workshopId),
+  //         occurrenceId: Number(occ.id),
+  //         userId: user.id,
+  //       });
+  //     }
+
+  //     // Build sessions list for email
+  //     const sessions = occurrences.map((occ: any) => ({
+  //       startDate: new Date(occ.startDate),
+  //       endDate: new Date(occ.endDate),
+  //     }));
+
+  //     // Price variation (if any)
+  //     const registrationInfo = await getUserWorkshopRegistrationInfo(
+  //       user.id,
+  //       Number(workshopId)
+  //     );
+  //     const priceVariation = registrationInfo?.priceVariation
+  //       ? {
+  //           name: registrationInfo.priceVariation.name,
+  //           description: registrationInfo.priceVariation.description,
+  //           price: registrationInfo.priceVariation.price,
+  //         }
+  //       : null;
+
+  //     try {
+  //       await sendWorkshopCancellationEmail({
+  //         userEmail: user.email,
+  //         workshopName: ws.name,
+  //         sessions,
+  //         basePrice: ws.price,
+  //         priceVariation,
+  //       });
+  //     } catch (emailErr) {
+  //       logger.error(
+  //         `Failed to send multi-day workshop cancellation email: ${emailErr}`,
+  //         { url: request.url }
+  //       );
+  //     }
+
+  //     logger.info(
+  //       `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
+  //       { url: request.url }
+  //     );
+  //     return { success: true, cancelled: true };
+  //   } catch (error) {
+  //     logger.error(`Error cancelling multi-day registration: ${error}`, {
+  //       url: request.url,
+  //     });
+  //     return { error: "Failed to cancel registration" };
+  //   }
+  // }
+
   if (actionType === "cancelAllRegistrations") {
     const workshopId = formData.get("workshopId");
     const connectId = formData.get("connectId");
 
+    // Retrieve user from session
     const user = await getUser(request);
     if (!user) {
       return { error: "User not authenticated" };
     }
 
     try {
+      // Get workshop details for email
       const ws = await getWorkshopById(Number(workshopId));
       const occurrences = ws.occurrences
         .filter(
@@ -352,14 +430,12 @@ export async function action({ request }: { request: Request }) {
             new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
         );
 
-      // Cancel all user registrations for these occurrences
-      for (const occ of occurrences) {
-        await cancelUserWorkshopRegistration({
-          workshopId: Number(workshopId),
-          occurrenceId: Number(occ.id),
-          userId: user.id,
-        });
-      }
+      // Cancel the multi-day workshop registration (creates only ONE cancellation record)
+      await cancelMultiDayWorkshopRegistration({
+        workshopId: Number(workshopId),
+        connectId: Number(connectId),
+        userId: user.id,
+      });
 
       // Build sessions list for email
       const sessions = occurrences.map((occ: any) => ({
@@ -367,7 +443,7 @@ export async function action({ request }: { request: Request }) {
         endDate: new Date(occ.endDate),
       }));
 
-      // Price variation (if any)
+      // Get price variation info if any
       const registrationInfo = await getUserWorkshopRegistrationInfo(
         user.id,
         Number(workshopId)
@@ -380,6 +456,7 @@ export async function action({ request }: { request: Request }) {
           }
         : null;
 
+      // Send cancellation email
       try {
         await sendWorkshopCancellationEmail({
           userEmail: user.email,
@@ -404,58 +481,7 @@ export async function action({ request }: { request: Request }) {
       logger.error(`Error cancelling multi-day registration: ${error}`, {
         url: request.url,
       });
-      return { error: "Failed to cancel registration" };
-    }
-  }
-
-  if (actionType === "cancelAllRegistrations") {
-    const workshopId = formData.get("workshopId");
-    const connectId = formData.get("connectId");
-
-    // Retrieve user from session
-    const user = await getUser(request);
-    if (!user) {
-      return { error: "User not authenticated" };
-    }
-
-    try {
-      await cancelMultiDayWorkshopRegistration({
-        workshopId: Number(workshopId),
-        connectId: Number(connectId),
-        userId: user.id,
-      });
-      logger.info(
-        `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
-        { url: request.url }
-      );
-      return { success: true, cancelled: true };
-    } catch (error) {
-      logger.error(`Error cancelling multi-day registration: ${error}`, {
-        url: request.url,
-      });
       return { error: "Failed to cancel multi-day registration" };
-    }
-  }
-
-  if (actionType === "duplicate") {
-    const roleUser = await getRoleUser(request);
-    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      throw new Response("Not Authorized", { status: 419 });
-    }
-    const workshopId = formData.get("workshopId");
-    const user = await getUser(request);
-    if (!user) {
-      return { error: "User not authenticated" };
-    }
-
-    try {
-      await duplicateWorkshop(Number(workshopId));
-
-      // Redirect to admin dashboard after duplication
-      return redirect("/dashboard/admin");
-    } catch (error) {
-      logger.error("Error duplicating workshop:", error);
-      return { error: "Failed to duplicate workshop" };
     }
   }
 }
@@ -817,8 +843,24 @@ export default function WorkshopDetails() {
       (occ: any) => registrations[occ.id]?.registered
     );
 
-    if (!firstRegisteredOcc || !firstRegisteredOcc.connectId) {
-      // Fallback to individual cancellations if no connectId found
+    if (!firstRegisteredOcc) {
+      console.log("No registered occurrences found");
+      return;
+    }
+
+    // For multi-day workshops, ALWAYS use the multi-day cancellation
+    // even if connectId is 0, null, or undefined, as long as there's a connectId property
+    if (isMultiDayWorkshop && firstRegisteredOcc.connectId !== undefined) {
+      fetcher.submit(
+        {
+          workshopId: String(workshop.id),
+          connectId: firstRegisteredOcc.connectId.toString(),
+          actionType: "cancelAllRegistrations",
+        },
+        { method: "post" }
+      );
+    } else {
+      // Only use individual cancellations for truly single-occurrence workshops
       workshop.occurrences.forEach((occ: any) => {
         if (
           occ.status !== "past" &&
@@ -835,18 +877,7 @@ export default function WorkshopDetails() {
           );
         }
       });
-      return;
     }
-
-    // For multi-day workshops with connectId, use the new multi-day cancellation action
-    fetcher.submit(
-      {
-        workshopId: String(workshop.id),
-        connectId: firstRegisteredOcc.connectId.toString(),
-        actionType: "cancelAllRegistrations",
-      },
-      { method: "post" }
-    );
   }
 
   const sortedOccurrences = [...workshop.occurrences].sort((a, b) => {
@@ -1261,9 +1292,45 @@ export default function WorkshopDetails() {
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
-                                      <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
-                                        Registration Cancelled (Entire Workshop)
-                                      </Badge>
+                                      <div>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                              Registration Cancelled (Entire
+                                              Workshop)
+                                            </Badge>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem
+                                              onClick={handleRegisterAll}
+                                              disabled={
+                                                !user ||
+                                                !hasCompletedAllPrerequisites ||
+                                                (() => {
+                                                  const activeOccurrences =
+                                                    sortedOccurrences.filter(
+                                                      (occ: any) =>
+                                                        occ.status !== "past" &&
+                                                        occ.status !==
+                                                          "cancelled"
+                                                    );
+                                                  const firstOccurrence =
+                                                    activeOccurrences[0];
+                                                  const capacityCheck =
+                                                    firstOccurrence?.capacityInfo
+                                                      ? checkMultiDayWorkshopCapacity(
+                                                          firstOccurrence.capacityInfo
+                                                        )
+                                                      : { hasCapacity: true };
+                                                  return !capacityCheck.hasCapacity;
+                                                })()
+                                              }
+                                            >
+                                              Register Again
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
                                     </TooltipTrigger>
                                     <TooltipContent className="bg-red-50 border border-red-200 p-3 max-w-xs">
                                       <div className="flex items-center gap-2 mb-2">
@@ -1324,21 +1391,41 @@ export default function WorkshopDetails() {
                                   </Tooltip>
                                 </TooltipProvider>
                               ) : (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge className="bg-red-500 text-white px-3 py-1 border-red-600">
-                                        Registration Cancelled
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>
-                                        Your registration was cancelled. Contact
-                                        support if this was unexpected.
-                                      </p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                      Registration Cancelled
+                                    </Badge>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={handleRegisterAll}
+                                      disabled={
+                                        !user ||
+                                        !hasCompletedAllPrerequisites ||
+                                        (() => {
+                                          const activeOccurrences =
+                                            sortedOccurrences.filter(
+                                              (occ: any) =>
+                                                occ.status !== "past" &&
+                                                occ.status !== "cancelled"
+                                            );
+                                          const firstOccurrence =
+                                            activeOccurrences[0];
+                                          const capacityCheck =
+                                            firstOccurrence?.capacityInfo
+                                              ? checkMultiDayWorkshopCapacity(
+                                                  firstOccurrence.capacityInfo
+                                                )
+                                              : { hasCapacity: true };
+                                          return !capacityCheck.hasCapacity;
+                                        })()
+                                      }
+                                    >
+                                      Register Again
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               )}
                             </div>
                           );
@@ -1373,8 +1460,33 @@ export default function WorkshopDetails() {
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end">
                                             {hasAnyCancelledRegistration ? (
-                                              <DropdownMenuItem disabled>
-                                                Registration is cancelled
+                                              <DropdownMenuItem
+                                                onClick={handleRegisterAll}
+                                                disabled={
+                                                  !user ||
+                                                  !hasCompletedAllPrerequisites ||
+                                                  (() => {
+                                                    const activeOccurrences =
+                                                      sortedOccurrences.filter(
+                                                        (occ: any) =>
+                                                          occ.status !==
+                                                            "past" &&
+                                                          occ.status !==
+                                                            "cancelled"
+                                                      );
+                                                    const firstOccurrence =
+                                                      activeOccurrences[0];
+                                                    const capacityCheck =
+                                                      firstOccurrence?.capacityInfo
+                                                        ? checkMultiDayWorkshopCapacity(
+                                                            firstOccurrence.capacityInfo
+                                                          )
+                                                        : { hasCapacity: true };
+                                                    return !capacityCheck.hasCapacity;
+                                                  })()
+                                                }
+                                              >
+                                                Register Again
                                               </DropdownMenuItem>
                                             ) : canCancel ? (
                                               <>
@@ -1562,8 +1674,31 @@ export default function WorkshopDetails() {
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
                                     {hasAnyCancelledRegistration ? (
-                                      <DropdownMenuItem disabled>
-                                        Registration is cancelled
+                                      <DropdownMenuItem
+                                        onClick={handleRegisterAll}
+                                        disabled={
+                                          !user ||
+                                          !hasCompletedAllPrerequisites ||
+                                          (() => {
+                                            const activeOccurrences =
+                                              sortedOccurrences.filter(
+                                                (occ: any) =>
+                                                  occ.status !== "past" &&
+                                                  occ.status !== "cancelled"
+                                              );
+                                            const firstOccurrence =
+                                              activeOccurrences[0];
+                                            const capacityCheck =
+                                              firstOccurrence?.capacityInfo
+                                                ? checkMultiDayWorkshopCapacity(
+                                                    firstOccurrence.capacityInfo
+                                                  )
+                                                : { hasCapacity: true };
+                                            return !capacityCheck.hasCapacity;
+                                          })()
+                                        }
+                                      >
+                                        Register Again
                                       </DropdownMenuItem>
                                     ) : canCancel ? (
                                       <>
@@ -1874,8 +2009,27 @@ export default function WorkshopDetails() {
                                               <DropdownMenuContent align="end">
                                                 {registrations[occurrence.id]
                                                   ?.status === "cancelled" ? (
-                                                  <DropdownMenuItem disabled>
-                                                    Registration is cancelled
+                                                  <DropdownMenuItem
+                                                    onClick={() =>
+                                                      handleRegister(
+                                                        occurrence.id
+                                                      )
+                                                    }
+                                                    disabled={
+                                                      !user ||
+                                                      !hasCompletedAllPrerequisites ||
+                                                      !checkWorkshopCapacity(
+                                                        occurrence.capacityInfo
+                                                      ).hasCapacity ||
+                                                      isWithinCutoffPeriod(
+                                                        new Date(
+                                                          occurrence.startDate
+                                                        ),
+                                                        workshop.registrationCutoff
+                                                      )
+                                                    }
+                                                  >
+                                                    Register Again
                                                   </DropdownMenuItem>
                                                 ) : confirmOccurrenceId ===
                                                   occurrence.id ? (
@@ -2064,30 +2218,33 @@ export default function WorkshopDetails() {
                                     </TooltipProvider>
                                   ) : registrations[occurrence.id]?.status ===
                                     "cancelled" ? (
-                                    <div className="flex items-center gap-2">
-                                      <Badge className="bg-red-500 text-white border-red-600 px-3 py-1">
-                                        Registration Cancelled
-                                      </Badge>
-                                      <Button
-                                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-                                        onClick={() =>
-                                          handleRegister(occurrence.id)
-                                        }
-                                        disabled={
-                                          !user ||
-                                          !hasCompletedAllPrerequisites ||
-                                          !checkWorkshopCapacity(
-                                            occurrence.capacityInfo
-                                          ).hasCapacity ||
-                                          isWithinCutoffPeriod(
-                                            new Date(occurrence.startDate),
-                                            workshop.registrationCutoff
-                                          )
-                                        }
-                                      >
-                                        Register Again
-                                      </Button>
-                                    </div>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Badge className="bg-red-500 text-white border-red-600 px-3 py-1 cursor-pointer">
+                                          Registration Cancelled
+                                        </Badge>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            handleRegister(occurrence.id)
+                                          }
+                                          disabled={
+                                            !user ||
+                                            !hasCompletedAllPrerequisites ||
+                                            !checkWorkshopCapacity(
+                                              occurrence.capacityInfo
+                                            ).hasCapacity ||
+                                            isWithinCutoffPeriod(
+                                              new Date(occurrence.startDate),
+                                              workshop.registrationCutoff
+                                            )
+                                          }
+                                        >
+                                          Register Again
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   ) : (
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
@@ -2098,8 +2255,23 @@ export default function WorkshopDetails() {
                                       <DropdownMenuContent align="end">
                                         {registrations[occurrence.id]
                                           ?.status === "cancelled" ? (
-                                          <DropdownMenuItem disabled>
-                                            Registration is cancelled
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              handleRegister(occurrence.id)
+                                            }
+                                            disabled={
+                                              !user ||
+                                              !hasCompletedAllPrerequisites ||
+                                              !checkWorkshopCapacity(
+                                                occurrence.capacityInfo
+                                              ).hasCapacity ||
+                                              isWithinCutoffPeriod(
+                                                new Date(occurrence.startDate),
+                                                workshop.registrationCutoff
+                                              )
+                                            }
+                                          >
+                                            Register Again
                                           </DropdownMenuItem>
                                         ) : confirmOccurrenceId ===
                                           occurrence.id ? (
