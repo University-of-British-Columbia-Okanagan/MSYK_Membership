@@ -260,11 +260,40 @@ export async function sendMembershipConfirmationEmail(params: {
   planDescription: string;
   monthlyPrice: number;
   features: Record<string, string>;
-  accessHours?: string;
+  accessHours?: string | Record<string, unknown>;
   gstPercentage?: number;
   nextBillingDate?: Date;
 }): Promise<void> {
   const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate } = params;
+
+  function formatAccessHours(value: unknown): string | null {
+    if (!value) return null;
+    if (typeof value === "string") return value;
+    if (typeof value === "object") {
+      const obj = value as Record<string, unknown>;
+      const hasStartEnd = typeof obj.start === "string" || typeof obj.end === "string";
+      if (hasStartEnd) {
+        const start = typeof obj.start === "string" ? obj.start : "";
+        const end = typeof obj.end === "string" ? obj.end : "";
+        const joined = [start, end].filter(Boolean).join(" - ");
+        return joined.length > 0 ? joined : null;
+      }
+      const entries = Object.entries(obj).map(([key, val]) => {
+        if (val && typeof val === "object") {
+          const nested = val as Record<string, unknown>;
+          if (typeof nested.start === "string" || typeof nested.end === "string") {
+            const s = typeof nested.start === "string" ? nested.start : "";
+            const e = typeof nested.end === "string" ? nested.end : "";
+            const range = [s, e].filter(Boolean).join(" - ");
+            return `${key}: ${range}`;
+          }
+        }
+        return `${key}: ${String(val)}`;
+      });
+      return entries.length > 0 ? entries.join("\n") : null;
+    }
+    return String(value);
+  }
 
   const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
   const billingInfo = nextBillingDate ? `\nNext billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : "";
@@ -275,7 +304,8 @@ export async function sendMembershipConfirmationEmail(params: {
     .map(feature => `• ${feature}`)
     .join("\n");
 
-  const accessInfo = accessHours ? `\nAccess Hours: ${accessHours}` : "";
+  const accessFormatted = formatAccessHours(accessHours ?? null);
+  const accessInfo = accessFormatted ? `\nAccess Hours:\n${accessFormatted}` : "";
 
   const parts = [
     `Welcome to your new membership: "${planTitle}"!`,
@@ -311,5 +341,71 @@ export async function sendMembershipPaymentReminderEmail(params: {
     to: userEmail,
     subject: `Membership payment reminder: ${planTitle}`,
     text,
+  });
+}
+
+export async function sendMembershipDowngradeEmail(params: {
+  userEmail: string;
+  currentPlanTitle: string;
+  newPlanTitle: string;
+  currentMonthlyPrice?: number;
+  newMonthlyPrice?: number;
+  effectiveDate: Date;
+}): Promise<void> {
+  const { userEmail, currentPlanTitle, newPlanTitle, currentMonthlyPrice, newMonthlyPrice, effectiveDate } = params;
+  const priceLine = currentMonthlyPrice != null && newMonthlyPrice != null
+    ? `Current price: $${currentMonthlyPrice.toFixed(2)} → New price: $${newMonthlyPrice.toFixed(2)}`
+    : undefined;
+  const parts = [
+    `Your membership downgrade has been scheduled.`,
+    `Current plan: ${currentPlanTitle}`,
+    `New plan: ${newPlanTitle}`,
+    priceLine,
+    `Effective on: ${new Date(effectiveDate).toLocaleDateString()}`,
+    `You'll continue to enjoy your current benefits until the effective date.`,
+  ].filter(Boolean) as string[];
+  await sendMail({
+    to: userEmail,
+    subject: `Membership downgrade scheduled: ${newPlanTitle}`,
+    text: parts.join("\n\n"),
+  });
+}
+
+export async function sendMembershipCancellationEmail(params: {
+  userEmail: string;
+  planTitle: string;
+  accessUntil?: Date | null;
+}): Promise<void> {
+  const { userEmail, planTitle, accessUntil } = params;
+  const accessLine = accessUntil
+    ? `You'll retain access until ${new Date(accessUntil).toLocaleDateString()}.`
+    : `Your access has ended.`;
+  const text = `Your membership for "${planTitle}" has been cancelled.\n${accessLine}\nIf this was a mistake, you can resubscribe from your dashboard at any time.`;
+  await sendMail({
+    to: userEmail,
+    subject: `Membership cancelled: ${planTitle}`,
+    text,
+  });
+}
+
+export async function sendMembershipResubscribeEmail(params: {
+  userEmail: string;
+  planTitle: string;
+  monthlyPrice?: number;
+  nextBillingDate?: Date;
+}): Promise<void> {
+  const { userEmail, planTitle, monthlyPrice, nextBillingDate } = params;
+  const priceLine = monthlyPrice != null ? `Monthly price: $${monthlyPrice.toFixed(2)}` : undefined;
+  const nextLine = nextBillingDate ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : undefined;
+  const parts = [
+    `Your membership has been reactivated: "${planTitle}".`,
+    priceLine,
+    nextLine,
+    `Welcome back to Makerspace YK!`,
+  ].filter(Boolean) as string[];
+  await sendMail({
+    to: userEmail,
+    subject: `Membership reactivated: ${planTitle}`,
+    text: parts.join("\n\n"),
   });
 }
