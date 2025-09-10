@@ -1,5 +1,6 @@
 import { logger } from "~/logging/logger";
-import { registerMembershipSubscription } from "../../models/membership.server";
+import { getMembershipPlanById, getUserActiveMembership, registerMembershipSubscription } from "../../models/membership.server";
+import { sendMembershipDowngradeEmail } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
 export async function action({ request }: { request: Request }) {
@@ -33,6 +34,22 @@ export async function action({ request }: { request: Request }) {
       parseInt(currentMembershipId),
       true // Flag to indicate this is a downgrade
     );
+
+    try {
+      const newPlan = await getMembershipPlanById(parseInt(newMembershipPlanId));
+      const currentActive = await getUserActiveMembership(parseInt(userId));
+      await sendMembershipDowngradeEmail({
+        userEmail: user.email!,
+        currentPlanTitle: currentActive?.membershipPlan?.title || "Current Plan",
+        newPlanTitle: newPlan?.title || "New Plan",
+        currentMonthlyPrice: currentActive?.membershipPlan?.price,
+        newMonthlyPrice: newPlan?.price,
+        // Effective on the next payment date for the current membership if available
+        effectiveDate: currentActive?.nextPaymentDate || new Date(new Date().setMonth(new Date().getMonth() + 1)),
+      });
+    } catch (e) {
+      // Non-blocking
+    }
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
