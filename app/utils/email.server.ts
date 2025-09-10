@@ -161,6 +161,34 @@ export async function sendEquipmentConfirmationEmail(params: {
   });
 }
 
+export async function sendEquipmentBulkConfirmationEmail(params: {
+  userEmail: string;
+  equipmentName: string;
+  slots: Array<{ startTime: Date; endTime: Date }>;
+  pricePerSlot?: number;
+}): Promise<void> {
+  const { userEmail, equipmentName, slots, pricePerSlot } = params;
+  const lines = slots
+    .map((s, idx) => `${idx + 1}. ${new Date(s.startTime).toLocaleString()} - ${new Date(s.endTime).toLocaleString()}`)
+    .join("\n");
+
+  const parts = [
+    `Your equipment booking for "${equipmentName}" has been confirmed.`,
+    `Times:`,
+    lines,
+    ...(typeof pricePerSlot === "number"
+      ? [`Price per slot: $${pricePerSlot.toFixed(2)}`, `Total: $${(pricePerSlot * slots.length).toFixed(2)}`]
+      : []),
+    `We look forward to seeing you there!`,
+  ].filter(Boolean);
+
+  await sendMail({
+    to: userEmail,
+    subject: `Equipment bookings confirmed: ${equipmentName}`,
+    text: parts.join("\n\n"),
+  });
+}
+
 export async function sendWorkshopCancellationEmail(params: {
   userEmail: string;
   workshopName: string;
