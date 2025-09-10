@@ -891,17 +891,6 @@ export async function registerForWorkshop(
   paymentIntentId?: string
 ) {
   try {
-    // Check if already registered
-    const existingRegistration = await checkUserRegistration(
-      workshopId,
-      userId,
-      occurrenceId
-    );
-
-    if (existingRegistration.registered) {
-      throw new Error("User is already registered for this workshop");
-    }
-
     // Check capacity before registering
     const capacityCheck = await checkWorkshopCapacity(
       workshopId,
@@ -931,21 +920,43 @@ export async function registerForWorkshop(
       throw new Error("Workshop occurrence not found");
     }
 
-    // Determine registration result based on workshop type
-    const registrationResult =
-      workshop.type.toLowerCase() === "orientation" ? "pending" : undefined;
-
-    // Register user for this occurrence, including the result field if applicable
-    await db.userWorkshop.create({
-      data: {
+    // Check if user has an existing registration (including cancelled ones)
+    const existingRegistration = await db.userWorkshop.findFirst({
+      where: {
         userId,
         workshopId: workshop.id,
         occurrenceId,
-        priceVariationId: variationId,
-        ...(registrationResult ? { result: registrationResult } : {}),
-        ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
+
+    // Determine registration result based on workshop type
+    const registrationResult =
+      workshop.type.toLowerCase() === "orientation" ? "pending" : "passed";
+
+    if (existingRegistration) {
+      // Update existing registration (re-registration case)
+      await db.userWorkshop.update({
+        where: { id: existingRegistration.id },
+        data: {
+          result: registrationResult,
+          priceVariationId: variationId,
+          date: new Date(), // Update registration date
+          ...(paymentIntentId ? { paymentIntentId } : {}),
+        },
+      });
+    } else {
+      // Create new registration
+      await db.userWorkshop.create({
+        data: {
+          userId,
+          workshopId: workshop.id,
+          occurrenceId,
+          priceVariationId: variationId,
+          result: registrationResult,
+          ...(paymentIntentId ? { paymentIntentId } : {}),
+        },
+      });
+    }
 
     return {
       success: true,
@@ -1624,6 +1635,7 @@ export async function cancelUserWorkshopRegistration({
     priceVariationId: existingRegistration.priceVariationId,
     registrationDate: existingRegistration.date,
     cancellationDate: new Date(),
+    paymentIntentId: existingRegistration.paymentIntentId,
   });
 
   return updateResult;
@@ -1696,6 +1708,7 @@ export async function cancelMultiDayWorkshopRegistration({
     priceVariationId: firstRegistration.priceVariationId,
     registrationDate: firstRegistration.date,
     cancellationDate: new Date(),
+    paymentIntentId: firstRegistration.paymentIntentId,
   });
 
   return updateResult;
@@ -1780,30 +1793,60 @@ export async function registerUserForAllOccurrences(
     // Register user for each occurrence
     const registrations = await Promise.all(
       occurrences.map(async (occurrence) => {
-        // Check if already registered
+        // Check if already registered (including cancelled registrations)
         const existingRegistration = await checkUserRegistration(
           workshopId,
           userId,
           occurrence.id
         );
 
-        if (existingRegistration.registered) {
+        // If user is currently registered and not cancelled, skip
+        if (
+          existingRegistration.registered &&
+          existingRegistration.status !== "cancelled"
+        ) {
           return { occurrenceId: occurrence.id, alreadyRegistered: true };
         }
 
-        // Register for this occurrence
-        await db.userWorkshop.create({
-          data: {
+        // Check if there's any existing record (including cancelled ones) in the database
+        const existingRecord = await db.userWorkshop.findFirst({
+          where: {
             userId,
             workshopId,
             occurrenceId: occurrence.id,
-            priceVariationId: variationId,
-            ...(registrationResult ? { result: registrationResult } : {}),
-            ...(paymentIntentId ? { paymentIntentId } : {}),
           },
         });
 
-        return { occurrenceId: occurrence.id, registered: true };
+        const finalResult = registrationResult || "passed";
+
+        if (existingRecord) {
+          // Update existing record (handles re-registration for cancelled registrations)
+          await db.userWorkshop.update({
+            where: { id: existingRecord.id },
+            data: {
+              result: finalResult,
+              priceVariationId: variationId,
+              date: new Date(), // Update registration date
+              ...(paymentIntentId ? { paymentIntentId } : {}),
+            },
+          });
+
+          return { occurrenceId: occurrence.id, reRegistered: true };
+        } else {
+          // Create new registration
+          await db.userWorkshop.create({
+            data: {
+              userId,
+              workshopId,
+              occurrenceId: occurrence.id,
+              priceVariationId: variationId,
+              ...(registrationResult ? { result: registrationResult } : {}),
+              ...(paymentIntentId ? { paymentIntentId } : {}),
+            },
+          });
+
+          return { occurrenceId: occurrence.id, registered: true };
+        }
       })
     );
 
@@ -2597,29 +2640,13 @@ export async function getAllWorkshopCancellations() {
     },
   });
 
-  // Add payment intent ID to each cancellation
-  const cancellationsWithPaymentIntent = await Promise.all(
-    cancellations.map(async (cancellation) => {
-      const userWorkshop = await db.userWorkshop.findFirst({
-        where: {
-          userId: cancellation.userId,
-          workshopId: cancellation.workshopId,
-          occurrenceId: cancellation.workshopOccurrenceId,
-        },
-        select: {
-          paymentIntentId: true,
-        },
-        orderBy: {
-          date: "desc",
-        },
-      });
-
-      return {
-        ...cancellation,
-        stripePaymentIntentId: userWorkshop?.paymentIntentId || null,
-      };
-    })
-  );
+  // Map cancellations to use the stored payment intent ID from cancellation record
+  const cancellationsWithPaymentIntent = cancellations.map((cancellation) => {
+    return {
+      ...cancellation,
+      stripePaymentIntentId: cancellation.paymentIntentId || null, // Use the payment intent ID from cancellation record
+    };
+  });
 
   return cancellationsWithPaymentIntent;
 }
@@ -2685,14 +2712,16 @@ export async function createWorkshopCancellation({
   workshopOccurrenceId,
   priceVariationId,
   registrationDate,
-  cancellationDate = new Date(),
+  cancellationDate,
+  paymentIntentId,
 }: {
   userId: number;
   workshopId: number;
   workshopOccurrenceId: number;
-  priceVariationId?: number | null;
+  priceVariationId: number | null;
   registrationDate: Date;
-  cancellationDate?: Date;
+  cancellationDate: Date;
+  paymentIntentId: string | null;
 }) {
   return await db.workshopCancelledRegistration.create({
     data: {
@@ -2702,7 +2731,7 @@ export async function createWorkshopCancellation({
       priceVariationId,
       registrationDate,
       cancellationDate,
-      resolved: false, // Default to unresolved for admin review
+      paymentIntentId,
     },
   });
 }

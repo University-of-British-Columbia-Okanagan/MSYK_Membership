@@ -312,9 +312,12 @@ export async function action({ request }: { request: Request }) {
           priceVariation,
         });
       } catch (emailErr) {
-        logger.error(`Failed to send workshop cancellation email: ${emailErr}`, {
-          url: request.url,
-        });
+        logger.error(
+          `Failed to send workshop cancellation email: ${emailErr}`,
+          {
+            url: request.url,
+          }
+        );
       }
       logger.info(
         `User ${user.id}'s workshop registration cancelled successfully.`,
@@ -2061,22 +2064,30 @@ export default function WorkshopDetails() {
                                     </TooltipProvider>
                                   ) : registrations[occurrence.id]?.status ===
                                     "cancelled" ? (
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Badge className="bg-red-500 text-white border-red-600 px-3 py-1">
-                                            Registration Cancelled
-                                          </Badge>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>
-                                            Your registration was cancelled.
-                                            Contact support if this was
-                                            unexpected.
-                                          </p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
+                                    <div className="flex items-center gap-2">
+                                      <Badge className="bg-red-500 text-white border-red-600 px-3 py-1">
+                                        Registration Cancelled
+                                      </Badge>
+                                      <Button
+                                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
+                                        onClick={() =>
+                                          handleRegister(occurrence.id)
+                                        }
+                                        disabled={
+                                          !user ||
+                                          !hasCompletedAllPrerequisites ||
+                                          !checkWorkshopCapacity(
+                                            occurrence.capacityInfo
+                                          ).hasCapacity ||
+                                          isWithinCutoffPeriod(
+                                            new Date(occurrence.startDate),
+                                            workshop.registrationCutoff
+                                          )
+                                        }
+                                      >
+                                        Register Again
+                                      </Button>
+                                    </div>
                                   ) : (
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>

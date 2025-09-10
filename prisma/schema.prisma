@@ -258,6 +258,7 @@ model WorkshopCancelledRegistration {
   priceVariationId     Int?
   registrationDate     DateTime
   cancellationDate     DateTime
+  paymentIntentId      String? // Stripe Payment Intent ID
   resolved             Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
