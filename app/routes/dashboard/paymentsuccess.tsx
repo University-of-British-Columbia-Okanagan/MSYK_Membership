@@ -503,25 +503,22 @@ export default function PaymentSuccess() {
           const slots = JSON.parse(slotsData);
           const paymentIntentId = data.paymentIntentId;
 
-          // Book each slot by making individual requests to the equipment booking endpoint
-          for (const slotString of slots) {
-            const [startTime, endTime] = slotString.split("|");
-
-            // Make a request to book each slot
-            const response = await fetch("/dashboard/equipments/book-slot", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                equipmentId: data.equipmentId,
-                startTime,
-                endTime,
-                paymentIntentId,
+          // Send one batch booking request; server will send a single consolidated email
+          const response = await fetch("/dashboard/equipments/book-slot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              equipmentId: data.equipmentId,
+              slots: slots.map((slotString: string) => {
+                const [startTime, endTime] = slotString.split("|");
+                return { startTime, endTime };
               }),
-            });
+              paymentIntentId,
+            }),
+          });
 
-            if (!response.ok) {
-              throw new Error(`Failed to book slot: ${startTime}`);
-            }
+          if (!response.ok) {
+            throw new Error("Failed to book equipment slots");
           }
 
           // Clean up sessionStorage
