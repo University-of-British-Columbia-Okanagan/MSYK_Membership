@@ -7,7 +7,10 @@ import {
   deleteMembershipPlan,
   getUserMemberships,
   cancelMembership,
+  getMembershipPlanById,
 } from "~/models/membership.server";
+import { getUser } from "~/utils/session.server";
+import { sendMembershipCancellationEmail } from "~/utils/email.server";
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
@@ -129,7 +132,19 @@ export async function action({ request }: { request: Request }) {
     const roleUser = await getRoleUser(request);
     if (!roleUser?.userId) return null;
     if (planId) {
-      await cancelMembership(roleUser.userId, Number(planId));
+      const result = await cancelMembership(roleUser.userId, Number(planId));
+      try {
+        const plan = await getMembershipPlanById(Number(planId));
+        const user = await getUser(request);
+        await sendMembershipCancellationEmail({
+          userEmail: user!.email!,
+          planTitle: plan?.title || "Membership",
+          accessUntil:
+            result && (result as any).status === "cancelled" && (result as any).nextPaymentDate
+              ? new Date((result as any).nextPaymentDate)
+              : null,
+        });
+      } catch {}
       logger.info(
         `[User: ${
           roleUser?.userId ?? "unknown"
