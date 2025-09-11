@@ -27,6 +27,9 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
+    // Get the currently active membership BEFORE changing anything
+    const currentActive = await getUserActiveMembership(parseInt(userId));
+
     // Process the downgrade directly with no payment needed
     await registerMembershipSubscription(
       parseInt(userId),
@@ -37,7 +40,6 @@ export async function action({ request }: { request: Request }) {
 
     try {
       const newPlan = await getMembershipPlanById(parseInt(newMembershipPlanId));
-      const currentActive = await getUserActiveMembership(parseInt(userId));
       await sendMembershipDowngradeEmail({
         userEmail: user.email!,
         currentPlanTitle: currentActive?.membershipPlan?.title || "Current Plan",
