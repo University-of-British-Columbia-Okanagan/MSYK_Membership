@@ -1,5 +1,6 @@
 import { logger } from "~/logging/logger";
-import { registerMembershipSubscription } from "../../models/membership.server";
+import { registerMembershipSubscription, getMembershipPlanById } from "../../models/membership.server";
+import { sendMembershipResubscribeEmail } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
 export async function action({ request }: { request: Request }) {
@@ -27,6 +28,18 @@ export async function action({ request }: { request: Request }) {
         `Membership Subscription Registered successfully for user ${userId}`,
         { url: request.url }
       );
+
+      try {
+        const plan = await getMembershipPlanById(membershipPlanId);
+        await sendMembershipResubscribeEmail({
+          userEmail: user.email!,
+          planTitle: plan?.title || "Membership",
+          monthlyPrice: plan?.price,
+          nextBillingDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        });
+      } catch {
+        // non-blocking
+      }
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { "Content-Type": "application/json" },

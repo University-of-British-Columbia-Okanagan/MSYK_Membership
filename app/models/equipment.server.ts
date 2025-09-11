@@ -84,7 +84,8 @@ export async function bookEquipment(
   equipmentId: number,
   startTime: string,
   endTime: string,
-  paymentIntentId?: string
+  paymentIntentId?: string,
+  options?: { suppressEmail?: boolean }
 ) {
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
@@ -145,7 +146,7 @@ export async function bookEquipment(
     data: { isBooked: true },
   });
 
-  return await db.equipmentBooking.create({
+  const booking = await db.equipmentBooking.create({
     data: {
       userId: parseInt(userId),
       equipmentId,
@@ -154,6 +155,81 @@ export async function bookEquipment(
       ...(paymentIntentId ? { paymentIntentId } : {}),
     },
   });
+
+  // Send confirmation email unless suppressed
+  if (!options?.suppressEmail) {
+    try {
+      const { sendEquipmentConfirmationEmail } = await import("../utils/email.server");
+      const equipment = await db.equipment.findUnique({
+        where: { id: equipmentId },
+        select: { name: true, price: true }
+      });
+
+      if (equipment) {
+        await sendEquipmentConfirmationEmail({
+          userEmail: user.email,
+          equipmentName: equipment.name,
+          startTime: parsedStartTime,
+          endTime: parsedEndTime,
+          price: equipment.price,
+        });
+      }
+    } catch (emailError) {
+      console.error("Failed to send equipment confirmation email:", emailError);
+    }
+  }
+
+  return booking;
+}
+
+export async function bookEquipmentBulkByTimes(
+  request: Request,
+  equipmentId: number,
+  times: Array<{ startTime: string; endTime: string }>,
+  paymentIntentId?: string
+) {
+  const userId = await getUserId(request);
+  if (!userId) throw new Error("User is not authenticated.");
+
+  // Book each slot without sending individual emails
+  const bookings = [] as any[];
+  for (const t of times) {
+    const booking = await bookEquipment(
+      request,
+      equipmentId,
+      t.startTime,
+      t.endTime,
+      paymentIntentId,
+      { suppressEmail: true }
+    );
+    bookings.push(booking);
+  }
+
+  // Send one consolidated email
+  try {
+    const { sendEquipmentBulkConfirmationEmail } = await import("../utils/email.server");
+    const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
+    const equipment = await db.equipment.findUnique({
+      where: { id: equipmentId },
+      select: { name: true, price: true },
+    });
+    if (user?.email && equipment) {
+      const slots = times.map((t) => ({
+        startTime: new Date(t.startTime),
+        endTime: new Date(t.endTime),
+      }));
+      await sendEquipmentBulkConfirmationEmail({
+        userEmail: user.email,
+        equipmentName: equipment.name,
+        slots,
+        pricePerSlot: equipment.price,
+      });
+    }
+  } catch (emailError) {
+    console.error("Failed to send bulk equipment confirmation email:", emailError);
+  }
+
+  return { count: bookings.length };
 }
 
 /**

@@ -8,9 +8,13 @@ import {
   getWorkshopOccurrencesByConnectId,
   checkWorkshopCapacity,
   checkMultiDayWorkshopCapacity,
+  getWorkshopPriceVariation,
 } from "../../models/workshop.server";
-import { registerMembershipSubscription } from "../../models/membership.server";
+import { getMembershipPlanById, registerMembershipSubscription } from "../../models/membership.server";
 import { useState, useEffect } from "react";
+import { sendWorkshopConfirmationEmail, sendEquipmentConfirmationEmail, sendMembershipConfirmationEmail } from "~/utils/email.server";
+import { getUserById } from "~/models/user.server";
+import { getEquipmentById } from "~/models/equipment.server";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -122,9 +126,19 @@ export async function loader({ request }: { request: Request }) {
     variationId,
   } = metadata;
 
+  let user = await getUserById(Number(userId));
+  if (!user) {
+    return new Response(
+        JSON.stringify({
+          success: false,
+          message: "User not found",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+  }
+
   if (equipmentId && userId && isEquipmentBooking === "true") {
     const paymentIntentId = session.payment_intent as string;
-
     return new Response(
       JSON.stringify({
         success: true,
@@ -156,6 +170,27 @@ export async function loader({ request }: { request: Request }) {
         false, // Not a resubscription
         paymentIntentId
       );
+
+      try {
+        let membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
+        if (membershipPlan) {
+          // Calculate next billing date (one month from now)
+          const nextBillingDate = new Date();
+          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+
+          await sendMembershipConfirmationEmail({
+            userEmail: user.email,
+            planTitle: membershipPlan.title,
+            planDescription: membershipPlan.description,
+            monthlyPrice: membershipPlan.price,
+            features: membershipPlan.feature as Record<string, string>,
+            accessHours: membershipPlan.accessHours as string,
+            nextBillingDate,
+          });
+        }
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
 
       return new Response(
         JSON.stringify({
@@ -260,6 +295,35 @@ export async function loader({ request }: { request: Request }) {
         variationId,
         paymentIntentId
       );
+
+      try {
+        // Get price variation details if applicable
+        let priceVariation = null;
+        if (variationId) {
+          priceVariation = await getWorkshopPriceVariation(variationId);
+        }
+
+        // Prepare sessions data for multi-day workshop
+        const sessions = occurrences.map(occ => ({
+          startDate: occ.startDate,
+          endDate: occ.endDate
+        }));
+
+        await sendWorkshopConfirmationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          sessions,
+          basePrice: workshop.price,
+          priceVariation: priceVariation ? {
+            name: priceVariation.name,
+            description: priceVariation.description,
+            price: priceVariation.price
+          } : null,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -357,6 +421,28 @@ export async function loader({ request }: { request: Request }) {
         variationId,
         paymentIntentId
       );
+      try {
+        // Get price variation details if applicable
+        let priceVariation = null;
+        if (variationId) {
+          priceVariation = await getWorkshopPriceVariation(variationId);
+        }
+
+        await sendWorkshopConfirmationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          startDate: occurrence.startDate,
+          endDate: occurrence.endDate,
+          basePrice: workshop.price,
+          priceVariation: priceVariation ? {
+            name: priceVariation.name,
+            description: priceVariation.description,
+            price: priceVariation.price
+          } : null,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error("Email confirmation failed:", emailConfirmationFailedError);
+      }
       return new Response(
         JSON.stringify({
           success: true,
@@ -417,25 +503,22 @@ export default function PaymentSuccess() {
           const slots = JSON.parse(slotsData);
           const paymentIntentId = data.paymentIntentId;
 
-          // Book each slot by making individual requests to the equipment booking endpoint
-          for (const slotString of slots) {
-            const [startTime, endTime] = slotString.split("|");
-
-            // Make a request to book each slot
-            const response = await fetch("/dashboard/equipments/book-slot", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                equipmentId: data.equipmentId,
-                startTime,
-                endTime,
-                paymentIntentId,
+          // Send one batch booking request; server will send a single consolidated email
+          const response = await fetch("/dashboard/equipments/book-slot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              equipmentId: data.equipmentId,
+              slots: slots.map((slotString: string) => {
+                const [startTime, endTime] = slotString.split("|");
+                return { startTime, endTime };
               }),
-            });
+              paymentIntentId,
+            }),
+          });
 
-            if (!response.ok) {
-              throw new Error(`Failed to book slot: ${startTime}`);
-            }
+          if (!response.ok) {
+            throw new Error("Failed to book equipment slots");
           }
 
           // Clean up sessionStorage
