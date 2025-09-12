@@ -313,6 +313,7 @@ export async function loader({ request }: { request: Request }) {
           userEmail: user.email,
           workshopName: workshop.name,
           sessions,
+          location: workshop.location,
           basePrice: workshop.price,
           priceVariation: priceVariation ? {
             name: priceVariation.name,
@@ -433,6 +434,7 @@ export async function loader({ request }: { request: Request }) {
           workshopName: workshop.name,
           startDate: occurrence.startDate,
           endDate: occurrence.endDate,
+          location: workshop.location,
           basePrice: workshop.price,
           priceVariation: priceVariation ? {
             name: priceVariation.name,

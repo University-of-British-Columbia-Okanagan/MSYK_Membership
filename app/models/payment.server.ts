@@ -241,6 +241,7 @@ export async function quickCheckout(
                   userEmail: user.email,
                   workshopName: workshop.name,
                   sessions,
+                  location: workshop.location,
                   basePrice: workshop.price,
                   priceVariation: priceVariation ? {
                     name: priceVariation.name,
@@ -281,6 +282,7 @@ export async function quickCheckout(
                   workshopName: workshop.name,
                   startDate: occurrence.startDate,
                   endDate: occurrence.endDate,
+                  location: workshop.location,
                   basePrice: workshop.price,
                   priceVariation: priceVariation ? {
                     name: priceVariation.name,
