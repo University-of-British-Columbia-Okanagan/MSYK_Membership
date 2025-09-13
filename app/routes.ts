@@ -13,7 +13,7 @@ export default [
   route("/contact", "routes/about/contact.tsx"),
   route("/programming", "routes/programming/programming.tsx"),
   route("/workshopregistration", "routes/programming/workshopregistration.tsx"),
-  route("/eventcalendar", "routes/programming/eventcalendar.tsx"),
+  route("/dashboard/events", "routes/programming/eventcalendar.tsx"),
   route("/makertomarket", "routes/programming/makertomarket.tsx"),
   route("/muralproject", "routes/programming/muralproject.tsx"),
   route("/dontfakeit", "routes/programming/dontfakeit.tsx"),
@@ -116,6 +116,9 @@ export default [
   route("/dashboard/logs", "routes/dashboard/serverlogs.tsx"),
   route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
   route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
+  route("/api/google-calendar/connect", "routes/api/google-calendar.connect.tsx"),
+  route("/api/google-calendar/callback", "routes/api/google-calendar.callback.tsx"),
+  route("/api/google-calendar/disconnect", "routes/api/google-calendar.disconnect.tsx"),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
 ] satisfies RouteConfig;
