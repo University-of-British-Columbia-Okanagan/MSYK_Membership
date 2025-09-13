@@ -76,6 +76,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
+import { listCalendars, isGoogleConnected } from "~/utils/googleCalendar.server";
 import {
   getAllVolunteerHours,
   updateVolunteerHourStatus,
@@ -151,6 +152,23 @@ export async function loader({ request }: { request: Request }) {
     })
   );
 
+  // Google Calendar config for integrations tab
+  const googleConnected = await isGoogleConnected();
+  const googleCalendarId = await getAdminSetting("google_calendar_id", "");
+  const googleTimezone = await getAdminSetting(
+    "google_calendar_timezone",
+    "America/Yellowknife"
+  );
+  let googleCalendars: Array<{ id: string; summary: string }> = [];
+  if (googleConnected) {
+    try {
+      const cals = await listCalendars();
+      googleCalendars = cals.map((c) => ({ id: c.id, summary: c.summary }));
+    } catch (e) {
+      logger.error(`Failed to list Google calendars: ${String(e)}`);
+    }
+  }
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -181,6 +199,12 @@ export async function loader({ request }: { request: Request }) {
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
     workshopCancellations: enhancedWorkshopCancellations,
+    google: {
+      connected: googleConnected,
+      selectedCalendarId: googleCalendarId,
+      timezone: googleTimezone,
+      calendars: googleCalendars,
+    },
   };
 }
 
@@ -301,6 +325,23 @@ export async function action({ request }: { request: Request }) {
         success: false,
         message: "Failed to update settings",
       };
+    }
+  }
+
+  if (actionType === "googleCalendarSave") {
+    const selectedId = formData.get("googleCalendarId");
+    const tz = formData.get("googleTimezone") || "America/Yellowknife";
+    try {
+      if (selectedId) {
+        await updateAdminSetting("google_calendar_id", String(selectedId));
+      }
+      await updateAdminSetting("google_calendar_timezone", String(tz));
+      return { success: true, message: "Google Calendar settings saved" };
+    } catch (error) {
+      logger.error(`Error saving Google Calendar settings: ${error}`, {
+        url: request.url,
+      });
+      return { success: false, message: "Failed to save Google Calendar settings" };
     }
   }
 
@@ -1974,6 +2015,12 @@ export default function AdminSettings() {
                     className="whitespace-nowrap"
                   >
                     Miscellaneous Settings
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="integrations"
+                    className="whitespace-nowrap"
+                  >
+                    Integrations
                   </TabsTrigger>
                   <TabsTrigger
                     value="placeholder"
@@ -4532,6 +4579,103 @@ export default function AdminSettings() {
                     </CardFooter>
                   </Card>
                 </Form>
+              </TabsContent>
+
+              <TabsContent value="integrations">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Google Calendar</CardTitle>
+                    <CardDescription>
+                      Connect an organization Google account and choose a public
+                      calendar. New workshops and orientations will be published
+                      automatically. You can make the calendar public in Google
+                      Calendar settings.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* @ts-ignore server-injected via loader */}
+                    {(() => {
+                      const data = (typeof window === "undefined"
+                        ? undefined
+                        : undefined) as any;
+                      return null;
+                    })()}
+                    {/* Using loader data through hook */}
+                    {(() => {
+                      const { google } = (useLoaderData() as any) || { google: {} };
+                      return (
+                        <div className="space-y-4">
+                          {!google?.connected ? (
+                            <div className="space-y-2">
+                              <p className="text-sm text-gray-600">
+                                Not connected to Google Calendar.
+                              </p>
+                              <a
+                                href="/api/google-calendar/connect"
+                                className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md"
+                              >
+                                Connect Google
+                              </a>
+                              <p className="text-xs text-gray-500">
+                                After granting access, you will come back here to
+                                select a calendar.
+                              </p>
+                            </div>
+                          ) : (
+                            <Form method="post" className="space-y-4">
+                              <input type="hidden" name="actionType" value="googleCalendarSave" />
+                              <div className="space-y-2">
+                                <Label htmlFor="googleCalendarId">Select Calendar</Label>
+                                <select
+                                  id="googleCalendarId"
+                                  name="googleCalendarId"
+                                  defaultValue={google?.selectedCalendarId || ""}
+                                  className="border rounded px-3 py-2 w-full max-w-md"
+                                >
+                                  <option value="" disabled>
+                                    Choose a calendar
+                                  </option>
+                                  {google?.calendars?.map((c: any) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.summary} ({c.id})
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-gray-500">
+                                  Ensure this calendar is public in Google Calendar settings to embed it on the website.
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="googleTimezone">Timezone</Label>
+                                <Input
+                                  id="googleTimezone"
+                                  name="googleTimezone"
+                                  type="text"
+                                  defaultValue={google?.timezone || "America/Yellowknife"}
+                                  className="w-full max-w-md"
+                                />
+                                <p className="text-xs text-gray-500">
+                                  Use a valid IANA timezone like America/Yellowknife.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Button type="submit" className="bg-yellow-500 hover:bg-yellow-600 text-white">
+                                  Save Google Calendar Settings
+                                </Button>
+                                <a
+                                  href="/api/google-calendar/disconnect"
+                                  className="inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md"
+                                >
+                                  Sign out
+                                </a>
+                              </div>
+                            </Form>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* Tabb Placeholder for Future Settings */}
