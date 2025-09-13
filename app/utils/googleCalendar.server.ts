@@ -142,6 +142,16 @@ function formatLocalNoTimezone(date: Date): string {
   return `${y}-${M}-${d}T${h}:${m}:${s}`;
 }
 
+function sanitizeText(input: string): string {
+  if (!input) return "";
+  return input
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 function buildEventResource(
   workshop: WorkshopLike,
   occ: OccurrenceLike,
@@ -151,14 +161,14 @@ function buildEventResource(
   // Use the exact local times chosen in the app (Yellowknife). No conversions.
   const start = occ.startDate;
   const end = occ.endDate;
-  const summary = workshop.name;
+  const summary = sanitizeText(workshop.name);
   const pricingLines: string[] = [];
   const variations = workshop.priceVariations ?? [];
   if (workshop.hasPriceVariations && variations.length > 0) {
     pricingLines.push("Pricing options:");
     for (const v of variations) {
-      const main = `${v.name} - $${v.price.toFixed(2)}`;
-      const withDesc = v.description ? `${main} — ${v.description}` : main;
+      const main = `${sanitizeText(v.name)} - $${v.price.toFixed(2)}`;
+      const withDesc = v.description ? `${main} — ${sanitizeText(v.description)}` : main;
       pricingLines.push(withDesc);
     }
   } else if (typeof workshop.price === "number") {
@@ -166,11 +176,11 @@ function buildEventResource(
   }
 
   const descriptionLines = [
-    workshop.description,
+    sanitizeText(workshop.description),
     pricingLines.length > 0 ? "" : undefined,
     pricingLines.length > 0 ? pricingLines.join("\n") : undefined,
     "",
-    `Type: ${workshop.type}`,
+    `Type: ${sanitizeText(workshop.type)}`,
     `Capacity: ${workshop.capacity}`,
     "",
     `Register: ${baseUrl.replace(/\/$/, "")}/dashboard/workshops/${workshop.id}`,
@@ -178,7 +188,7 @@ function buildEventResource(
   return {
     summary,
     description: descriptionLines.join("\n"),
-    location: workshop.location,
+    location: sanitizeText(workshop.location),
     start: { dateTime: formatLocalNoTimezone(start), timeZone: tz },
     end: { dateTime: formatLocalNoTimezone(end), timeZone: tz },
   };
