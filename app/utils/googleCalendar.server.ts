@@ -37,6 +37,9 @@ function encrypt(text: string): string {
 
 function decrypt(cipher: string): string {
   const key = requireEnv("GOOGLE_OAUTH_ENCRYPTION_KEY");
+  if (key.length < 32) {
+    throw new Error("GOOGLE_OAUTH_ENCRYPTION_KEY must be at least 32 characters for adequate security");
+  }
   const bytes = CryptoJS.AES.decrypt(cipher, key);
   return bytes.toString(CryptoJS.enc.Utf8);
 }
