@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 import Mailgun from "mailgun.js";
+import { randomUUID } from "crypto";
 import formData from "form-data";
 
 dotenv.config();
@@ -26,28 +27,49 @@ function assertEmailEnvConfigured(): void {
   }
 }
 
+type MailgunCustomFile = {
+  filename: string;
+  data: string | Buffer | NodeJS.ReadableStream;
+  contentType?: string;
+  knownLength?: number;
+};
+
+type MailgunAttachment = MailgunCustomFile | MailgunCustomFile[];
+
 async function sendMail({
   to,
   subject,
   text,
   html,
+  attachments,
 }: {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: MailgunAttachment;
 }): Promise<void> {
   assertEmailEnvConfigured();
   const domain = MAILGUN_DOMAIN as string;
   const from = `Makerspace YK <${MAILGUN_FROM_EMAIL as string}>`;
 
-  await mg.messages.create(domain, {
+  const message: {
+    from: string;
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+    attachment?: MailgunAttachment;
+  } = {
     from,
     to,
     subject,
     text,
     ...(html ? { html } : {}),
-  });
+    ...(attachments ? { attachment: attachments } : {}),
+  };
+
+  await mg.messages.create(domain, message);
 }
 
 async function sendPasswordResetEmail(
@@ -98,8 +120,106 @@ export async function sendWorkshopConfirmationEmail(params: {
   // Pricing
   basePrice?: number;
   priceVariation?: { name: string; description?: string | null; price: number } | null;
+  location?: string;
 }): Promise<void> {
-  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation } = params;
+  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation, location } = params;
+
+  function pad(number: number): string {
+    return number < 10 ? `0${number}` : String(number);
+  }
+
+  function toICalUTC(date: Date): string {
+    const d = new Date(date);
+    return (
+      d.getUTCFullYear().toString() +
+      pad(d.getUTCMonth() + 1) +
+      pad(d.getUTCDate()) +
+      "T" +
+      pad(d.getUTCHours()) +
+      pad(d.getUTCMinutes()) +
+      pad(d.getUTCSeconds()) +
+      "Z"
+    );
+  }
+
+  function escapeICalText(text: string): string {
+    return text
+      .replace(/\\/g, "\\\\")
+      .replace(/\n/g, "\\n")
+      .replace(/,/g, "\\,")
+      .replace(/;/g, "\\;");
+  }
+
+  function buildSingleEventICS(options: {
+    summary: string;
+    description?: string;
+    dtStart: Date;
+    dtEnd: Date;
+    location?: string;
+  }): string {
+    const now = new Date();
+    const uid = `${randomUUID()}@makerspaceyk.ca`;
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Makerspace YK//Events//EN",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${toICalUTC(now)}`,
+      `DTSTART:${toICalUTC(options.dtStart)}`,
+      `DTEND:${toICalUTC(options.dtEnd)}`,
+      `SUMMARY:${escapeICalText(options.summary)}`,
+      options.description ? `DESCRIPTION:${escapeICalText(options.description)}` : undefined,
+      options.location ? `LOCATION:${escapeICalText(options.location)}` : undefined,
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].filter(Boolean) as string[];
+    return lines.join("\r\n");
+  }
+
+  function buildMultiEventICS(options: {
+    summary: string;
+    description?: string;
+    sessions: Array<{ start: Date; end: Date }>;
+    location?: string;
+  }): string {
+    const now = new Date();
+    const header = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Makerspace YK//Events//EN",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+    ];
+    const events = options.sessions.map(({ start, end }) => {
+      const uid = `${randomUUID()}@makerspaceyk.ca`;
+      return [
+        "BEGIN:VEVENT",
+        `UID:${uid}`,
+        `DTSTAMP:${toICalUTC(now)}`,
+        `DTSTART:${toICalUTC(start)}`,
+        `DTEND:${toICalUTC(end)}`,
+        `SUMMARY:${escapeICalText(options.summary)}`,
+        options.description ? `DESCRIPTION:${escapeICalText(options.description)}` : undefined,
+        options.location ? `LOCATION:${escapeICalText(options.location)}` : undefined,
+        "END:VEVENT",
+      ].filter(Boolean).join("\r\n");
+    });
+    const footer = ["END:VCALENDAR"];
+    return [...header, ...events, ...footer].join("\r\n");
+  }
+
+  function buildGoogleCalendarLink(title: string, start: Date, end: Date, details?: string, loc?: string): string {
+    const base = "https://www.google.com/calendar/render";
+    const text = encodeURIComponent(title);
+    const dates = `${toICalUTC(start)}/${toICalUTC(end)}`;
+    const detailsEnc = details ? encodeURIComponent(details) : "";
+    const locEnc = loc ? encodeURIComponent(loc) : "";
+    const params = `action=TEMPLATE&text=${text}&dates=${dates}${detailsEnc ? `&details=${detailsEnc}` : ""}${locEnc ? `&location=${locEnc}` : ""}`;
+    return `${base}?${params}`;
+  }
 
   const pricingLines: string[] = [];
   if (priceVariation) {
@@ -121,18 +241,103 @@ export async function sendWorkshopConfirmationEmail(params: {
     detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
   }
 
+  const calendarSectionLines: string[] = [];
+  const htmlCalendarLinks: string[] = [];
+
+  let icsContent = "";
+  let icsFilename = "";
+
+  const descriptionForICS = pricingLines.length > 0 ? pricingLines.join(" ") : undefined;
+
+  if (sessions && sessions.length > 0) {
+    icsContent = buildMultiEventICS({
+      summary: workshopName,
+      description: descriptionForICS,
+      sessions: sessions.map(s => ({ start: new Date(s.startDate), end: new Date(s.endDate) })),
+      location,
+    });
+    icsFilename = `${workshopName.replace(/[^a-z0-9]+/gi, "-")}-sessions.ics`;
+
+    // Provide per-session Google Calendar links
+    sessions.forEach((s, idx) => {
+      const link = buildGoogleCalendarLink(
+        workshopName,
+        new Date(s.startDate),
+        new Date(s.endDate),
+        descriptionForICS,
+        location
+      );
+      calendarSectionLines.push(`${idx + 1}. Add to Google Calendar: ${link}`);
+      htmlCalendarLinks.push(`<li><a href="${link}">Add session ${idx + 1} to Google Calendar</a></li>`);
+    });
+  } else if (startDate && endDate) {
+    icsContent = buildSingleEventICS({
+      summary: workshopName,
+      description: descriptionForICS,
+      dtStart: new Date(startDate),
+      dtEnd: new Date(endDate),
+      location,
+    });
+    icsFilename = `${workshopName.replace(/[^a-z0-9]+/gi, "-")}.ics`;
+
+    const link = buildGoogleCalendarLink(workshopName, new Date(startDate), new Date(endDate), descriptionForICS, location);
+    calendarSectionLines.push(`Add to Google Calendar: ${link}`);
+    htmlCalendarLinks.push(`<a href="${link}">Add to Google Calendar</a>`);
+  }
+
   const parts = [
     `Thank you for registering for "${workshopName}".`,
     `Your registration has been confirmed.`,
     detailsBlock,
     pricingLines.join("\n"),
+    (calendarSectionLines.length > 0
+      ? `\nAdd to calendar:\n${calendarSectionLines.join("\n")}`
+      : undefined),
     `We look forward to seeing you there!`,
-  ].filter(Boolean);
+  ].filter(Boolean) as string[];
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const detailsHtml = detailsBlock
+    ? `<p>${escapeHTML(detailsBlock).replace(/\n/g, "<br/>")}</p>`
+    : "";
+
+  const pricingHtml = pricingLines.length > 0
+    ? `<p>${pricingLines.map(l => escapeHTML(l)).join("<br/>")}</p>`
+    : "";
+
+  const locationHtml = location ? `<p><strong>Location:</strong> ${escapeHTML(location)}</p>` : "";
+
+  const htmlBody = [
+    `<p>Thank you for registering for "${escapeHTML(workshopName)}".</p>`,
+    `<p>Your registration has been confirmed.</p>`,
+    detailsHtml,
+    locationHtml,
+    pricingHtml,
+    htmlCalendarLinks.length > 0 ? `<p><strong>Add to calendar:</strong></p><ul>${htmlCalendarLinks.join("")}</ul>` : "",
+    `<p>We look forward to seeing you there!</p>`,
+  ]
+    .filter(Boolean)
+    .join("");
 
   await sendMail({
     to: userEmail,
     subject: `Registration confirmed: ${workshopName}`,
     text: parts.join("\n\n"),
+    html: htmlBody,
+    attachments:
+      icsContent && icsFilename
+        ? {
+            filename: icsFilename,
+            data: Buffer.from(icsContent, "utf8"),
+            contentType: "text/calendar; charset=utf-8; method=PUBLISH",
+          }
+        : undefined,
   });
 }
 
