@@ -1,6 +1,7 @@
 import { db } from "../utils/db.server";
 import { getUser } from "~/utils/session.server";
 import { createEquipmentSlotsForOccurrence } from "../models/equipment.server";
+import { createEventForOccurrence, updateEventForOccurrence, deleteEventForOccurrence } from "~/utils/googleCalendar.server";
 
 interface WorkshopData {
   name: string;
@@ -202,8 +203,8 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
 
     // Step 3: Create workshop occurrences
     const occurrences = await Promise.all(
-      data.occurrences.map((occ) =>
-        db.workshopOccurrence.create({
+      data.occurrences.map(async (occ) => {
+        const created = await db.workshopOccurrence.create({
           data: {
             workshopId: newWorkshop.id,
             startDate: occ.startDate,
@@ -213,8 +214,45 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
             status: occ.startDate >= new Date() ? "active" : "past",
             connectId: newConnectId,
           },
-        })
-      )
+        });
+
+        try {
+          const eventId = await createEventForOccurrence(
+            {
+              id: newWorkshop.id,
+              name: data.name,
+              description: data.description,
+              price: data.price,
+              location: data.location,
+              capacity: data.capacity,
+              type: data.type,
+              hasPriceVariations: data.hasPriceVariations,
+              priceVariations: data.priceVariations?.map((v) => ({
+                name: v.name,
+                description: v.description,
+                price: v.price,
+              })),
+            },
+            {
+              id: created.id,
+              startDate: created.startDate,
+              endDate: created.endDate,
+              startDatePST: created.startDatePST ?? undefined,
+              endDatePST: created.endDatePST ?? undefined,
+            }
+          );
+          if (eventId) {
+            await db.workshopOccurrence.update({
+              where: { id: created.id },
+              data: { googleEventId: eventId },
+            });
+            return { ...created, googleEventId: eventId } as any;
+          }
+        } catch (err) {
+          console.error("Failed to create Google Calendar event:", err);
+        }
+        return created;
+      })
     );
 
     // Step 4: Book selected equipment slots
@@ -612,6 +650,41 @@ export async function updateWorkshopWithOccurrences(
           },
         });
 
+        try {
+          const eventId = await createEventForOccurrence(
+            {
+              id: workshopId,
+              name: data.name,
+              description: data.description,
+              price: data.price,
+              location: data.location,
+              capacity: data.capacity,
+              type: data.type,
+              hasPriceVariations: data.hasPriceVariations,
+              priceVariations: data.priceVariations?.map((v) => ({
+                name: v.name,
+                description: v.description,
+                price: v.price,
+              })),
+            },
+            {
+              id: createdOcc.id,
+              startDate: createdOcc.startDate,
+              endDate: createdOcc.endDate,
+              startDatePST: createdOcc.startDatePST ?? undefined,
+              endDatePST: createdOcc.endDatePST ?? undefined,
+            }
+          );
+          if (eventId) {
+            await db.workshopOccurrence.update({
+              where: { id: createdOcc.id },
+              data: { googleEventId: eventId },
+            });
+          }
+        } catch (err) {
+          console.error("Failed to create Google Calendar event:", err);
+        }
+
         return createdOcc;
       })
     );
@@ -629,7 +702,7 @@ export async function updateWorkshopWithOccurrences(
           ? "active"
           : "past";
 
-    await db.workshopOccurrence.update({
+    const updated = await db.workshopOccurrence.update({
       where: { id: occ.id },
       data: {
         startDate: occ.startDate,
@@ -639,12 +712,54 @@ export async function updateWorkshopWithOccurrences(
         status,
       },
     });
+
+    try {
+      await updateEventForOccurrence(
+        {
+          id: workshopId,
+          name: data.name,
+          description: data.description,
+          price: data.price,
+          location: data.location,
+          capacity: data.capacity,
+          type: data.type,
+          hasPriceVariations: data.hasPriceVariations,
+          priceVariations: data.priceVariations?.map((v) => ({
+            name: v.name,
+            description: v.description,
+            price: v.price,
+          })),
+        },
+        {
+          id: updated.id,
+          startDate: updated.startDate,
+          endDate: updated.endDate,
+          startDatePST: updated.startDatePST ?? undefined,
+          endDatePST: updated.endDatePST ?? undefined,
+          googleEventId: (existingOccurrences.find((e) => e.id === updated.id) as any)?.googleEventId ?? null,
+        }
+      );
+    } catch (err) {
+      console.error("Failed to update Google Calendar event:", err);
+    }
   }
 
   if (deleteIds.length > 0) {
-    await db.workshopOccurrence.deleteMany({
+    // Fetch to capture event ids, then delete
+    const toDelete = await db.workshopOccurrence.findMany({
       where: { id: { in: deleteIds } },
+      select: { id: true, googleEventId: true },
     });
+    await db.workshopOccurrence.deleteMany({ where: { id: { in: deleteIds } } });
+    for (const item of toDelete) {
+      if (item.googleEventId) {
+        try {
+          await deleteEventForOccurrence(item.googleEventId);
+        } catch (err) {
+          console.error("Failed to delete Google Calendar event:", err);
+        }
+      }
+    }
   }
 
   let isMultiDayWorkshop = data.isMultiDayWorkshop;
@@ -1968,7 +2083,7 @@ export async function offerWorkshopAgain(
         // Determine the status based on the start date
         const status = occ.startDate >= now ? "active" : "past";
 
-        return await db.workshopOccurrence.create({
+        const created = await db.workshopOccurrence.create({
           data: {
             workshopId,
             startDate: occ.startDate,
@@ -1979,6 +2094,48 @@ export async function offerWorkshopAgain(
             offerId: newOfferId,
           },
         });
+        try {
+          // Load workshop basics for description
+          const ws = await db.workshop.findUnique({
+            where: { id: workshopId },
+            include: { priceVariations: { where: { status: "active" } } },
+          });
+          if (ws) {
+            const eventId = await createEventForOccurrence(
+              {
+                id: workshopId,
+                name: ws.name,
+                description: ws.description,
+                price: ws.price,
+                location: ws.location,
+                capacity: ws.capacity,
+                type: ws.type,
+                hasPriceVariations: ws.hasPriceVariations,
+                priceVariations: ws.priceVariations.map((pv) => ({
+                  name: pv.name,
+                  description: pv.description,
+                  price: pv.price,
+                })),
+              },
+              {
+                id: created.id,
+                startDate: created.startDate,
+                endDate: created.endDate,
+                startDatePST: created.startDatePST ?? undefined,
+                endDatePST: created.endDatePST ?? undefined,
+              }
+            );
+            if (eventId) {
+              await db.workshopOccurrence.update({
+                where: { id: created.id },
+                data: { googleEventId: eventId },
+              });
+            }
+          }
+        } catch (err) {
+          console.error("Failed to create Google Calendar event:", err);
+        }
+        return created;
       })
     );
 
