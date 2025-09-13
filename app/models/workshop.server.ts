@@ -2058,12 +2058,13 @@ export async function offerWorkshopAgain(
   }[]
 ) {
   try {
-    // Verify the workshop exists
-    const workshop = await db.workshop.findUnique({
+    // Fetch workshop with all required data once before the loop
+    const ws = await db.workshop.findUnique({
       where: { id: workshopId },
+      include: { priceVariations: { where: { status: "active" } } },
     });
 
-    if (!workshop) {
+    if (!ws) {
       throw new Error("Workshop not found");
     }
 
@@ -2095,42 +2096,35 @@ export async function offerWorkshopAgain(
           },
         });
         try {
-          // Load workshop basics for description
-          const ws = await db.workshop.findUnique({
-            where: { id: workshopId },
-            include: { priceVariations: { where: { status: "active" } } },
-          });
-          if (ws) {
-            const eventId = await createEventForOccurrence(
-              {
-                id: workshopId,
-                name: ws.name,
-                description: ws.description,
-                price: ws.price,
-                location: ws.location,
-                capacity: ws.capacity,
-                type: ws.type,
-                hasPriceVariations: ws.hasPriceVariations,
-                priceVariations: ws.priceVariations.map((pv) => ({
-                  name: pv.name,
-                  description: pv.description,
-                  price: pv.price,
-                })),
-              },
-              {
-                id: created.id,
-                startDate: created.startDate,
-                endDate: created.endDate,
-                startDatePST: created.startDatePST ?? undefined,
-                endDatePST: created.endDatePST ?? undefined,
-              }
-            );
-            if (eventId) {
-              await db.workshopOccurrence.update({
-                where: { id: created.id },
-                data: { googleEventId: eventId },
-              });
+          const eventId = await createEventForOccurrence(
+            {
+              id: workshopId,
+              name: ws.name,
+              description: ws.description,
+              price: ws.price,
+              location: ws.location,
+              capacity: ws.capacity,
+              type: ws.type,
+              hasPriceVariations: ws.hasPriceVariations,
+              priceVariations: ws.priceVariations.map((pv) => ({
+                name: pv.name,
+                description: pv.description,
+                price: pv.price,
+              })),
+            },
+            {
+              id: created.id,
+              startDate: created.startDate,
+              endDate: created.endDate,
+              startDatePST: created.startDatePST ?? undefined,
+              endDatePST: created.endDatePST ?? undefined,
             }
+          );
+          if (eventId) {
+            await db.workshopOccurrence.update({
+              where: { id: created.id },
+              data: { googleEventId: eventId },
+            });
           }
         } catch (err) {
           console.error("Failed to create Google Calendar event:", err);
