@@ -979,6 +979,35 @@ export async function updateWorkshopWithOccurrences(
  */
 export async function deleteWorkshop(workshopId: number) {
   try {
+    // First, get all occurrences with Google Calendar event IDs
+    const workshop = await db.workshop.findUnique({
+      where: { id: workshopId },
+      include: {
+        occurrences: {
+          where: {
+            googleEventId: { not: null }
+          }
+        }
+      }
+    });
+
+    if (!workshop) {
+      throw new Error("Workshop not found");
+    }
+
+    // Delete Google Calendar events for all occurrences
+    for (const occurrence of workshop.occurrences) {
+      if (occurrence.googleEventId) {
+        try {
+          await deleteEventForOccurrence(occurrence.googleEventId);
+        } catch (error) {
+          console.error(`Failed to delete Google Calendar event ${occurrence.googleEventId}:`, error);
+          // Continue with deletion even if Google Calendar deletion fails
+        }
+      }
+    }
+
+    // Now delete the workshop (this will cascade delete occurrences)
     await db.workshop.delete({
       where: { id: workshopId },
     });
@@ -1337,14 +1366,38 @@ export async function getRegistrationCountForOccurrence(occurrenceId: number) {
 }
 
 /**
- * Cancels a workshop occurrence by updating its status
+ * Cancels a workshop occurrence by updating its status and deleting Google Calendar event
  * @param occurrenceId - The ID of the occurrence to cancel
  * @returns Promise<WorkshopOccurrence> - The updated occurrence record
  */
 export async function cancelWorkshopOccurrence(occurrenceId: number) {
+  // First, get the occurrence to check if it has a Google Calendar event
+  const occurrence = await db.workshopOccurrence.findUnique({
+    where: { id: occurrenceId },
+    select: { googleEventId: true }
+  });
+
+  if (!occurrence) {
+    throw new Error("Workshop occurrence not found");
+  }
+
+  // Delete Google Calendar event if it exists
+  if (occurrence.googleEventId) {
+    try {
+      await deleteEventForOccurrence(occurrence.googleEventId);
+    } catch (error) {
+      console.error(`Failed to delete Google Calendar event ${occurrence.googleEventId}:`, error);
+      // Continue with cancellation even if Google Calendar deletion fails
+    }
+  }
+
+  // Update the occurrence status to cancelled
   return db.workshopOccurrence.update({
     where: { id: occurrenceId },
-    data: { status: "cancelled" },
+    data: {
+      status: "cancelled",
+      googleEventId: null // Clear the Google event ID since the event is deleted
+    },
   });
 }
 
