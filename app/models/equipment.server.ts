@@ -1354,46 +1354,58 @@ export async function createEquipmentCancellation({
   twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
   const eligibleForRefund = earliestSlotTime > twoDaysFromNow;
 
-  // Check if there's an existing cancellation record for this payment intent
-  const existingCancellation = await db.equipmentCancelledBooking.findFirst({
-    where: {
-      userId,
-      equipmentId,
-      paymentIntentId,
-      resolved: false, // Only update unresolved cancellations
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+  if (paymentIntentId) {
+    // Get the total number of slots already refunded for this payment intent
+    const existingCancellations = await db.equipmentCancelledBooking.findMany({
+      where: {
+        userId,
+        equipmentId,
+        paymentIntentId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-  if (existingCancellation && paymentIntentId) {
-    // Update existing cancellation record to show cumulative refunds
-    const newTotalSlotsRefunded =
-      existingCancellation.slotsRefunded + slotsToCancel;
-    const newPriceToRefund = existingCancellation.priceToRefund + priceToRefund;
+    // If there are existing cancellations, use the original totalSlotsBooked and totalPricePaid
+    let originalTotalSlots = totalSlotsBooked;
+    let originalTotalPrice = totalPricePaid;
 
-    // Merge cancelled slot times
-    const existingSlotTimes =
-      existingCancellation.cancelledSlotTimes as any as Array<{
-        startTime: Date;
-        endTime: Date;
-        slotId: number;
-      }>;
-    const mergedSlotTimes = [...existingSlotTimes, ...cancelledSlotTimes];
+    if (existingCancellations.length > 0) {
+      // Use the original totals from the first cancellation record
+      originalTotalSlots = existingCancellations[0].totalSlotsBooked;
+      originalTotalPrice = existingCancellations[0].totalPricePaid;
+    }
 
-    return await db.equipmentCancelledBooking.update({
-      where: { id: existingCancellation.id },
+    // Calculate cumulative refunded slots from all previous cancellations
+    const totalSlotsAlreadyRefunded = existingCancellations.reduce(
+      (total, cancellation) => total + cancellation.slotsRefunded,
+      0
+    );
+
+    const newTotalSlotsRefunded = totalSlotsAlreadyRefunded + slotsToCancel;
+
+    // Recalculate price to refund based on original totals
+    const correctPriceToRefund =
+      (originalTotalPrice / originalTotalSlots) * slotsToCancel;
+
+    // Always create a new record but with cumulative totals
+    return await db.equipmentCancelledBooking.create({
       data: {
-        slotsRefunded: newTotalSlotsRefunded,
-        priceToRefund: newPriceToRefund,
-        cancelledSlotTimes: mergedSlotTimes,
-        eligibleForRefund: eligibleForRefund,
-        updatedAt: new Date(),
+        userId,
+        equipmentId,
+        paymentIntentId,
+        totalSlotsBooked: originalTotalSlots, // Use original total
+        slotsRefunded: newTotalSlotsRefunded, // Cumulative total
+        totalPricePaid: originalTotalPrice, // Use original total price
+        priceToRefund: correctPriceToRefund, // Individual refund amount for this cancellation
+        eligibleForRefund,
+        resolved: false,
+        cancelledSlotTimes: cancelledSlotTimes,
       },
     });
   } else {
-    // Create new cancellation record
+    // No payment intent, create individual record
     return await db.equipmentCancelledBooking.create({
       data: {
         userId,
