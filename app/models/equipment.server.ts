@@ -266,14 +266,18 @@ export async function bookEquipmentBulkByTimes(
 }
 
 /**
- * Cancel an equipment booking and free up the associated slot
+ * Cancel an equipment booking and create cancellation record
  * @param bookingId The ID of the booking to cancel
  * @returns Updated booking record with cancelled status
  */
 export async function cancelEquipmentBooking(bookingId: number) {
   const booking = await db.equipmentBooking.findUnique({
     where: { id: bookingId },
-    include: { slot: true },
+    include: {
+      slot: true,
+      equipment: true,
+      user: true,
+    },
   });
 
   if (!booking) {
@@ -287,6 +291,41 @@ export async function cancelEquipmentBooking(bookingId: number) {
       data: { isBooked: false },
     });
   }
+
+  // Get all bookings for this payment intent to calculate totals
+  let totalSlotsBooked = 1;
+  let totalPricePaid = booking.equipment.price * 1.05; // Default calculation
+
+  if (booking.paymentIntentId) {
+    const allBookingsForPayment = await db.equipmentBooking.findMany({
+      where: {
+        paymentIntentId: booking.paymentIntentId,
+        userId: booking.userId,
+        status: { not: "cancelled" }, // Only count non-cancelled bookings
+      },
+    });
+
+    totalSlotsBooked = allBookingsForPayment.length;
+    const subtotal = booking.equipment.price * totalSlotsBooked;
+    totalPricePaid = subtotal * 1.05; // Adding 5% tax
+  }
+
+  // Create cancellation record before updating booking status
+  await createEquipmentCancellation({
+    userId: booking.userId,
+    equipmentId: booking.equipmentId,
+    paymentIntentId: booking.paymentIntentId,
+    totalSlotsBooked,
+    slotsToCancel: 1,
+    totalPricePaid,
+    cancelledSlotTimes: [
+      {
+        startTime: booking.slot!.startTime,
+        endTime: booking.slot!.endTime,
+        slotId: booking.slot!.id,
+      },
+    ],
+  });
 
   // Update booking status to cancelled
   return await db.equipmentBooking.update({
@@ -1278,4 +1317,164 @@ export async function hasUserCompletedEquipmentPrerequisites(
   return requiredPrerequisites.every((reqId) =>
     completedPrerequisites.includes(reqId)
   );
+}
+
+/**
+ * Create a new equipment cancellation record when a user cancels equipment slots
+ */
+export async function createEquipmentCancellation({
+  userId,
+  equipmentId,
+  paymentIntentId,
+  totalSlotsBooked,
+  slotsToCancel,
+  totalPricePaid,
+  cancelledSlotTimes,
+}: {
+  userId: number;
+  equipmentId: number;
+  paymentIntentId: string | null;
+  totalSlotsBooked: number;
+  slotsToCancel: number;
+  totalPricePaid: number;
+  cancelledSlotTimes: Array<{
+    startTime: Date;
+    endTime: Date;
+    slotId: number;
+  }>;
+}) {
+  // Calculate price to refund (proportional to slots being cancelled)
+  const priceToRefund = (totalPricePaid / totalSlotsBooked) * slotsToCancel;
+
+  // Check eligibility for refund (2 days before earliest slot time)
+  const earliestSlotTime = new Date(
+    Math.min(...cancelledSlotTimes.map((slot) => slot.startTime.getTime()))
+  );
+  const twoDaysFromNow = new Date();
+  twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+  const eligibleForRefund = earliestSlotTime > twoDaysFromNow;
+
+  // Check if there's an existing cancellation record for this payment intent
+  const existingCancellation = await db.equipmentCancelledBooking.findFirst({
+    where: {
+      userId,
+      equipmentId,
+      paymentIntentId,
+      resolved: false, // Only update unresolved cancellations
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (existingCancellation && paymentIntentId) {
+    // Update existing cancellation record to show cumulative refunds
+    const newTotalSlotsRefunded =
+      existingCancellation.slotsRefunded + slotsToCancel;
+    const newPriceToRefund = existingCancellation.priceToRefund + priceToRefund;
+
+    // Merge cancelled slot times
+    const existingSlotTimes =
+      existingCancellation.cancelledSlotTimes as any as Array<{
+        startTime: Date;
+        endTime: Date;
+        slotId: number;
+      }>;
+    const mergedSlotTimes = [...existingSlotTimes, ...cancelledSlotTimes];
+
+    return await db.equipmentCancelledBooking.update({
+      where: { id: existingCancellation.id },
+      data: {
+        slotsRefunded: newTotalSlotsRefunded,
+        priceToRefund: newPriceToRefund,
+        cancelledSlotTimes: mergedSlotTimes,
+        eligibleForRefund: eligibleForRefund,
+        updatedAt: new Date(),
+      },
+    });
+  } else {
+    // Create new cancellation record
+    return await db.equipmentCancelledBooking.create({
+      data: {
+        userId,
+        equipmentId,
+        paymentIntentId,
+        totalSlotsBooked,
+        slotsRefunded: slotsToCancel,
+        totalPricePaid,
+        priceToRefund,
+        eligibleForRefund,
+        resolved: false,
+        cancelledSlotTimes: cancelledSlotTimes,
+      },
+    });
+  }
+}
+
+/**
+ * Get all equipment cancellation records with user and equipment details
+ */
+export async function getAllEquipmentCancellations() {
+  return await db.equipmentCancelledBooking.findMany({
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      equipment: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
+}
+
+/**
+ * Update the resolved status of an equipment cancellation
+ */
+export async function updateEquipmentCancellationResolved(
+  cancellationId: number,
+  resolved: boolean
+) {
+  return await db.equipmentCancelledBooking.update({
+    where: { id: cancellationId },
+    data: { resolved },
+  });
+}
+
+/**
+ * Get equipment cancellations by resolved status
+ */
+export async function getEquipmentCancellationsByStatus(resolved: boolean) {
+  return await db.equipmentCancelledBooking.findMany({
+    where: { resolved },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      equipment: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
 }

@@ -34,6 +34,8 @@ import {
 import {
   getLevel3ScheduleRestrictions,
   getLevel4UnavailableHours,
+  getAllEquipmentCancellations,
+  updateEquipmentCancellationResolved,
 } from "~/models/equipment.server";
 import {
   getWorkshops,
@@ -81,6 +83,12 @@ import {
   updateVolunteerHourStatus,
   getRecentVolunteerHourActions,
 } from "~/models/profile.server";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -151,6 +159,8 @@ export async function loader({ request }: { request: Request }) {
     })
   );
 
+  const equipmentCancellations = await getAllEquipmentCancellations();
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -181,6 +191,7 @@ export async function loader({ request }: { request: Request }) {
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
     workshopCancellations: enhancedWorkshopCancellations,
+    equipmentCancellations,
   };
 }
 
@@ -514,6 +525,22 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: "Failed to update workshop cancellation status",
+      };
+    }
+  }
+
+  if (actionType === "updateEquipmentCancellationResolved") {
+    const cancellationId = Number(formData.get("cancellationId"));
+    const resolved = formData.get("resolved") === "true";
+
+    try {
+      await updateEquipmentCancellationResolved(cancellationId, resolved);
+      return redirect("/dashboard/admin/settings?tab=cancelledEvents");
+    } catch (error) {
+      return {
+        errors: {
+          message: "Failed to update cancellation status",
+        },
       };
     }
   }
@@ -1045,6 +1072,61 @@ function WorkshopCancellationResolvedControl({
   );
 }
 
+function EquipmentCancellationResolvedControl({
+  cancellation,
+}: {
+  cancellation: any;
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const submit = useSubmit();
+
+  const handleResolvedToggle = () => {
+    const formData = new FormData();
+    formData.append("actionType", "updateEquipmentCancellationResolved");
+    formData.append("cancellationId", cancellation.id.toString());
+    formData.append("resolved", (!cancellation.resolved).toString());
+
+    submit(formData, { method: "post" });
+    setIsDialogOpen(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          checked={cancellation.resolved}
+          onChange={() => setIsDialogOpen(true)}
+          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+        />
+        <span className="ml-2 text-sm">Resolved</span>
+      </div>
+
+      <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {cancellation.resolved
+                ? "Mark as Unresolved"
+                : "Mark as Resolved"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancellation.resolved
+                ? "Are you sure you want to mark this equipment cancellation as unresolved? This will move it back to the unresolved list."
+                : "Are you sure you want to mark this equipment cancellation as resolved? This indicates that any necessary refunds or actions have been completed."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResolvedToggle}>
+              {cancellation.resolved ? "Mark Unresolved" : "Mark Resolved"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
 export default function AdminSettings() {
   const {
     settings,
@@ -1053,6 +1135,7 @@ export default function AdminSettings() {
     volunteerHours,
     recentVolunteerActions,
     workshopCancellations,
+    equipmentCancellations,
   } = useLoaderData<{
     settings: {
       workshopVisibilityDays: number;
@@ -1164,6 +1247,36 @@ export default function AdminSettings() {
         price: number;
       } | null;
       allOccurrences?: Array<any>;
+    }>;
+    equipmentCancellations: Array<{
+      id: number;
+      userId: number;
+      equipmentId: number;
+      paymentIntentId: string | null;
+      totalSlotsBooked: number;
+      slotsRefunded: number;
+      totalPricePaid: number;
+      priceToRefund: number;
+      cancellationDate: string;
+      eligibleForRefund: boolean;
+      resolved: boolean;
+      cancelledSlotTimes: Array<{
+        startTime: string;
+        endTime: string;
+        slotId: number;
+      }>;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+      equipment: {
+        id: number;
+        name: string;
+        price: number;
+      };
     }>;
   }>();
 
@@ -4274,7 +4387,7 @@ export default function AdminSettings() {
                 </Card>
 
                 {/* Resolved Workshop Cancelled Events Card */}
-                <Card>
+                <Card className="mb-6">
                   <CardHeader>
                     <CardTitle>Resolved Workshop Cancelled Events</CardTitle>
                     <CardDescription>
@@ -4468,6 +4581,184 @@ export default function AdminSettings() {
                       currentPage={resolvedCurrentPage}
                       totalPages={resolvedTotalPages}
                       setCurrentPage={setResolvedCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Equipment Cancelled Events Card */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Equipment Cancelled Events</CardTitle>
+                    <CardDescription>
+                      View and manage unresolved equipment cancellations to
+                      track refunds and resolve user issues
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Name",
+                          render: (cancellation: any) => (
+                            <div className="font-medium">
+                              {cancellation.equipment.name}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Time(s)",
+                          render: (cancellation: any) => {
+                            const times = cancellation.cancelledSlotTimes;
+                            if (!times || times.length === 0) {
+                              return (
+                                <span className="text-gray-500">No times</span>
+                              );
+                            }
+
+                            if (times.length === 1) {
+                              const time = times[0];
+                              return (
+                                <div className="text-sm">
+                                  {new Date(
+                                    time.startTime
+                                  ).toLocaleDateString()}{" "}
+                                  {new Date(time.startTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}{" "}
+                                  -{" "}
+                                  {new Date(time.endTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      className="p-0 h-auto text-sm"
+                                    >
+                                      {times.length} time slots
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="space-y-1">
+                                      {times.map((time: any, index: number) => (
+                                        <div key={index} className="text-xs">
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleDateString()}{" "}
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}{" "}
+                                          -{" "}
+                                          {new Date(
+                                            time.endTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          },
+                        },
+                        {
+                          header: "Slots Refunded / Total",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              {cancellation.slotsRefunded}/
+                              {cancellation.totalSlotsBooked}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Price to Refund",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.priceToRefund.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Total Price Paid",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.totalPricePaid.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Stripe Payment ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.paymentIntentId ? (
+                                <span className="text-blue-600">
+                                  {cancellation.paymentIntentId}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">
+                                  No Payment ID
+                                </span>
+                              )}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => (
+                            <div>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                  cancellation.eligibleForRefund
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {cancellation.eligibleForRefund ? "Yes" : "No"}
+                              </span>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Resolved?",
+                          render: (cancellation: any) => (
+                            <EquipmentCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={equipmentCancellations.filter(
+                        (c: any) => !c.resolved
+                      )}
+                      emptyMessage="No unresolved cancelled equipment events found"
                     />
                   </CardContent>
                 </Card>
