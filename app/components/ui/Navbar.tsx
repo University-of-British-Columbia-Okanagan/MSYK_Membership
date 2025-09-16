@@ -85,7 +85,7 @@ const Navbar = () => {
                 <Link to="/workshopregistration" className="block px-4 py-2 text-gray-700 hover:bg-gray-100">
                   Workshop Registration
                 </Link>
-                <Link to="/eventcalendar" className="block px-4 py-2 text-gray-700 hover:bg-gray-100">
+                <Link to="/dashboard/events" className="block px-4 py-2 text-gray-700 hover:bg-gray-100">
                   Event Calendar
                 </Link>
                 <Link to="/makertomarket" className="block px-4 py-2 text-gray-700 hover:bg-gray-100">

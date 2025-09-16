@@ -154,6 +154,7 @@ model WorkshopOccurrence {
   status       String    @default("active") // "open", "closed", "cancelled"
   connectId    Int? // For multi-day workshop tracking
   offerId      Int       @default(1)
+  googleEventId String?
 
   // Relationships
   workshop              Workshop                        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
