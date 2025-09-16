@@ -675,26 +675,26 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
-      // Create slots for all workshop occurrences
-      for (const occurrence of savedWorkshop.occurrences) {
-        for (const equipmentId of equipments) {
-          try {
-            await createEquipmentSlotsForOccurrence(
-              occurrence.id,
-              equipmentId,
-              occurrence.startDate,
-              occurrence.endDate,
-              userId
-            );
-          } catch (error) {
-            logger.error(
-              `[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`,
-              { url: request.url }
-            );
-            // Continue with other equipment instead of failing the whole operation
-          }
-        }
-      }
+      // // Create slots for all workshop occurrences
+      // for (const occurrence of savedWorkshop.occurrences) {
+      //   for (const equipmentId of equipments) {
+      //     try {
+      //       await createEquipmentSlotsForOccurrence(
+      //         occurrence.id,
+      //         equipmentId,
+      //         occurrence.startDate,
+      //         occurrence.endDate,
+      //         userId
+      //       );
+      //     } catch (error) {
+      //       logger.error(
+      //         `[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`,
+      //         { url: request.url }
+      //       );
+      //       // Continue with other equipment instead of failing the whole operation
+      //     }
+      //   }
+      // }
 
       return redirect("/dashboard/admin");
     } catch (error) {
@@ -1229,8 +1229,8 @@ export default function AddWorkshop() {
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
                     Enable this to create multiple pricing options. The first
-                    price field will be disabled and pricing will be managed through
-                    price variations
+                    price field will be disabled and pricing will be managed
+                    through price variations
                   </p>
                 </div>
 

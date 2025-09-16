@@ -211,7 +211,8 @@ model EquipmentBooking {
   slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking")
   workshop  Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
 
-  @@unique([slotId]) // Prevents double booking of slots
+  // Removed unique constraint to allow cancelled bookings + new bookings for same slot
+  // @@unique([slotId]) // Prevents double booking of slots
 }
 
 model UserWorkshop {

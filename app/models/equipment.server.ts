@@ -1108,43 +1108,21 @@ export async function createEquipmentSlotsForOccurrence(
           slotId = newSlot.id;
         }
 
-        // Now create or update a booking record in EquipmentBooking table
+        // Always create a new workshop booking entry
         try {
-          // Check if booking already exists for this slot
-          const existingBooking = await db.equipmentBooking.findFirst({
-            where: { slotId: slotId },
+          await db.equipmentBooking.create({
+            data: {
+              userId: userId, // Use the userId
+              equipmentId,
+              slotId,
+              status: "pending", // Keep default status as pending
+              bookedFor: "workshop", // Set the new bookedFor field
+              workshopId, // Connect to the workshop
+            },
           });
-
-          if (existingBooking) {
-            // Update existing booking (including cancelled ones) with workshop information
-            await db.equipmentBooking.update({
-              where: { id: existingBooking.id },
-              data: {
-                userId: userId, // Use the userId of the logged-in admin
-                status: "pending", // Reset status to pending
-                bookedFor: "workshop", // Set as workshop booking
-                workshopId, // Connect to the workshop
-                paymentIntentId: null, // Clear any payment intent
-              },
-            });
-          } else {
-            // Create new booking
-            await db.equipmentBooking.create({
-              data: {
-                userId: userId, // Use the userId of the logged-in admin
-                equipmentId,
-                slotId,
-                status: "pending", // Keep default status as pending
-                bookedFor: "workshop", // Set the new bookedFor field
-                workshopId, // Connect to the workshop
-              },
-            });
-          }
+          console.log(`Created workshop booking for slot ${slotId}`);
         } catch (bookingError) {
-          console.error(
-            "Error creating/updating equipment booking:",
-            bookingError
-          );
+          console.error("Error creating equipment booking:", bookingError);
           // Continue even if booking creation fails
         }
       } catch (error) {
