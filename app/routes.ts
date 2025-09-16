@@ -13,7 +13,7 @@ export default [
   route("/contact", "routes/about/contact.tsx"),
   route("/programming", "routes/programming/programming.tsx"),
   route("/workshopregistration", "routes/programming/workshopregistration.tsx"),
-  route("/dashboard/events", "routes/programming/eventcalendar.tsx"),
+  route("/dashboard/events", "routes/dashboard/events.tsx"),
   route("/makertomarket", "routes/programming/makertomarket.tsx"),
   route("/muralproject", "routes/programming/muralproject.tsx"),
   route("/dontfakeit", "routes/programming/dontfakeit.tsx"),
