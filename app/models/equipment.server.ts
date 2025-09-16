@@ -146,23 +146,51 @@ export async function bookEquipment(
     data: { isBooked: true },
   });
 
-  const booking = await db.equipmentBooking.create({
-    data: {
-      userId: parseInt(userId),
-      equipmentId,
-      slotId: slot.id,
-      status: "pending",
-      ...(paymentIntentId ? { paymentIntentId } : {}),
-    },
+  // Check for existing booking (including cancelled ones)
+  const existingBooking = await db.equipmentBooking.findFirst({
+    where: { slotId: slot.id },
   });
+
+  let booking;
+  if (existingBooking) {
+    if (existingBooking.status === "cancelled") {
+      // Update the cancelled booking with new user and reset status
+      booking = await db.equipmentBooking.update({
+        where: { id: existingBooking.id },
+        data: {
+          userId: parseInt(userId),
+          status: "pending",
+          paymentIntentId: paymentIntentId || null,
+          bookedFor: "user",
+          workshopId: null, // Clear any workshop association
+        },
+      });
+    } else {
+      // This shouldn't happen if slot.isBooked check above works correctly
+      throw new Error("Slot already has an active booking.");
+    }
+  } else {
+    // Create new booking
+    booking = await db.equipmentBooking.create({
+      data: {
+        userId: parseInt(userId),
+        equipmentId,
+        slotId: slot.id,
+        status: "pending",
+        ...(paymentIntentId ? { paymentIntentId } : {}),
+      },
+    });
+  }
 
   // Send confirmation email unless suppressed
   if (!options?.suppressEmail) {
     try {
-      const { sendEquipmentConfirmationEmail } = await import("../utils/email.server");
+      const { sendEquipmentConfirmationEmail } = await import(
+        "../utils/email.server"
+      );
       const equipment = await db.equipment.findUnique({
         where: { id: equipmentId },
-        select: { name: true, price: true }
+        select: { name: true, price: true },
       });
 
       if (equipment) {
@@ -207,7 +235,9 @@ export async function bookEquipmentBulkByTimes(
 
   // Send one consolidated email
   try {
-    const { sendEquipmentBulkConfirmationEmail } = await import("../utils/email.server");
+    const { sendEquipmentBulkConfirmationEmail } = await import(
+      "../utils/email.server"
+    );
     const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
     const equipment = await db.equipment.findUnique({
       where: { id: equipmentId },
@@ -226,7 +256,10 @@ export async function bookEquipmentBulkByTimes(
       });
     }
   } catch (emailError) {
-    console.error("Failed to send bulk equipment confirmation email:", emailError);
+    console.error(
+      "Failed to send bulk equipment confirmation email:",
+      emailError
+    );
   }
 
   return { count: bookings.length };
@@ -235,7 +268,7 @@ export async function bookEquipmentBulkByTimes(
 /**
  * Cancel an equipment booking and free up the associated slot
  * @param bookingId The ID of the booking to cancel
- * @returns Deleted booking record
+ * @returns Updated booking record with cancelled status
  */
 export async function cancelEquipmentBooking(bookingId: number) {
   const booking = await db.equipmentBooking.findUnique({
@@ -255,8 +288,11 @@ export async function cancelEquipmentBooking(bookingId: number) {
     });
   }
 
-  // Delete booking record
-  return await db.equipmentBooking.delete({ where: { id: bookingId } });
+  // Update booking status to cancelled
+  return await db.equipmentBooking.update({
+    where: { id: bookingId },
+    data: { status: "cancelled" },
+  });
 }
 
 /**
@@ -264,15 +300,12 @@ export async function cancelEquipmentBooking(bookingId: number) {
  * @param bookingId The booking ID to fetch
  * @returns Object with userEmail, equipmentName, startTime, endTime or null
  */
-export async function getBookingEmailDetails(bookingId: number): Promise<
-  | {
-      userEmail: string;
-      equipmentName: string;
-      startTime: Date;
-      endTime: Date;
-    }
-  | null
-> {
+export async function getBookingEmailDetails(bookingId: number): Promise<{
+  userEmail: string;
+  equipmentName: string;
+  startTime: Date;
+  endTime: Date;
+} | null> {
   const booking = await db.equipmentBooking.findUnique({
     where: { id: bookingId },
     include: {
@@ -678,7 +711,10 @@ export async function duplicateEquipment(equipmentId: number) {
  */
 export async function getUserBookedEquipments(userId: number) {
   const bookings = await db.equipmentBooking.findMany({
-    where: { userId },
+    where: {
+      userId,
+      status: { not: "cancelled" }, // Filter out cancelled bookings
+    },
     include: {
       equipment: {
         include: {
@@ -700,6 +736,46 @@ export async function getUserBookedEquipments(userId: number) {
     status: "booked", // Since this is user's booking, it's always "booked"
     bookingId: booking.id,
   }));
+}
+
+/**
+ * Fetch all cancelled equipment bookings for admin view
+ * @returns Array of cancelled equipment bookings with user and equipment details
+ */
+export async function getCancelledEquipmentBookings() {
+  const cancelledBookings = await db.equipmentBooking.findMany({
+    where: {
+      status: "cancelled",
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      equipment: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+      slot: {
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+        },
+      },
+    },
+    orderBy: {
+      id: "desc", // Most recent cancellations first
+    },
+  });
+
+  return cancelledBookings;
 }
 
 /**
@@ -1032,14 +1108,27 @@ export async function createEquipmentSlotsForOccurrence(
           slotId = newSlot.id;
         }
 
-        // Now create a booking record in EquipmentBooking table
+        // Now create or update a booking record in EquipmentBooking table
         try {
           // Check if booking already exists for this slot
           const existingBooking = await db.equipmentBooking.findFirst({
             where: { slotId: slotId },
           });
 
-          if (!existingBooking) {
+          if (existingBooking) {
+            // Update existing booking (including cancelled ones) with workshop information
+            await db.equipmentBooking.update({
+              where: { id: existingBooking.id },
+              data: {
+                userId: userId, // Use the userId of the logged-in admin
+                status: "pending", // Reset status to pending
+                bookedFor: "workshop", // Set as workshop booking
+                workshopId, // Connect to the workshop
+                paymentIntentId: null, // Clear any payment intent
+              },
+            });
+          } else {
+            // Create new booking
             await db.equipmentBooking.create({
               data: {
                 userId: userId, // Use the userId of the logged-in admin
@@ -1052,7 +1141,10 @@ export async function createEquipmentSlotsForOccurrence(
             });
           }
         } catch (bookingError) {
-          console.error("Error creating equipment booking:", bookingError);
+          console.error(
+            "Error creating/updating equipment booking:",
+            bookingError
+          );
           // Continue even if booking creation fails
         }
       } catch (error) {
