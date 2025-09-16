@@ -4762,6 +4762,183 @@ export default function AdminSettings() {
                     />
                   </CardContent>
                 </Card>
+
+                {/* Resolved Equipment Cancelled Events Card */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Resolved Equipment Cancelled Events</CardTitle>
+                    <CardDescription>
+                      Previously resolved equipment cancellations for reference
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Name",
+                          render: (cancellation: any) => (
+                            <div className="font-medium">
+                              {cancellation.equipment.name}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Time(s)",
+                          render: (cancellation: any) => {
+                            const times = cancellation.cancelledSlotTimes;
+                            if (!times || times.length === 0) {
+                              return (
+                                <span className="text-gray-500">No times</span>
+                              );
+                            }
+
+                            if (times.length === 1) {
+                              const time = times[0];
+                              return (
+                                <div className="text-sm">
+                                  {new Date(
+                                    time.startTime
+                                  ).toLocaleDateString()}{" "}
+                                  {new Date(time.startTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}{" "}
+                                  -{" "}
+                                  {new Date(time.endTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      className="p-0 h-auto text-sm"
+                                    >
+                                      {times.length} time slots
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="space-y-1">
+                                      {times.map((time: any, index: number) => (
+                                        <div key={index} className="text-xs">
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleDateString()}{" "}
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}{" "}
+                                          -{" "}
+                                          {new Date(
+                                            time.endTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          },
+                        },
+                        {
+                          header: "Slots Refunded / Total",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              {cancellation.slotsRefunded}/
+                              {cancellation.totalSlotsBooked}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Price to Refund",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.priceToRefund.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Total Price Paid",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.totalPricePaid.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Stripe Payment ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.paymentIntentId ? (
+                                <span className="text-blue-600">
+                                  {cancellation.paymentIntentId}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">
+                                  No Payment ID
+                                </span>
+                              )}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => (
+                            <div>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                  cancellation.eligibleForRefund
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {cancellation.eligibleForRefund ? "Yes" : "No"}
+                              </span>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Resolved",
+                          render: (cancellation: any) => (
+                            <EquipmentCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={equipmentCancellations.filter(
+                        (c: any) => c.resolved
+                      )}
+                      emptyMessage="No resolved cancelled equipment events found"
+                    />
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* Tab: Miscellaneous Settings */}
