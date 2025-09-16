@@ -1072,6 +1072,70 @@ function WorkshopCancellationResolvedControl({
   );
 }
 
+const EquipmentCancellationsPagination = ({
+  currentPage,
+  totalPages,
+  setCurrentPage,
+}: {
+  currentPage: number;
+  totalPages: number;
+  setCurrentPage: (page: number) => void;
+}) => {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <div className="text-sm text-gray-500">
+        Page {currentPage} of {totalPages}
+      </div>
+      <div className="flex items-center space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+        >
+          Previous
+        </Button>
+
+        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+          let pageNumber;
+          if (totalPages <= 5) {
+            pageNumber = i + 1;
+          } else if (currentPage <= 3) {
+            pageNumber = i + 1;
+          } else if (currentPage >= totalPages - 2) {
+            pageNumber = totalPages - 4 + i;
+          } else {
+            pageNumber = currentPage - 2 + i;
+          }
+
+          return (
+            <Button
+              key={pageNumber}
+              variant={currentPage === pageNumber ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCurrentPage(pageNumber)}
+              className="w-8 h-8"
+            >
+              {pageNumber}
+            </Button>
+          );
+        })}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 function EquipmentCancellationResolvedControl({
   cancellation,
 }: {
@@ -1375,6 +1439,14 @@ export default function AdminSettings() {
   const [resolvedCurrentPage, setResolvedCurrentPage] = useState(1);
   const [workshopCancellationsPerPage] = useState(10);
 
+  // Equipment cancellations pagination
+  const [equipmentUnresolvedCurrentPage, setEquipmentUnresolvedCurrentPage] =
+    useState(1);
+  const [equipmentResolvedCurrentPage, setEquipmentResolvedCurrentPage] =
+    useState(1);
+  const [equipmentCancellationsPerPage] = useState(10);
+
+  // Unresolved and resolved workshop cancellations
   const unresolvedCancellations = workshopCancellations.filter(
     (cancellation: any) => !cancellation.resolved
   );
@@ -1404,6 +1476,40 @@ export default function AdminSettings() {
     resolvedStartIndex,
     resolvedEndIndex
   );
+
+  // Equipment cancellations pagination logic
+  const equipmentUnresolvedCancellations = equipmentCancellations.filter(
+    (cancellation: any) => !cancellation.resolved
+  );
+  const equipmentResolvedCancellations = equipmentCancellations.filter(
+    (cancellation: any) => cancellation.resolved
+  );
+
+  const equipmentUnresolvedTotalPages = Math.ceil(
+    equipmentUnresolvedCancellations.length / equipmentCancellationsPerPage
+  );
+  const equipmentUnresolvedStartIndex =
+    (equipmentUnresolvedCurrentPage - 1) * equipmentCancellationsPerPage;
+  const equipmentUnresolvedEndIndex =
+    equipmentUnresolvedStartIndex + equipmentCancellationsPerPage;
+  const paginatedEquipmentUnresolvedCancellations =
+    equipmentUnresolvedCancellations.slice(
+      equipmentUnresolvedStartIndex,
+      equipmentUnresolvedEndIndex
+    );
+
+  const equipmentResolvedTotalPages = Math.ceil(
+    equipmentResolvedCancellations.length / equipmentCancellationsPerPage
+  );
+  const equipmentResolvedStartIndex =
+    (equipmentResolvedCurrentPage - 1) * equipmentCancellationsPerPage;
+  const equipmentResolvedEndIndex =
+    equipmentResolvedStartIndex + equipmentCancellationsPerPage;
+  const paginatedEquipmentResolvedCancellations =
+    equipmentResolvedCancellations.slice(
+      equipmentResolvedStartIndex,
+      equipmentResolvedEndIndex
+    );
 
   // Recent actions filters state
   const [actionsSearchName, setActionsSearchName] = useState("");
@@ -1676,6 +1782,15 @@ export default function AdminSettings() {
   React.useEffect(() => {
     setResolvedCurrentPage(1);
   }, [workshopCancellations]);
+
+  // Reset equipment cancellations pagination when data changes
+  React.useEffect(() => {
+    setEquipmentUnresolvedCurrentPage(1);
+  }, [equipmentCancellations]);
+
+  React.useEffect(() => {
+    setEquipmentResolvedCurrentPage(1);
+  }, [equipmentCancellations]);
 
   // Helper function to calculate total hours from volunteer hour entries
   const calculateTotalHours = (hours: any[]) => {
@@ -4755,10 +4870,13 @@ export default function AdminSettings() {
                           ),
                         },
                       ]}
-                      data={equipmentCancellations.filter(
-                        (c: any) => !c.resolved
-                      )}
+                      data={paginatedEquipmentUnresolvedCancellations}
                       emptyMessage="No unresolved cancelled equipment events found"
+                    />
+                    <EquipmentCancellationsPagination
+                      currentPage={equipmentUnresolvedCurrentPage}
+                      totalPages={equipmentUnresolvedTotalPages}
+                      setCurrentPage={setEquipmentUnresolvedCurrentPage}
                     />
                   </CardContent>
                 </Card>
@@ -4932,10 +5050,13 @@ export default function AdminSettings() {
                           ),
                         },
                       ]}
-                      data={equipmentCancellations.filter(
-                        (c: any) => c.resolved
-                      )}
+                      data={paginatedEquipmentResolvedCancellations}
                       emptyMessage="No resolved cancelled equipment events found"
+                    />
+                    <EquipmentCancellationsPagination
+                      currentPage={equipmentResolvedCurrentPage}
+                      totalPages={equipmentResolvedTotalPages}
+                      setCurrentPage={setEquipmentResolvedCurrentPage}
                     />
                   </CardContent>
                 </Card>
