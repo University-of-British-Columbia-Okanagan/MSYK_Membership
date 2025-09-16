@@ -42,6 +42,20 @@ export async function updateAdminSetting(
   });
 }
 
+export async function getGoogleCalendarConfig() {
+  const calendarId = await getAdminSetting("google_calendar_id", "");
+  const timezone = await getAdminSetting("google_calendar_timezone", "America/Yellowknife");
+  const hasToken = Boolean(await getAdminSetting("google_oauth_refresh_token_enc", ""));
+  return { calendarId, timezone, connected: hasToken };
+}
+
+export async function clearGoogleCalendarAuth(): Promise<void> {
+  // Remove stored refresh token and selected calendar id
+  await updateAdminSetting("google_oauth_refresh_token_enc", "");
+  await updateAdminSetting("google_calendar_id", "");
+}
+
+
 /**
  * Get workshop visibility days setting
  * @returns Number of days to show future workshop dates

@@ -16,7 +16,7 @@ import MuralProject from "./routes/programming/muralproject";
 import PastWorkshops from "./routes/programming/pastworkshops";
 import Market2024 from "./routes/programming/makermarket2024";
 import DontFakeIt from "./routes/programming/dontfakeit";
-import EventCalendar from "./routes/programming/eventcalendar";
+import DashboardEvents from "./routes/dashboard/events";
 import SpaceRental from "./routes/spaceandservices/SpaceRental";
 import SpacesEquipment from "./routes/spaceandservices/SpacesEquipment";
 import ResourceToolbox from "./routes/spaceandservices/resourcetoolbox";
@@ -49,7 +49,7 @@ const App = () => (
         <Route path="makertomarket" element={<MakerMarket />} />
         <Route path="muralproject" element={<MuralProject />} />
         <Route path="pastworkshops" element={<PastWorkshops />} />
-        <Route path="eventcalendar" element={<EventCalendar />} />
+        <Route path="eventcalendar" element={<DashboardEvents />} />
         <Route path="dontfakeit" element={<DontFakeIt />} />
         <Route path="makermarket2024" element={<Market2024 />} />
         <Route path="SpaceRental" element={<SpaceRental />} />

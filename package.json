@@ -48,6 +48,7 @@
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.1",
+    "googleapis": "^159.0.0",
     "isbot": "^5.1.17",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.473.0",
