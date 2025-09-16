@@ -42,14 +42,15 @@ model User {
   waiverSignature String?
 
   // Relationships
-  userWorkshops         UserWorkshop[]
-  equipmentbookings     EquipmentBooking[]
-  userMemberships       UserMembership[]
-  paymentInformation    UserPaymentInformation?
-  issuesReported        Issue[]
-  volunteers            Volunteer[]
-  volunteerHours        VolunteerTimetable[]
-  workshopCancellations WorkshopCancelledRegistration[]
+  userWorkshops          UserWorkshop[]
+  equipmentbookings      EquipmentBooking[]
+  userMemberships        UserMembership[]
+  paymentInformation     UserPaymentInformation?
+  issuesReported         Issue[]
+  volunteers             Volunteer[]
+  volunteerHours         VolunteerTimetable[]
+  workshopCancellations  WorkshopCancelledRegistration[]
+  equipmentCancellations EquipmentCancelledBooking[]
 }
 
 model Volunteer {
@@ -177,7 +178,8 @@ model Equipment {
   slots        EquipmentSlot[]
   bookings     EquipmentBooking[]
 
-  prerequisites EquipmentPrerequisite[] @relation("EquipmentWithPrerequisite")
+  prerequisites EquipmentPrerequisite[]     @relation("EquipmentWithPrerequisite")
+  cancellations EquipmentCancelledBooking[]
 }
 
 model EquipmentSlot {
@@ -212,7 +214,8 @@ model EquipmentBooking {
   slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking")
   workshop  Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
 
-  @@unique([slotId]) // Prevents double booking of slots
+  // Removed unique constraint to allow cancelled bookings + new bookings for same slot
+  // @@unique([slotId]) // Prevents double booking of slots
 }
 
 model UserWorkshop {
@@ -274,6 +277,38 @@ model WorkshopCancelledRegistration {
   @@index([workshopId])
   @@index([resolved])
   @@index([cancellationDate])
+}
+
+model EquipmentCancelledBooking {
+  id              Int     @id @default(autoincrement())
+  userId          Int
+  equipmentId     Int
+  paymentIntentId String? // The original Stripe payment intent for the entire booking
+
+  // Equipment booking details
+  totalSlotsBooked Int // Total number of slots in the original booking
+  slotsRefunded    Int // Number of slots being refunded in this cancellation
+  totalPricePaid   Float // Total amount paid for all slots (including tax)
+  priceToRefund    Float // Amount to refund for the cancelled slots
+
+  // Cancellation tracking
+  cancellationDate  DateTime @default(now())
+  eligibleForRefund Boolean // Calculated based on 2-day rule
+  resolved          Boolean  @default(false)
+
+  // Store the cancelled slot times as JSON for multiple bookings
+  cancelledSlotTimes Json // Array of { startTime: DateTime, endTime: DateTime, slotId: Int }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([equipmentId])
+  @@index([paymentIntentId])
 }
 
 model MembershipPlan {
