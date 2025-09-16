@@ -78,7 +78,10 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
-import { listCalendars, isGoogleConnected } from "~/utils/googleCalendar.server";
+import {
+  listCalendars,
+  isGoogleConnected,
+} from "~/utils/googleCalendar.server";
 import {
   getAllVolunteerHours,
   updateVolunteerHourStatus,
@@ -352,7 +355,10 @@ export async function action({ request }: { request: Request }) {
       logger.error(`Error saving Google Calendar settings: ${error}`, {
         url: request.url,
       });
-      return { success: false, message: "Failed to save Google Calendar settings" };
+      return {
+        success: false,
+        message: "Failed to save Google Calendar settings",
+      };
     }
   }
 
@@ -4853,12 +4859,26 @@ export default function AdminSettings() {
                         },
                         {
                           header: "Slots Refunded / Total",
-                          render: (cancellation: any) => (
-                            <div className="text-sm font-medium">
-                              {cancellation.slotsRefunded}/
-                              {cancellation.totalSlotsBooked}
-                            </div>
-                          ),
+                          render: (cancellation: any) => {
+                            // Calculate cumulative slots refunded for this payment intent
+                            const cumulativeRefunded = equipmentCancellations
+                              .filter(
+                                (c) =>
+                                  c.userId === cancellation.userId &&
+                                  c.equipmentId === cancellation.equipmentId &&
+                                  c.paymentIntentId ===
+                                    cancellation.paymentIntentId &&
+                                  c.id <= cancellation.id // Only count cancellations up to this one
+                              )
+                              .reduce((total, c) => total + c.slotsRefunded, 0);
+
+                            return (
+                              <div className="text-sm font-medium">
+                                {cumulativeRefunded}/
+                                {cancellation.totalSlotsBooked}
+                              </div>
+                            );
+                          },
                         },
                         {
                           header: "Price to Refund",
@@ -5033,12 +5053,26 @@ export default function AdminSettings() {
                         },
                         {
                           header: "Slots Refunded / Total",
-                          render: (cancellation: any) => (
-                            <div className="text-sm font-medium">
-                              {cancellation.slotsRefunded}/
-                              {cancellation.totalSlotsBooked}
-                            </div>
-                          ),
+                          render: (cancellation: any) => {
+                            // Calculate cumulative slots refunded for this payment intent
+                            const cumulativeRefunded = equipmentCancellations
+                              .filter(
+                                (c) =>
+                                  c.userId === cancellation.userId &&
+                                  c.equipmentId === cancellation.equipmentId &&
+                                  c.paymentIntentId ===
+                                    cancellation.paymentIntentId &&
+                                  c.id <= cancellation.id // Only count cancellations up to this one
+                              )
+                              .reduce((total, c) => total + c.slotsRefunded, 0);
+
+                            return (
+                              <div className="text-sm font-medium">
+                                {cumulativeRefunded}/
+                                {cancellation.totalSlotsBooked}
+                              </div>
+                            );
+                          },
                         },
                         {
                           header: "Price to Refund",
@@ -5184,14 +5218,16 @@ export default function AdminSettings() {
                   <CardContent className="space-y-6">
                     {/* @ts-ignore server-injected via loader */}
                     {(() => {
-                      const data = (typeof window === "undefined"
-                        ? undefined
-                        : undefined) as any;
+                      const data = (
+                        typeof window === "undefined" ? undefined : undefined
+                      ) as any;
                       return null;
                     })()}
                     {/* Using loader data through hook */}
                     {(() => {
-                      const { google } = (useLoaderData() as any) || { google: {} };
+                      const { google } = (useLoaderData() as any) || {
+                        google: {},
+                      };
                       return (
                         <div className="space-y-4">
                           {!google?.connected ? (
@@ -5206,19 +5242,27 @@ export default function AdminSettings() {
                                 Connect Google
                               </a>
                               <p className="text-xs text-gray-500">
-                                After granting access, you will come back here to
-                                select a calendar.
+                                After granting access, you will come back here
+                                to select a calendar.
                               </p>
                             </div>
                           ) : (
                             <Form method="post" className="space-y-4">
-                              <input type="hidden" name="actionType" value="googleCalendarSave" />
+                              <input
+                                type="hidden"
+                                name="actionType"
+                                value="googleCalendarSave"
+                              />
                               <div className="space-y-2">
-                                <Label htmlFor="googleCalendarId">Select Calendar</Label>
+                                <Label htmlFor="googleCalendarId">
+                                  Select Calendar
+                                </Label>
                                 <select
                                   id="googleCalendarId"
                                   name="googleCalendarId"
-                                  defaultValue={google?.selectedCalendarId || ""}
+                                  defaultValue={
+                                    google?.selectedCalendarId || ""
+                                  }
                                   className="border rounded px-3 py-2 w-full max-w-md"
                                 >
                                   <option value="" disabled>
@@ -5231,7 +5275,8 @@ export default function AdminSettings() {
                                   ))}
                                 </select>
                                 <p className="text-xs text-gray-500">
-                                  Ensure this calendar is public in Google Calendar settings to embed it on the website.
+                                  Ensure this calendar is public in Google
+                                  Calendar settings to embed it on the website.
                                 </p>
                               </div>
                               <div className="space-y-2">
@@ -5240,15 +5285,21 @@ export default function AdminSettings() {
                                   id="googleTimezone"
                                   name="googleTimezone"
                                   type="text"
-                                  defaultValue={google?.timezone || "America/Yellowknife"}
+                                  defaultValue={
+                                    google?.timezone || "America/Yellowknife"
+                                  }
                                   className="w-full max-w-md"
                                 />
                                 <p className="text-xs text-gray-500">
-                                  Use a valid IANA timezone like America/Yellowknife.
+                                  Use a valid IANA timezone like
+                                  America/Yellowknife.
                                 </p>
                               </div>
                               <div className="flex items-center gap-3">
-                                <Button type="submit" className="bg-yellow-500 hover:bg-yellow-600 text-white">
+                                <Button
+                                  type="submit"
+                                  className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                                >
                                   Save Google Calendar Settings
                                 </Button>
                                 <a

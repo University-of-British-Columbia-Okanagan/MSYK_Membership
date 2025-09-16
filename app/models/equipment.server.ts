@@ -1383,20 +1383,21 @@ export async function createEquipmentCancellation({
       0
     );
 
-    const newTotalSlotsRefunded = totalSlotsAlreadyRefunded + slotsToCancel;
+    // Store individual cancellation amount, not cumulative
+    const currentSlotsToCancel = slotsToCancel;
 
     // Recalculate price to refund based on original totals
     const correctPriceToRefund =
       (originalTotalPrice / originalTotalSlots) * slotsToCancel;
 
-    // Always create a new record but with cumulative totals
+    // Always create a new record with individual cancellation amounts
     return await db.equipmentCancelledBooking.create({
       data: {
         userId,
         equipmentId,
         paymentIntentId,
         totalSlotsBooked: originalTotalSlots, // Use original total
-        slotsRefunded: newTotalSlotsRefunded, // Cumulative total
+        slotsRefunded: currentSlotsToCancel, // Individual cancellation amount, not cumulative
         totalPricePaid: originalTotalPrice, // Use original total price
         priceToRefund: correctPriceToRefund, // Individual refund amount for this cancellation
         eligibleForRefund,
@@ -1422,7 +1423,6 @@ export async function createEquipmentCancellation({
     });
   }
 }
-
 /**
  * Get all equipment cancellation records with user and equipment details
  */
