@@ -129,6 +129,7 @@ export type OccurrenceLike = {
   startDatePST?: Date | null;
   endDatePST?: Date | null;
   googleEventId?: string | null;
+  connectId?: number | null;
 };
 
 function formatLocalNoTimezone(date: Date): string {
@@ -182,6 +183,7 @@ function buildEventResource(
     "",
     `Type: ${sanitizeText(workshop.type)}`,
     `Capacity: ${workshop.capacity}`,
+    occ.connectId ? "📅 This is part of a multi-day workshop series" : undefined,
     "",
     `Register: ${baseUrl.replace(/\/$/, "")}/dashboard/workshops/${workshop.id}`,
   ].filter(Boolean) as string[];

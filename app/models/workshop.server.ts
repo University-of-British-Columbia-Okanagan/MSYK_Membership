@@ -239,6 +239,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
               endDate: created.endDate,
               startDatePST: created.startDatePST ?? undefined,
               endDatePST: created.endDatePST ?? undefined,
+              connectId: created.connectId ?? undefined,
             }
           );
           if (eventId) {
@@ -673,6 +674,7 @@ export async function updateWorkshopWithOccurrences(
               endDate: createdOcc.endDate,
               startDatePST: createdOcc.startDatePST ?? undefined,
               endDatePST: createdOcc.endDatePST ?? undefined,
+              connectId: createdOcc.connectId ?? undefined,
             }
           );
           if (eventId) {
@@ -737,6 +739,7 @@ export async function updateWorkshopWithOccurrences(
           startDatePST: updated.startDatePST ?? undefined,
           endDatePST: updated.endDatePST ?? undefined,
           googleEventId: (existingOccurrences.find((e) => e.id === updated.id) as any)?.googleEventId ?? null,
+          connectId: updated.connectId ?? undefined,
         }
       );
     } catch (err) {
@@ -2171,6 +2174,7 @@ export async function offerWorkshopAgain(
               endDate: created.endDate,
               startDatePST: created.startDatePST ?? undefined,
               endDatePST: created.endDatePST ?? undefined,
+              connectId: created.connectId ?? undefined,
             }
           );
           if (eventId) {
