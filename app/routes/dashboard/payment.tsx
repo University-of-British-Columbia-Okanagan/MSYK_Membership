@@ -64,7 +64,11 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const meetsLevelRequirement = (userRecord?.roleLevel ?? 0) >= 3;
       const hasAdminPermission = userRecord?.allowLevel4 === true;
 
-      if (!hasActiveSubscription || !meetsLevelRequirement || !hasAdminPermission) {
+      // Check if this is a resubscription - if so, we don't need an active subscription
+      const searchParams = new URL(request.url).searchParams;
+      const isResubscription = searchParams.get("resubscribe") === "true";
+
+      if (!isResubscription && (!hasActiveSubscription || !meetsLevelRequirement || !hasAdminPermission)) {
         throw redirect("/dashboard/memberships");
       }
     }
@@ -106,6 +110,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     }
 
     let isResubscription = false;
+
+    // Check if this is a resubscription based on query parameter
+    const searchParams = new URL(request.url).searchParams;
+    if (searchParams.get("resubscribe") === "true") {
+      isResubscription = true;
+      upgradeFee = 0; // No payment needed for resubscription
+    }
+
+    // Also check if user has an active membership that's cancelled for the same plan
     if (
       userActiveMembership &&
       userActiveMembership.status === "cancelled" &&
@@ -115,11 +128,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       upgradeFee = 0; // No payment needed for resubscription
     }
 
-    // Override isResubscription flag if query parameter "resubscribe" is present
-    const searchParams = new URL(request.url).searchParams;
-    if (searchParams.get("resubscribe") === "true") {
-      isResubscription = true;
-    }
+    // Extract membershipRecordId from query parameters for resubscription
+    const membershipRecordId = searchParams.get("membershipRecordId");
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
@@ -133,6 +143,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       oldMembershipNextPaymentDate,
       isDowngrade,
       isResubscription,
+      membershipRecordId,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
     };
@@ -604,6 +615,7 @@ export default function Payment() {
     userActiveMembership?: any;
     isDowngrade?: boolean;
     isResubscription?: boolean;
+    membershipRecordId?: string | null;
     oldMembershipNextPaymentDate?: Date | null;
     savedPaymentMethod?: any;
     gstPercentage: number;
@@ -622,11 +634,16 @@ export default function Payment() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              currentMembershipId: data.userActiveMembership?.id,
+              currentMembershipId: data.membershipRecordId ? Number(data.membershipRecordId) : data.userActiveMembership?.id,
               membershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
             }),
           });
+
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+
           const json = await res.json();
           if (json.success) {
             return navigate("/dashboard/payment/success?resubscribe=true");
