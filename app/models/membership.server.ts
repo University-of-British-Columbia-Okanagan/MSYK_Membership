@@ -191,10 +191,17 @@ export async function registerMembershipSubscription(
     if (!cancelledMembership) {
       throw new Error("No cancelled membership found for resubscription");
     }
-    // Update the cancelled record to active.
+    // Update the cancelled record to active and set new next payment date
+    const now = new Date();
+    const newNextPaymentDate = new Date(now);
+    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+
     const subscription = await db.userMembership.update({
       where: { id: cancelledMembership.id },
-      data: { status: "active" },
+      data: {
+        status: "active",
+        nextPaymentDate: newNextPaymentDate,
+      },
     });
     return subscription;
   }

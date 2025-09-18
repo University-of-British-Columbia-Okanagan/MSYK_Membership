@@ -22,6 +22,7 @@ import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
 type MembershipStatus = "active" | "cancelled" | "inactive";
 
 type UserMembershipData = {
+  id: number;
   membershipPlanId: number;
   status: MembershipStatus;
   nextPaymentDate?: Date;
@@ -67,6 +68,7 @@ export async function loader({ request }: { request: Request }) {
       }
 
       return {
+        id: m.id,
         membershipPlanId: m.membershipPlanId,
         status,
         nextPaymentDate: m.nextPaymentDate,
@@ -276,6 +278,7 @@ export default function MembershipPage() {
                   hasCancelledSubscription={hasCancelledSubscription}
                   highestActivePrice={highestActivePrice}
                   nextPaymentDate={membership?.nextPaymentDate}
+                  membershipRecordId={membership?.id}
                   roleUser={roleUser}
                   isCurrentlyActivePlan={membershipStatus === "active"}
                 />
