@@ -69,9 +69,10 @@ export async function loader({
 
   // Check if user already has a signed agreement for this membership
   const existingForm = await db.userMembershipForm.findFirst({
-    where: {
+    where: { 
       userId: user.id,
       membershipPlanId: membershipId,
+      status: { not: "inactive" } // Only consider non-inactive forms
     },
   });
 
