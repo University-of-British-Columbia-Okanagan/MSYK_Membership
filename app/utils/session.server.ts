@@ -8,6 +8,7 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import * as fs from "fs";
 import * as path from "path";
 import CryptoJS from "crypto-js";
+import { sendRegistrationConfirmationEmail } from "./email.server";
 
 /**
  * Generates a digitally signed and encrypted waiver PDF document
@@ -231,9 +232,23 @@ export async function register(rawValues: Record<string, any>) {
       select: {
         id: true,
         email: true,
+        firstName: true,
+        lastName: true,
         waiverSignature: true,
       },
     });
+
+    // Send registration confirmation email
+    try {
+      await sendRegistrationConfirmationEmail({
+        userEmail: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+    } catch (emailError) {
+      console.error("Failed to send registration confirmation email:", emailError);
+      // Don't fail the registration if email fails, just log the error
+    }
 
     // Return success message
     return { id: user.id, email: user.email };
@@ -468,7 +483,7 @@ export async function getRoleUser(request: Request) {
 
 /**
  * Finds a user from the email
- * @param email 
+ * @param email
  * @returns user
  */
 export async function findUserByEmail(email: string) {
@@ -488,15 +503,15 @@ export async function findUserByEmail(email: string) {
 
 /**
  * Updates the password of a user
- * @param email 
- * @param password 
+ * @param email
+ * @param password
  * @returns user
  */
 export async function updateUserPassword(email: string, password: string) {
   if (!email || !password) return null;
-  
+
   const hashedPassword = await bcrypt.hash(password, 10);
-  
+
   const user = await db.user.update({
     where: { email },
     data: { password: hashedPassword },
