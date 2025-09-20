@@ -348,6 +348,7 @@ model UserMembershipForm {
   userId             Int
   membershipPlanId   Int
   agreementSignature String // Encrypted signature data
+  status             String   @default("active") // "active", "ending", "cancelled", "inactive"
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
