@@ -3,6 +3,7 @@ import cron from "node-cron";
 import Stripe from "stripe";
 import { getAdminSetting } from "./admin.server";
 import { sendMembershipPaymentReminderEmail } from "~/utils/email.server";
+import CryptoJS from "crypto-js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -554,7 +555,9 @@ export function startMonthlyMembershipCheck() {
       });
 
       for (const membership of reminderCandidates) {
-        const user = await db.user.findUnique({ where: { id: membership.userId } });
+        const user = await db.user.findUnique({
+          where: { id: membership.userId },
+        });
         if (!user) continue;
 
         const baseAmount = Number(membership.membershipPlan.price);
@@ -728,5 +731,57 @@ export function startMonthlyMembershipCheck() {
     } catch (error) {
       console.error("Error in monthly membership check:", error);
     }
+  });
+}
+
+/**
+ * Check if user already has a signed agreement for a membership plan
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @returns UserMembershipForm record or null if not found
+ */
+export async function getUserMembershipForm(
+  userId: number,
+  membershipPlanId: number
+) {
+  return await db.userMembershipForm.findFirst({
+    where: {
+      userId,
+      membershipPlanId,
+      status: { not: "inactive" }, // Only consider non-inactive forms
+    },
+  });
+}
+
+/**
+ * Create a new membership agreement form with encrypted signature
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @param signatureData The signature data to encrypt
+ * @returns Created UserMembershipForm record
+ */
+export async function createMembershipForm(
+  userId: number,
+  membershipPlanId: number,
+  signatureData: string
+) {
+  // Encrypt the signature using the same method as waiver signatures
+  const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+  }
+
+  const encryptedSignature = CryptoJS.AES.encrypt(
+    signatureData,
+    encryptionKey
+  ).toString();
+
+  return await db.userMembershipForm.create({
+    data: {
+      userId,
+      membershipPlanId,
+      agreementSignature: encryptedSignature,
+      status: "active",
+    },
   });
 }

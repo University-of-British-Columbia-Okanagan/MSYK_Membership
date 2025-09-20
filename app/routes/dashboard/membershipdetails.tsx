@@ -21,27 +21,21 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { z } from "zod";
-import { db } from "~/utils/db.server";
-import CryptoJS from "crypto-js";
+import {
+  membershipAgreementSchema,
+  type MembershipAgreementFormValues,
+} from "~/schemas/membershipAgreementSchema";
 import {
   getMembershipPlanById,
   getUserActiveMembership,
+  getUserMembershipForm,
+  createMembershipForm,
 } from "~/models/membership.server";
 import { getUserById } from "~/models/user.server";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/Sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
-
-// Schema for membership agreement validation
-const membershipAgreementSchema = z.object({
-  agreementSignature: z
-    .string()
-    .min(1, "Digital signature is required for the membership agreement"),
-});
-
-type MembershipAgreementFormValues = z.infer<typeof membershipAgreementSchema>;
 
 export async function loader({
   request,
@@ -68,13 +62,7 @@ export async function loader({
   const userRecord = await getUserById(user.id);
 
   // Check if user already has a signed agreement for this membership
-  const existingForm = await db.userMembershipForm.findFirst({
-    where: { 
-      userId: user.id,
-      membershipPlanId: membershipId,
-      status: { not: "inactive" } // Only consider non-inactive forms
-    },
-  });
+  const existingForm = await getUserMembershipForm(user.id, membershipId);
 
   return {
     user,
@@ -122,25 +110,12 @@ export async function action({
   }
 
   try {
-    // Encrypt the signature using the same method as waiver signatures
-    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
-    if (!encryptionKey) {
-      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
-    }
-
-    const encryptedSignature = CryptoJS.AES.encrypt(
-      rawValues.agreementSignature,
-      encryptionKey
-    ).toString();
-
-    // Store the encrypted signature in UserMembershipForm table
-    await db.userMembershipForm.create({
-      data: {
-        userId: user.id,
-        membershipPlanId: membershipId,
-        agreementSignature: encryptedSignature,
-      },
-    });
+    // Create the membership form with encrypted signature
+    await createMembershipForm(
+      user.id,
+      membershipId,
+      rawValues.agreementSignature
+    );
 
     // Redirect to payment page with membership ID
     const userActiveMembership = await getUserActiveMembership(user.id);
