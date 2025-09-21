@@ -667,6 +667,48 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Membership Agreement Documents */}
+                {user.userMembershipForms &&
+                  user.userMembershipForms.length > 0 && (
+                    <>
+                      {user.userMembershipForms
+                        .filter(
+                          (form: any) =>
+                            form.status !== "inactive" &&
+                            form.agreementSignature
+                        )
+                        .map((form: any, index: number) => (
+                          <div
+                            key={form.id}
+                            className="bg-gray-50 rounded-lg p-4 mt-4"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <span className="font-medium text-gray-900">
+                                  Membership Agreement
+                                  {form.membershipPlan?.needAdminPermission
+                                    ? " (24/7)"
+                                    : ""}
+                                </span>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Your signed membership agreement document
+                                </p>
+                              </div>
+                              <div>
+                                <a
+                                  href={`/dashboard/profile/download-membership-agreement/${form.id}`}
+                                  className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                                >
+                                  <Download className="h-4 w-4" />
+                                  Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </>
+                  )}
               </div>
             </div>
 

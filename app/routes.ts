@@ -121,6 +121,10 @@ export default [
   route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
   route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
   route(
+    "/dashboard/profile/download-membership-agreement/:formId",
+    "routes/api/download-membership-agreement.tsx"
+  ),
+  route(
     "/api/google-calendar/connect",
     "routes/api/google-calendar.connect.tsx"
   ),

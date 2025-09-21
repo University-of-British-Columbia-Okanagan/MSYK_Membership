@@ -10,6 +10,16 @@ export type UserProfileData = {
   nextBillingDate: string | null;
   cardLast4: string;
   waiverSignature: string | null;
+  userMembershipForms?: Array<{
+    id: number;
+    agreementSignature: string | null;
+    status: string;
+    membershipPlan: {
+      id: number;
+      title: string;
+      needAdminPermission: boolean;
+    };
+  }>;
 };
 
 export type VolunteerHourEntry = {
@@ -41,6 +51,17 @@ export async function getProfileDetails(request: Request) {
       avatarUrl: true,
       email: true,
       waiverSignature: true,
+      userMembershipForms: {
+        where: {
+          status: { notIn: ["inactive", "pending"] },
+        },
+        include: {
+          membershipPlan: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
     },
   });
 
@@ -65,6 +86,7 @@ export async function getProfileDetails(request: Request) {
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
+    userMembershipForms: user.userMembershipForms,
   };
 }
 
