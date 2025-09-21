@@ -699,7 +699,7 @@ function VolunteerControl({
         type="checkbox"
         checked={isVolunteer}
         onChange={(e) => handleCheckboxChange(e.target.checked)}
-        className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+        className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500"
         id={`volunteer-${user.id}`}
       />
       <label
@@ -811,7 +811,7 @@ function Pagination({
               onClick={() => onPageChange(page as number)}
               className={`px-3 py-1 ${
                 currentPage === page
-                  ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+                  ? "bg-indigo-500 hover:bg-indigo-600 text-white"
                   : ""
               }`}
             >
@@ -952,7 +952,7 @@ function VolunteerHourStatusControl({
       case "resolved":
         return "bg-purple-100 text-purple-800";
       default:
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-indigo-100 text-indigo-800";
     }
   };
 
@@ -988,7 +988,7 @@ function VolunteerHourStatusControl({
       case "resolved":
         return "bg-purple-600 hover:bg-purple-700";
       case "pending":
-        return "bg-yellow-600 hover:bg-yellow-700";
+        return "bg-indigo-600 hover:bg-indigo-700";
       default:
         return "bg-blue-600 hover:bg-blue-700";
     }
@@ -2193,12 +2193,12 @@ export default function AdminSettings() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center gap-2 mb-6">
-              <Settings className="h-6 w-6 text-yellow-500" />
+              <Settings className="h-6 w-6 text-indigo-500" />
               <h1 className="text-2xl font-bold">Admin Settings</h1>
             </div>
 
@@ -2311,7 +2311,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Visibility Settings
@@ -2367,7 +2367,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Past Visibility Settings
@@ -2793,7 +2793,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Visibility Settings
@@ -2919,7 +2919,7 @@ export default function AdminSettings() {
                       <Button
                         type="submit"
                         disabled={weeklyFormBeingEdited || !!weeklyLimitError}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Daily Limits
@@ -3046,7 +3046,7 @@ export default function AdminSettings() {
                       <Button
                         type="submit"
                         disabled={dailyFormBeingEdited || !!weeklyLimitError}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Weekly Limits
@@ -3169,7 +3169,7 @@ export default function AdminSettings() {
                                         e.target.checked
                                       )
                                     }
-                                    className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500"
                                     id={`closed-${day}`}
                                   />
                                   <label
@@ -3217,7 +3217,7 @@ export default function AdminSettings() {
                   <CardFooter>
                     <Button
                       onClick={handleScheduleSave}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white"
                     >
                       <Save className="h-4 w-4 mr-2" />
                       Save All Schedule Changes
@@ -3498,7 +3498,7 @@ export default function AdminSettings() {
                                 setVolunteerStatusFilter(e.target.value)
                               }
                               disabled={showResubmissionsOnly}
-                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base ${
+                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base ${
                                 showResubmissionsOnly
                                   ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                                   : ""
@@ -3582,7 +3582,7 @@ export default function AdminSettings() {
                                     setVolunteerFromTime(e.target.value)
                                   }
                                   disabled={!volunteerFromDate}
-                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                                 >
                                   <option value="">
                                     {!volunteerFromDate
@@ -3630,7 +3630,7 @@ export default function AdminSettings() {
                                     setVolunteerToTime(e.target.value)
                                   }
                                   disabled={!volunteerToDate}
-                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                                 >
                                   <option value="">
                                     {!volunteerToDate
@@ -3660,7 +3660,7 @@ export default function AdminSettings() {
                               !volunteerToDate ||
                               !volunteerToTime
                             }
-                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
                           >
                             Apply Date/Time Filter
                           </Button>
@@ -3813,7 +3813,7 @@ export default function AdminSettings() {
                             onChange={(e) =>
                               setActionsStatusFilter(e.target.value)
                             }
-                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base"
                           >
                             <option value="all">All Status</option>
                             <option value="pending">Pending</option>
@@ -3855,7 +3855,7 @@ export default function AdminSettings() {
                                   setActionsFromTime(e.target.value)
                                 }
                                 disabled={!actionsFromDate}
-                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                               >
                                 <option value="">
                                   {!actionsFromDate
@@ -3901,7 +3901,7 @@ export default function AdminSettings() {
                                   setActionsToTime(e.target.value)
                                 }
                                 disabled={!actionsToDate}
-                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                               >
                                 <option value="">
                                   {!actionsToDate
@@ -3929,7 +3929,7 @@ export default function AdminSettings() {
                             !actionsToDate ||
                             !actionsToTime
                           }
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                          className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
                         >
                           Apply Date/Time Filter
                         </Button>
@@ -3966,7 +3966,7 @@ export default function AdminSettings() {
                               appliedActionsFromTime &&
                               appliedActionsToDate &&
                               appliedActionsToTime && (
-                                <span className="ml-2 text-yellow-600">
+                                <span className="ml-2 text-indigo-600">
                                   (filtered from{" "}
                                   {new Date(
                                     `${appliedActionsFromDate}T${appliedActionsFromTime}`
@@ -4054,7 +4054,7 @@ export default function AdminSettings() {
                                               ? "bg-red-100 text-red-800"
                                               : previousStatus === "resolved"
                                                 ? "bg-purple-100 text-purple-800"
-                                                : "bg-yellow-100 text-yellow-800"
+                                                : "bg-indigo-100 text-indigo-800"
                                         }`}
                                       >
                                         {previousStatus
@@ -4073,7 +4073,7 @@ export default function AdminSettings() {
                                           ? "bg-red-100 text-red-800"
                                           : currentStatus === "resolved"
                                             ? "bg-purple-100 text-purple-800"
-                                            : "bg-yellow-100 text-yellow-800"
+                                            : "bg-indigo-100 text-indigo-800"
                                     }`}
                                   >
                                     {currentStatus.charAt(0).toUpperCase() +
@@ -4220,7 +4220,7 @@ export default function AdminSettings() {
                         </div>
                         <Button
                           onClick={handleAddClosure}
-                          className="mt-4 bg-yellow-500 hover:bg-yellow-600 text-white"
+                          className="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white"
                         >
                           Add Closure Period
                         </Button>
@@ -5194,7 +5194,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Tax Settings
@@ -5237,7 +5237,7 @@ export default function AdminSettings() {
                               </p>
                               <a
                                 href="/api/google-calendar/connect"
-                                className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md"
+                                className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md"
                               >
                                 Connect Google
                               </a>
@@ -5298,7 +5298,7 @@ export default function AdminSettings() {
                               <div className="flex items-center gap-3">
                                 <Button
                                   type="submit"
-                                  className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                                  className="bg-indigo-500 hover:bg-indigo-600 text-white"
                                 >
                                   Save Google Calendar Settings
                                 </Button>

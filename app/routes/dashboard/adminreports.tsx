@@ -381,12 +381,12 @@ export default function AdminReports() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center gap-2 mb-6">
-              <Settings className="h-6 w-6 text-yellow-500" />
+              <Settings className="h-6 w-6 text-indigo-500" />
               <h1 className="text-2xl font-bold">Admin Reports</h1>
             </div>
 

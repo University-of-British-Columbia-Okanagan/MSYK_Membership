@@ -386,7 +386,7 @@ export default function MembershipDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {!user ? (
           <GuestAppSidebar />
         ) : roleUser?.roleName === "Admin" ? (
@@ -431,7 +431,7 @@ export default function MembershipDetails() {
                             key={index}
                             className="flex items-center text-gray-700"
                           >
-                            <span className="text-yellow-500 mr-2">→</span>{" "}
+                            <span className="text-indigo-500 mr-2">→</span>{" "}
                             {feature}
                           </li>
                         )
@@ -443,7 +443,7 @@ export default function MembershipDetails() {
                           key={index}
                           className="flex items-center text-gray-700"
                         >
-                          <span className="text-yellow-500 mr-2">→</span>{" "}
+                          <span className="text-indigo-500 mr-2">→</span>{" "}
                           {String(feature)}
                         </li>
                       ))}
@@ -464,7 +464,7 @@ export default function MembershipDetails() {
                     <Button
                       onClick={handleContinueWithExisting}
                       disabled={loading}
-                      className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold"
+                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold"
                     >
                       {loading ? "Processing..." : "Continue to Payment"}
                     </Button>
@@ -538,7 +538,7 @@ export default function MembershipDetails() {
                     <button
                       type="submit"
                       disabled={loading || !agreementDocumentViewed}
-                      className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-lg disabled:opacity-50 transition-colors font-semibold"
+                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 px-4 rounded-lg disabled:opacity-50 transition-colors font-semibold"
                     >
                       {loading ? "Processing..." : "Continue to Payment"}
                     </button>

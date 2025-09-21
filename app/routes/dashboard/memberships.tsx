@@ -219,7 +219,7 @@ export default function MembershipPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen">
+      <div className="absolute inset-0 flex">
         {/* Sidebar */}
         {isGuest ? (
           <GuestAppSidebar />
@@ -234,7 +234,7 @@ export default function MembershipPage() {
           {isAdmin && (
             <div className="flex justify-end mb-6">
               <Link to="/addmembershipplan">
-                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2">
+                <button className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition flex items-center space-x-2">
                   <PlusCircle className="w-5 h-5" />
                   <span>Add Membership Plan</span>
                 </button>
@@ -246,7 +246,7 @@ export default function MembershipPage() {
             Choose your Membership Plan
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="flex flex-wrap gap-6 justify-center items-stretch">
             {membershipPlans.map((plan) => {
               // Find the most recent membership for this plan, prioritizing active status
               const allMembershipsForPlan = userMemberships.filter(

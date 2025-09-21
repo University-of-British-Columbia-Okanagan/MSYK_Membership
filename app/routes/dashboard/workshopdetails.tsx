@@ -910,7 +910,7 @@ export default function WorkshopDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {/* Conditional sidebar rendering based on user role */}
         {!user ? (
           <GuestAppSidebar />
@@ -948,7 +948,7 @@ export default function WorkshopDetails() {
                 {isAdmin && (
                   <div className="flex items-center gap-2 mt-4">
                     <Button
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
                       onClick={() =>
                         navigate(
                           `/dashboard/admin/workshop/${workshop.id}/users`
@@ -989,11 +989,11 @@ export default function WorkshopDetails() {
                           navigate("/dashboard/addworkshop");
                         }}
                         buttonLabel="Duplicate"
-                        buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                        buttonClassName="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg"
                       />
                     ) : (
                       <Button
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg"
                         onClick={() => handleOfferAgain()}
                       >
                         Offer Again
@@ -1217,7 +1217,7 @@ export default function WorkshopDetails() {
                           >
                             <div className="flex-1">
                               <div className="flex items-center">
-                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-500 text-white text-xs mr-2">
+                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-indigo-500 text-white text-xs mr-2">
                                   {index + 1}
                                 </span>
                                 <p className="font-medium">
@@ -2515,7 +2515,7 @@ export default function WorkshopDetails() {
                   <div className="mt-6 mb-8">
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                       <h2 className="text-lg font-semibold mb-3 flex items-center">
-                        <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                        <span className="bg-indigo-500 text-white p-1 rounded-md mr-2">
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -2620,7 +2620,7 @@ export default function WorkshopDetails() {
 
                 <div className="mt-6">
                   <Button
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
+                    className="bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-lg"
                     onClick={() => navigate("/dashboard/workshops")}
                   >
                     Back to Workshops

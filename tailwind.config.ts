@@ -57,13 +57,23 @@ export default {
   			border: 'hsl(var(--border))',
   			input: 'hsl(var(--input))',
   			ring: 'hsl(var(--ring))',
-  			chart: {
-  				'1': 'hsl(var(--chart-1))',
-  				'2': 'hsl(var(--chart-2))',
-  				'3': 'hsl(var(--chart-3))',
-  				'4': 'hsl(var(--chart-4))',
-  				'5': 'hsl(var(--chart-5))'
-  			},
+			chart: {
+				'1': 'hsl(var(--chart-1))',
+				'2': 'hsl(var(--chart-2))',
+				'3': 'hsl(var(--chart-3))',
+				'4': 'hsl(var(--chart-4))',
+				'5': 'hsl(var(--chart-5))'
+			},
+			// Custom theme colors for MSYK branding
+			msyk: {
+				primary: 'hsl(238, 100%, 67%)', // Indigo-500
+				'primary-hover': 'hsl(238, 100%, 60%)', // Indigo-600
+				'primary-light': 'hsl(238, 100%, 95%)', // Indigo-50
+				'primary-dark': 'hsl(238, 100%, 50%)', // Indigo-700
+				accent: 'hsl(238, 100%, 85%)', // Indigo-200
+				'text-primary': 'hsl(238, 100%, 67%)', // Indigo-500
+				'text-secondary': 'hsl(238, 100%, 60%)', // Indigo-600
+			},
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background))',
   				foreground: 'hsl(var(--sidebar-foreground))',

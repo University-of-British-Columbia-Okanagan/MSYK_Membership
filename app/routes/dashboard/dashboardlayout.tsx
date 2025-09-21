@@ -46,13 +46,13 @@ export default function DashboardLayout() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-gray-50">
+      <div className="absolute inset-0 flex bg-gray-50">
         <GuestSidebar />
 
         <main className="flex-1 overflow-auto">
           <div className="p-8">
             {/* Hero Section */}
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-xl p-8 mb-8 text-white">
+            <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-8 mb-8 text-white">
               <div className="mb-6">
                 <h1 className="text-3xl font-bold mb-2">
                   Welcome to Makerspace YK
@@ -107,20 +107,20 @@ export default function DashboardLayout() {
                 <Link
                   key={feature.title}
                   to={feature.link}
-                  className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-200 hover:border-yellow-300 group"
+                  className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow border border-gray-200 hover:border-indigo-300 group"
                 >
                   <div
                     className={`${feature.color} w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
                   >
                     <feature.icon className="h-6 w-6 text-white" />
                   </div>
-                  <h3 className="font-semibold text-lg mb-2 group-hover:text-yellow-600 transition-colors">
+                  <h3 className="font-semibold text-lg mb-2 group-hover:text-indigo-600 transition-colors">
                     {feature.title}
                   </h3>
                   <p className="text-gray-600 text-sm mb-3">
                     {feature.description}
                   </p>
-                  <div className="flex items-center text-yellow-600 font-medium text-sm group-hover:gap-2 transition-all">
+                  <div className="flex items-center text-indigo-600 font-medium text-sm group-hover:gap-2 transition-all">
                     <span>Explore</span>
                     <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
@@ -142,7 +142,7 @@ export default function DashboardLayout() {
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                   <Link
                     to="/register"
-                    className="bg-yellow-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-yellow-600 transition-colors flex items-center justify-center gap-2"
+                    className="bg-indigo-500 text-white px-8 py-3 rounded-lg font-semibold hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2"
                   >
                     <span>Create Account</span>
                     <ArrowRight className="h-4 w-4" />

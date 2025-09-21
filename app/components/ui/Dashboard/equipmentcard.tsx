@@ -121,7 +121,7 @@ export default function EquipmentCard({
 
   return (
     <Card
-      className={`w-full md:w-80 rounded-lg shadow-md flex flex-col overflow-hidden relative ${
+      className={`w-full md:w-80 flex-none rounded-lg shadow-md flex flex-col overflow-hidden relative ${
         status === "unavailable" ? "opacity-50" : ""
       }`}
     >
@@ -224,7 +224,7 @@ export default function EquipmentCard({
               ? "bg-gray-400 cursor-not-allowed"
               : status === "unavailable" && isAdmin
                 ? "bg-gray-500 hover:bg-gray-600"
-                : "bg-yellow-500 hover:bg-yellow-600"
+                : "bg-indigo-500 hover:bg-indigo-600"
           }`}
           onClick={() => {
             // Only navigate if equipment is available OR user is admin

@@ -380,7 +380,7 @@ export default function ProfilePage() {
                   ? "bg-red-100 text-red-800"
                   : entry.status === "resolved"
                     ? "bg-purple-100 text-purple-800"
-                    : "bg-yellow-100 text-yellow-800"
+                    : "bg-indigo-100 text-indigo-800"
             }`}
           >
             {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
@@ -492,7 +492,7 @@ export default function ProfilePage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-gray-100">
+      <div className="absolute inset-0 flex bg-gray-100">
         {renderSidebar()}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
@@ -506,7 +506,7 @@ export default function ProfilePage() {
 
             {/* Profile Card */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-              <div className="p-6 sm:p-8 bg-gradient-to-r from-yellow-500 to-yellow-600">
+              <div className="p-6 sm:p-8 bg-gradient-to-r from-indigo-500 to-indigo-600">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
                   <div className="relative">
                     <img
@@ -525,8 +525,8 @@ export default function ProfilePage() {
                     <h2 className="text-2xl sm:text-3xl font-bold">
                       {user.name}
                     </h2>
-                    <p className="text-yellow-100 mb-2">{user.email}</p>
-                    <div className="inline-block bg-yellow-700 bg-opacity-30 px-3 py-1 rounded-full text-sm text-yellow-50">
+                    <p className="text-indigo-100 mb-2">{user.email}</p>
+                    <div className="inline-block bg-indigo-700 bg-opacity-30 px-3 py-1 rounded-full text-sm text-indigo-50">
                       {user.membershipTitle !== "None"
                         ? user.membershipTitle
                         : "Free Account"}
@@ -540,7 +540,7 @@ export default function ProfilePage() {
                   {/* Membership Section */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      <Medal className="h-5 w-5 text-yellow-500" />
+                      <Medal className="h-5 w-5 text-indigo-500" />
                       <h3 className="text-lg font-semibold text-gray-900">
                         Membership Details
                       </h3>
@@ -572,7 +572,7 @@ export default function ProfilePage() {
                   {/* Payment Information */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-yellow-500" />
+                      <CreditCard className="h-5 w-5 text-indigo-500" />
                       <h3 className="text-lg font-semibold text-gray-900">
                         Payment Information
                       </h3>
@@ -618,7 +618,7 @@ export default function ProfilePage() {
                       <div className="pt-2">
                         <a
                           href="/user/profile/paymentinformation"
-                          className="block w-full bg-yellow-500 hover:bg-yellow-600 text-white text-center py-2 px-4 rounded-md transition duration-200 font-medium"
+                          className="block w-full bg-indigo-500 hover:bg-indigo-600 text-white text-center py-2 px-4 rounded-md transition duration-200 font-medium"
                         >
                           {user.cardLast4 !== "N/A"
                             ? "Update Payment Method"
@@ -633,7 +633,7 @@ export default function ProfilePage() {
             <div>
               <div className="p-6 sm:p-8 border-t border-gray-200">
                 <div className="flex items-center gap-2 mb-4">
-                  <FileText className="h-5 w-5 text-yellow-500" />
+                  <FileText className="h-5 w-5 text-indigo-500" />
                   <h3 className="text-lg font-semibold text-gray-900">
                     Documents
                   </h3>
@@ -654,7 +654,7 @@ export default function ProfilePage() {
                       !user.waiverSignature.includes("Placeholder") ? (
                         <a
                           href="/dashboard/profile/download-waiver"
-                          className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                          className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
                         >
                           <Download className="h-4 w-4" />
                           Download
@@ -698,7 +698,7 @@ export default function ProfilePage() {
                               <div>
                                 <a
                                   href={`/dashboard/profile/download-membership-agreement/${form.id}`}
-                                  className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                                  className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
                                 >
                                   <Download className="h-4 w-4" />
                                   Download

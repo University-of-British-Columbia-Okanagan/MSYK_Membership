@@ -1032,7 +1032,7 @@ export default function AddWorkshop() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
           <div className="max-w-7xl mx-auto p-8 w-full">
@@ -1181,7 +1181,7 @@ export default function AddWorkshop() {
                         }
                         className="sr-only peer"
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">Multi-day Workshop</span>
@@ -1220,7 +1220,7 @@ export default function AddWorkshop() {
                         }}
                         className="sr-only peer"
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">
@@ -1236,7 +1236,7 @@ export default function AddWorkshop() {
 
                 {/* Price Variations Management */}
                 {hasPriceVariations && (
-                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                  <div className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium">Price Variations</h3>
                       <Button
@@ -1253,7 +1253,7 @@ export default function AddWorkshop() {
                             },
                           ])
                         }
-                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                        className="text-indigo-600 border-indigo-300 hover:bg-indigo-100"
                       >
                         Add Variation
                       </Button>
@@ -1303,7 +1303,7 @@ export default function AddWorkshop() {
                                 newVariations[index].name = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.name`
@@ -1334,7 +1334,7 @@ export default function AddWorkshop() {
                                 newVariations[index].price = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.price`
@@ -1364,7 +1364,7 @@ export default function AddWorkshop() {
                                 newVariations[index].capacity = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
                                 actionData?.errors?.[
                                   `priceVariations.${index}.capacity`
                                 ]
@@ -1397,7 +1397,7 @@ export default function AddWorkshop() {
                                   e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.description`
@@ -1460,7 +1460,7 @@ export default function AddWorkshop() {
                         {occurrences.length > 0 && (
                           <Badge
                             variant="outline"
-                            className="ml-2 bg-yellow-100 border-yellow-200"
+                            className="ml-2 bg-indigo-100 border-indigo-200"
                           >
                             {occurrences.length} date
                             {occurrences.length !== 1 ? "s" : ""} added
@@ -1570,7 +1570,7 @@ export default function AddWorkshop() {
                               <Button
                                 type="button"
                                 onClick={addOccurrence}
-                                className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
+                                className="mt-1 bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
                               >
                                 <span className="mr-1">+</span> Add Date
                               </Button>
@@ -1645,7 +1645,7 @@ export default function AddWorkshop() {
                           {occurrences.length > 0 && (
                             <div className="w-full">
                               <h3 className="font-medium mb-4 flex items-center">
-                                <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                                <CalendarIcon className="w-5 h-5 mr-2 text-indigo-500" />
                                 Your Workshop Dates
                               </h3>
                               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -2009,7 +2009,7 @@ export default function AddWorkshop() {
                 <div className="flex justify-center mt-6">
                   <Button
                     type="submit"
-                    className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                    className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                     onClick={() => {
                       console.log("Final Form Data:", form.getValues());
                     }}

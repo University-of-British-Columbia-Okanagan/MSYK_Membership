@@ -162,7 +162,7 @@ export default function LogsTab() {
                   return (
                     <div
                       key={i}
-                      className="flex gap-2 whitespace-pre-wrap break-words"
+                      className="flex gap-2 break-words"
                     >
                       <span className={`font-bold ${color}`}>[{level}]</span>
                       <span className="text-muted-foreground">{time}</span>

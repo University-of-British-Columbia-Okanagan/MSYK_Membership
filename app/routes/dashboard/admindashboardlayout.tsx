@@ -234,7 +234,7 @@ export default function AdminDashboard() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isGuest ? (
           <GuestAppSidebar />
         ) : isAdmin ? (
@@ -245,7 +245,7 @@ export default function AdminDashboard() {
         <main className="flex-grow p-6">
           <div className="flex justify-end mb-6 pr-4">
             <Link to="/dashboard/addworkshop">
-              <button className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+              <button className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition">
                 <FiPlus size={18} /> Add Workshop
               </button>
             </Link>

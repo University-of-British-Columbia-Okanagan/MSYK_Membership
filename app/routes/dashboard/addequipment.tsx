@@ -158,7 +158,7 @@ export default function AddEquipment() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="max-w-4xl mx-auto p-8 bg-white shadow-md rounded-lg">
@@ -330,7 +330,7 @@ export default function AddEquipment() {
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-green-600 transition"
+                  className="mt-6 w-full bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition"
                 >
                   Add Equipment
                 </Button>

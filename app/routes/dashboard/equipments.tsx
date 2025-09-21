@@ -37,7 +37,7 @@ export default function Equipments() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isGuest ? (
           <GuestAppSidebar />
         ) : isAdmin ? (
@@ -51,7 +51,7 @@ export default function Equipments() {
           <div className="flex justify-end items-center mb-6">
             {isAdmin && (
               <Button
-                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition"
+                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md shadow transition"
                 onClick={() => navigate("/dashboard/addequipment")}
               >
                 + Add Equipment
@@ -60,7 +60,7 @@ export default function Equipments() {
           </div>
 
           {equipments.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-wrap gap-4 md:gap-6 justify-start items-stretch">
               {equipments.map((equipment) => (
                 <EquipmentCard
                   key={equipment.id}

@@ -61,7 +61,7 @@ export default function EventsPage() {
 
         <main className="flex-1 bg-gray-50 overflow-y-auto">
           {/* Hero Section */}
-          <div className="relative bg-yellow-500 text-white overflow-hidden">
+          <div className="relative bg-indigo-500 text-white overflow-hidden">
             <div className="absolute inset-0"></div>
             <div className="relative container mx-auto px-4 py-16 md:py-24">
               <div className="text-center max-w-4xl mx-auto">
@@ -86,11 +86,11 @@ export default function EventsPage() {
             {/* Calendar Status Section - Only for Admins */}
             {isAdmin && (
               <div className="mb-8">
-                <Card className="border-2 border-yellow-200">
+                <Card className="border-2 border-indigo-200">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Calendar className="h-8 w-8 text-yellow-500" />
+                        <Calendar className="h-8 w-8 text-indigo-500" />
                         <CardTitle className="text-2xl text-gray-900">
                           Calendar Status
                         </CardTitle>
@@ -101,7 +101,7 @@ export default function EventsPage() {
                           Connected
                         </Badge>
                       ) : (
-                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
+                        <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">
                           <AlertCircle className="h-4 w-4 mr-1" />
                           Not Connected
                         </Badge>
@@ -118,7 +118,7 @@ export default function EventsPage() {
                         <div className="flex gap-3">
                           <Button
                             variant="outline"
-                            className="border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                            className="border-indigo-500 text-indigo-600 hover:bg-indigo-50"
                             onClick={() =>
                               window.open("/dashboard/admin/settings", "_blank")
                             }
@@ -143,22 +143,22 @@ export default function EventsPage() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
                           <div className="flex items-start gap-3">
-                            <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                            <AlertCircle className="h-5 w-5 text-indigo-600 mt-0.5" />
                             <div>
-                              <h3 className="font-semibold text-yellow-800 mb-2">
+                              <h3 className="font-semibold text-indigo-800 mb-2">
                                 Calendar Not Connected
                               </h3>
-                              <p className="text-yellow-700 mb-3">
+                              <p className="text-indigo-700 mb-3">
                                 The event calendar is not currently connected to
                                 Google Calendar.
                               </p>
-                              <p className="text-sm text-yellow-600">
+                                <p className="text-sm text-indigo-600">
                                 As an admin, you can connect Google Calendar in{" "}
                                 <Button
                                   variant="link"
-                                  className="p-0 h-auto text-yellow-600 underline"
+                                  className="p-0 h-auto text-indigo-600 underline"
                                   onClick={() =>
                                     window.open(
                                       "/dashboard/admin/settings",
@@ -184,7 +184,7 @@ export default function EventsPage() {
               <Card className="border border-gray-200 shadow-lg">
                 <CardHeader className="pb-4">
                   <CardTitle className="text-2xl text-gray-900 flex items-center gap-3">
-                    <Calendar className="h-6 w-6 text-yellow-500" />
+                    <Calendar className="h-6 w-6 text-indigo-500" />
                     Upcoming Events
                   </CardTitle>
                 </CardHeader>

@@ -876,7 +876,7 @@ export default function Payment() {
             If it's an upgrade, show compensation details, etc.
           */}
           {data.isResubscription ? (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
               <p className="text-gray-700">
                 You previously cancelled this membership. Resubscribing now will
                 reactivate it immediately.
@@ -886,7 +886,7 @@ export default function Payment() {
               </p>
             </div>
           ) : data.isDowngrade ? (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
               <p className="text-gray-700">
                 You will continue at your current rate of CA$
                 {data.oldMembershipPrice
