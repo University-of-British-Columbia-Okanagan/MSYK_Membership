@@ -234,6 +234,13 @@ export async function registerMembershipSubscription(
       data: { status: "ending" },
     });
 
+    // Set the old membership's form to "ending" to match
+    await updateMembershipFormStatus(
+      userId,
+      currentMembership.membershipPlanId,
+      "ending"
+    );
+
     // 2) Find if there's already an "active" or "ending" record for this user/plan
     // (we only want 1 record in active or ending for the cheaper plan).
     let newMembership = await db.userMembership.findFirst({
@@ -271,6 +278,9 @@ export async function registerMembershipSubscription(
       });
     }
 
+    // Activate the new membership's form immediately (no payment needed for downgrade)
+    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+
     return subscription;
   }
 
@@ -291,6 +301,13 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
+
+    // Set the old membership's form to "inactive" since it's ending
+    await updateMembershipFormStatus(
+      userId,
+      currentMembership.membershipPlanId,
+      "ending"
+    );
 
     // Create or update a new membership record for the upgraded plan
     // so that we only have 1 record in "active"/"ending" for the new plan.
@@ -540,7 +557,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("06 18 * * *", async () => {
+  cron.schedule("43 18 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -916,13 +933,13 @@ export async function activateMembershipForm(
 export async function updateMembershipFormStatus(
   userId: number,
   membershipPlanId: number,
-  newStatus: "active" | "pending" | "inactive" | "cancelled"
+  newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending"
 ) {
   return await db.userMembershipForm.updateMany({
     where: {
       userId,
       membershipPlanId,
-      status: { in: ["pending", "active", "cancelled"] }, // Only update pending or active forms
+      status: { in: ["pending", "active", "cancelled", "ending"] }, // Include "ending" in the filter
     },
     data: {
       status: newStatus,
