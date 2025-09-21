@@ -439,16 +439,26 @@ export async function cancelMembership(
 
   if (now < activeRecord.nextPaymentDate) {
     // 2a) Cancelling *before* the cycle ends → just mark this row 'cancelled'
-    // **NO** role‐level update here (you stay at level 3/4 until the cycle lapses)
-    return db.userMembership.update({
+    // **NO** role­level update here (you stay at level 3/4 until the cycle lapses)
+
+    // Update the UserMembership status
+    const updatedMembership = await db.userMembership.update({
       where: { id: activeRecord.id },
       data: { status: "cancelled" },
     });
+
+    // Sync the UserMembershipForm status to cancelled as well
+    await updateMembershipFormStatus(userId, membershipPlanId, "cancelled");
+
+    return updatedMembership;
   } else {
     // 2b) Cancelling *after* the cycle → delete that one record
     const deleted = await db.userMembership.delete({
       where: { id: activeRecord.id },
     });
+
+    // Set the form to inactive since the membership is completely deleted
+    await updateMembershipFormStatus(userId, membershipPlanId, "inactive");
 
     // 3) Now that the membership is gone, recalc roleLevel:
     // level 2 if they passed orientation, else level 1
@@ -526,7 +536,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("00 00 * * *", async () => {
+  cron.schedule("50 17 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -591,7 +601,7 @@ export function startMonthlyMembershipCheck() {
         }
 
         if (membership.status === "active") {
-          // UPDATE THIS PART: Calculate charge amount with GST
+          // Calculate charge amount with GST
           const baseAmount = Number(membership.membershipPlan.price);
 
           // Get GST percentage from admin settings
@@ -884,6 +894,29 @@ export async function activateMembershipForm(
   }
 
   return null;
+}
+
+/**
+ * Update UserMembershipForm status to match UserMembership status
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @param newStatus The new status to set
+ */
+export async function updateMembershipFormStatus(
+  userId: number,
+  membershipPlanId: number,
+  newStatus: "active" | "pending" | "inactive" | "cancelled"
+) {
+  return await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: { in: ["pending", "active"] }, // Only update pending or active forms
+    },
+    data: {
+      status: newStatus,
+    },
+  });
 }
 
 /**
