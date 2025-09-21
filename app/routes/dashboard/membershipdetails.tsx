@@ -61,7 +61,7 @@ export async function loader({
   const userActiveMembership = await getUserActiveMembership(user.id);
   const userRecord = await getUserById(user.id);
 
-  // Check if user already has a signed agreement for this membership
+  // Check if user already has a signed agreement for this membership (pending or active)
   const existingForm = await getUserMembershipForm(user.id, membershipId);
 
   return {
@@ -110,14 +110,14 @@ export async function action({
   }
 
   try {
-    // Create the membership form with encrypted signature
+    // Create the form with "pending" status (will be activated after successful payment)
     await createMembershipForm(
       user.id,
       membershipId,
       rawValues.agreementSignature
     );
 
-    // Redirect to payment page with membership ID
+    // Redirect to payment page
     const userActiveMembership = await getUserActiveMembership(user.id);
     let redirectPath = `/dashboard/payment/${membershipId}`;
 
@@ -326,9 +326,9 @@ export default function MembershipDetails() {
     }
   }, [existingForm, membershipPlan.id]);
 
-  const handleSubmit = async (data: MembershipAgreementFormValues) => {
+  const handleFormSubmit = (event: React.FormEvent) => {
     setLoading(true);
-    // Form will be submitted via RouterForm
+    // Let the RouterForm handle the actual submission
   };
 
   const downloadAgreement = () => {
@@ -440,10 +440,7 @@ export default function MembershipDetails() {
               </div>
 
               <Form {...form}>
-                <RouterForm
-                  method="post"
-                  onSubmit={form.handleSubmit(handleSubmit)}
-                >
+                <RouterForm method="post" onSubmit={handleFormSubmit}>
                   {/* Membership Agreement Section */}
                   <div className="mb-6">
                     <FormLabel className="text-base text-gray-900">

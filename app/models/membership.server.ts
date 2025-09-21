@@ -748,7 +748,10 @@ export async function getUserMembershipForm(
     where: {
       userId,
       membershipPlanId,
-      status: { not: "inactive" }, // Only consider non-inactive forms
+      status: { in: ["pending", "active"] }, // Find both pending and active forms
+    },
+    orderBy: {
+      createdAt: "desc", // Get the most recent form
     },
   });
 }
@@ -776,12 +779,109 @@ export async function createMembershipForm(
     encryptionKey
   ).toString();
 
+  // First, set any existing pending forms for this user/plan to inactive
+  await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: "pending",
+    },
+    data: {
+      status: "inactive",
+    },
+  });
+
+  // Then create the new form
   return await db.userMembershipForm.create({
     data: {
       userId,
       membershipPlanId,
       agreementSignature: encryptedSignature,
-      status: "active",
+      status: "pending",
     },
   });
+}
+
+/**
+ * Register membership subscription and create membership form after successful payment
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @param currentMembershipId The ID of current membership (for upgrades/downgrades)
+ * @param isDowngrade Flag indicating if this is a downgrade
+ * @param isResubscription Flag indicating if this is reactivating a cancelled membership
+ * @param paymentIntentId Stripe payment intent ID
+ * @param signatureData The agreement signature data (optional, for new subscriptions)
+ * @returns Created or updated membership subscription record
+ */
+export async function registerMembershipSubscriptionWithForm(
+  userId: number,
+  membershipPlanId: number,
+  currentMembershipId: number | null = null,
+  isDowngrade: boolean = false,
+  isResubscription: boolean = false,
+  paymentIntentId?: string,
+) {
+  // First create the membership subscription
+  const subscription = await registerMembershipSubscription(
+    userId,
+    membershipPlanId,
+    currentMembershipId,
+    isDowngrade,
+    isResubscription,
+    paymentIntentId
+  );
+
+  // Activate the pending form (if it exists)
+  // Note: signatureData parameter is deprecated and ignored
+  await activateMembershipForm(userId, membershipPlanId);
+
+  return subscription;
+}
+
+/**
+ * Activate a pending membership form after successful payment
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @returns Updated UserMembershipForm record
+ */
+export async function activateMembershipForm(
+  userId: number,
+  membershipPlanId: number
+) {
+  // First, set any existing active forms to inactive (in case of resubscription)
+  await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: "active",
+    },
+    data: {
+      status: "inactive",
+    },
+  });
+
+  // Then activate the most recent pending form
+  const mostRecentPending = await db.userMembershipForm.findFirst({
+    where: {
+      userId,
+      membershipPlanId,
+      status: "pending",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (mostRecentPending) {
+    return await db.userMembershipForm.update({
+      where: {
+        id: mostRecentPending.id,
+      },
+      data: {
+        status: "active",
+      },
+    });
+  }
+
+  return null;
 }

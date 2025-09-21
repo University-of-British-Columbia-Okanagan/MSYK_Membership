@@ -348,14 +348,13 @@ model UserMembershipForm {
   userId             Int
   membershipPlanId   Int
   agreementSignature String // Encrypted signature data
-  status             String   @default("active") // "active", "ending", "cancelled", "inactive"
+  status             String   @default("pending") // "pending", "active", "ending", "cancelled", "inactive"
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, membershipPlanId]) // Prevent duplicate agreements for same user/plan
 }
 
 model UserPaymentInformation {
