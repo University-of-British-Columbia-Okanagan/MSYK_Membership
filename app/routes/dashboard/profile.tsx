@@ -729,13 +729,13 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Training/Orientations History */}
+            {/* Orientation History */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center gap-2">
                   <Medal className="h-5 w-5 text-green-500" />
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Training/Orientations History
+                    Orientation History
                   </h3>
                 </div>
               </div>
