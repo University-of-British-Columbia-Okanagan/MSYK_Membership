@@ -614,3 +614,71 @@ export async function sendMembershipResubscribeEmail(params: {
     text: parts.join("\n\n"),
   });
 }
+
+export async function sendRegistrationConfirmationEmail(params: {
+  userEmail: string;
+  firstName?: string;
+  lastName?: string;
+}): Promise<void> {
+  const { userEmail, firstName, lastName } = params;
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const greeting = fullName ? `Hi ${fullName}` : "Hello";
+
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+  }
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("BASE_URL must be a valid absolute URL origin");
+  }
+  const loginUrl = new URL('/login', origin).toString();
+
+  const parts = [
+    `${greeting},`,
+    `Welcome to Makerspace YK! Your account has been successfully created.`,
+    `You can now:`,
+    `• Browse and book equipment`,
+    `• Register for workshops`,
+    `• Manage your membership`,
+    `• Access member-exclusive resources`,
+    `To get started, please log in to your account and explore all the amazing tools and services we have to offer.`,
+    `Login here: ${loginUrl}`,
+    `If you have any questions, don't hesitate to reach out to our team.`,
+    `Welcome to the Makerspace YK community!`,
+  ];
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const htmlBody = [
+    `<p>${greeting},</p>`,
+    `<p>Welcome to Makerspace YK! Your account has been successfully created.</p>`,
+    `<p>You can now:</p>`,
+    `<ul>`,
+    `<li>Browse and book equipment</li>`,
+    `<li>Register for workshops</li>`,
+    `<li>Manage your membership</li>`,
+    `<li>Access member-exclusive resources</li>`,
+    `</ul>`,
+    `<p>To get started, please log in to your account and explore all the amazing tools and services we have to offer.</p>`,
+    `<div style="text-align: center; margin: 30px 0;">`,
+    `<a href="${loginUrl}" style="display: inline-block; background-color: #7178AE; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Login to Your Account</a>`,
+    `</div>`,
+    `<p>If you have any questions, don't hesitate to reach out to our team.</p>`,
+    `<p>Welcome to the Makerspace YK community!</p>`,
+  ].join("");
+
+  await sendMail({
+    to: userEmail,
+    subject: "Welcome to Makerspace YK - Account Created",
+    text: parts.join("\n\n"),
+    html: htmlBody,
+  });
+}
