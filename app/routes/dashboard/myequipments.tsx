@@ -74,9 +74,12 @@ export async function action({ request }: { request: Request }) {
             endTime: new Date(endTime),
           });
         } catch (emailErr) {
-          logger.error(`Failed to send equipment cancellation email: ${emailErr}`, {
-            url: request.url,
-          });
+          logger.error(
+            `Failed to send equipment cancellation email: ${emailErr}`,
+            {
+              url: request.url,
+            }
+          );
         }
       }
       return json({ success: "Booking cancelled successfully!" });
@@ -117,6 +120,8 @@ export default function MyEquipments() {
                   imageUrl={booking.imageUrl || undefined}
                   status="booked" // Always "booked" in MyEquipments.tsx
                   bookingId={booking.bookingId} // Required for cancel button
+                  startTime={booking.startTime}
+                  endTime={booking.endTime}
                 />
               ))}
             </div>

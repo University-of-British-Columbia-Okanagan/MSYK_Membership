@@ -762,6 +762,18 @@ export async function getUserBookedEquipments(userId: number) {
           },
         },
       },
+      slot: {
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+        },
+      },
+    },
+    orderBy: {
+      slot: {
+        startTime: "asc",
+      },
     },
   });
 
@@ -774,6 +786,8 @@ export async function getUserBookedEquipments(userId: number) {
     bookedSlots: booking.equipment.slots.filter((slot) => slot.isBooked).length,
     status: "booked", // Since this is user's booking, it's always "booked"
     bookingId: booking.id,
+    startTime: booking.slot?.startTime,
+    endTime: booking.slot?.endTime,
   }));
 }
 
