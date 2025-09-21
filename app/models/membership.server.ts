@@ -204,6 +204,10 @@ export async function registerMembershipSubscription(
         nextPaymentDate: newNextPaymentDate,
       },
     });
+
+    // Reactivate the UserMembershipForm as well
+    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+
     return subscription;
   }
 
