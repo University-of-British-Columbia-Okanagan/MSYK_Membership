@@ -159,7 +159,7 @@ export default function SubmitIssue() {
           <Separator />
 
           <div className="flex justify-end gap-4">
-            <Button type="submit" className="bg-yellow-500 text-white">
+            <Button type="submit" className="bg-indigo-500 text-white">
               Submit Issue
             </Button>
           </div>

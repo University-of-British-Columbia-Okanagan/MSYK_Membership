@@ -393,7 +393,7 @@ export default function WorkshopPricingVariation() {
                   if (selectableVariations.length === 0)
                     return "bg-gray-400 cursor-not-allowed";
 
-                  return "bg-yellow-500 hover:bg-yellow-600";
+                  return "bg-indigo-500 hover:bg-indigo-600";
                 })()} text-white px-6 py-2 rounded-lg`}
               >
                 {(() => {

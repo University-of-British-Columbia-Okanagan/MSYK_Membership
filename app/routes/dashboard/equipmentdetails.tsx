@@ -222,7 +222,7 @@ export default function EquipmentDetails() {
                     <div className="mt-6 mb-8">
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <h2 className="text-lg font-semibold mb-3 flex items-center">
-                          <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                          <span className="bg-indigo-500 text-white p-1 rounded-md mr-2">
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
@@ -293,7 +293,7 @@ export default function EquipmentDetails() {
                 {/* Book + Edit Equipment */}
                 <div className="flex gap-4">
                   <Button
-                    className="flex-[3] bg-yellow-500 text-white"
+                    className="flex-[3] bg-indigo-500 text-white"
                     onClick={handleBooking}
                     disabled={!equipment.availability}
                   >

@@ -152,11 +152,11 @@ export default function QuickCheckout({
   }
 
   return (
-    <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-xl p-6 shadow-lg">
+    <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 border-2 border-indigo-300 rounded-xl p-6 shadow-lg">
       {/* Header */}
       <div className="flex items-center mb-4">
         <div className="flex-shrink-0">
-          <div className="w-12 h-12 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center shadow-md">
+          <div className="w-12 h-12 bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-center shadow-md">
             <CreditCard className="h-6 w-6 text-white" />
           </div>
         </div>

@@ -171,7 +171,7 @@ export default function EquipmentEdit() {
             name="availability"
             checked={availability}
             onChange={(e) => setAvailability(e.target.checked)}
-            className="w-4 h-4 accent-yellow-500 "
+            className="w-4 h-4 accent-indigo-500 "
           />
         </div>
 
@@ -183,7 +183,7 @@ export default function EquipmentEdit() {
           <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
             Cancel
           </Button>
-          <Button type="submit" className="bg-yellow-500 text-white">
+          <Button type="submit" className="bg-indigo-500 text-white">
             Save Changes
           </Button>
         </div>

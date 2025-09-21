@@ -139,7 +139,7 @@ export default function WorkshopCard({
 
       <CardContent className="mt-auto">
         <Button
-          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
+          className="w-full bg-indigo-500 hover:bg-indigo-600 text-white"
           onClick={() => navigate(`/dashboard/workshops/${id}`)}
         >
           {type === "orientation" ? "View Orientation" : "View Workshop"}

@@ -617,7 +617,7 @@ const getOfferIdColor = (offerId: number | null | undefined): string => {
     "bg-purple-100 text-purple-800",
     "bg-pink-100 text-pink-800",
     "bg-indigo-100 text-indigo-800",
-    "bg-yellow-100 text-yellow-800",
+    "bg-indigo-100 text-indigo-800",
     "bg-orange-100 text-orange-800",
     "bg-teal-100 text-teal-800",
   ];
@@ -1647,7 +1647,7 @@ export default function EditWorkshop() {
                         className="sr-only peer"
                         disabled={true}
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">Multi-day Workshop</span>
@@ -1694,7 +1694,7 @@ export default function EditWorkshop() {
                         }}
                         className="sr-only peer"
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">
@@ -1710,7 +1710,7 @@ export default function EditWorkshop() {
 
                 {/* Price Variations Management */}
                 {hasPriceVariations && (
-                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                  <div className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium">Price Variations</h3>
                       <Button
@@ -1727,7 +1727,7 @@ export default function EditWorkshop() {
                             },
                           ])
                         }
-                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                        className="text-indigo-600 border-indigo-300 hover:bg-indigo-100"
                       >
                         Add Variation
                       </Button>
@@ -1778,7 +1778,7 @@ export default function EditWorkshop() {
                                 newVariations[index].name = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.name`
@@ -1817,7 +1817,7 @@ export default function EditWorkshop() {
                                       setPriceVariations(newVariations);
                                     }
                               }
-                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
                                 index < initialPriceVariationsCount
                                   ? "bg-gray-100 text-gray-600 cursor-not-allowed"
                                   : ""
@@ -1877,7 +1877,7 @@ export default function EditWorkshop() {
                                 newVariations[index].capacity = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500
                                 ${
                                   actionData?.errors?.[
                                     `priceVariations.${index}.capacity`
@@ -1946,7 +1946,7 @@ export default function EditWorkshop() {
                                   e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.description`
@@ -2186,7 +2186,7 @@ export default function EditWorkshop() {
                             nonCancelledCount > 0 && (
                               <Badge
                                 variant="outline"
-                                className="ml-2 bg-yellow-100 border-yellow-200"
+                                className="ml-2 bg-indigo-100 border-indigo-200"
                               >
                                 {nonCancelledCount} date
                                 {nonCancelledCount !== 1 ? "s" : ""} added
@@ -2367,7 +2367,7 @@ export default function EditWorkshop() {
                                         className={`mt-1 px-6 py-2 rounded-md shadow transition text-sm flex items-center ${
                                           shouldDisableAddDate
                                             ? "bg-gray-400 hover:bg-gray-400 text-gray-600 cursor-not-allowed"
-                                            : "bg-yellow-500 hover:bg-yellow-600 text-white"
+                                            : "bg-indigo-500 hover:bg-indigo-600 text-white"
                                         }`}
                                       >
                                         <span className="mr-1">+</span> Add Date
@@ -2453,7 +2453,7 @@ export default function EditWorkshop() {
                           {occurrences.length > 0 && (
                             <>
                               <h3 className="font-medium mb-4 flex items-center">
-                                <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                                <CalendarIcon className="w-5 h-5 mr-2 text-indigo-500" />
                                 Workshop Dates:
                               </h3>
                               <OccurrencesTabs
@@ -2481,7 +2481,7 @@ export default function EditWorkshop() {
                                       </span>
                                     ),
                                     triggerClassName:
-                                      "data-[state=active]:bg-yellow-500 data-[state=active]:text-white font-medium",
+                                      "data-[state=active]:bg-indigo-500 data-[state=active]:text-white font-medium",
                                     content:
                                       activeOccurrences.length > 0 ? (
                                         <div className="space-y-3">
@@ -3420,7 +3420,7 @@ export default function EditWorkshop() {
                 <div className="flex justify-center mt-6">
                   <Button
                     type="submit"
-                    className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                    className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                     disabled={formSubmitting}
                   >
                     {formSubmitting ? "Updating..." : "Update Workshop"}

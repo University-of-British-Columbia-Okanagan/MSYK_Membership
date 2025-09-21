@@ -78,7 +78,7 @@ export function GuestAppSidebar() {
         <Separator className="mb-4" />
         <div className="space-y-2">
           <Link to="/login">
-            <Button className="flex items-center gap-2 w-full bg-yellow-500 hover:bg-yellow-600 text-white">
+            <Button className="flex items-center gap-2 w-full bg-indigo-500 hover:bg-indigo-600 text-white">
               <LogOut className="w-5 h-5" />
               Sign In
             </Button>
@@ -86,7 +86,7 @@ export function GuestAppSidebar() {
           <Link to="/register">
             <Button
               variant="outline"
-              className="flex items-center gap-2 w-full border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+              className="flex items-center gap-2 w-full border-indigo-500 text-indigo-600 hover:bg-indigo-50"
             >
               <User className="w-5 h-5" />
               Register

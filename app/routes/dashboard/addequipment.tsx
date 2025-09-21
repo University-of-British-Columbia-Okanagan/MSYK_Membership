@@ -330,7 +330,7 @@ export default function AddEquipment() {
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  className="mt-6 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-green-600 transition"
+                  className="mt-6 w-full bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition"
                 >
                   Add Equipment
                 </Button>

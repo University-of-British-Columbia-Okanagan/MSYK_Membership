@@ -51,7 +51,7 @@ export default function Equipments() {
           <div className="flex justify-end items-center mb-6">
             {isAdmin && (
               <Button
-                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition"
+                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md shadow transition"
                 onClick={() => navigate("/dashboard/addequipment")}
               >
                 + Add Equipment

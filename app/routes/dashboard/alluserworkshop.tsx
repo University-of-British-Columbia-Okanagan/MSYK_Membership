@@ -235,7 +235,7 @@ export default function AllUserWorkshop() {
               confirmDescription="Are you sure you want to mark all filtered registrations as passed?"
               onConfirm={handlePassAll}
               buttonLabel="Pass All"
-              buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white"
+              buttonClassName="bg-indigo-500 hover:bg-indigo-600 text-white"
             />
           </div>
           <ShadTable

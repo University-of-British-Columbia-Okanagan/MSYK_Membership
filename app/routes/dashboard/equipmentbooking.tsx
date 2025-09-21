@@ -485,7 +485,7 @@ export default function EquipmentBookingForm() {
               <div className="flex justify-center mt-4">
                 <Button
                   type="submit"
-                  className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                  className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                   disabled={
                     navigation.state === "submitting" ||
                     selectedSlots.length === 0
