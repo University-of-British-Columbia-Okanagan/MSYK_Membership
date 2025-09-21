@@ -30,6 +30,7 @@ import {
   getUserActiveMembership,
   getUserMembershipForm,
   createMembershipForm,
+  invalidateExistingMembershipForms,
 } from "~/models/membership.server";
 import { getUserById } from "~/models/user.server";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -110,7 +111,15 @@ export async function action({
   }
 
   try {
-    // Create the form with "pending" status (will be activated after successful payment)
+    // Check if there's an existing form
+    const existingForm = await getUserMembershipForm(user.id, membershipId);
+
+    if (existingForm) {
+      // Invalidate existing forms using the server function
+      await invalidateExistingMembershipForms(user.id, membershipId);
+    }
+
+    // Create new form with pending status
     await createMembershipForm(
       user.id,
       membershipId,
@@ -306,6 +315,7 @@ export default function MembershipDetails() {
   } = useLoaderData<typeof loader>();
   const [loading, setLoading] = useState(false);
   const [agreementDocumentViewed, setAgreementDocumentViewed] = useState(false);
+  const [showNewSignature, setShowNewSignature] = useState(false);
 
   const form = useForm<MembershipAgreementFormValues>({
     resolver: zodResolver(membershipAgreementSchema),
@@ -319,12 +329,10 @@ export default function MembershipDetails() {
     ? "msyk-membership-agreement-24-7"
     : "msyk-membership-agreement";
 
-  // If user already signed agreement, redirect to payment
-  useEffect(() => {
-    if (existingForm) {
-      window.location.href = `/dashboard/payment/${membershipPlan.id}`;
-    }
-  }, [existingForm, membershipPlan.id]);
+  const handleSubmit = async (data: MembershipAgreementFormValues) => {
+    setLoading(true);
+    // Form will be submitted via RouterForm
+  };
 
   const handleFormSubmit = (event: React.FormEvent) => {
     setLoading(true);
@@ -338,6 +346,28 @@ export default function MembershipDetails() {
     link.download = `${agreementDocument}.pdf`;
     link.click();
     setAgreementDocumentViewed(true);
+  };
+
+  // Handle continuing with existing signature
+  const handleContinueWithExisting = () => {
+    setLoading(true);
+    // Navigate directly to payment
+    let redirectPath = `/dashboard/payment/${membershipPlan.id}`;
+
+    // Add upgrade/downgrade query params if user has active membership
+    if (userActiveMembership) {
+      // This now refers to the one from useLoaderData
+      const currentPrice = userActiveMembership.membershipPlan.price;
+      const newPrice = membershipPlan.price;
+
+      if (newPrice < currentPrice) {
+        redirectPath += `?downgrade=true`;
+      } else if (newPrice > currentPrice) {
+        redirectPath += `?upgrade=true`;
+      }
+    }
+
+    window.location.href = redirectPath;
   };
 
   // Determine membership action type
@@ -364,55 +394,36 @@ export default function MembershipDetails() {
         ) : (
           <AppSidebar />
         )}
-        <main className="flex-grow p-6 overflow-y-auto">
+
+        <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
           <div className="max-w-4xl mx-auto">
-            {/* Back Button */}
-            <div className="mb-6">
-              <Button
-                type="button"
-                onClick={() => window.history.back()}
-                variant="outline"
-                className="flex items-center gap-2 text-gray-700 hover:text-gray-900"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                Back to Memberships
-              </Button>
-            </div>
-
             <div className="bg-white rounded-lg shadow-md p-8">
-              <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold text-gray-900">
-                  {actionType} {membershipPlan.title}
-                </h2>
-                <p className="mt-2 text-gray-600">
-                  {membershipPlan.description}
-                </p>
-                <div className="mt-4">
-                  <span className="text-4xl font-bold text-gray-900">
-                    ${membershipPlan.price}
-                  </span>
-                  <span className="text-gray-600 text-sm"> /month</span>
-                </div>
-              </div>
+              <h1 className="text-3xl font-bold text-black mb-6 text-center">
+                {actionType} {membershipPlan.title}
+              </h1>
 
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                  Features Included:
-                </h3>
-                <ul className="space-y-2">
+              {/* Membership Plan Details */}
+              <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+                <h2 className="text-xl font-semibold mb-4">Plan Details</h2>
+                <p className="text-gray-700 mb-2">
+                  <strong>Price:</strong> CA$
+                  {membershipPlan.price.toFixed(2)}/month
+                </p>
+                <p className="text-gray-700 mb-2">
+                  <strong>Description:</strong> {membershipPlan.description}
+                </p>
+                {/* <p className="text-gray-700 mb-2">
+                  <strong>Access Hours:</strong>{" "}
+                  {typeof membershipPlan.accessHours === "string"
+                    ? membershipPlan.accessHours
+                    : Object.values(membershipPlan.accessHours || {}).join(
+                        ", "
+                      )}
+                </p> */}
+                <p className="text-gray-700 mb-2">
+                  <strong>Features:</strong>
+                </p>
+                <ul className="list-none space-y-2">
                   {Array.isArray(membershipPlan.feature)
                     ? (membershipPlan.feature as string[]).map(
                         (feature: string, index: number) => (
@@ -439,70 +450,113 @@ export default function MembershipDetails() {
                 </ul>
               </div>
 
-              <Form {...form}>
-                <RouterForm method="post" onSubmit={handleFormSubmit}>
-                  {/* Membership Agreement Section */}
-                  <div className="mb-6">
-                    <FormLabel className="text-base text-gray-900">
-                      Membership Agreement{" "}
-                      <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <FormDescription className="text-sm text-gray-600 mb-4">
-                      Please download, review, and digitally sign the membership
-                      agreement.
-                    </FormDescription>
+              {existingForm && !showNewSignature ? (
+                <div className="mb-6">
+                  <Alert className="mb-4">
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      You have already signed the membership agreement for this
+                      plan.
+                    </AlertDescription>
+                  </Alert>
 
-                    <div className="mb-4">
-                      <Button
-                        type="button"
-                        onClick={downloadAgreement}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
-                      >
-                        <Download className="w-4 h-4 mr-2" />
-                        Download Membership Agreement
-                      </Button>
-                      {agreementDocumentViewed && (
-                        <p className="text-green-600 text-sm mt-2">
-                          ✓ Agreement document downloaded
-                        </p>
-                      )}
+                  <div className="space-y-4">
+                    <Button
+                      onClick={handleContinueWithExisting}
+                      disabled={loading}
+                      className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold"
+                    >
+                      {loading ? "Processing..." : "Continue to Payment"}
+                    </Button>
+
+                    <Button
+                      onClick={() => setShowNewSignature(true)}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      Provide New Signature
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // ORIGINAL FORM SECTION
+                <Form {...form}>
+                  <RouterForm method="post" onSubmit={handleFormSubmit}>
+                    {/* Membership Agreement Section */}
+                    <div className="mb-6">
+                      <FormLabel className="text-base text-gray-900">
+                        Membership Agreement{" "}
+                        <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormDescription className="text-sm text-gray-600 mb-4">
+                        Please download, review, and digitally sign the
+                        membership agreement.
+                      </FormDescription>
+
+                      <div className="mb-4">
+                        <Button
+                          type="button"
+                          onClick={downloadAgreement}
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download Membership Agreement
+                        </Button>
+                        {agreementDocumentViewed && (
+                          <p className="text-green-600 text-sm mt-2">
+                            ✓ Agreement document downloaded
+                          </p>
+                        )}
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="agreementSignature"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormControl>
+                              <div>
+                                <DigitalSignaturePad
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                  disabled={!agreementDocumentViewed}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="agreementSignature"
+                                  value={field.value || ""}
+                                />
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
 
-                    <FormField
-                      control={form.control}
-                      name="agreementSignature"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormControl>
-                            <div>
-                              <DigitalSignaturePad
-                                value={field.value}
-                                onChange={field.onChange}
-                                disabled={!agreementDocumentViewed}
-                              />
-                              <input
-                                type="hidden"
-                                name="agreementSignature"
-                                value={field.value || ""}
-                              />
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={loading || !agreementDocumentViewed}
+                      className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-lg disabled:opacity-50 transition-colors font-semibold"
+                    >
+                      {loading ? "Processing..." : "Continue to Payment"}
+                    </button>
 
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={loading || !agreementDocumentViewed}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 px-4 rounded-lg disabled:opacity-50 transition-colors font-semibold"
-                  >
-                    {loading ? "Processing..." : "Continue to Payment"}
-                  </button>
-                </RouterForm>
-              </Form>
+                    {/* Cancel button if showing new signature */}
+                    {existingForm && showNewSignature && (
+                      <Button
+                        type="button"
+                        onClick={() => setShowNewSignature(false)}
+                        variant="outline"
+                        className="w-full mt-4"
+                      >
+                        Cancel - Use Existing Signature
+                      </Button>
+                    )}
+                  </RouterForm>
+                </Form>
+              )}
             </div>
           </div>
         </main>

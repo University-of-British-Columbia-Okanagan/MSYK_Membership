@@ -819,7 +819,7 @@ export async function registerMembershipSubscriptionWithForm(
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false,
   isResubscription: boolean = false,
-  paymentIntentId?: string,
+  paymentIntentId?: string
 ) {
   // First create the membership subscription
   const subscription = await registerMembershipSubscription(
@@ -884,4 +884,25 @@ export async function activateMembershipForm(
   }
 
   return null;
+}
+
+/**
+ * Invalidate existing membership forms before creating a new one
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ */
+export async function invalidateExistingMembershipForms(
+  userId: number,
+  membershipPlanId: number
+) {
+  return await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: { in: ["pending", "active"] },
+    },
+    data: {
+      status: "inactive",
+    },
+  });
 }
