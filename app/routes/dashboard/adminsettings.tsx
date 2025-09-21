@@ -4458,7 +4458,7 @@ export default function AdminSettings() {
                             ),
                         },
                         {
-                          header: "Stripe Intent ID",
+                          header: "Stripe Payment ID",
                           render: (cancellation: any) => (
                             <div className="text-sm font-mono">
                               {cancellation.stripePaymentIntentId || "N/A"}
@@ -4657,7 +4657,7 @@ export default function AdminSettings() {
                             ),
                         },
                         {
-                          header: "Stripe Intent ID",
+                          header: "Stripe Payment ID",
                           render: (cancellation: any) => (
                             <div className="text-sm font-mono">
                               {cancellation.stripePaymentIntentId || "N/A"}

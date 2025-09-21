@@ -88,7 +88,20 @@ export default function MembershipCard({
 
   // Handler for membership "Select" or "Resubscribe"
   const handleSelect = () => {
-    navigate(`/dashboard/payment/${planId}`);
+    // For resubscriptions, go directly to payment
+    // For new subscriptions and upgrades/downgrades, go to agreement signing first
+    const isResubscribeAction =
+      membershipStatus === "cancelled" && hasCancelledSubscription;
+
+    if (isResubscribeAction) {
+      navigate(
+        `/dashboard/payment/${planId}?resubscribe=true${
+          membershipRecordId ? `&membershipRecordId=${membershipRecordId}` : ""
+        }`
+      );
+    } else {
+      navigate(`/dashboard/memberships/${planId}`);
+    }
   };
 
   // By default, the user can select a membership plan

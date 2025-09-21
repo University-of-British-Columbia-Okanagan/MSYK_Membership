@@ -77,6 +77,10 @@ export default [
   route("dashboard/payment/:membershipPlanId", "routes/dashboard/payment.tsx", {
     id: "dashboard/payment/membership",
   }),
+  route(
+    "/dashboard/memberships/:membershipId",
+    "routes/dashboard/membershipdetails.tsx"
+  ),
   route("dashboard/paymentprocess", "routes/api/paymentprocess.tsx"),
   route("dashboard/payment/success", "routes/dashboard/paymentsuccess.tsx"),
   route("dashboard/payment/downgrade", "routes/api/paymentdowngrade.tsx"),
@@ -116,9 +120,22 @@ export default [
   route("/dashboard/logs", "routes/dashboard/serverlogs.tsx"),
   route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
   route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
-  route("/api/google-calendar/connect", "routes/api/google-calendar.connect.tsx"),
-  route("/api/google-calendar/callback", "routes/api/google-calendar.callback.tsx"),
-  route("/api/google-calendar/disconnect", "routes/api/google-calendar.disconnect.tsx"),
+  route(
+    "/dashboard/profile/download-membership-agreement/:formId",
+    "routes/api/download-membership-agreement.tsx"
+  ),
+  route(
+    "/api/google-calendar/connect",
+    "routes/api/google-calendar.connect.tsx"
+  ),
+  route(
+    "/api/google-calendar/callback",
+    "routes/api/google-calendar.callback.tsx"
+  ),
+  route(
+    "/api/google-calendar/disconnect",
+    "routes/api/google-calendar.disconnect.tsx"
+  ),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
 ] satisfies RouteConfig;

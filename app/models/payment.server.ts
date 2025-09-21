@@ -182,13 +182,9 @@ export async function quickCheckout(
       price = checkoutData.price || membershipPlan.price;
       metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
 
-      // Include additional metadata for membership upgrades
       if (checkoutData.currentMembershipId) {
         metadata.currentMembershipId =
           checkoutData.currentMembershipId.toString();
-      }
-      if (checkoutData.upgradeFee !== undefined) {
-        metadata.upgradeFee = checkoutData.upgradeFee.toString();
       }
       break;
 
@@ -220,21 +216,32 @@ export async function quickCheckout(
 
             // Send confirmation email for multi-day workshop
             try {
-              const { sendWorkshopConfirmationEmail } = await import("../utils/email.server");
-              const { getWorkshopById, getWorkshopOccurrencesByConnectId, getWorkshopPriceVariation } = await import("./workshop.server");
+              const { sendWorkshopConfirmationEmail } = await import(
+                "../utils/email.server"
+              );
+              const {
+                getWorkshopById,
+                getWorkshopOccurrencesByConnectId,
+                getWorkshopPriceVariation,
+              } = await import("./workshop.server");
 
               const workshop = await getWorkshopById(checkoutData.workshopId!);
-              const occurrences = await getWorkshopOccurrencesByConnectId(checkoutData.workshopId!, checkoutData.connectId);
+              const occurrences = await getWorkshopOccurrencesByConnectId(
+                checkoutData.workshopId!,
+                checkoutData.connectId
+              );
 
               if (workshop && occurrences) {
                 let priceVariation = null;
                 if (checkoutData.variationId) {
-                  priceVariation = await getWorkshopPriceVariation(checkoutData.variationId);
+                  priceVariation = await getWorkshopPriceVariation(
+                    checkoutData.variationId
+                  );
                 }
 
-                const sessions = occurrences.map(occ => ({
+                const sessions = occurrences.map((occ) => ({
                   startDate: occ.startDate,
-                  endDate: occ.endDate
+                  endDate: occ.endDate,
                 }));
 
                 await sendWorkshopConfirmationEmail({
@@ -243,15 +250,20 @@ export async function quickCheckout(
                   sessions,
                   location: workshop.location,
                   basePrice: workshop.price,
-                  priceVariation: priceVariation ? {
-                    name: priceVariation.name,
-                    description: priceVariation.description,
-                    price: priceVariation.price
-                  } : null,
+                  priceVariation: priceVariation
+                    ? {
+                        name: priceVariation.name,
+                        description: priceVariation.description,
+                        price: priceVariation.price,
+                      }
+                    : null,
                 });
               }
             } catch (emailError) {
-              console.error("Failed to send workshop confirmation email:", emailError);
+              console.error(
+                "Failed to send workshop confirmation email:",
+                emailError
+              );
             }
           } else if (checkoutData.occurrenceId) {
             // Single occurrence registration
@@ -265,16 +277,27 @@ export async function quickCheckout(
 
             // Send confirmation email for single occurrence workshop
             try {
-              const { sendWorkshopConfirmationEmail } = await import("../utils/email.server");
-              const { getWorkshopById, getWorkshopOccurrence, getWorkshopPriceVariation } = await import("./workshop.server");
+              const { sendWorkshopConfirmationEmail } = await import(
+                "../utils/email.server"
+              );
+              const {
+                getWorkshopById,
+                getWorkshopOccurrence,
+                getWorkshopPriceVariation,
+              } = await import("./workshop.server");
 
               const workshop = await getWorkshopById(checkoutData.workshopId!);
-              const occurrence = await getWorkshopOccurrence(checkoutData.workshopId!, checkoutData.occurrenceId);
+              const occurrence = await getWorkshopOccurrence(
+                checkoutData.workshopId!,
+                checkoutData.occurrenceId
+              );
 
               if (workshop && occurrence) {
                 let priceVariation = null;
                 if (checkoutData.variationId) {
-                  priceVariation = await getWorkshopPriceVariation(checkoutData.variationId);
+                  priceVariation = await getWorkshopPriceVariation(
+                    checkoutData.variationId
+                  );
                 }
 
                 await sendWorkshopConfirmationEmail({
@@ -284,22 +307,29 @@ export async function quickCheckout(
                   endDate: occurrence.endDate,
                   location: workshop.location,
                   basePrice: workshop.price,
-                  priceVariation: priceVariation ? {
-                    name: priceVariation.name,
-                    description: priceVariation.description,
-                    price: priceVariation.price
-                  } : null,
+                  priceVariation: priceVariation
+                    ? {
+                        name: priceVariation.name,
+                        description: priceVariation.description,
+                        price: priceVariation.price,
+                      }
+                    : null,
                 });
               }
             } catch (emailError) {
-              console.error("Failed to send workshop confirmation email:", emailError);
+              console.error(
+                "Failed to send workshop confirmation email:",
+                emailError
+              );
             }
           }
         } else if (checkoutData.type === "membership") {
           // Handle membership subscription
-          const { registerMembershipSubscription, getMembershipPlanById } = await import(
-            "./membership.server"
-          );
+          const {
+            registerMembershipSubscription,
+            getMembershipPlanById,
+            activateMembershipForm,
+          } = await import("./membership.server");
 
           const currentMembershipId = checkoutData.currentMembershipId || null;
           await registerMembershipSubscription(
@@ -311,10 +341,17 @@ export async function quickCheckout(
             paymentIntent.id
           );
 
+          // Activate the pending membership form
+          await activateMembershipForm(userId, checkoutData.membershipPlanId!);
+
           // Send confirmation email for membership
           try {
-            const { sendMembershipConfirmationEmail } = await import("../utils/email.server");
-            const membershipPlan = await getMembershipPlanById(checkoutData.membershipPlanId!);
+            const { sendMembershipConfirmationEmail } = await import(
+              "../utils/email.server"
+            );
+            const membershipPlan = await getMembershipPlanById(
+              checkoutData.membershipPlanId!
+            );
 
             if (membershipPlan) {
               // Calculate next billing date (one month from now)
@@ -332,7 +369,10 @@ export async function quickCheckout(
               });
             }
           } catch (emailError) {
-            console.error("Failed to send membership confirmation email:", emailError);
+            console.error(
+              "Failed to send membership confirmation email:",
+              emailError
+            );
           }
         } else if (checkoutData.type === "equipment") {
           // Equipment booking will be handled by the frontend after success

@@ -3,6 +3,12 @@ import cron from "node-cron";
 import Stripe from "stripe";
 import { getAdminSetting } from "./admin.server";
 import { sendMembershipPaymentReminderEmail } from "~/utils/email.server";
+import CryptoJS from "crypto-js";
+import PDFDocument from "pdfkit";
+import { PassThrough } from "stream";
+import { PDFDocument as PDFLibDocument, StandardFonts, rgb } from "pdf-lib";
+import * as fs from "fs";
+import * as path from "path";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -203,6 +209,10 @@ export async function registerMembershipSubscription(
         nextPaymentDate: newNextPaymentDate,
       },
     });
+
+    // Reactivate the UserMembershipForm as well
+    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+
     return subscription;
   }
 
@@ -228,6 +238,13 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
+
+    // Set the old membership's form to "ending" to match
+    await updateMembershipFormStatus(
+      userId,
+      currentMembership.membershipPlanId,
+      "ending"
+    );
 
     // 2) Find if there's already an "active" or "ending" record for this user/plan
     // (we only want 1 record in active or ending for the cheaper plan).
@@ -266,6 +283,9 @@ export async function registerMembershipSubscription(
       });
     }
 
+    // Activate the new membership's form immediately (no payment needed for downgrade)
+    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+
     return subscription;
   }
 
@@ -286,6 +306,13 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
+
+    // Set the old membership's form to "inactive" since it's ending
+    await updateMembershipFormStatus(
+      userId,
+      currentMembership.membershipPlanId,
+      "ending"
+    );
 
     // Create or update a new membership record for the upgraded plan
     // so that we only have 1 record in "active"/"ending" for the new plan.
@@ -438,16 +465,26 @@ export async function cancelMembership(
 
   if (now < activeRecord.nextPaymentDate) {
     // 2a) Cancelling *before* the cycle ends → just mark this row 'cancelled'
-    // **NO** role‐level update here (you stay at level 3/4 until the cycle lapses)
-    return db.userMembership.update({
+    // **NO** role­level update here (you stay at level 3/4 until the cycle lapses)
+
+    // Update the UserMembership status
+    const updatedMembership = await db.userMembership.update({
       where: { id: activeRecord.id },
       data: { status: "cancelled" },
     });
+
+    // Sync the UserMembershipForm status to cancelled as well
+    await updateMembershipFormStatus(userId, membershipPlanId, "cancelled");
+
+    return updatedMembership;
   } else {
     // 2b) Cancelling *after* the cycle → delete that one record
     const deleted = await db.userMembership.delete({
       where: { id: activeRecord.id },
     });
+
+    // Set the form to inactive since the membership is completely deleted
+    await updateMembershipFormStatus(userId, membershipPlanId, "inactive");
 
     // 3) Now that the membership is gone, recalc roleLevel:
     // level 2 if they passed orientation, else level 1
@@ -554,7 +591,9 @@ export function startMonthlyMembershipCheck() {
       });
 
       for (const membership of reminderCandidates) {
-        const user = await db.user.findUnique({ where: { id: membership.userId } });
+        const user = await db.user.findUnique({
+          where: { id: membership.userId },
+        });
         if (!user) continue;
 
         const baseAmount = Number(membership.membershipPlan.price);
@@ -588,7 +627,7 @@ export function startMonthlyMembershipCheck() {
         }
 
         if (membership.status === "active") {
-          // UPDATE THIS PART: Calculate charge amount with GST
+          // Calculate charge amount with GST
           const baseAmount = Number(membership.membershipPlan.price);
 
           // Get GST percentage from admin settings
@@ -683,6 +722,13 @@ export function startMonthlyMembershipCheck() {
             where: { id: membership.id },
             data: { status: "inactive" },
           });
+
+          // Sync the UserMembershipForm status to inactive as well
+          await updateMembershipFormStatus(
+            membership.userId,
+            membership.membershipPlanId,
+            "inactive"
+          );
         }
 
         // Update the user's roleLevel based on their current membership status.
@@ -729,4 +775,437 @@ export function startMonthlyMembershipCheck() {
       console.error("Error in monthly membership check:", error);
     }
   });
+}
+
+/**
+ * Check if user already has a signed agreement for a membership plan
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @returns UserMembershipForm record or null if not found
+ */
+export async function getUserMembershipForm(
+  userId: number,
+  membershipPlanId: number
+) {
+  return await db.userMembershipForm.findFirst({
+    where: {
+      userId,
+      membershipPlanId,
+      status: { in: ["pending", "active"] }, // Find both pending and active forms
+    },
+    orderBy: {
+      createdAt: "desc", // Get the most recent form
+    },
+  });
+}
+
+/**
+ * Create a new membership agreement form with encrypted PDF
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @param signatureData The signature data (base64 image)
+ * @returns Created UserMembershipForm record
+ */
+export async function createMembershipForm(
+  userId: number,
+  membershipPlanId: number,
+  signatureData: string
+) {
+  // Get user info for PDF generation
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { firstName: true, lastName: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  // Get membership plan to determine which PDF to generate
+  const plan = await db.membershipPlan.findUnique({
+    where: { id: membershipPlanId },
+  });
+
+  if (!plan) {
+    throw new Error("Membership plan not found");
+  }
+
+  // Generate the appropriate encrypted PDF based on plan type
+  const encryptedPDF = plan.needAdminPermission
+    ? await generateSignedMembershipAgreement247(
+        user.firstName,
+        user.lastName,
+        signatureData
+      )
+    : await generateSignedMembershipAgreement(
+        user.firstName,
+        user.lastName,
+        signatureData
+      );
+
+  // Create the form with the encrypted PDF stored in agreementSignature field
+  return await db.userMembershipForm.create({
+    data: {
+      userId,
+      membershipPlanId,
+      agreementSignature: encryptedPDF, // This stores the encrypted PDF
+      status: "pending",
+    },
+  });
+}
+
+/**
+ * Register membership subscription and create membership form after successful payment
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @param currentMembershipId The ID of current membership (for upgrades/downgrades)
+ * @param isDowngrade Flag indicating if this is a downgrade
+ * @param isResubscription Flag indicating if this is reactivating a cancelled membership
+ * @param paymentIntentId Stripe payment intent ID
+ * @param signatureData The agreement signature data (optional, for new subscriptions)
+ * @returns Created or updated membership subscription record
+ */
+export async function registerMembershipSubscriptionWithForm(
+  userId: number,
+  membershipPlanId: number,
+  currentMembershipId: number | null = null,
+  isDowngrade: boolean = false,
+  isResubscription: boolean = false,
+  paymentIntentId?: string
+) {
+  // First create the membership subscription
+  const subscription = await registerMembershipSubscription(
+    userId,
+    membershipPlanId,
+    currentMembershipId,
+    isDowngrade,
+    isResubscription,
+    paymentIntentId
+  );
+
+  // Activate the pending form (if it exists)
+  // Note: signatureData parameter is deprecated and ignored
+  await activateMembershipForm(userId, membershipPlanId);
+
+  return subscription;
+}
+
+/**
+ * Activate a pending membership form after successful payment
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @returns Updated UserMembershipForm record
+ */
+export async function activateMembershipForm(
+  userId: number,
+  membershipPlanId: number
+) {
+  // First, set any existing active forms to inactive (in case of resubscription)
+  await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: "active",
+    },
+    data: {
+      status: "inactive",
+    },
+  });
+
+  // Then activate the most recent pending form
+  const mostRecentPending = await db.userMembershipForm.findFirst({
+    where: {
+      userId,
+      membershipPlanId,
+      status: "pending",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (mostRecentPending) {
+    return await db.userMembershipForm.update({
+      where: {
+        id: mostRecentPending.id,
+      },
+      data: {
+        status: "active",
+      },
+    });
+  }
+
+  return null;
+}
+
+/**
+ * Update UserMembershipForm status to match UserMembership status
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ * @param newStatus The new status to set
+ */
+export async function updateMembershipFormStatus(
+  userId: number,
+  membershipPlanId: number,
+  newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending"
+) {
+  return await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: { in: ["pending", "active", "cancelled", "ending"] }, // Include "ending" in the filter
+    },
+    data: {
+      status: newStatus,
+    },
+  });
+}
+
+/**
+ * Invalidate existing membership forms before creating a new one
+ * @param userId The ID of the user
+ * @param membershipPlanId The ID of the membership plan
+ */
+export async function invalidateExistingMembershipForms(
+  userId: number,
+  membershipPlanId: number
+) {
+  return await db.userMembershipForm.updateMany({
+    where: {
+      userId,
+      membershipPlanId,
+      status: { in: ["pending", "active"] },
+    },
+    data: {
+      status: "inactive",
+    },
+  });
+}
+
+/**
+ * Generates a digitally signed and encrypted membership agreement PDF
+ *
+ * @param firstName - The user's first name
+ * @param lastName - The user's last name
+ * @param signatureDataURL - Base64 encoded PNG signature image
+ * @returns Promise<string> - AES encrypted base64 string of the signed PDF
+ */
+async function generateSignedMembershipAgreement(
+  firstName: string,
+  lastName: string,
+  signatureDataURL: string
+): Promise<string> {
+  try {
+    // Read the membership agreement PDF template
+    const templatePath = path.join(
+      process.cwd(),
+      "public",
+      "documents",
+      "msyk-membership-agreement.pdf"
+    );
+
+    const existingPdfBytes = fs.readFileSync(templatePath);
+    const pdfDoc = await PDFLibDocument.load(existingPdfBytes);
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1]; // Last page has signature section
+
+    // Embed font
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const baseX = 75; // X position (left/right)
+
+    // Add name
+    const fullName = `${firstName} ${lastName}`;
+    lastPage.drawText(fullName, {
+      x: baseX,
+      y: 200,
+      size: 10,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    // Add signature
+    if (signatureDataURL && signatureDataURL.startsWith("data:image/")) {
+      try {
+        const base64Data = signatureDataURL.split(",")[1];
+        const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
+          c.charCodeAt(0)
+        );
+
+        const signatureImage = await pdfDoc.embedPng(signatureBytes);
+
+        lastPage.drawImage(signatureImage, {
+          x: baseX * 2.5,
+          y: 80,
+        });
+      } catch (imageError) {
+        console.error("Error embedding signature image:", imageError);
+      }
+    }
+
+    // Add date
+    const currentDate = new Date().toLocaleDateString("en-US");
+    lastPage.drawText(currentDate, {
+      x: baseX,
+      y: 114,
+      size: 10,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
+
+    const encryptedPdf = CryptoJS.AES.encrypt(
+      pdfBase64,
+      encryptionKey
+    ).toString();
+
+    return encryptedPdf;
+  } catch (error) {
+    console.error("Error generating signed membership agreement:", error);
+    throw new Error("Failed to generate signed membership agreement");
+  }
+}
+
+/**
+ * Generates a digitally signed and encrypted 24/7 membership agreement PDF
+ *
+ * @param firstName - The user's first name
+ * @param lastName - The user's last name
+ * @param signatureDataURL - Base64 encoded PNG signature image
+ * @returns Promise<string> - AES encrypted base64 string of the signed PDF
+ */
+async function generateSignedMembershipAgreement247(
+  firstName: string,
+  lastName: string,
+  signatureDataURL: string
+): Promise<string> {
+  try {
+    // Read the 24/7 membership agreement PDF template
+    const templatePath = path.join(
+      process.cwd(),
+      "public",
+      "documents",
+      "msyk-membership-agreement-24-7.pdf"
+    );
+
+    const existingPdfBytes = fs.readFileSync(templatePath);
+    const pdfDoc = await PDFLibDocument.load(existingPdfBytes);
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1]; // Last page has signature section
+
+    // Embed font
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const baseX = 75; // X position (left/right)
+
+    // Add name
+    const fullName = `${firstName} ${lastName}`;
+    lastPage.drawText(fullName, {
+      x: baseX,
+      y: 200,
+      size: 10,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    // Add signature
+    if (signatureDataURL && signatureDataURL.startsWith("data:image/")) {
+      try {
+        const base64Data = signatureDataURL.split(",")[1];
+        const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
+          c.charCodeAt(0)
+        );
+
+        const signatureImage = await pdfDoc.embedPng(signatureBytes);
+
+        lastPage.drawImage(signatureImage, {
+          x: baseX * 2.5,
+          y: 80,
+        });
+      } catch (imageError) {
+        console.error("Error embedding signature image:", imageError);
+      }
+    }
+
+    // Add date
+    const currentDate = new Date().toLocaleDateString("en-US");
+    lastPage.drawText(currentDate, {
+      x: baseX,
+      y: 114,
+      size: 10,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
+
+    const encryptedPdf = CryptoJS.AES.encrypt(
+      pdfBase64,
+      encryptionKey
+    ).toString();
+
+    return encryptedPdf;
+  } catch (error) {
+    console.error("Error generating signed 24/7 membership agreement:", error);
+    throw new Error("Failed to generate signed 24/7 membership agreement");
+  }
+}
+
+/**
+ * Decrypts an encrypted membership agreement PDF document back to its original binary format
+ *
+ * This function reverses the encryption process used by generateSignedMembershipAgreement(),
+ * returning a Buffer containing the original PDF bytes that can be saved or displayed.
+ *
+ * @param encryptedData - AES encrypted string containing the PDF data (from generateSignedMembershipAgreement)
+ * @returns Buffer - Binary PDF data ready for file writing or streaming
+ *
+ * @throws Error - Throws "Failed to decrypt membership agreement" if decryption fails or data is malformed
+ *
+ * @example
+ * ```typescript
+ * const pdfBuffer = decryptMembershipAgreement(form.agreementSignature);
+ * fs.writeFileSync('signed-membership-agreement.pdf', pdfBuffer);
+ * ```
+ *
+ * @security
+ * - Uses same AES decryption key as generateSignedMembershipAgreement()
+ * - Key retrieved from WAIVER_ENCRYPTION_KEY environment variable
+ * - Falls back to default key if environment variable not set
+ *
+ * @dependencies
+ * - Uses crypto-js for AES decryption
+ * - Requires valid encrypted data format from generateSignedMembershipAgreement()
+ *
+ * @see generateSignedMembershipAgreement - For the encryption counterpart of this function
+ * @see generateSignedMembershipAgreement247 - For the 24/7 membership encryption counterpart
+ */
+export function decryptMembershipAgreement(encryptedData: string): Buffer {
+  try {
+    const encryptionKey = process.env.WAIVER_ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error("WAIVER_ENCRYPTION_KEY environment variable must be set");
+    }
+    const decryptedBase64 = CryptoJS.AES.decrypt(
+      encryptedData,
+      encryptionKey
+    ).toString(CryptoJS.enc.Utf8);
+    return Buffer.from(decryptedBase64, "base64");
+  } catch (error) {
+    console.error("Error decrypting membership agreement:", error);
+    throw new Error("Failed to decrypt membership agreement");
+  }
 }

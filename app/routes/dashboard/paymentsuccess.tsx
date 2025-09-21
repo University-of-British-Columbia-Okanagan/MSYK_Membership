@@ -10,11 +10,20 @@ import {
   checkMultiDayWorkshopCapacity,
   getWorkshopPriceVariation,
 } from "../../models/workshop.server";
-import { getMembershipPlanById, registerMembershipSubscription } from "../../models/membership.server";
+import {
+  getMembershipPlanById,
+  registerMembershipSubscription,
+  activateMembershipForm,
+} from "../../models/membership.server";
 import { useState, useEffect } from "react";
-import { sendWorkshopConfirmationEmail, sendEquipmentConfirmationEmail, sendMembershipConfirmationEmail } from "~/utils/email.server";
+import {
+  sendWorkshopConfirmationEmail,
+  sendEquipmentConfirmationEmail,
+  sendMembershipConfirmationEmail,
+} from "~/utils/email.server";
 import { getUserById } from "~/models/user.server";
 import { getEquipmentById } from "~/models/equipment.server";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -129,12 +138,12 @@ export async function loader({ request }: { request: Request }) {
   let user = await getUserById(Number(userId));
   if (!user) {
     return new Response(
-        JSON.stringify({
-          success: false,
-          message: "User not found",
-        }),
-        { headers: { "Content-Type": "application/json" } }
-      );
+      JSON.stringify({
+        success: false,
+        message: "User not found",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
   }
 
   if (equipmentId && userId && isEquipmentBooking === "true") {
@@ -162,6 +171,7 @@ export async function loader({ request }: { request: Request }) {
 
       const paymentIntentId = session.payment_intent as string;
 
+      // Register the membership subscription
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
@@ -171,8 +181,16 @@ export async function loader({ request }: { request: Request }) {
         paymentIntentId
       );
 
+      // Activate the pending membership form
+      await activateMembershipForm(
+        parseInt(userId),
+        parseInt(membershipPlanId)
+      );
+
       try {
-        let membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
+        let membershipPlan = await getMembershipPlanById(
+          Number(membershipPlanId)
+        );
         if (membershipPlan) {
           // Calculate next billing date (one month from now)
           const nextBillingDate = new Date();
@@ -189,7 +207,10 @@ export async function loader({ request }: { request: Request }) {
           });
         }
       } catch (emailConfirmationFailedError) {
-        console.error("Email confirmation failed:", emailConfirmationFailedError);
+        console.error(
+          "Email confirmation failed:",
+          emailConfirmationFailedError
+        );
       }
 
       return new Response(
@@ -201,12 +222,14 @@ export async function loader({ request }: { request: Request }) {
         }),
         { headers: { "Content-Type": "application/json" } }
       );
-    } catch (error: any) {
+    } catch (error) {
+      logger.error(`Membership registration error: ${error}`, {
+        url: request.url,
+      });
       return new Response(
         JSON.stringify({
           success: false,
-          isMembership: true,
-          message: "Membership subscription failed: " + error.message,
+          message: "Failed to process membership",
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -304,9 +327,9 @@ export async function loader({ request }: { request: Request }) {
         }
 
         // Prepare sessions data for multi-day workshop
-        const sessions = occurrences.map(occ => ({
+        const sessions = occurrences.map((occ) => ({
           startDate: occ.startDate,
-          endDate: occ.endDate
+          endDate: occ.endDate,
         }));
 
         await sendWorkshopConfirmationEmail({
@@ -315,14 +338,19 @@ export async function loader({ request }: { request: Request }) {
           sessions,
           location: workshop.location,
           basePrice: workshop.price,
-          priceVariation: priceVariation ? {
-            name: priceVariation.name,
-            description: priceVariation.description,
-            price: priceVariation.price
-          } : null,
+          priceVariation: priceVariation
+            ? {
+                name: priceVariation.name,
+                description: priceVariation.description,
+                price: priceVariation.price,
+              }
+            : null,
         });
       } catch (emailConfirmationFailedError) {
-        console.error("Email confirmation failed:", emailConfirmationFailedError);
+        console.error(
+          "Email confirmation failed:",
+          emailConfirmationFailedError
+        );
       }
 
       return new Response(
@@ -436,14 +464,19 @@ export async function loader({ request }: { request: Request }) {
           endDate: occurrence.endDate,
           location: workshop.location,
           basePrice: workshop.price,
-          priceVariation: priceVariation ? {
-            name: priceVariation.name,
-            description: priceVariation.description,
-            price: priceVariation.price
-          } : null,
+          priceVariation: priceVariation
+            ? {
+                name: priceVariation.name,
+                description: priceVariation.description,
+                price: priceVariation.price,
+              }
+            : null,
         });
       } catch (emailConfirmationFailedError) {
-        console.error("Email confirmation failed:", emailConfirmationFailedError);
+        console.error(
+          "Email confirmation failed:",
+          emailConfirmationFailedError
+        );
       }
       return new Response(
         JSON.stringify({
