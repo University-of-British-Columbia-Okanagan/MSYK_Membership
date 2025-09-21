@@ -121,7 +121,7 @@ export default function EquipmentCard({
 
   return (
     <Card
-      className={`w-full md:w-80 rounded-lg shadow-md flex flex-col overflow-hidden relative ${
+      className={`w-full md:w-80 flex-none rounded-lg shadow-md flex flex-col overflow-hidden relative ${
         status === "unavailable" ? "opacity-50" : ""
       }`}
     >

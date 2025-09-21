@@ -48,7 +48,7 @@ export default function WorkshopCard({
   const placeholderImage = "/images/gallerysectionimg3.avif";
 
   return (
-    <Card className="w-full md:w-72 min-h-[350px] rounded-lg shadow-md flex flex-col justify-between relative border">
+    <Card className="w-full md:w-72 flex-none min-h-[350px] rounded-lg shadow-md flex flex-col justify-between relative border">
       {/* Image Section */}
       <div className="w-full h-40 bg-gray-200 rounded-t-lg overflow-hidden">
         <img

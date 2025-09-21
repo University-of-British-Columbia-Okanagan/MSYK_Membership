@@ -135,7 +135,7 @@ export default function MembershipCard({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md border border-indigo-400 p-6 w-full max-w-sm mx-auto text-center">
+    <div className="bg-white rounded-lg shadow-md border border-indigo-400 p-6 w-96 text-center flex-none">
       {membershipStatus === "active" && (
         <div className="mt-2 mb-4 flex justify-center">
           <fetcher.Form method="post" className="w-full flex justify-center">

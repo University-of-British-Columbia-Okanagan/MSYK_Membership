@@ -60,7 +60,7 @@ export default function Equipments() {
           </div>
 
           {equipments.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-wrap gap-4 md:gap-6 justify-start items-stretch">
               {equipments.map((equipment) => (
                 <EquipmentCard
                   key={equipment.id}
