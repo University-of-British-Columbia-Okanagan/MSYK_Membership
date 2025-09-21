@@ -536,7 +536,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("50 17 * * *", async () => {
+  cron.schedule("06 18 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -696,6 +696,13 @@ export function startMonthlyMembershipCheck() {
             where: { id: membership.id },
             data: { status: "inactive" },
           });
+
+          // Sync the UserMembershipForm status to inactive as well
+          await updateMembershipFormStatus(
+            membership.userId,
+            membership.membershipPlanId,
+            "inactive"
+          );
         }
 
         // Update the user's roleLevel based on their current membership status.
@@ -911,7 +918,7 @@ export async function updateMembershipFormStatus(
     where: {
       userId,
       membershipPlanId,
-      status: { in: ["pending", "active"] }, // Only update pending or active forms
+      status: { in: ["pending", "active", "cancelled"] }, // Only update pending or active forms
     },
     data: {
       status: newStatus,
