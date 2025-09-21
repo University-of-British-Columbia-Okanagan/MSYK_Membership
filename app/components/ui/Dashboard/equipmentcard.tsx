@@ -23,6 +23,8 @@ interface EquipmentProps {
   status: "available" | "booked" | "unavailable";
   bookingId?: number;
   isAdmin?: boolean;
+  startTime?: Date;
+  endTime?: Date;
 }
 
 const SAMPLE_IMAGE = "/images/Fabricationservicesimg.avif";
@@ -35,6 +37,8 @@ export default function EquipmentCard({
   imageUrl,
   bookingId,
   isAdmin = false,
+  startTime,
+  endTime,
 }: EquipmentProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -64,6 +68,54 @@ export default function EquipmentCard({
     );
     if (confirmCancel && bookingId) {
       fetcher.submit({ bookingId, action: "cancel" }, { method: "post" });
+    }
+  };
+
+  // Format time display
+  const formatBookingTime = () => {
+    if (!startTime || !endTime) return null;
+
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+
+    const formatDate = (date: Date) => {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    };
+
+    const formatTime = (date: Date) => {
+      return date.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    };
+
+    const isSameDay = start.toDateString() === end.toDateString();
+
+    if (isSameDay) {
+      return (
+        <div className="text-xs text-gray-600">
+          <div className="font-medium">{formatDate(start)}</div>
+          <div>
+            {formatTime(start)} - {formatTime(end)}
+          </div>
+        </div>
+      );
+    } else {
+      return (
+        <div className="text-xs text-gray-600">
+          <div>
+            {formatDate(start)} {formatTime(start)}
+          </div>
+          <div>
+            to {formatDate(end)} {formatTime(end)}
+          </div>
+        </div>
+      );
     }
   };
 
@@ -132,16 +184,30 @@ export default function EquipmentCard({
             status === "available"
               ? "bg-gray-100 text-gray-700"
               : status === "booked"
-              ? "bg-green-100 text-green-700"
-              : "bg-red-100 text-red-700"
+                ? "bg-green-100 text-green-700"
+                : "bg-red-100 text-red-700"
           }`}
         >
           {status === "available"
             ? "Available"
             : status === "booked"
-            ? "Booked"
-            : "Unavailable"}
+              ? "Booked"
+              : "Unavailable"}
         </span>
+
+        {/* Booking Time Display - Only shown if booked and time info available */}
+        {status === "booked" && (startTime || endTime) && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className="text-sm font-medium text-blue-900">
+                Booking Time
+              </span>
+            </div>
+            {formatBookingTime()}
+          </div>
+        )}
+
         {/* Cancel Booking Button - Only shown if booked */}
         {status === "booked" && (
           <Button
@@ -157,8 +223,8 @@ export default function EquipmentCard({
             status === "unavailable" && !isAdmin
               ? "bg-gray-400 cursor-not-allowed"
               : status === "unavailable" && isAdmin
-              ? "bg-gray-500 hover:bg-gray-600"
-              : "bg-yellow-500 hover:bg-yellow-600"
+                ? "bg-gray-500 hover:bg-gray-600"
+                : "bg-yellow-500 hover:bg-yellow-600"
           }`}
           onClick={() => {
             // Only navigate if equipment is available OR user is admin
