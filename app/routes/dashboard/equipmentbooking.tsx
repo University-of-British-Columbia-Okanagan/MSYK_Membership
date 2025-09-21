@@ -252,7 +252,7 @@ export default function EquipmentBookingForm() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {!roleUser ? (
           <GuestAppSidebar />
         ) : isAdmin ? (

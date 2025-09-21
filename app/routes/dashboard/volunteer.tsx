@@ -98,7 +98,7 @@ export default function VolunteerPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {renderSidebar()}
 
         <main className="flex-1 overflow-auto bg-gray-50">

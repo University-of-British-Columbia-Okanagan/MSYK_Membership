@@ -114,7 +114,7 @@ export default function EquipmentEdit() {
   }, [fetcher.data]);
 
   return (
-    <div className="w-full p-10">
+    <div className="absolute inset-0 w-full p-10">
       {showPopup && (
         <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
           {popupMessage}

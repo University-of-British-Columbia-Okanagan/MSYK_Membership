@@ -162,7 +162,7 @@ export default function EquipmentDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {/* Conditional sidebar rendering */}
         {!user ? (
           <GuestAppSidebar />

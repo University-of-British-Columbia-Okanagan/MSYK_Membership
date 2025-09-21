@@ -158,7 +158,7 @@ export default function AddEquipment() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <div className="max-w-4xl mx-auto p-8 bg-white shadow-md rounded-lg">

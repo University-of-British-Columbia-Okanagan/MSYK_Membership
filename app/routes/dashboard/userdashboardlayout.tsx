@@ -113,7 +113,7 @@ export default function UserDashboard() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isGuest ? (
           <GuestAppSidebar />
         ) : isAdmin ? (

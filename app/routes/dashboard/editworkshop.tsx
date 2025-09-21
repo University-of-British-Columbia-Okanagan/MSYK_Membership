@@ -1494,7 +1494,7 @@ export default function EditWorkshop() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
           <div className="max-w-7xl mx-auto p-8 w-full">
@@ -1877,7 +1877,7 @@ export default function EditWorkshop() {
                                 newVariations[index].capacity = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500
                                 ${
                                   actionData?.errors?.[
                                     `priceVariations.${index}.capacity`

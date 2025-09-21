@@ -2193,7 +2193,7 @@ export default function AdminSettings() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-4xl mx-auto">

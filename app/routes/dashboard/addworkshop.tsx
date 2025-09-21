@@ -1032,7 +1032,7 @@ export default function AddWorkshop() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
           <div className="max-w-7xl mx-auto p-8 w-full">

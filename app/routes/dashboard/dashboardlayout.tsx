@@ -46,7 +46,7 @@ export default function DashboardLayout() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-gray-50">
+      <div className="absolute inset-0 flex bg-gray-50">
         <GuestSidebar />
 
         <main className="flex-1 overflow-auto">

@@ -219,7 +219,7 @@ export default function MembershipPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen">
+      <div className="absolute inset-0 flex">
         {/* Sidebar */}
         {isGuest ? (
           <GuestAppSidebar />

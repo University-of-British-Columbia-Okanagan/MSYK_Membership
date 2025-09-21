@@ -178,7 +178,7 @@ export default function AllUserWorkshop() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
           <h1 className="text-2xl font-bold mb-4">

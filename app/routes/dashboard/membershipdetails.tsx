@@ -386,7 +386,7 @@ export default function MembershipDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {!user ? (
           <GuestAppSidebar />
         ) : roleUser?.roleName === "Admin" ? (

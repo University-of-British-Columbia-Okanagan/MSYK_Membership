@@ -910,7 +910,7 @@ export default function WorkshopDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {/* Conditional sidebar rendering based on user role */}
         {!user ? (
           <GuestAppSidebar />
