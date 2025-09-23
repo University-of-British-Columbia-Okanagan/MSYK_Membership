@@ -101,7 +101,7 @@ export async function action({
     return { errors: { database: ["Failed to update membership plan"] } };
   }
 
-  return redirect("/membership");
+  return redirect("/dashboard/memberships");
 }
 
 export default function AddMembershipPlan() {

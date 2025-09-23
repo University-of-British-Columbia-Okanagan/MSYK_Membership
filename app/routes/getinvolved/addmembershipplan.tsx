@@ -65,7 +65,7 @@ export async function action({ request }: Route.ActionArgs) {
     return { errors: { database: ["Failed to add membership plan"] } };
   }
 
-  return redirect("/membership");
+  return redirect("/dashboard/memberships");
 }
 
 export default function AddMembershipPlan() {
