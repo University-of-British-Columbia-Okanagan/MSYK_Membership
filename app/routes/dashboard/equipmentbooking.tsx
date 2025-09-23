@@ -385,15 +385,14 @@ export default function EquipmentBookingForm() {
                     maxSlotsPerWeek={maxSlotsPerWeek}
                     disabled={
                       !roleUser ||
-                      roleLevel === 1 ||
-                      roleLevel === 2 ||
+                      (roleLevel === 1 || roleLevel === 2) && roleUser.roleId !== 2 ||
                       (!hasCompletedEquipmentPrerequisites &&
                         (roleLevel === 3 || roleLevel === 4))
                     }
                     disabledMessage={
                       !roleUser
                         ? "You need an account to book equipment."
-                        : roleLevel === 1 || roleLevel === 2
+                        : (roleLevel === 1 || roleLevel === 2) && roleUser.roleId !== 2
                         ? "You do not have the required membership to book equipment."
                         : equipmentPrerequisiteMessage
                     }
