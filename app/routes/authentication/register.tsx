@@ -338,6 +338,35 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     }
   }, [actionData]);
 
+  // Restore form values after a server error and surface server errors in RHF
+  useEffect(() => {
+    if (actionData?.errors) {
+      const saved = sessionStorage.getItem("registerFormValues");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          form.reset(parsed);
+        } catch {}
+      }
+      const entries = Object.entries(actionData.errors) as Array<[
+        keyof RegisterFormValues,
+        string[] | undefined
+      ]>;
+      entries.forEach(([key, messages]) => {
+        const message = Array.isArray(messages) ? messages[0] : messages;
+        if (message) {
+          form.setError(key as keyof RegisterFormValues, {
+            type: "server",
+            message: String(message),
+          } as any);
+        }
+      });
+    }
+    if (actionData?.success) {
+      sessionStorage.removeItem("registerFormValues");
+    }
+  }, [actionData, form]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md bg-white border border-yellow-400 rounded-xl shadow-md p-8">
@@ -438,7 +467,18 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   method="post"
                   encType="multipart/form-data"
                   ref={formRef}
-                  className="space-y-2"
+                  className="space-y-4"
+                  onSubmit={form.handleSubmit(() => {
+                    try {
+                      sessionStorage.setItem(
+                        "registerFormValues",
+                        JSON.stringify(form.getValues())
+                      );
+                    } catch {}
+                    handleSubmission();
+                    formRef.current?.submit();
+                  })}
+                  noValidate
                 >
                   {/* Basic Fields */}
                   <GenericFormField
@@ -447,7 +487,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="First Name"
                     placeholder="First Name"
                     required
-                    error={actionData?.errors?.firstName}
                     className="w-full"
                   />
                   <GenericFormField
@@ -456,7 +495,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Last Name"
                     placeholder="Last Name"
                     required
-                    error={actionData?.errors?.lastName}
                     className="w-full"
                   />
                   <GenericFormField
@@ -465,7 +503,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Email"
                     placeholder="your@email.com"
                     required
-                    error={actionData?.errors?.email}
                     className="w-full"
                   />
                   <GenericFormField
@@ -474,7 +511,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Phone"
                     placeholder="123-456-7890"
                     required
-                    error={actionData?.errors?.phone}
                     className="w-full"
                   />
                   <GenericFormField
@@ -484,7 +520,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     placeholder="Enter your password"
                     type="password"
                     required
-                    error={actionData?.errors?.password}
                     className="w-full"
                   />
                   <GenericFormField
@@ -494,7 +529,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     placeholder="Re-enter your password"
                     type="password"
                     required
-                    error={actionData?.errors?.confirmPassword}
                     className="w-full"
                   />
 
@@ -514,9 +548,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
                           />
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.dateOfBirth}
-                        </FormMessage>
+                        <FormMessage />
                         {showMinorError && (
                           <p className="text-sm text-red-600 mt-1">
                             {showMinorError}
@@ -533,7 +565,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Emergency Contact Name"
                     placeholder="Emergency Contact Name"
                     required
-                    error={actionData?.errors?.emergencyContactName}
                     className="w-full"
                   />
                   <GenericFormField
@@ -542,7 +573,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Emergency Contact Phone"
                     placeholder="Emergency Contact Phone"
                     required
-                    error={actionData?.errors?.emergencyContactPhone}
                     className="w-full"
                   />
                   <GenericFormField
@@ -551,7 +581,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Emergency Contact Email"
                     placeholder="emergency@example.com"
                     required
-                    error={actionData?.errors?.emergencyContactEmail}
                     className="w-full"
                   />
 
@@ -602,9 +631,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </label>
                           </div>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.mediaConsent}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -646,9 +673,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </span>
                           </label>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.dataPrivacy}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -732,9 +757,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </span>
                           </label>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.communityGuidelines}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -818,9 +841,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </span>
                           </label>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.operationsPolicy}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -882,7 +903,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             <DigitalSignaturePad
                               value={field.value}
                               onChange={field.onChange}
-                              error={actionData?.errors?.waiverSignature?.[0]}
+                            error={undefined}
                               disabled={!waiverDocumentViewed}
                             />
                             <input
@@ -892,6 +913,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             />
                           </div>
                         </FormControl>
+                      <FormMessage />
                       </FormItem>
                     )}
                   />
