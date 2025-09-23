@@ -319,18 +319,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     }
   }, [dateOfBirth]);
 
-  React.useEffect(() => {
-    if (formRef.current) {
-      const formElement = formRef.current;
-      const listener = () => {
-        handleSubmission();
-      };
-      formElement.addEventListener("submit", listener);
-      return () => {
-        formElement.removeEventListener("submit", listener);
-      };
-    }
-  }, []);
 
   React.useEffect(() => {
     if (actionData?.success || actionData?.errors) {
@@ -468,7 +456,13 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   encType="multipart/form-data"
                   ref={formRef}
                   className="space-y-4"
-                  onSubmit={form.handleSubmit(() => {
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const isValid = await form.trigger();
+                    if (!isValid) {
+                      setLoading(false);
+                      return;
+                    }
                     try {
                       sessionStorage.setItem(
                         "registerFormValues",
@@ -477,7 +471,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     } catch {}
                     handleSubmission();
                     formRef.current?.submit();
-                  })}
+                  }}
                   noValidate
                 >
                   {/* Basic Fields */}
