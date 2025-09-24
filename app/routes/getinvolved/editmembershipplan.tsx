@@ -264,7 +264,7 @@ export default function AddMembershipPlan() {
           <Button
             type="button"
             onClick={addFeatureField}
-            className="mt-4 items-center bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
+            className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
           >
             +
           </Button>
@@ -272,7 +272,7 @@ export default function AddMembershipPlan() {
           <Button
             type="button"
             onClick={removeLastFeatureField}
-            className="mt-4 ml-2 items-center bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
+            className="mt-4 ml-2 items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition rounded-full"
             disabled={features.length <= 1} // Disable when only one feature remains
           >
             -
@@ -281,7 +281,7 @@ export default function AddMembershipPlan() {
           {/* Submit Button */}
           <Button
             type="submit"
-            className="mt-4 w-full bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
+            className="mt-4 w-full bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition"
           >
             Confirm
           </Button>
