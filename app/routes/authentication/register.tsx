@@ -319,18 +319,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     }
   }, [dateOfBirth]);
 
-  React.useEffect(() => {
-    if (formRef.current) {
-      const formElement = formRef.current;
-      const listener = () => {
-        handleSubmission();
-      };
-      formElement.addEventListener("submit", listener);
-      return () => {
-        formElement.removeEventListener("submit", listener);
-      };
-    }
-  }, []);
 
   React.useEffect(() => {
     if (actionData?.success || actionData?.errors) {
@@ -338,9 +326,38 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
     }
   }, [actionData]);
 
+  // Restore form values after a server error and surface server errors in RHF
+  useEffect(() => {
+    if (actionData?.errors) {
+      const saved = sessionStorage.getItem("registerFormValues");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          form.reset(parsed);
+        } catch {}
+      }
+      const entries = Object.entries(actionData.errors) as Array<[
+        keyof RegisterFormValues,
+        string[] | undefined
+      ]>;
+      entries.forEach(([key, messages]) => {
+        const message = Array.isArray(messages) ? messages[0] : messages;
+        if (message) {
+          form.setError(key as keyof RegisterFormValues, {
+            type: "server",
+            message: String(message),
+          } as any);
+        }
+      });
+    }
+    if (actionData?.success) {
+      sessionStorage.removeItem("registerFormValues");
+    }
+  }, [actionData, form]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white border border-yellow-400 rounded-xl shadow-md p-8">
+      <div className="w-full max-w-md bg-white border border-indigo-400 rounded-xl shadow-md p-8">
         {/* Header with logo */}
         <div className="flex flex-col items-center mb-6">
           <img
@@ -362,16 +379,16 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   You can now{" "}
                   <a
                     href="/login"
-                    className="text-yellow-600
-                    hover:text-yellow-700 font-medium"
+                    className="text-indigo-600
+                    hover:text-indigo-700 font-medium"
                   >
                     login here
                   </a>{" "}
                   or{" "}
                   <a
                     href="/dashboard"
-                    className="text-yellow-600
-                    hover:text-yellow-700 font-medium"
+                    className="text-indigo-600
+                    hover:text-indigo-700 font-medium"
                   >
                     view the portal as guest
                   </a>
@@ -414,7 +431,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       Already have an account?{" "}
                       <a
                         href="/login"
-                        className="text-yellow-600 hover:text-yellow-700 font-semibold transition-colors duration-200 decoration-1 underline-offset-2"
+                        className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors duration-200 decoration-1 underline-offset-2"
                       >
                         Sign in here
                       </a>
@@ -424,7 +441,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                       View the portal as a guest?{" "}
                       <a
                         href="/dashboard"
-                        className="text-yellow-600 hover:text-yellow-700 font-semibold transition-colors duration-200 decoration-1 underline-offset-2"
+                        className="text-indigo-600 hover:text-indigo-700 font-semibold transition-colors duration-200 decoration-1 underline-offset-2"
                       >
                         View here
                       </a>
@@ -438,7 +455,24 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   method="post"
                   encType="multipart/form-data"
                   ref={formRef}
-                  className="space-y-2"
+                  className="space-y-4"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const isValid = await form.trigger();
+                    if (!isValid) {
+                      setLoading(false);
+                      return;
+                    }
+                    try {
+                      sessionStorage.setItem(
+                        "registerFormValues",
+                        JSON.stringify(form.getValues())
+                      );
+                    } catch {}
+                    handleSubmission();
+                    formRef.current?.submit();
+                  }}
+                  noValidate
                 >
                   {/* Basic Fields */}
                   <GenericFormField
@@ -447,7 +481,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="First Name"
                     placeholder="First Name"
                     required
-                    error={actionData?.errors?.firstName}
                     className="w-full"
                   />
                   <GenericFormField
@@ -456,7 +489,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Last Name"
                     placeholder="Last Name"
                     required
-                    error={actionData?.errors?.lastName}
                     className="w-full"
                   />
                   <GenericFormField
@@ -465,7 +497,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Email"
                     placeholder="your@email.com"
                     required
-                    error={actionData?.errors?.email}
                     className="w-full"
                   />
                   <GenericFormField
@@ -474,7 +505,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Phone"
                     placeholder="123-456-7890"
                     required
-                    error={actionData?.errors?.phone}
                     className="w-full"
                   />
                   <GenericFormField
@@ -484,7 +514,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     placeholder="Enter your password"
                     type="password"
                     required
-                    error={actionData?.errors?.password}
                     className="w-full"
                   />
                   <GenericFormField
@@ -494,7 +523,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     placeholder="Re-enter your password"
                     type="password"
                     required
-                    error={actionData?.errors?.confirmPassword}
                     className="w-full"
                   />
 
@@ -511,12 +539,10 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           <input
                             type="date"
                             {...field}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                           />
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.dateOfBirth}
-                        </FormMessage>
+                        <FormMessage />
                         {showMinorError && (
                           <p className="text-sm text-red-600 mt-1">
                             {showMinorError}
@@ -533,7 +559,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Emergency Contact Name"
                     placeholder="Emergency Contact Name"
                     required
-                    error={actionData?.errors?.emergencyContactName}
                     className="w-full"
                   />
                   <GenericFormField
@@ -542,7 +567,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Emergency Contact Phone"
                     placeholder="Emergency Contact Phone"
                     required
-                    error={actionData?.errors?.emergencyContactPhone}
                     className="w-full"
                   />
                   <GenericFormField
@@ -551,7 +575,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                     label="Emergency Contact Email"
                     placeholder="emergency@example.com"
                     required
-                    error={actionData?.errors?.emergencyContactEmail}
                     className="w-full"
                   />
 
@@ -581,7 +604,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                                 value="true"
                                 checked={field.value === true}
                                 onChange={() => field.onChange(true)}
-                                className="text-yellow-500 focus:ring-yellow-500 h-4 w-4"
+                                className="text-indigo-600 focus:ring-indigo-600 h-4 w-4"
                               />
                               <span className="text-sm text-gray-700">
                                 I consent
@@ -594,7 +617,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                                 value="false"
                                 checked={field.value === false}
                                 onChange={() => field.onChange(false)}
-                                className="text-yellow-500 focus:ring-yellow-500 h-4 w-4"
+                                className="text-indigo-600 focus:ring-indigo-600 h-4 w-4"
                               />
                               <span className="text-sm text-gray-700">
                                 I do not consent
@@ -602,9 +625,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </label>
                           </div>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.mediaConsent}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -639,16 +660,14 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                               checked={field.value}
                               onCheckedChange={(value) => field.onChange(value)}
                               id="data-privacy"
-                              className="border-2 border-yellow-500 text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
+                            className="border-2 border-indigo-600 text-indigo-600 focus:ring-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0"
                             />
                             <span className="text-sm text-gray-700 leading-relaxed">
                               I have read and agree to the Data Privacy policy
                             </span>
                           </label>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.dataPrivacy}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -670,7 +689,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             href="/documents/msyk-community-guidelines.pdf"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-yellow-600 hover:text-yellow-700 underline"
+                            className="text-indigo-600 hover:text-indigo-700 underline"
                             onClick={() => setCommunityGuidelinesViewed(true)}
                           >
                             download and view the document here
@@ -717,7 +736,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                               }
                               disabled={!communityGuidelinesViewed}
                               id="community-guidelines"
-                              className={`border-2 ${!communityGuidelinesViewed ? "border-gray-300 bg-gray-100 cursor-not-allowed" : "border-yellow-500"} text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0`}
+                              className={`border-2 ${!communityGuidelinesViewed ? "border-gray-300 bg-gray-100 cursor-not-allowed" : "border-indigo-600"} text-indigo-600 focus:ring-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0`}
                               title={
                                 !communityGuidelinesViewed
                                   ? "Please download and view the document first"
@@ -732,9 +751,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </span>
                           </label>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.communityGuidelines}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -756,7 +773,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             href="/documents/msyk-operations-policy.pdf"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-yellow-600 hover:text-yellow-700 underline"
+                            className="text-indigo-600 hover:text-indigo-700 underline"
                             onClick={() => setOperationsPolicyViewed(true)}
                           >
                             download and view the document here
@@ -803,7 +820,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                               }
                               disabled={!operationsPolicyViewed}
                               id="operations-policy"
-                              className={`border-2 ${!operationsPolicyViewed ? "border-gray-300 bg-gray-100 cursor-not-allowed" : "border-yellow-500"} text-yellow-500 focus:ring-yellow-500 data-[state=checked]:bg-yellow-500 data-[state=checked]:border-yellow-500 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0`}
+                              className={`border-2 ${!operationsPolicyViewed ? "border-gray-300 bg-gray-100 cursor-not-allowed" : "border-indigo-600"} text-indigo-600 focus:ring-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white mt-1 h-4 w-4 flex-shrink-0`}
                               title={
                                 !operationsPolicyViewed
                                   ? "Please download and view the document first"
@@ -818,9 +835,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             </span>
                           </label>
                         </FormControl>
-                        <FormMessage>
-                          {actionData?.errors?.operationsPolicy}
-                        </FormMessage>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -842,7 +857,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             href="/documents/msyk-waiver-template.pdf"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-yellow-600 hover:text-yellow-700 underline"
+                            className="text-indigo-600 hover:text-indigo-700 underline"
                             onClick={() => setWaiverDocumentViewed(true)}
                           >
                             download the waiver document here
@@ -882,7 +897,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             <DigitalSignaturePad
                               value={field.value}
                               onChange={field.onChange}
-                              error={actionData?.errors?.waiverSignature?.[0]}
+                            error={undefined}
                               disabled={!waiverDocumentViewed}
                             />
                             <input
@@ -892,6 +907,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             />
                           </div>
                         </FormControl>
+                      <FormMessage />
                       </FormItem>
                     )}
                   />
@@ -900,7 +916,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                   <button
                     type="submit"
                     disabled={loading || !!showMinorError}
-                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg disabled:opacity-50 transition-colors"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg disabled:opacity-50 transition-colors"
                   >
                     {loading ? "Creating Account..." : "Create Account"}
                   </button>

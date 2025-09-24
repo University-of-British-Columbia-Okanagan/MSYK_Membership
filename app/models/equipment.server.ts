@@ -101,7 +101,8 @@ export async function bookEquipment(
   const day = parsedStartTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   const hour = parsedStartTime.getHours();
 
-  if (user.roleLevel === 1 || user.roleLevel === 2) {
+  // Allow admins (roleUserId === 2) to bypass role level restrictions
+  if ((user.roleLevel === 1 || user.roleLevel === 2) && user.roleUserId !== 2) {
     throw new Error("You do not have permission to book equipment.");
   }
 

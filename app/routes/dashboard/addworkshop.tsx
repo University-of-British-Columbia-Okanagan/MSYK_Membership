@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
@@ -762,6 +762,7 @@ export default function AddWorkshop() {
   >("custom");
 
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const formElementRef = useRef<HTMLFormElement | null>(null);
 
   // This will track the selected prerequisites
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
@@ -891,7 +892,7 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Check for overlaps first
@@ -912,9 +913,17 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
+    const isValid = await form.trigger();
+    if (!isValid) return;
+
+    try {
+      sessionStorage.setItem(
+        "addWorkshopFormValues",
+        JSON.stringify(form.getValues())
+      );
+    } catch {}
     setFormSubmitting(true);
-    const formElement = e.currentTarget as HTMLFormElement;
-    formElement.submit();
+    formElementRef.current?.submit();
   };
 
   {
@@ -1030,6 +1039,27 @@ export default function AddWorkshop() {
 
   const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
 
+  // Restore values on server errors and surface to RHF
+  React.useEffect(() => {
+    if (actionData?.errors) {
+      setFormSubmitting(false);
+      const saved = sessionStorage.getItem("addWorkshopFormValues");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          form.reset(parsed);
+        } catch {}
+      }
+      Object.entries(actionData.errors).forEach(([key, value]) => {
+        const message = Array.isArray(value) ? value[0] : value;
+        if (message) {
+          form.setError(key as any, { type: "server", message: String(message) } as any);
+        }
+      });
+    }
+    // Clear stored values on success-like paths (no explicit success flag here)
+  }, [actionData, form]);
+
   return (
     <SidebarProvider>
       <div className="absolute inset-0 flex">
@@ -1105,7 +1135,7 @@ export default function AddWorkshop() {
               )}
 
             <Form {...form}>
-              <form method="post" onSubmit={handleFormSubmit}>
+              <form method="post" onSubmit={handleFormSubmit} noValidate ref={formElementRef}>
                 {/* Workshop Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <GenericFormField

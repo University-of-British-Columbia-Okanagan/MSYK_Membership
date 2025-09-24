@@ -144,7 +144,7 @@ export default function EquipmentCard({
 
           <DropdownMenuContent align="end" className="w-36">
             <DropdownMenuItem
-              onClick={() => navigate(`/dashboard/equipments/edit/${id}`)}
+              onClick={() => navigate(`/dashboard/equipment/edit/${id}`)}
             >
               <Edit className="w-4 h-4 mr-2" /> Edit
             </DropdownMenuItem>
