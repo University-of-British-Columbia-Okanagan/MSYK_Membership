@@ -183,7 +183,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (action === "edit") {
-    return redirect(`/editmembershipplan/${planId}`);
+    return redirect(`/dashboard/editmembershipplan/${planId}`);
   }
 
   return null;
@@ -233,7 +233,7 @@ export default function MembershipPage() {
         <main className="flex-1 px-6 py-10 bg-white">
           {isAdmin && (
             <div className="flex justify-end mb-6">
-              <Link to="/addmembershipplan">
+              <Link to="/dashboard/addmembershipplan">
                 <button className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition flex items-center space-x-2">
                   <PlusCircle className="w-5 h-5" />
                   <span>Add Membership Plan</span>

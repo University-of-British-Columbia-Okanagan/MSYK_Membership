@@ -39,10 +39,10 @@ export default [
     "/dashboard/workshops/pricevariations/:workshopId",
     "routes/dashboard/workshoppricingvariation.tsx"
   ),
-  route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
+  route("/dashboard/addmembershipplan", "routes/dashboard/addmembershipplan.tsx"),
   route(
-    "/editmembershipplan/:planId",
-    "routes/getinvolved/editmembershipplan.tsx"
+    "/dashboard/editmembershipplan/:planId",
+    "routes/dashboard/editmembershipplan.tsx"
   ),
   route("/dashboard/addworkshop", "routes/dashboard/addworkshop.tsx"),
   route(
