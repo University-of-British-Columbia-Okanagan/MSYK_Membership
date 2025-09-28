@@ -5,7 +5,16 @@ import {
   AlertCircle,
   Loader2,
   Clock,
+  Tag,
+  Info,
 } from "lucide-react";
+import { Badge } from "../badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../tooltip";
 
 interface QuickCheckoutProps {
   userId: number;
@@ -160,8 +169,36 @@ export default function QuickCheckout({
             <CreditCard className="h-6 w-6 text-white" />
           </div>
         </div>
-        <div className="ml-4">
-          <h3 className="text-lg font-bold text-gray-900">Quick Checkout</h3>
+        <div className="ml-4 flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <h3 className="text-lg font-bold text-gray-900">Quick Checkout</h3>
+
+            {/* Coupon Notice Badge */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 cursor-help flex items-center gap-1"
+                  >
+                    <Tag className="h-3 w-3" />
+                    <span className="text-xs">Coupon?</span>
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">Have a coupon code?</p>
+                      <p className="text-xs text-gray-300 mt-1">
+                        Use the "Proceed" button below to access Stripe checkout where you can enter your promotion code for discounts.
+                      </p>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-sm text-gray-600">
             Pay instantly with your saved card
           </p>
