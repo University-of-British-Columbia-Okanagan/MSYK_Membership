@@ -724,7 +724,12 @@ export default function AddWorkshop() {
     equipmentVisibilityDays,
     roleUser,
   } = useLoaderData() as {
-    workshops: { id: number; name: string; type: string }[];
+    workshops: {
+      id: number;
+      name: string;
+      type: string;
+      occurrences: { status: string }[];
+    }[];
     equipments: {
       id: number;
       name: string;
@@ -1759,9 +1764,11 @@ export default function AddWorkshop() {
                     onRemove={removePrerequisite}
                     error={actionData?.errors?.prerequisites}
                     placeholder="Select prerequisites..."
-                    helperText="Select workshops of type Orientation that must be completed before enrolling."
+                    helperText="Select active workshops of type Orientation that must be completed before enrolling."
                     filterFn={(item) =>
-                      item.type.toLowerCase() === "orientation"
+                      item.type.toLowerCase() === "orientation" &&
+                      Array.isArray(item.occurrences) &&
+                      item.occurrences.some((o) => o.status === "active")
                     }
                   />
                 ) : (
