@@ -210,15 +210,15 @@ export default function EditMembershipPlan() {
                 ))}
 
                 <div className="flex items-center gap-2">
-                  <Button type="button" onClick={addFeatureField} className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+                  <Button type="button" onClick={addFeatureField} className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-700 transition">
                     +
                   </Button>
-                  <Button type="button" onClick={removeLastFeatureField} className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition" disabled={features.length <= 1}>
+                  <Button type="button" onClick={removeLastFeatureField} className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-700 transition" disabled={features.length <= 1}>
                     -
                   </Button>
                 </div>
 
-                <Button type="submit" className="mt-4 w-full bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+                <Button type="submit" className="mt-4 w-full bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-700 transition">
                   Confirm
                 </Button>
               </form>
