@@ -660,6 +660,7 @@ export async function createCheckoutSession(request: Request) {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
+      allow_promotion_codes: true,
       payment_intent_data: {
         setup_future_usage: "off_session",
       },
@@ -728,6 +729,7 @@ export async function createCheckoutSession(request: Request) {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
+      allow_promotion_codes: true,
       line_items: [
         {
           price_data: {
@@ -801,6 +803,7 @@ export async function createCheckoutSession(request: Request) {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
+      allow_promotion_codes: true,
       line_items: [
         {
           price_data: {
@@ -857,6 +860,7 @@ export async function createCheckoutSession(request: Request) {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
+      allow_promotion_codes: true,
       line_items: [
         {
           price_data: {
