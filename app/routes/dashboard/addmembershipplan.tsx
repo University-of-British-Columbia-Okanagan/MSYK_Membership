@@ -366,7 +366,7 @@ export default function AddMembershipPlan() {
                 </div>
 
                 {/* Admin Permission Required Toggle */}
-                <div className="p-4 bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg border border-gray-200">
+                <div className="p-4 mt-4 mb-4 bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg border border-gray-200">
                   <div className="flex items-center justify-between">
                     <div className="flex-1 mr-4">
                       <h3 className="text-sm font-medium text-gray-900">
