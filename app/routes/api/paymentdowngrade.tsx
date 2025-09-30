@@ -1,5 +1,9 @@
 import { logger } from "~/logging/logger";
-import { getMembershipPlanById, getUserActiveMembership, registerMembershipSubscription } from "../../models/membership.server";
+import {
+  getMembershipPlanById,
+  getUserActiveMembership,
+  registerMembershipSubscription,
+} from "../../models/membership.server";
 import { sendMembershipDowngradeEmail } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
@@ -15,7 +19,12 @@ export async function action({ request }: { request: Request }) {
     }
 
     const body = await request.json();
-    const { currentMembershipId, newMembershipPlanId, userId } = body;
+    const {
+      currentMembershipId,
+      newMembershipPlanId,
+      userId,
+      billingCycle = "monthly",
+    } = body;
 
     if (!currentMembershipId || !newMembershipPlanId || !userId) {
       return new Response(
@@ -35,19 +44,28 @@ export async function action({ request }: { request: Request }) {
       parseInt(userId),
       parseInt(newMembershipPlanId),
       parseInt(currentMembershipId),
-      true // Flag to indicate this is a downgrade
+      true, // Flag to indicate this is a downgrade
+      false, // Not a resubscription
+      undefined, // No payment intent
+      billingCycle as "monthly" | "6months" | "yearly"
     );
 
     try {
-      const newPlan = await getMembershipPlanById(parseInt(newMembershipPlanId));
+      const newPlan = await getMembershipPlanById(
+        parseInt(newMembershipPlanId)
+      );
+
+      const effectiveDate = currentActive?.nextPaymentDate || new Date();
+
       await sendMembershipDowngradeEmail({
         userEmail: user.email!,
-        currentPlanTitle: currentActive?.membershipPlan?.title || "Current Plan",
+        currentPlanTitle:
+          currentActive?.membershipPlan?.title || "Current Plan",
         newPlanTitle: newPlan?.title || "New Plan",
         currentMonthlyPrice: currentActive?.membershipPlan?.price,
         newMonthlyPrice: newPlan?.price,
         // Effective on the next payment date for the current membership if available
-        effectiveDate: currentActive?.nextPaymentDate || new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        effectiveDate,
       });
     } catch (e) {
       // Non-blocking

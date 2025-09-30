@@ -171,6 +171,8 @@ export async function loader({ request }: { request: Request }) {
 
       const paymentIntentId = session.payment_intent as string;
 
+      const billingCycle = (metadata.billingCycle as "monthly" | "6months" | "yearly") || "monthly";
+
       // Register the membership subscription and get the created subscription
       const subscription = await registerMembershipSubscription(
         parseInt(userId),
@@ -178,7 +180,8 @@ export async function loader({ request }: { request: Request }) {
         currentMembershipId,
         false, // Not a downgrade
         false, // Not a resubscriptionq
-        paymentIntentId
+        paymentIntentId,
+        billingCycle
       );
 
       // Activate the pending membership form and link it to the subscription
@@ -195,7 +198,13 @@ export async function loader({ request }: { request: Request }) {
         if (membershipPlan) {
           // Calculate next billing date (one month from now)
           const nextBillingDate = new Date();
-          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+          if (billingCycle === "6months") {
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
+          } else if (billingCycle === "yearly") {
+            nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+          } else {
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+          }
 
           await sendMembershipConfirmationEmail({
             userEmail: user.email,

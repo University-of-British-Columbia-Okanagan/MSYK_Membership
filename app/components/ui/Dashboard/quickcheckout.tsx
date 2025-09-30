@@ -32,6 +32,7 @@ interface QuickCheckoutProps {
     currentMembershipId?: number;
     upgradeFee?: number;
     variationId?: number | null;
+    billingCycle?: "monthly" | "6months" | "yearly";
   };
   itemName: string;
   itemPrice: number;

@@ -176,7 +176,8 @@ export async function registerMembershipSubscription(
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false,
-  paymentIntentId?: string
+  paymentIntentId?: string,
+  billingCycle: "monthly" | "6months" | "yearly" = "monthly"
 ) {
   let subscription;
   const now = new Date();
@@ -206,7 +207,13 @@ export async function registerMembershipSubscription(
     // Update the cancelled record to active and set new next payment date
     const now = new Date();
     const newNextPaymentDate = new Date(now);
-    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    if (billingCycle === "6months") {
+      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 6);
+    } else if (billingCycle === "yearly") {
+      newNextPaymentDate.setFullYear(newNextPaymentDate.getFullYear() + 1);
+    } else {
+      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    }
 
     const subscription = await db.userMembership.update({
       where: { id: cancelledMembership.id },
@@ -242,7 +249,13 @@ export async function registerMembershipSubscription(
     // and schedule the new (cheaper) membership to start at the next payment date.
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
-    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    if (billingCycle === "6months") {
+      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 6);
+    } else if (billingCycle === "yearly") {
+      newNextPaymentDate.setFullYear(newNextPaymentDate.getFullYear() + 1);
+    } else {
+      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    }
 
     // 1) Mark the old (more expensive) membership as ending
     await db.userMembership.update({
@@ -334,7 +347,13 @@ export async function registerMembershipSubscription(
     // so that we only have 1 record in "active"/"ending" for the new plan.
     const startDate = new Date(currentMembership.nextPaymentDate);
     const newNextPaymentDate = new Date(startDate);
-    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    if (billingCycle === "6months") {
+      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 6);
+    } else if (billingCycle === "yearly") {
+      newNextPaymentDate.setFullYear(newNextPaymentDate.getFullYear() + 1);
+    } else {
+      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    }
 
     // Check if there's an existing record for the new plan in active/ending
     let newMembership = await db.userMembership.findFirst({
@@ -400,7 +419,14 @@ export async function registerMembershipSubscription(
     // Standard new subscription or simple update logic
     console.log("Creating brand‑new subscription record");
     const startDate = new Date(now);
-    const nextPaymentDate = incrementMonth(startDate);
+    const nextPaymentDate = new Date(startDate);
+    if (billingCycle === "6months") {
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 6);
+    } else if (billingCycle === "yearly") {
+      nextPaymentDate.setFullYear(nextPaymentDate.getFullYear() + 1);
+    } else {
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+    }
 
     subscription = await db.userMembership.create({
       data: {

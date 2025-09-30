@@ -1,5 +1,8 @@
 import { logger } from "~/logging/logger";
-import { registerMembershipSubscription, getMembershipPlanById } from "../../models/membership.server";
+import {
+  registerMembershipSubscription,
+  getMembershipPlanById,
+} from "../../models/membership.server";
 import { sendMembershipResubscribeEmail } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
@@ -14,7 +17,12 @@ export async function action({ request }: { request: Request }) {
     }
 
     const body = await request.json();
-    const { currentMembershipId, membershipPlanId, userId } = body;
+    const {
+      currentMembershipId,
+      membershipPlanId,
+      userId,
+      billingCycle = "monthly",
+    } = body;
 
     try {
       await registerMembershipSubscription(
@@ -22,7 +30,9 @@ export async function action({ request }: { request: Request }) {
         membershipPlanId,
         currentMembershipId,
         false, // Not a downgrade
-        true // Flag this as a resubscription
+        true, // Flag this as a resubscription
+        undefined,
+        billingCycle as "monthly" | "6months" | "yearly"
       );
       logger.info(
         `Membership Subscription Registered successfully for user ${userId}`,
@@ -31,11 +41,20 @@ export async function action({ request }: { request: Request }) {
 
       try {
         const plan = await getMembershipPlanById(membershipPlanId);
+        const nextBillingDate = new Date();
+        if (billingCycle === "6months") {
+          nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
+        } else if (billingCycle === "yearly") {
+          nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+        } else {
+          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        }
+        console.log("Next Billing Date:", nextBillingDate);
         await sendMembershipResubscribeEmail({
           userEmail: user.email!,
           planTitle: plan?.title || "Membership",
           monthlyPrice: plan?.price,
-          nextBillingDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+          nextBillingDate,
         });
       } catch {
         // non-blocking

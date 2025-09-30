@@ -54,6 +54,9 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (!membershipPlan)
       throw new Response("Membership Plan not found", { status: 404 });
 
+    const url = new URL(request.url);
+    const billingCycle = url.searchParams.get("billingCycle") || "monthly";
+
     // Get user's active membership if any
     const userActiveMembership = await getUserActiveMembership(user.id);
 
@@ -146,6 +149,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       membershipRecordId,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
+      billingCycle,
     };
   }
 
@@ -622,6 +626,7 @@ export default function Payment() {
     savedPaymentMethod?: any;
     gstPercentage: number;
     selectedVariation?: any;
+    billingCycle?: "monthly" | "6months" | "yearly";
   };
 
   const navigate = useNavigate();
@@ -639,6 +644,7 @@ export default function Payment() {
               currentMembershipId: data.membershipRecordId ? Number(data.membershipRecordId) : data.userActiveMembership?.id,
               membershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
+              billingCycle: data.billingCycle || "monthly",
             }),
           });
 
@@ -663,6 +669,7 @@ export default function Payment() {
               currentMembershipId: data.userActiveMembership?.id,
               newMembershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
+              billingCycle: data.billingCycle || "monthly",
             }),
           });
           const json = await res.json();
@@ -688,6 +695,7 @@ export default function Payment() {
               // send upgradeFee here
               upgradeFee: data.upgradeFee,
               currentMembershipId: data.userActiveMembership?.id || null,
+              billingCycle: data.billingCycle || "monthly",
             }),
           });
           const resData = await response.json();
@@ -814,6 +822,7 @@ export default function Payment() {
                   : data.membershipPlan.price,
                 currentMembershipId: data.userActiveMembership?.id,
                 upgradeFee: data.upgradeFee,
+                billingCycle: (data.billingCycle as "monthly" | "6months" | "yearly") || "monthly",
               }}
               itemName={data.membershipPlan.title}
               itemPrice={

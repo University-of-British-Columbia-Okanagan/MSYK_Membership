@@ -89,6 +89,8 @@ export async function action({
   const formData = await request.formData();
   const agreementSignature = formData.get("agreementSignature");
 
+  const billingCycle = formData.get("billingCycle");
+
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
   // Ensure signature data is properly handled
@@ -130,6 +132,11 @@ export async function action({
     const userActiveMembership = await getUserActiveMembership(user.id);
     let redirectPath = `/dashboard/payment/${membershipId}`;
 
+    const params = new URLSearchParams();
+    if (billingCycle) {
+      params.set("billingCycle", billingCycle.toString());
+    }
+
     // Add upgrade/downgrade query params if user has active membership
     if (userActiveMembership) {
       const membershipPlan = await getMembershipPlanById(membershipId);
@@ -137,10 +144,14 @@ export async function action({
       const newPrice = membershipPlan?.price || 0;
 
       if (newPrice < currentPrice) {
-        redirectPath += `?downgrade=true`;
+        params.set("downgrade", "true");
       } else if (newPrice > currentPrice) {
-        redirectPath += `?upgrade=true`;
+        params.set("upgrade", "true");
       }
+    }
+
+    if (params.toString()) {
+      redirectPath += `?${params.toString()}`;
     }
 
     return redirect(redirectPath);
@@ -317,6 +328,10 @@ export default function MembershipDetails() {
   const [agreementDocumentViewed, setAgreementDocumentViewed] = useState(false);
   const [showNewSignature, setShowNewSignature] = useState(false);
 
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<
+    "monthly" | "6months" | "yearly"
+  >("monthly");
+
   const form = useForm<MembershipAgreementFormValues>({
     resolver: zodResolver(membershipAgreementSchema),
     defaultValues: {
@@ -336,6 +351,9 @@ export default function MembershipDetails() {
 
   const handleFormSubmit = (event: React.FormEvent) => {
     setLoading(true);
+    const form = event.currentTarget as HTMLFormElement;
+    const formData = new FormData(form);
+    formData.set("billingCycle", selectedBillingCycle);
     // Let the RouterForm handle the actual submission
   };
 
@@ -354,6 +372,9 @@ export default function MembershipDetails() {
     // Navigate directly to payment
     let redirectPath = `/dashboard/payment/${membershipPlan.id}`;
 
+    const params = new URLSearchParams();
+    params.set("billingCycle", selectedBillingCycle);
+
     // Add upgrade/downgrade query params if user has active membership
     if (userActiveMembership) {
       // This now refers to the one from useLoaderData
@@ -361,10 +382,14 @@ export default function MembershipDetails() {
       const newPrice = membershipPlan.price;
 
       if (newPrice < currentPrice) {
-        redirectPath += `?downgrade=true`;
+        params.set("downgrade", "true");
       } else if (newPrice > currentPrice) {
-        redirectPath += `?upgrade=true`;
+        params.set("upgrade", "true");
       }
+    }
+
+    if (params.toString()) {
+      redirectPath += `?${params.toString()}`;
     }
 
     window.location.href = redirectPath;
@@ -450,6 +475,141 @@ export default function MembershipDetails() {
                 </ul>
               </div>
 
+              {/* Billing Cycle Selection */}
+              {(membershipPlan.price6Months || membershipPlan.priceYearly) && (
+                <div className="mb-8 p-6 bg-gray-50 rounded-lg">
+                  <h2 className="text-xl font-semibold mb-4">
+                    Select Billing Cycle
+                  </h2>
+                  <div className="space-y-3">
+                    {/* Monthly Option */}
+                    <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="radio"
+                          name="billingCycle"
+                          value="monthly"
+                          checked={selectedBillingCycle === "monthly"}
+                          onChange={(e) =>
+                            setSelectedBillingCycle(
+                              e.target.value as "monthly" | "6months" | "yearly"
+                            )
+                          }
+                          className="w-4 h-4 text-indigo-600"
+                        />
+                        <div>
+                          <p className="font-semibold text-gray-900">Monthly</p>
+                          <p className="text-sm text-gray-600">
+                            Pay each month
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-900">
+                          CA${membershipPlan.price.toFixed(2)}/mo
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* 6 Months Option */}
+                    {membershipPlan.price6Months && (
+                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="radio"
+                            name="billingCycle"
+                            value="6months"
+                            checked={selectedBillingCycle === "6months"}
+                            onChange={(e) =>
+                              setSelectedBillingCycle(
+                                e.target.value as
+                                  | "monthly"
+                                  | "6months"
+                                  | "yearly"
+                              )
+                            }
+                            className="w-4 h-4 text-indigo-600"
+                          />
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              6 Months
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Save{" "}
+                              {(
+                                ((membershipPlan.price * 6 -
+                                  membershipPlan.price6Months) /
+                                  (membershipPlan.price * 6)) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-900">
+                            CA${membershipPlan.price6Months.toFixed(2)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            (CA$
+                            {(membershipPlan.price6Months / 6).toFixed(2)}
+                            /mo)
+                          </p>
+                        </div>
+                      </label>
+                    )}
+
+                    {/* Yearly Option */}
+                    {membershipPlan.priceYearly && (
+                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="radio"
+                            name="billingCycle"
+                            value="yearly"
+                            checked={selectedBillingCycle === "yearly"}
+                            onChange={(e) =>
+                              setSelectedBillingCycle(
+                                e.target.value as
+                                  | "monthly"
+                                  | "6months"
+                                  | "yearly"
+                              )
+                            }
+                            className="w-4 h-4 text-indigo-600"
+                          />
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              Yearly
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Save{" "}
+                              {(
+                                ((membershipPlan.price * 12 -
+                                  membershipPlan.priceYearly) /
+                                  (membershipPlan.price * 12)) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-900">
+                            CA${membershipPlan.priceYearly.toFixed(2)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            (CA$
+                            {(membershipPlan.priceYearly / 12).toFixed(2)}
+                            /mo)
+                          </p>
+                        </div>
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {existingForm && !showNewSignature ? (
                 <div className="mb-6">
                   <Alert className="mb-4">
@@ -533,6 +693,12 @@ export default function MembershipDetails() {
                         )}
                       />
                     </div>
+
+                    <input
+                      type="hidden"
+                      name="billingCycle"
+                      value={selectedBillingCycle}
+                    />
 
                     {/* Submit Button */}
                     <button
