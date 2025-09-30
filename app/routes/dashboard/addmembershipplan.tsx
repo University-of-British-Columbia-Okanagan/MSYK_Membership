@@ -47,11 +47,17 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (rawValues.price6Months) {
-    rawValues.price6Months = parseInt(rawValues.price6Months);
+    rawValues.price6Months =
+      rawValues.price6Months === "" ? null : parseInt(rawValues.price6Months);
+  } else {
+    rawValues.price6Months = null;
   }
 
   if (rawValues.priceYearly) {
-    rawValues.priceYearly = parseInt(rawValues.priceYearly);
+    rawValues.priceYearly =
+      rawValues.priceYearly === "" ? null : parseInt(rawValues.priceYearly);
+  } else {
+    rawValues.priceYearly = null;
   }
 
   rawValues.features = formData.getAll("features") as string[];
@@ -219,11 +225,8 @@ export default function AddMembershipPlan() {
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h3 className="text-sm font-medium text-gray-900">
-                        Multiple Billing Options
+                        Add Multiple Billing Options
                       </h3>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Offer 6-month and yearly pricing options with discounts
-                      </p>
                     </div>
                     <button
                       type="button"
@@ -291,6 +294,10 @@ export default function AddMembershipPlan() {
                                 />
                               </div>
                             </FormControl>
+                            <p className="text-xs text-gray-500">
+                              Leave empty if you don't want to offer 6-month
+                              billing
+                            </p>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -341,6 +348,10 @@ export default function AddMembershipPlan() {
                                 />
                               </div>
                             </FormControl>
+                            <p className="text-xs text-gray-500">
+                              Leave empty if you don't want to offer yearly
+                              billing
+                            </p>
                             <FormMessage />
                           </FormItem>
                         )}
