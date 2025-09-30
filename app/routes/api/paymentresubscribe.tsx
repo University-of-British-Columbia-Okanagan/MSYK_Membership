@@ -62,7 +62,6 @@ export async function action({ request }: { request: Request }) {
         } else {
           nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
         }
-        console.log("Next Billing Date:", nextBillingDate);
         await sendMembershipResubscribeEmail({
           userEmail: user.email!,
           planTitle: plan?.title || "Membership",
