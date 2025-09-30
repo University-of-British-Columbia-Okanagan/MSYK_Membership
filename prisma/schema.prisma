@@ -340,6 +340,7 @@ model UserMembership {
   nextPaymentDate  DateTime
   status           String   @default("active") // "active", "cancelled"
   paymentIntentId  String? // Stripe Payment Intent ID
+  billingCycle     String   @default("monthly") // "monthly", "6months", "yearly"
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)

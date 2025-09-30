@@ -302,6 +302,7 @@ export async function registerMembershipSubscription(
           date: startDate, // starts at old membership's nextPaymentDate
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          billingCycle,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -372,6 +373,7 @@ export async function registerMembershipSubscription(
           date: startDate, // new membership starts when the old membership ends
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          billingCycle,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -385,6 +387,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          billingCycle,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -435,6 +438,7 @@ export async function registerMembershipSubscription(
         date: startDate,
         nextPaymentDate,
         status: "active",
+        billingCycle,
         ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });

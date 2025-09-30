@@ -5,6 +5,7 @@ import {
 } from "../../models/membership.server";
 import { sendMembershipResubscribeEmail } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
+import { db } from "~/utils/db.server";
 
 export async function action({ request }: { request: Request }) {
   try {
@@ -17,14 +18,26 @@ export async function action({ request }: { request: Request }) {
     }
 
     const body = await request.json();
-    const {
-      currentMembershipId,
-      membershipPlanId,
-      userId,
-      billingCycle = "monthly",
-    } = body;
+    const { currentMembershipId, membershipPlanId, userId } = body;
 
     try {
+      let billingCycle: "monthly" | "6months" | "yearly" = "monthly";
+
+      if (currentMembershipId) {
+        const cancelledMembership = await db.userMembership.findUnique({
+          where: { id: parseInt(currentMembershipId) },
+          select: { billingCycle: true },
+        });
+
+        if (cancelledMembership?.billingCycle) {
+          billingCycle = cancelledMembership.billingCycle as
+            | "monthly"
+            | "6months"
+            | "yearly";
+        }
+      }
+
+      console.log("Retrieved billingCycle from DB:", billingCycle);
       await registerMembershipSubscription(
         userId,
         membershipPlanId,
@@ -32,7 +45,7 @@ export async function action({ request }: { request: Request }) {
         false, // Not a downgrade
         true, // Flag this as a resubscription
         undefined,
-        billingCycle as "monthly" | "6months" | "yearly"
+        billingCycle
       );
       logger.info(
         `Membership Subscription Registered successfully for user ${userId}`,
