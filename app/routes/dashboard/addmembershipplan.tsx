@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { redirect, useActionData, useLoaderData, useNavigate } from "react-router";
+import {
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigate,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -41,6 +46,14 @@ export async function action({ request }: { request: Request }) {
     rawValues.price = parseInt(rawValues.price);
   }
 
+  if (rawValues.price6Months) {
+    rawValues.price6Months = parseInt(rawValues.price6Months);
+  }
+
+  if (rawValues.priceYearly) {
+    rawValues.priceYearly = parseInt(rawValues.priceYearly);
+  }
+
   rawValues.features = formData.getAll("features") as string[];
 
   const parsed = membershipPlanFormSchema.safeParse(rawValues);
@@ -55,13 +68,17 @@ export async function action({ request }: { request: Request }) {
       title: parsed.data.title,
       description: parsed.data.description,
       price: parsed.data.price,
+      price6Months: parsed.data.price6Months ?? null,
+      priceYearly: parsed.data.priceYearly ?? null,
       features: parsed.data.features,
     });
     logger.info(`Membership plan ${parsed.data.title} added successfully`, {
       url: request.url,
     });
   } catch (error) {
-    logger.error(`Failed to add membership plan: ${error}`, { url: request.url });
+    logger.error(`Failed to add membership plan: ${error}`, {
+      url: request.url,
+    });
     return { errors: { database: ["Failed to add membership plan"] } };
   }
 
@@ -86,6 +103,7 @@ export default function AddMembershipPlan() {
   });
 
   const [features, setFeatures] = useState<string[]>([""]);
+  const [showMultipleBilling, setShowMultipleBilling] = useState(false);
 
   const addFeatureField = () => setFeatures([...features, ""]);
   const removeLastFeatureField = () => {
@@ -97,7 +115,8 @@ export default function AddMembershipPlan() {
     setFeatures(updated);
   };
 
-  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
+  const hasErrors =
+    actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   return (
     <SidebarProvider>
@@ -115,11 +134,14 @@ export default function AddMembershipPlan() {
                 Back to Memberships
               </Button>
             </div>
-            <h1 className="text-2xl font-bold mb-8 text-center">Add Membership Plan</h1>
+            <h1 className="text-2xl font-bold mb-8 text-center">
+              Add Membership Plan
+            </h1>
 
             {hasErrors && (
               <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-                There are some errors in your form. Please review the highlighted fields below.
+                There are some errors in your form. Please review the
+                highlighted fields below.
               </div>
             )}
 
@@ -134,7 +156,11 @@ export default function AddMembershipPlan() {
                         Title <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
-                        <Input placeholder="Membership Title" {...field} className="w-full lg:w-[500px]" />
+                        <Input
+                          placeholder="Membership Title"
+                          {...field}
+                          className="w-full lg:w-[500px]"
+                        />
                       </FormControl>
                       <FormMessage>{actionData?.errors?.title}</FormMessage>
                     </FormItem>
@@ -150,28 +176,182 @@ export default function AddMembershipPlan() {
                         Description <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
-                        <Textarea placeholder="Membership Description" {...field} className="w-full" rows={5} />
+                        <Textarea
+                          placeholder="Membership Description"
+                          {...field}
+                          className="w-full"
+                          rows={5}
+                        />
                       </FormControl>
-                      <FormMessage>{actionData?.errors?.description}</FormMessage>
+                      <FormMessage>
+                        {actionData?.errors?.description}
+                      </FormMessage>
                     </FormItem>
                   )}
                 />
 
+                {/* Monthly Price */}
                 <FormField
                   control={form.control}
                   name="price"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        Price <span className="text-red-500">*</span>
+                        Monthly Price <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="Price" {...field} step="0.01" className="w-full" />
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(parseFloat(e.target.value))
+                          }
+                        />
                       </FormControl>
-                      <FormMessage>{actionData?.errors?.price}</FormMessage>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {/* Multiple Billing Options Toggle */}
+                <div className="space-y-4 mt-4 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-gray-900">
+                        Multiple Billing Options
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Offer 6-month and yearly pricing options with discounts
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowMultipleBilling(!showMultipleBilling)
+                      }
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                        showMultipleBilling ? "bg-indigo-600" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          showMultipleBilling
+                            ? "translate-x-6"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Expanded Pricing Options */}
+                  {showMultipleBilling && (
+                    <div className="space-y-4 pt-4 border-t border-gray-300">
+                      {/* 6 Months Price */}
+                      <FormField
+                        control={form.control}
+                        name="price6Months"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center gap-2">
+                              <span className="text-indigo-600">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </span>
+                              6-Month Plan Price
+                            </FormLabel>
+                            <FormControl>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                  CA$
+                                </span>
+                                <Input
+                                  type="number"
+                                  placeholder="Enter your 6-month price"
+                                  className="pl-12"
+                                  {...field}
+                                  value={field.value ?? ""}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      e.target.value === ""
+                                        ? null
+                                        : parseFloat(e.target.value)
+                                    )
+                                  }
+                                />
+                              </div>
+                            </FormControl>
+                            <p className="text-xs text-gray-500">
+                              Typically 5-10% discount vs monthly (e.g.,
+                              $50/month × 6 = $300, offer at $270-$285)
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Yearly Price */}
+                      <FormField
+                        control={form.control}
+                        name="priceYearly"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center gap-2">
+                              <span className="text-indigo-600">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </span>
+                              Yearly Plan Price
+                            </FormLabel>
+                            <FormControl>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                  CA$
+                                </span>
+                                <Input
+                                  type="number"
+                                  placeholder="Enter your yearly price"
+                                  className="pl-12"
+                                  {...field}
+                                  value={field.value ?? ""}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      e.target.value === ""
+                                        ? null
+                                        : parseFloat(e.target.value)
+                                    )
+                                  }
+                                />
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
+                </div>
 
                 {features.map((feature, index) => (
                   <FormField
@@ -181,36 +361,53 @@ export default function AddMembershipPlan() {
                     render={() => (
                       <FormItem>
                         <FormLabel>
-                          Feature {index + 1} <span className="text-red-500">*</span>
+                          Feature {index + 1}{" "}
+                          <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
                           <div className="mb-4">
                             <Textarea
                               name="features"
                               value={feature}
-                              onChange={(e) => handleFeatureChange(index, e.target.value)}
+                              onChange={(e) =>
+                                handleFeatureChange(index, e.target.value)
+                              }
                               placeholder="Enter feature"
                               className="w-full"
                               rows={5}
                             />
                           </div>
                         </FormControl>
-                        <FormMessage>{actionData?.errors?.features}</FormMessage>
+                        <FormMessage>
+                          {actionData?.errors?.features}
+                        </FormMessage>
                       </FormItem>
                     )}
                   />
                 ))}
 
                 <div className="flex items-center gap-2">
-                  <Button type="button" onClick={addFeatureField} className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-full shadow hover:bg-indigo-700 transition">
+                  <Button
+                    type="button"
+                    onClick={addFeatureField}
+                    className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-full shadow hover:bg-indigo-700 transition"
+                  >
                     +
                   </Button>
-                  <Button type="button" onClick={removeLastFeatureField} className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-full shadow hover:bg-indigo-700 transition" disabled={features.length <= 1}>
+                  <Button
+                    type="button"
+                    onClick={removeLastFeatureField}
+                    className="mt-4 items-center bg-indigo-600 text-white px-4 py-2 rounded-full shadow hover:bg-indigo-700 transition"
+                    disabled={features.length <= 1}
+                  >
                     -
                   </Button>
                 </div>
 
-                <Button type="submit" className="mt-4 w-full bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-700 transition">
+                <Button
+                  type="submit"
+                  className="mt-4 w-full bg-indigo-600 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-700 transition"
+                >
                   Submit
                 </Button>
               </form>
@@ -221,5 +418,3 @@ export default function AddMembershipPlan() {
     </SidebarProvider>
   );
 }
-
-

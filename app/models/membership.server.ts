@@ -18,6 +18,8 @@ interface MembershipPlanData {
   title: string;
   description: string;
   price: number;
+  price6Months?: number | null;
+  priceYearly?: number | null;
   features: string[];
 }
 
@@ -65,6 +67,8 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         title: data.title,
         description: data.description,
         price: data.price,
+        price6Months: data.price6Months,
+        priceYearly: data.priceYearly,
         feature: featuresJson,
         accessHours: "24/7", // or any appropriate value
         type: "standard", // or any appropriate value
