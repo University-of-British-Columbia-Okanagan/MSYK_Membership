@@ -60,6 +60,8 @@ export async function action({ request }: { request: Request }) {
     rawValues.priceYearly = null;
   }
 
+  rawValues.needAdminPermission = rawValues.needAdminPermission === "true";
+
   rawValues.features = formData.getAll("features") as string[];
 
   const parsed = membershipPlanFormSchema.safeParse(rawValues);
@@ -77,6 +79,7 @@ export async function action({ request }: { request: Request }) {
       price6Months: parsed.data.price6Months ?? null,
       priceYearly: parsed.data.priceYearly ?? null,
       features: parsed.data.features,
+      needAdminPermission: rawValues.needAdminPermission,
     });
     logger.info(`Membership plan ${parsed.data.title} added successfully`, {
       url: request.url,
@@ -110,6 +113,8 @@ export default function AddMembershipPlan() {
 
   const [features, setFeatures] = useState<string[]>([""]);
   const [showMultipleBilling, setShowMultipleBilling] = useState(false);
+
+  const [needAdminPermission, setNeedAdminPermission] = useState(false);
 
   const addFeatureField = () => setFeatures([...features, ""]);
   const removeLastFeatureField = () => {
@@ -360,6 +365,40 @@ export default function AddMembershipPlan() {
                   )}
                 </div>
 
+                {/* Admin Permission Required Toggle */}
+                <div className="p-4 bg-gradient-to-br from-gray-50 to-slate-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1 mr-4">
+                      <h3 className="text-sm font-medium text-gray-900">
+                        Require Admin Permission
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Enable this for memberships that require special
+                        approval. Users must have an active membership,
+                        completed orientation, and admin-granted permission to
+                        subscribe.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNeedAdminPermission(!needAdminPermission)
+                      }
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                        needAdminPermission ? "bg-indigo-600" : "bg-gray-300"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          needAdminPermission
+                            ? "translate-x-6"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
                 {features.map((feature, index) => (
                   <FormField
                     control={form.control}
@@ -410,6 +449,12 @@ export default function AddMembershipPlan() {
                     -
                   </Button>
                 </div>
+
+                <input
+                  type="hidden"
+                  name="needAdminPermission"
+                  value={needAdminPermission ? "true" : "false"}
+                />
 
                 <Button
                   type="submit"

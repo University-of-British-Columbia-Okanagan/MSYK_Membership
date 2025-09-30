@@ -21,6 +21,7 @@ interface MembershipPlanData {
   price6Months?: number | null;
   priceYearly?: number | null;
   features: string[];
+  needAdminPermission?: boolean;
 }
 
 function incrementMonth(date: Date): Date {
@@ -69,6 +70,7 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         price: data.price,
         price6Months: data.price6Months,
         priceYearly: data.priceYearly,
+        needAdminPermission: data.needAdminPermission ?? false,
         feature: featuresJson,
         accessHours: "24/7", // or any appropriate value
         type: "standard", // or any appropriate value
