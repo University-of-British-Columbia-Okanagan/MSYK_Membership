@@ -61,6 +61,8 @@ import {
   updateUserAllowLevel,
   getAllUsersWithVolunteerStatus,
   updateUserVolunteerStatus,
+  makeUserAdmin,
+  removeUserAdmin,
 } from "~/models/user.server";
 import {
   ShadTable,
@@ -515,6 +517,44 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updateAdminStatus") {
+    const userId = formData.get("userId");
+    const makeAdmin = formData.get("makeAdmin");
+    try {
+      if (makeAdmin === "true") {
+        await makeUserAdmin(Number(userId));
+        logger.info(
+          `[User: ${roleUser.userId}] Granted admin status to user ${userId}`,
+          {
+            url: request.url,
+          }
+        );
+      } else {
+        await removeUserAdmin(Number(userId), roleUser.userId);
+        logger.info(
+          `[User: ${roleUser.userId}] Removed admin status from user ${userId}`,
+          {
+            url: request.url,
+          }
+        );
+      }
+
+      return {
+        success: true,
+        message: "Admin status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating admin status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update admin status",
+      };
+    }
+  }
+
   if (actionType === "updateVolunteerHourStatus") {
     const hourId = formData.get("hourId");
     const newStatus = formData.get("newStatus");
@@ -645,6 +685,52 @@ function RoleControl({
             buttonClassName="bg-green-500 hover:bg-green-600 text-white"
           />
         )
+      )}
+    </div>
+  );
+}
+
+/**
+ * AdminControl component:
+ * - Displays the user's current admin status.
+ * - Shows "Make Admin" button if user is not admin.
+ * - Shows "Remove Admin" button if user is admin.
+ * Uses ConfirmButton with POST to updateAdminStatus.
+ */
+function AdminControl({
+  user,
+}: {
+  user: { id: number; roleUser: { name: string } };
+}) {
+  const isAdmin = user.roleUser.name === "Admin";
+  const submit = useSubmit();
+
+  const updateAdminStatus = (makeAdmin: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateAdminStatus");
+    formData.append("userId", user.id.toString());
+    formData.append("makeAdmin", makeAdmin.toString());
+    submit(formData, { method: "post" });
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {isAdmin ? (
+        <ConfirmButton
+          confirmTitle="Confirm Remove Admin"
+          confirmDescription="Are you sure you want to remove admin privileges from this user?"
+          onConfirm={() => updateAdminStatus(false)}
+          buttonLabel="Remove Admin"
+          buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+        />
+      ) : (
+        <ConfirmButton
+          confirmTitle="Confirm Make Admin"
+          confirmDescription="Are you sure you want to grant admin privileges to this user? They will have full administrative access."
+          onConfirm={() => updateAdminStatus(true)}
+          buttonLabel="Make Admin"
+          buttonClassName="bg-green-500 hover:bg-green-600 text-white"
+        />
       )}
     </div>
   );
@@ -1284,6 +1370,7 @@ export default function AdminSettings() {
       trainingCardUserNumber: string;
       roleLevel: number;
       allowLevel4: boolean;
+      roleUser: { name: string };
       isVolunteer: boolean;
       volunteerSince: Date | null;
       volunteerHistory?: Array<{
@@ -1921,6 +2008,7 @@ export default function AdminSettings() {
       render: (user) => user.trainingCardUserNumber,
     },
     { header: "Role Level", render: (user) => <RoleControl user={user} /> },
+    { header: "Admin Status", render: (user) => <AdminControl user={user} /> },
   ];
 
   // Helper function to convert time units to minutes
