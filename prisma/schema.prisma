@@ -319,7 +319,9 @@ model MembershipPlan {
 
   title               String
   description         String
-  price               Float
+  price               Float   // Price for monthly subscription
+  price6Months        Float?  // Price for 6-month subscription
+  priceYearly         Float?  // Price for yearly subscription
   needAdminPermission Boolean @default(false)
   feature             Json
   accessHours         Json // Example: {"start": "09:00", "end": "18:00"}
