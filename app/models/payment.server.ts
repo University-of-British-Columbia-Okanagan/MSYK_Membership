@@ -332,7 +332,9 @@ export async function quickCheckout(
           } = await import("./membership.server");
 
           const currentMembershipId = checkoutData.currentMembershipId || null;
-          await registerMembershipSubscription(
+
+          // Register the subscription and get the subscription object
+          const subscription = await registerMembershipSubscription(
             userId,
             checkoutData.membershipPlanId!,
             currentMembershipId,
@@ -341,8 +343,12 @@ export async function quickCheckout(
             paymentIntent.id
           );
 
-          // Activate the pending membership form
-          await activateMembershipForm(userId, checkoutData.membershipPlanId!);
+          // Activate the pending membership form and link it to the subscription
+          await activateMembershipForm(
+            userId,
+            checkoutData.membershipPlanId!,
+            subscription.id // Pass the subscription ID!
+          );
 
           // Send confirmation email for membership
           try {
