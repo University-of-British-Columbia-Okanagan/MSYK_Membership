@@ -171,20 +171,21 @@ export async function loader({ request }: { request: Request }) {
 
       const paymentIntentId = session.payment_intent as string;
 
-      // Register the membership subscription
-      await registerMembershipSubscription(
+      // Register the membership subscription and get the created subscription
+      const subscription = await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
         currentMembershipId,
         false, // Not a downgrade
-        false, // Not a resubscription
+        false, // Not a resubscriptionq
         paymentIntentId
       );
 
-      // Activate the pending membership form
+      // Activate the pending membership form and link it to the subscription
       await activateMembershipForm(
         parseInt(userId),
-        parseInt(membershipPlanId)
+        parseInt(membershipPlanId),
+        subscription.id
       );
 
       try {

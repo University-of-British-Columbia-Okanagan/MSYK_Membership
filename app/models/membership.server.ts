@@ -215,7 +215,12 @@ export async function registerMembershipSubscription(
     });
 
     // Reactivate the UserMembershipForm as well
-    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+    await updateMembershipFormStatus(
+      userId,
+      membershipPlanId,
+      "active",
+      subscription.id
+    );
 
     return subscription;
   }
@@ -288,7 +293,12 @@ export async function registerMembershipSubscription(
     }
 
     // Activate the new membership's form immediately (no payment needed for downgrade)
-    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+    await updateMembershipFormStatus(
+      userId,
+      membershipPlanId,
+      "active",
+      subscription.id
+    );
 
     return subscription;
   }
@@ -566,7 +576,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("00 00 * * *", async () => {
+  cron.schedule("29 13 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -887,9 +897,8 @@ export async function registerMembershipSubscriptionWithForm(
     paymentIntentId
   );
 
-  // Activate the pending form (if it exists)
-  // Note: signatureData parameter is deprecated and ignored
-  await activateMembershipForm(userId, membershipPlanId);
+  // Activate the pending form (if it exists) and link it to the subscription
+  await activateMembershipForm(userId, membershipPlanId, subscription.id);
 
   return subscription;
 }
@@ -898,13 +907,14 @@ export async function registerMembershipSubscriptionWithForm(
  * Activate a pending membership form after successful payment
  * @param userId The ID of the user
  * @param membershipPlanId The ID of the membership plan
+ * @param userMembershipId The ID of the UserMembership to link
  * @returns Updated UserMembershipForm record
  */
 export async function activateMembershipForm(
   userId: number,
-  membershipPlanId: number
+  membershipPlanId: number,
+  userMembershipId?: number
 ) {
-  // First, set any existing active forms to inactive (in case of resubscription)
   await db.userMembershipForm.updateMany({
     where: {
       userId,
@@ -935,33 +945,43 @@ export async function activateMembershipForm(
       },
       data: {
         status: "active",
+        ...(userMembershipId ? { userMembershipId } : {}),
       },
     });
   }
 
   return null;
 }
-
 /**
  * Update UserMembershipForm status to match UserMembership status
  * @param userId The ID of the user
  * @param membershipPlanId The ID of the membership plan
  * @param newStatus The new status to set
+ * @param userMembershipId Optional UserMembership ID to link (only set when activating)
  */
 export async function updateMembershipFormStatus(
   userId: number,
   membershipPlanId: number,
-  newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending"
+  newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending",
+  userMembershipId?: number
 ) {
+  const updateData: any = {
+    status: newStatus,
+  };
+
+  // Only set userMembershipId when explicitly provided (typically when activating)
+  // This preserves the historical link when status changes to inactive/cancelled/ending
+  if (userMembershipId !== undefined) {
+    updateData.userMembershipId = userMembershipId;
+  }
+
   return await db.userMembershipForm.updateMany({
     where: {
       userId,
       membershipPlanId,
-      status: { in: ["pending", "active", "cancelled", "ending"] }, // Include "ending" in the filter
+      status: { in: ["pending", "active", "cancelled", "ending"] },
     },
-    data: {
-      status: newStatus,
-    },
+    data: updateData,
   });
 }
 
