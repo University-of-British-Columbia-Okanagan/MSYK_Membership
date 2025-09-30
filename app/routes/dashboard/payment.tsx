@@ -57,6 +57,13 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     const url = new URL(request.url);
     const billingCycle = url.searchParams.get("billingCycle") || "monthly";
 
+    let membershipPrice = membershipPlan.price;
+    if (billingCycle === "6months" && membershipPlan.price6Months) {
+      membershipPrice = membershipPlan.price6Months;
+    } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
+      membershipPrice = membershipPlan.priceYearly;
+    }
+
     // Get user's active membership if any
     const userActiveMembership = await getUserActiveMembership(user.id);
 
@@ -71,7 +78,12 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const searchParams = new URL(request.url).searchParams;
       const isResubscription = searchParams.get("resubscribe") === "true";
 
-      if (!isResubscription && (!hasActiveSubscription || !meetsLevelRequirement || !hasAdminPermission)) {
+      if (
+        !isResubscription &&
+        (!hasActiveSubscription ||
+          !meetsLevelRequirement ||
+          !hasAdminPermission)
+      ) {
         throw redirect("/dashboard/memberships");
       }
     }
@@ -86,7 +98,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     if (userActiveMembership) {
       const now = new Date();
       const oldPrice = userActiveMembership.membershipPlan.price;
-      const newPrice = membershipPlan.price;
+      const newPrice = membershipPrice;
 
       // Instead of using the original signup date for A, use a date exactly one month before the next payment
       const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
@@ -137,7 +149,10 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
-      membershipPlan,
+      membershipPlan: {
+        ...membershipPlan,
+        displayPrice: membershipPrice,
+      },
       user,
       upgradeFee,
       oldMembershipTitle,
@@ -632,6 +647,15 @@ export default function Payment() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
+  const getMembershipPrice = () => {
+    if (data.membershipPlan) {
+      return data.membershipPlan.displayPrice || data.membershipPlan.price;
+    }
+    return 0;
+  };
+
+  const membershipPrice = getMembershipPrice();
+
   const handlePayment = async () => {
     setLoading(true);
     try {
@@ -641,7 +665,9 @@ export default function Payment() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              currentMembershipId: data.membershipRecordId ? Number(data.membershipRecordId) : data.userActiveMembership?.id,
+              currentMembershipId: data.membershipRecordId
+                ? Number(data.membershipRecordId)
+                : data.userActiveMembership?.id,
               membershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
               billingCycle: data.billingCycle || "monthly",
@@ -689,7 +715,7 @@ export default function Payment() {
               membershipPlanId: data.membershipPlan.id,
               price: data.userActiveMembership
                 ? data.upgradeFee
-                : data.membershipPlan.price,
+                : membershipPrice,
               userId: data.user.id,
               oldMembershipNextPaymentDate: data.oldMembershipNextPaymentDate,
               // send upgradeFee here
@@ -819,16 +845,16 @@ export default function Payment() {
                 membershipPlanId: data.membershipPlan.id,
                 price: data.userActiveMembership
                   ? data.upgradeFee
-                  : data.membershipPlan.price,
+                  : membershipPrice,
                 currentMembershipId: data.userActiveMembership?.id,
                 upgradeFee: data.upgradeFee,
-                billingCycle: (data.billingCycle as "monthly" | "6months" | "yearly") || "monthly",
+                billingCycle:
+                  (data.billingCycle as "monthly" | "6months" | "yearly") ||
+                  "monthly",
               }}
               itemName={data.membershipPlan.title}
               itemPrice={
-                data.userActiveMembership
-                  ? data.upgradeFee
-                  : data.membershipPlan.price
+                data.userActiveMembership ? data.upgradeFee : membershipPrice
               }
               gstPercentage={data.gstPercentage}
               savedCard={{
@@ -913,10 +939,7 @@ export default function Payment() {
                     ).toLocaleDateString()
                   : "N/A"}
                 , then switch to CA$
-                {(
-                  data.membershipPlan.price *
-                  (1 + data.gstPercentage / 100)
-                ).toFixed(2)}
+                {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
                 /month (incl. GST).
               </p>
               <p className="font-semibold mt-2">No payment is required now.</p>
@@ -931,10 +954,7 @@ export default function Payment() {
               <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
               <strong>
                 CA$
-                {(
-                  data.membershipPlan.price *
-                  (1 + data.gstPercentage / 100)
-                ).toFixed(2)}
+                {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
                 /month
               </strong>{" "}
               starting from{" "}
@@ -964,19 +984,17 @@ export default function Payment() {
                   ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
                       2
                     )
-                  : (
-                      data.membershipPlan.price *
-                      (1 + data.gstPercentage / 100)
-                    ).toFixed(2)}
+                  : (membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
+                      2
+                    )}
               </p>
               <p className="text-sm text-gray-600">
                 (Includes CA$
                 {data.userActiveMembership
                   ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
-                  : (
-                      data.membershipPlan.price *
-                      (data.gstPercentage / 100)
-                    ).toFixed(2)}{" "}
+                  : (membershipPrice * (data.gstPercentage / 100)).toFixed(
+                      2
+                    )}{" "}
                 GST)
               </p>
             </div>
