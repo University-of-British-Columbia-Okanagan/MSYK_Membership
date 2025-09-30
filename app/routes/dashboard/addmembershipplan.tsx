@@ -291,10 +291,6 @@ export default function AddMembershipPlan() {
                                 />
                               </div>
                             </FormControl>
-                            <p className="text-xs text-gray-500">
-                              Typically 5-10% discount vs monthly (e.g.,
-                              $50/month × 6 = $300, offer at $270-$285)
-                            </p>
                             <FormMessage />
                           </FormItem>
                         )}

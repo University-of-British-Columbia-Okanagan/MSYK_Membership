@@ -142,7 +142,9 @@ export async function action({ request }: { request: Request }) {
           userEmail: user!.email!,
           planTitle: plan?.title || "Membership",
           accessUntil:
-            result && (result as any).status === "cancelled" && (result as any).nextPaymentDate
+            result &&
+            (result as any).status === "cancelled" &&
+            (result as any).nextPaymentDate
               ? new Date((result as any).nextPaymentDate)
               : null,
         });
@@ -268,6 +270,8 @@ export default function MembershipPage() {
                   title={plan.title}
                   description={plan.description}
                   price={plan.price}
+                  price6Months={plan.price6Months}
+                  priceYearly={plan.priceYearly}
                   feature={plan.feature}
                   isAdmin={!!isAdmin}
                   planId={plan.id}

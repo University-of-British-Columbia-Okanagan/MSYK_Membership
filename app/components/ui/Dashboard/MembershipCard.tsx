@@ -18,6 +18,9 @@ import {
   ArrowDown,
   Edit,
   Trash,
+  Calendar,
+  Zap,
+  TrendingDown,
 } from "lucide-react";
 
 interface MembershipCardProps {
@@ -25,6 +28,8 @@ interface MembershipCardProps {
   title: string;
   description: string;
   price: number;
+  price6Months?: number | null;
+  priceYearly?: number | null;
   feature: string[];
   isAdmin: boolean;
   membershipStatus?: "active" | "cancelled" | "inactive";
@@ -52,6 +57,8 @@ export default function MembershipCard({
   title,
   description,
   price,
+  price6Months,
+  priceYearly,
   feature,
   isAdmin,
   membershipStatus,
@@ -68,6 +75,19 @@ export default function MembershipCard({
   const navigate = useNavigate();
   const fetcher = useFetcher();
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const [selectedBillingCycle, setSelectedBillingCycle] = useState<
+    "monthly" | "6months" | "yearly"
+  >("monthly");
+
+  const hasMultipleBillingOptions = !!price6Months || !!priceYearly;
+
+  const calculateSavings = (billingPrice: number, months: number) => {
+    const monthlyTotal = price * months;
+    const savings = monthlyTotal - billingPrice;
+    const savingsPercent = ((savings / monthlyTotal) * 100).toFixed(0);
+    return { savings, savingsPercent };
+  };
 
   function getIconForLabel(label: string) {
     switch (label) {
@@ -183,10 +203,62 @@ export default function MembershipCard({
 
       <h3 className="text-xl font-semibold text-gray-800">{title}</h3>
       <p className="text-gray-600 mt-2">{description}</p>
-      <div className="mt-4">
-        <span className="text-4xl font-bold text-gray-900">${price}</span>
-        <span className="text-gray-600 text-sm"> /month</span>
-      </div>
+      {hasMultipleBillingOptions ? (
+        <div className="mt-4 p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-lg border border-indigo-200">
+          <div className="text-center mb-3">
+            <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+              Multiple Billing Options Available
+            </p>
+          </div>
+
+          <div className="space-y-2 text-sm">
+            {/* Monthly */}
+            <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-gray-200">
+              <span className="text-gray-700 font-medium">Monthly</span>
+              <span className="text-gray-900 font-bold">
+                ${price.toFixed(2)}/mo
+              </span>
+            </div>
+
+            {/* 6 Months */}
+            {price6Months && price6Months > 0 && (
+              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-200">
+                <span className="text-gray-700 font-medium">6 Months</span>
+                <div className="text-right">
+                  <span className="text-gray-900 font-bold">
+                    ${price6Months.toFixed(2)}
+                  </span>
+                  <span className="ml-2 text-xs text-green-600 font-medium">
+                    Save {calculateSavings(price6Months, 6).savingsPercent}%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Yearly */}
+            {priceYearly && priceYearly > 0 && (
+              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-300">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-700 font-medium">Yearly</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-gray-900 font-bold">
+                    ${priceYearly.toFixed(2)}
+                  </span>
+                  <span className="ml-2 text-xs text-green-600 font-medium">
+                    Save {calculateSavings(priceYearly, 12).savingsPercent}%
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <span className="text-4xl font-bold text-gray-900">${price}</span>
+          <span className="text-gray-600 text-sm"> /month</span>
+        </div>
+      )}
 
       {/*
         Show different UI depending on membership status:
