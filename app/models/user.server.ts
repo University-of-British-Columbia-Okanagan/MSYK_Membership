@@ -509,6 +509,12 @@ export async function getAllUsersWithVolunteerStatus() {
       phone: true,
       roleLevel: true,
       allowLevel4: true,
+      roleUserId: true,
+      roleUser: {
+        select: {
+          name: true,
+        },
+      },
       volunteers: {
         select: {
           id: true,
@@ -536,5 +542,76 @@ export async function getAllUsersWithVolunteerStatus() {
       volunteerSince: activeVolunteer?.volunteerStart || null,
       volunteerHistory: user.volunteers,
     };
+  });
+}
+
+/**
+ * Gets role ID by role name
+ * @param name - The role name (e.g., "Admin", "User")
+ * @returns Promise<number> - The role ID
+ * @throws Error if role not found
+ */
+export async function getRoleIdByName(name: string) {
+  const role = await db.roleUser.findUnique({
+    where: { name },
+    select: { id: true },
+  });
+
+  if (!role) {
+    throw new Error(`Role "${name}" not found`);
+  }
+
+  return role.id;
+}
+
+/**
+ * Counts the number of users with admin role
+ * @returns Promise<number> - Number of admin users
+ */
+export async function countAdmins() {
+  const adminRoleId = await getRoleIdByName("Admin");
+  return db.user.count({
+    where: { roleUserId: adminRoleId },
+  });
+}
+
+/**
+ * Makes a user an admin
+ * @param targetUserId - The ID of the user to make admin
+ * @returns Promise<User> - The updated user record
+ */
+export async function makeUserAdmin(targetUserId: number) {
+  const adminRoleId = await getRoleIdByName("Admin");
+
+  return db.user.update({
+    where: { id: targetUserId },
+    data: { roleUserId: adminRoleId },
+  });
+}
+
+/**
+ * Removes admin status from a user with safeguards
+ * @param targetUserId - The ID of the user to remove admin status from
+ * @param actingUserId - The ID of the user performing the action
+ * @returns Promise<User> - The updated user record
+ * @throws Error if removing admin would leave no admins or if trying to remove self when last admin
+ */
+export async function removeUserAdmin(targetUserId: number, actingUserId: number) {
+  const userRoleId = await getRoleIdByName("User");
+  const adminCount = await countAdmins();
+
+  // Prevent removing admin status if it would leave zero admins
+  if (adminCount <= 1) {
+    throw new Error("Cannot remove admin status: would leave no admins in the system");
+  }
+
+  // Prevent removing admin status from yourself if you are the last admin
+  if (targetUserId === actingUserId && adminCount === 1) {
+    throw new Error("Cannot remove your own admin status: you are the last admin");
+  }
+
+  return db.user.update({
+    where: { id: targetUserId },
+    data: { roleUserId: userRoleId },
   });
 }
