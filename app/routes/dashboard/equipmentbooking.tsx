@@ -13,19 +13,19 @@ import {
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
-import EquipmentBookingGrid from "../../components/ui/Dashboard/Equipmentbookinggrid";
+import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
 import { useState } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
 import { logger } from "~/logging/logger";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { getRoleUser } from "../../utils/session.server";
-import QuickCheckout from "~/components/ui/Dashboard/Quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
 
 export async function loader({
@@ -262,6 +262,12 @@ export default function EquipmentBookingForm() {
         )}
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-8 w-full">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Book Equipment</h1>
+            </div>
+
             {/* Back Button */}
             <div className="mb-6">
               <Button

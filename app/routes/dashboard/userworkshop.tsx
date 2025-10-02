@@ -2,9 +2,9 @@ import { useState, useMemo } from "react";
 import { useLoaderData, redirect } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import { getUserWorkshopRegistrationsByWorkshopId } from "~/models/workshop.server";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import {
   ShadTable,
   type ColumnDefinition,
@@ -167,7 +167,13 @@ export default function WorkshopUsers() {
       <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Workshop Users</h1>
+          </div>
+
+          <h1 className="text-2xl font-bold mb-4 hidden md:block">
             Users Registered for {workshopName}
           </h1>
           <div className="flex items-center gap-2 mb-6">

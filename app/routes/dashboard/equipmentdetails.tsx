@@ -19,10 +19,10 @@ import { getUserCompletedEquipmentPrerequisites } from "../../models/equipment.s
 import { getUser } from "~/utils/session.server";
 import { getWorkshopById } from "../../models/workshop.server";
 import { Link } from "react-router";
-import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { logger } from "~/logging/logger";
 
@@ -175,6 +175,12 @@ export default function EquipmentDetails() {
         {/* Main content area */}
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-3xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Equipment Details</h1>
+            </div>
+
             <div className="mb-6">
               <Button
                 variant="outline"

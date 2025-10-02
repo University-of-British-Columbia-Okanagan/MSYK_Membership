@@ -4,10 +4,10 @@ import {
   getUserWorkshopRegistrations,
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import WorkshopList from "~/components/ui/Dashboard/Workshoplist";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import WorkshopList from "~/components/ui/Dashboard/workshoplist";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 
 export async function loader({ request }: { request: Request }) {
   try {
@@ -61,6 +61,12 @@ export default function MyWorkshops() {
       <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">My Workshops</h1>
+          </div>
+
           {workshops.length > 0 ? (
             <WorkshopList
               title="My Workshops"

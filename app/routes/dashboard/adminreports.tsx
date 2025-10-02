@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLoaderData, redirect } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import {
   Card,
   CardContent,
@@ -385,7 +385,13 @@ export default function AdminReports() {
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-6xl mx-auto">
-            <div className="flex items-center gap-2 mb-6">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Admin Reports</h1>
+            </div>
+
+            <div className="flex items-center gap-2 mb-6 hidden md:flex">
               <Settings className="h-6 w-6 text-indigo-500" />
               <h1 className="text-2xl font-bold">Admin Reports</h1>
             </div>
