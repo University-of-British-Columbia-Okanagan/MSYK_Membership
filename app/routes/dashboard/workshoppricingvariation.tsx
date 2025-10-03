@@ -6,10 +6,10 @@ import {
   redirect,
 } from "react-router";
 import { Button } from "@/components/ui/button";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import {
   getWorkshopWithPriceVariations,
@@ -167,6 +167,12 @@ export default function WorkshopPricingVariation() {
 
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-6">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Workshop Pricing</h1>
+            </div>
+
             <div className="mb-6">
               <Button
                 variant="outline"

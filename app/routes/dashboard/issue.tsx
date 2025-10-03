@@ -7,9 +7,9 @@ import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
 import { json } from "@remix-run/node";
-import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import { AppSidebar } from "~/components/ui/Dashboard/Sidebar";
+import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import { AppSidebar } from "~/components/ui/Dashboard/sidebar";
 import { createIssue } from "~/models/issue.server";
 import { logger } from "~/logging/logger";
 
@@ -83,15 +83,22 @@ export default function SubmitIssue() {
 
   return (
     <SidebarProvider>
-      {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
-      <div className="w-full p-10">
-        {showPopup && (
-          <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
-            {popupMessage}
+      <div className="absolute inset-0 flex">
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        <div className="w-full p-10 overflow-auto">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Submit Issue</h1>
           </div>
-        )}
 
-        <h1 className="text-2xl font-bold mb-10">Submit Issue</h1>
+          {showPopup && (
+            <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
+              {popupMessage}
+            </div>
+          )}
+
+          <h1 className="text-2xl font-bold mb-10 hidden md:block">Submit Issue</h1>
 
         <fetcher.Form
           method="post"
@@ -164,6 +171,7 @@ export default function SubmitIssue() {
             </Button>
           </div>
         </fetcher.Form>
+        </div>
       </div>
     </SidebarProvider>
   );

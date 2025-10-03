@@ -9,8 +9,8 @@ import {
   checkVolunteerHourOverlap,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
-import Sidebar from "../../components/ui/Dashboard/Sidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import Sidebar from "../../components/ui/Dashboard/sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
 import {
   CreditCard,
@@ -32,8 +32,8 @@ import {
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
 import { getUserCompletedOrientations } from "~/models/workshop.server";
 
@@ -496,8 +496,14 @@ export default function ProfilePage() {
         {renderSidebar()}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Profile</h1>
+            </div>
+
             {/* Header */}
-            <div className="mb-8">
+            <div className="mb-8 hidden md:block">
               <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
               <p className="text-gray-600">
                 Manage your account details and preferences
