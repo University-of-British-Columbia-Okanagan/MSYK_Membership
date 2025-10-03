@@ -16,8 +16,8 @@ import {
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
-import { getSavedPaymentMethod } from "../../models/user.server";
-import QuickCheckout from "~/components/ui/Dashboard/Quickcheckout";
+import { getSavedPaymentMethod, getUserById } from "../../models/user.server";
+import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
 import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
 
@@ -57,6 +57,22 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     // Get user's active membership if any
     const userActiveMembership = await getUserActiveMembership(user.id);
 
+    // Enforce server-side gating for plans requiring admin permission
+    if (membershipPlan.needAdminPermission) {
+      const userRecord = await getUserById(user.id);
+      const hasActiveSubscription = !!userActiveMembership;
+      const meetsLevelRequirement = (userRecord?.roleLevel ?? 0) >= 3;
+      const hasAdminPermission = userRecord?.allowLevel4 === true;
+
+      // Check if this is a resubscription - if so, we don't need an active subscription
+      const searchParams = new URL(request.url).searchParams;
+      const isResubscription = searchParams.get("resubscribe") === "true";
+
+      if (!isResubscription && (!hasActiveSubscription || !meetsLevelRequirement || !hasAdminPermission)) {
+        throw redirect("/dashboard/memberships");
+      }
+    }
+
     let upgradeFee = 0;
     let oldMembershipTitle = null;
     let oldMembershipPrice = null;
@@ -94,6 +110,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     }
 
     let isResubscription = false;
+
+    // Check if this is a resubscription based on query parameter
+    const searchParams = new URL(request.url).searchParams;
+    if (searchParams.get("resubscribe") === "true") {
+      isResubscription = true;
+      upgradeFee = 0; // No payment needed for resubscription
+    }
+
+    // Also check if user has an active membership that's cancelled for the same plan
     if (
       userActiveMembership &&
       userActiveMembership.status === "cancelled" &&
@@ -103,11 +128,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       upgradeFee = 0; // No payment needed for resubscription
     }
 
-    // Override isResubscription flag if query parameter "resubscribe" is present
-    const searchParams = new URL(request.url).searchParams;
-    if (searchParams.get("resubscribe") === "true") {
-      isResubscription = true;
-    }
+    // Extract membershipRecordId from query parameters for resubscription
+    const membershipRecordId = searchParams.get("membershipRecordId");
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
@@ -121,6 +143,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       oldMembershipNextPaymentDate,
       isDowngrade,
       isResubscription,
+      membershipRecordId,
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
     };
@@ -146,6 +169,12 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     // CHECK: If workshop is full, redirect user
     const capacityCheck = await checkWorkshopCapacity(workshopId, occurrenceId);
     if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If occurrence is in the past, redirect user
+    const now = new Date();
+    if (new Date(occurrence.endDate) < now) {
       throw redirect(getRedirectPath());
     }
 
@@ -199,6 +228,12 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw redirect(getRedirectPath());
     }
 
+    // CHECK: If occurrence is in the past, redirect user
+    const now = new Date();
+    if (new Date(occurrence.endDate) < now) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
@@ -241,6 +276,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       connectId
     );
     if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If ANY occurrence is in the past, redirect user
+    const now = new Date();
+    const hasAnyPastOccurrence = occurrences.some(
+      (occ) => new Date(occ.endDate) < now
+    );
+    if (hasAnyPastOccurrence) {
       throw redirect(getRedirectPath());
     }
 
@@ -297,6 +341,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       variationId
     );
     if (!capacityCheck.hasCapacity) {
+      throw redirect(getRedirectPath());
+    }
+
+    // CHECK: If ANY occurrence is in the past, redirect user
+    const now = new Date();
+    const hasAnyPastOccurrence = occurrences.some(
+      (occ) => new Date(occ.endDate) < now
+    );
+    if (hasAnyPastOccurrence) {
       throw redirect(getRedirectPath());
     }
 
@@ -434,6 +487,7 @@ export async function action({ request }: { request: Request }) {
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
+        allow_promotion_codes: true,
         line_items: [
           {
             price_data: {
@@ -502,6 +556,7 @@ export async function action({ request }: { request: Request }) {
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
+        allow_promotion_codes: true,
         line_items: [
           {
             price_data: {
@@ -562,6 +617,7 @@ export default function Payment() {
     userActiveMembership?: any;
     isDowngrade?: boolean;
     isResubscription?: boolean;
+    membershipRecordId?: string | null;
     oldMembershipNextPaymentDate?: Date | null;
     savedPaymentMethod?: any;
     gstPercentage: number;
@@ -580,11 +636,16 @@ export default function Payment() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              currentMembershipId: data.userActiveMembership?.id,
+              currentMembershipId: data.membershipRecordId ? Number(data.membershipRecordId) : data.userActiveMembership?.id,
               membershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
             }),
           });
+
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+
           const json = await res.json();
           if (json.success) {
             return navigate("/dashboard/payment/success?resubscribe=true");
@@ -811,13 +872,13 @@ export default function Payment() {
             </p>
           )}
 
-          {/* 
+          {/*
             If it's a resubscription, show a special message that no payment is required.
             If it's a downgrade, show the existing message that no payment is required.
             If it's an upgrade, show compensation details, etc.
           */}
           {data.isResubscription ? (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
               <p className="text-gray-700">
                 You previously cancelled this membership. Resubscribing now will
                 reactivate it immediately.
@@ -827,7 +888,7 @@ export default function Payment() {
               </p>
             </div>
           ) : data.isDowngrade ? (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-100 rounded">
+            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
               <p className="text-gray-700">
                 You will continue at your current rate of CA$
                 {data.oldMembershipPrice
@@ -882,7 +943,7 @@ export default function Payment() {
             </p>
           ) : null}
 
-          {/* 
+          {/*
             If it's not a downgrade or resubscription, show "Total due now" message
             (in case of upgrade or brand-new membership).
           */}

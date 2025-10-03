@@ -44,10 +44,10 @@ import {
 } from "~/models/equipment.server";
 import { logger } from "~/logging/logger";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -680,7 +680,7 @@ export default function WorkshopOfferAgain() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {!roleUser ? (
           <GuestAppSidebar />
         ) : isAdmin ? (
@@ -690,6 +690,12 @@ export default function WorkshopOfferAgain() {
         )}
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-8">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Offer Workshop Again</h1>
+            </div>
+
             {/* Back Button */}
             <div className="mb-6">
               <Button
@@ -717,7 +723,7 @@ export default function WorkshopOfferAgain() {
                 </div>
               )}
 
-            <div className="mb-8 bg-yellow-50 p-4 border border-yellow-200 rounded-md">
+            <div className="mb-8 bg-indigo-50 p-4 border border-indigo-200 rounded-md">
               <h2 className="text-lg font-semibold mb-2">
                 Offering Workshop Again
               </h2>
@@ -777,7 +783,7 @@ export default function WorkshopOfferAgain() {
                     {occurrences.length > 0 && (
                       <Badge
                         variant="outline"
-                        className="ml-2 bg-yellow-100 border-yellow-200"
+                        className="ml-2 bg-indigo-100 border-indigo-200"
                       >
                         {occurrences.length} date
                         {occurrences.length !== 1 ? "s" : ""} added
@@ -878,7 +884,7 @@ export default function WorkshopOfferAgain() {
                         <Button
                           type="button"
                           onClick={addOccurrence}
-                          className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
+                          className="mt-1 bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
                         >
                           <span className="mr-1">+</span> Add Date
                         </Button>
@@ -939,7 +945,7 @@ export default function WorkshopOfferAgain() {
                     {occurrences.length > 0 && (
                       <div className="w-full">
                         <h3 className="font-medium mb-4 flex items-center">
-                          <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                          <CalendarIcon className="w-5 h-5 mr-2 text-indigo-500" />
                           Your New Workshop Dates
                         </h3>
                         <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -1284,7 +1290,7 @@ export default function WorkshopOfferAgain() {
                 <div className="flex justify-center">
                   <Button
                     type="submit"
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+                    className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
                     disabled={occurrences.length === 0 || formSubmitting}
                   >
                     Create New Offering

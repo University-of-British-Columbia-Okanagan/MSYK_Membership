@@ -65,8 +65,8 @@ export async function getAvailableEquipment() {
           eq.slots.length === 0
             ? "unavailable" // No slots exist
             : eq.slots.every((slot) => slot.isBooked)
-            ? "unavailable" // All slots taken
-            : "available", // Some slots are free
+              ? "unavailable" // All slots taken
+              : "available", // Some slots are free
       }))
     );
 }
@@ -83,7 +83,9 @@ export async function bookEquipment(
   request: Request,
   equipmentId: number,
   startTime: string,
-  endTime: string
+  endTime: string,
+  paymentIntentId?: string,
+  options?: { suppressEmail?: boolean }
 ) {
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
@@ -99,17 +101,18 @@ export async function bookEquipment(
   const day = parsedStartTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
   const hour = parsedStartTime.getHours();
 
-  if (user.roleLevel === 1 || user.roleLevel === 2) {
+  // Allow admins (roleUserId === 2) to bypass role level restrictions
+  if ((user.roleLevel === 1 || user.roleLevel === 2) && user.roleUserId !== 2) {
     throw new Error("You do not have permission to book equipment.");
   }
 
   if (user.roleLevel === 3) {
     // Level 3 can't book on Monday (1) or Tuesday (2)
-    if (day === 1 || day === 2) {
-      throw new Error(
-        "Level 3 members cannot book equipment on Monday or Tuesday."
-      );
-    }
+    // if (day === 1 || day === 2) {
+    //   throw new Error(
+    //     "Level 3 members cannot book equipment on Monday or Tuesday."
+    //   );
+    // }
 
     // Optional: Add specific hour restrictions if needed for DROP-IN HOURS
     if (hour < 9 || hour >= 17) {
@@ -144,25 +147,138 @@ export async function bookEquipment(
     data: { isBooked: true },
   });
 
-  return await db.equipmentBooking.create({
-    data: {
-      userId: parseInt(userId),
-      equipmentId,
-      slotId: slot.id,
-      status: "pending",
-    },
+  // Check for existing booking (including cancelled ones)
+  const existingBooking = await db.equipmentBooking.findFirst({
+    where: { slotId: slot.id },
   });
+
+  let booking;
+  if (existingBooking) {
+    if (existingBooking.status === "cancelled") {
+      // Update the cancelled booking with new user and reset status
+      booking = await db.equipmentBooking.update({
+        where: { id: existingBooking.id },
+        data: {
+          userId: parseInt(userId),
+          status: "pending",
+          paymentIntentId: paymentIntentId || null,
+          bookedFor: "user",
+          workshopId: null, // Clear any workshop association
+        },
+      });
+    } else {
+      // This shouldn't happen if slot.isBooked check above works correctly
+      throw new Error("Slot already has an active booking.");
+    }
+  } else {
+    // Create new booking
+    booking = await db.equipmentBooking.create({
+      data: {
+        userId: parseInt(userId),
+        equipmentId,
+        slotId: slot.id,
+        status: "pending",
+        ...(paymentIntentId ? { paymentIntentId } : {}),
+      },
+    });
+  }
+
+  // Send confirmation email unless suppressed
+  if (!options?.suppressEmail) {
+    try {
+      const { sendEquipmentConfirmationEmail } = await import(
+        "../utils/email.server"
+      );
+      const equipment = await db.equipment.findUnique({
+        where: { id: equipmentId },
+        select: { name: true, price: true },
+      });
+
+      if (equipment) {
+        await sendEquipmentConfirmationEmail({
+          userEmail: user.email,
+          equipmentName: equipment.name,
+          startTime: parsedStartTime,
+          endTime: parsedEndTime,
+          price: equipment.price,
+        });
+      }
+    } catch (emailError) {
+      console.error("Failed to send equipment confirmation email:", emailError);
+    }
+  }
+
+  return booking;
+}
+
+export async function bookEquipmentBulkByTimes(
+  request: Request,
+  equipmentId: number,
+  times: Array<{ startTime: string; endTime: string }>,
+  paymentIntentId?: string
+) {
+  const userId = await getUserId(request);
+  if (!userId) throw new Error("User is not authenticated.");
+
+  // Book each slot without sending individual emails
+  const bookings = [] as any[];
+  for (const t of times) {
+    const booking = await bookEquipment(
+      request,
+      equipmentId,
+      t.startTime,
+      t.endTime,
+      paymentIntentId,
+      { suppressEmail: true }
+    );
+    bookings.push(booking);
+  }
+
+  // Send one consolidated email
+  try {
+    const { sendEquipmentBulkConfirmationEmail } = await import(
+      "../utils/email.server"
+    );
+    const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
+    const equipment = await db.equipment.findUnique({
+      where: { id: equipmentId },
+      select: { name: true, price: true },
+    });
+    if (user?.email && equipment) {
+      const slots = times.map((t) => ({
+        startTime: new Date(t.startTime),
+        endTime: new Date(t.endTime),
+      }));
+      await sendEquipmentBulkConfirmationEmail({
+        userEmail: user.email,
+        equipmentName: equipment.name,
+        slots,
+        pricePerSlot: equipment.price,
+      });
+    }
+  } catch (emailError) {
+    console.error(
+      "Failed to send bulk equipment confirmation email:",
+      emailError
+    );
+  }
+
+  return { count: bookings.length };
 }
 
 /**
- * Cancel an equipment booking and free up the associated slot
+ * Cancel an equipment booking and create cancellation record
  * @param bookingId The ID of the booking to cancel
- * @returns Deleted booking record
+ * @returns Updated booking record with cancelled status
  */
 export async function cancelEquipmentBooking(bookingId: number) {
   const booking = await db.equipmentBooking.findUnique({
     where: { id: bookingId },
-    include: { slot: true },
+    include: {
+      slot: true,
+      equipment: true,
+      user: true,
+    },
   });
 
   if (!booking) {
@@ -177,8 +293,78 @@ export async function cancelEquipmentBooking(bookingId: number) {
     });
   }
 
-  // Delete booking record
-  return await db.equipmentBooking.delete({ where: { id: bookingId } });
+  // Get all bookings for this payment intent to calculate totals
+  let totalSlotsBooked = 1;
+  let totalPricePaid = booking.equipment.price * 1.05; // Default calculation
+
+  if (booking.paymentIntentId) {
+    const allBookingsForPayment = await db.equipmentBooking.findMany({
+      where: {
+        paymentIntentId: booking.paymentIntentId,
+        userId: booking.userId,
+        status: { not: "cancelled" }, // Only count non-cancelled bookings
+      },
+    });
+
+    totalSlotsBooked = allBookingsForPayment.length;
+    const subtotal = booking.equipment.price * totalSlotsBooked;
+    totalPricePaid = subtotal * 1.05; // Adding 5% tax
+  }
+
+  // Create cancellation record before updating booking status
+  await createEquipmentCancellation({
+    userId: booking.userId,
+    equipmentId: booking.equipmentId,
+    paymentIntentId: booking.paymentIntentId,
+    totalSlotsBooked,
+    slotsToCancel: 1,
+    totalPricePaid,
+    cancelledSlotTimes: [
+      {
+        startTime: booking.slot!.startTime,
+        endTime: booking.slot!.endTime,
+        slotId: booking.slot!.id,
+      },
+    ],
+  });
+
+  // Update booking status to cancelled
+  return await db.equipmentBooking.update({
+    where: { id: bookingId },
+    data: { status: "cancelled" },
+  });
+}
+
+/**
+ * Fetch the booking details required for cancellation email
+ * @param bookingId The booking ID to fetch
+ * @returns Object with userEmail, equipmentName, startTime, endTime or null
+ */
+export async function getBookingEmailDetails(bookingId: number): Promise<{
+  userEmail: string;
+  equipmentName: string;
+  startTime: Date;
+  endTime: Date;
+} | null> {
+  const booking = await db.equipmentBooking.findUnique({
+    where: { id: bookingId },
+    include: {
+      slot: true,
+      equipment: true,
+      user: { select: { email: true } },
+    },
+  });
+
+  if (!booking || !booking.user?.email || !booking.slot || !booking.equipment) {
+    return null;
+  }
+
+  return {
+    userEmail: booking.user.email,
+    equipmentName: booking.equipment.name,
+    startTime: booking.slot.startTime,
+    endTime: booking.slot.endTime,
+  };
 }
 
 /**
@@ -565,7 +751,10 @@ export async function duplicateEquipment(equipmentId: number) {
  */
 export async function getUserBookedEquipments(userId: number) {
   const bookings = await db.equipmentBooking.findMany({
-    where: { userId },
+    where: {
+      userId,
+      status: { not: "cancelled" }, // Filter out cancelled bookings
+    },
     include: {
       equipment: {
         include: {
@@ -573,6 +762,18 @@ export async function getUserBookedEquipments(userId: number) {
             select: { id: true, isBooked: true },
           },
         },
+      },
+      slot: {
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+        },
+      },
+    },
+    orderBy: {
+      slot: {
+        startTime: "asc",
       },
     },
   });
@@ -586,7 +787,49 @@ export async function getUserBookedEquipments(userId: number) {
     bookedSlots: booking.equipment.slots.filter((slot) => slot.isBooked).length,
     status: "booked", // Since this is user's booking, it's always "booked"
     bookingId: booking.id,
+    startTime: booking.slot?.startTime,
+    endTime: booking.slot?.endTime,
   }));
+}
+
+/**
+ * Fetch all cancelled equipment bookings for admin view
+ * @returns Array of cancelled equipment bookings with user and equipment details
+ */
+export async function getCancelledEquipmentBookings() {
+  const cancelledBookings = await db.equipmentBooking.findMany({
+    where: {
+      status: "cancelled",
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      equipment: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+      slot: {
+        select: {
+          id: true,
+          startTime: true,
+          endTime: true,
+        },
+      },
+    },
+    orderBy: {
+      id: "desc", // Most recent cancellations first
+    },
+  });
+
+  return cancelledBookings;
 }
 
 /**
@@ -919,25 +1162,19 @@ export async function createEquipmentSlotsForOccurrence(
           slotId = newSlot.id;
         }
 
-        // Now create a booking record in EquipmentBooking table
+        // Always create a new workshop booking entry
         try {
-          // Check if booking already exists for this slot
-          const existingBooking = await db.equipmentBooking.findFirst({
-            where: { slotId: slotId },
+          await db.equipmentBooking.create({
+            data: {
+              userId: userId, // Use the userId
+              equipmentId,
+              slotId,
+              status: "pending", // Keep default status as pending
+              bookedFor: "workshop", // Set the new bookedFor field
+              workshopId, // Connect to the workshop
+            },
           });
-
-          if (!existingBooking) {
-            await db.equipmentBooking.create({
-              data: {
-                userId: userId, // Use the userId of the logged-in admin
-                equipmentId,
-                slotId,
-                status: "pending", // Keep default status as pending
-                bookedFor: "workshop", // Set the new bookedFor field
-                workshopId, // Connect to the workshop
-              },
-            });
-          }
+          console.log(`Created workshop booking for slot ${slotId}`);
         } catch (bookingError) {
           console.error("Error creating equipment booking:", bookingError);
           // Continue even if booking creation fails
@@ -1095,4 +1332,176 @@ export async function hasUserCompletedEquipmentPrerequisites(
   return requiredPrerequisites.every((reqId) =>
     completedPrerequisites.includes(reqId)
   );
+}
+
+/**
+ * Create a new equipment cancellation record when a user cancels equipment slots
+ */
+export async function createEquipmentCancellation({
+  userId,
+  equipmentId,
+  paymentIntentId,
+  totalSlotsBooked,
+  slotsToCancel,
+  totalPricePaid,
+  cancelledSlotTimes,
+}: {
+  userId: number;
+  equipmentId: number;
+  paymentIntentId: string | null;
+  totalSlotsBooked: number;
+  slotsToCancel: number;
+  totalPricePaid: number;
+  cancelledSlotTimes: Array<{
+    startTime: Date;
+    endTime: Date;
+    slotId: number;
+  }>;
+}) {
+  // Calculate price to refund (proportional to slots being cancelled)
+  const priceToRefund = (totalPricePaid / totalSlotsBooked) * slotsToCancel;
+
+  // Check eligibility for refund (2 days before earliest slot time)
+  const earliestSlotTime = new Date(
+    Math.min(...cancelledSlotTimes.map((slot) => slot.startTime.getTime()))
+  );
+  const twoDaysFromNow = new Date();
+  twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+  const eligibleForRefund = earliestSlotTime > twoDaysFromNow;
+
+  if (paymentIntentId) {
+    // Get the total number of slots already refunded for this payment intent
+    const existingCancellations = await db.equipmentCancelledBooking.findMany({
+      where: {
+        userId,
+        equipmentId,
+        paymentIntentId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // If there are existing cancellations, use the original totalSlotsBooked and totalPricePaid
+    let originalTotalSlots = totalSlotsBooked;
+    let originalTotalPrice = totalPricePaid;
+
+    if (existingCancellations.length > 0) {
+      // Use the original totals from the first cancellation record
+      originalTotalSlots = existingCancellations[0].totalSlotsBooked;
+      originalTotalPrice = existingCancellations[0].totalPricePaid;
+    }
+
+    // Calculate cumulative refunded slots from all previous cancellations
+    const totalSlotsAlreadyRefunded = existingCancellations.reduce(
+      (total, cancellation) => total + cancellation.slotsRefunded,
+      0
+    );
+
+    // Store individual cancellation amount, not cumulative
+    const currentSlotsToCancel = slotsToCancel;
+
+    // Recalculate price to refund based on original totals
+    const correctPriceToRefund =
+      (originalTotalPrice / originalTotalSlots) * slotsToCancel;
+
+    // Always create a new record with individual cancellation amounts
+    return await db.equipmentCancelledBooking.create({
+      data: {
+        userId,
+        equipmentId,
+        paymentIntentId,
+        totalSlotsBooked: originalTotalSlots, // Use original total
+        slotsRefunded: currentSlotsToCancel, // Individual cancellation amount, not cumulative
+        totalPricePaid: originalTotalPrice, // Use original total price
+        priceToRefund: correctPriceToRefund, // Individual refund amount for this cancellation
+        eligibleForRefund,
+        resolved: false,
+        cancelledSlotTimes: cancelledSlotTimes,
+      },
+    });
+  } else {
+    // No payment intent, create individual record
+    return await db.equipmentCancelledBooking.create({
+      data: {
+        userId,
+        equipmentId,
+        paymentIntentId,
+        totalSlotsBooked,
+        slotsRefunded: slotsToCancel,
+        totalPricePaid,
+        priceToRefund,
+        eligibleForRefund,
+        resolved: false,
+        cancelledSlotTimes: cancelledSlotTimes,
+      },
+    });
+  }
+}
+/**
+ * Get all equipment cancellation records with user and equipment details
+ */
+export async function getAllEquipmentCancellations() {
+  return await db.equipmentCancelledBooking.findMany({
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      equipment: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
+}
+
+/**
+ * Update the resolved status of an equipment cancellation
+ */
+export async function updateEquipmentCancellationResolved(
+  cancellationId: number,
+  resolved: boolean
+) {
+  return await db.equipmentCancelledBooking.update({
+    where: { id: cancellationId },
+    data: { resolved },
+  });
+}
+
+/**
+ * Get equipment cancellations by resolved status
+ */
+export async function getEquipmentCancellationsByStatus(resolved: boolean) {
+  return await db.equipmentCancelledBooking.findMany({
+    where: { resolved },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+      equipment: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+        },
+      },
+    },
+    orderBy: {
+      cancellationDate: "desc",
+    },
+  });
 }

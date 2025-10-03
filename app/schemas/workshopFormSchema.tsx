@@ -4,9 +4,9 @@ export const workshopFormSchema = z
   .object({
     name: z.string().min(1, "Name is required"),
     description: z.string().min(1, "Description is required"),
-    price: z.number().min(0, "Price must be a positive number"),
+    price: z.coerce.number(),
     location: z.string().min(1, "Location is required"),
-    capacity: z.number().int().min(1, "Capacity must be at least 1"),
+    capacity: z.coerce.number().int().min(1, "Capacity must be at least 1"),
     type: z.enum(["workshop", "orientation"]),
 
     hasPriceVariations: z.boolean().optional().default(false),
@@ -14,10 +14,10 @@ export const workshopFormSchema = z
       .array(
         z.object({
           name: z.string().min(1, "Variation name is required"),
-          price: z.number().min(0, "Price must be a positive number"),
+          price: z.coerce.number().min(0, "Price must be a positive number"),
           description: z.string().min(1, "Description is required"),
           capacity: z
-            .number()
+            .coerce.number()
             .min(1, "Capacity is required and must be at least 1"),
         })
       )
@@ -85,24 +85,20 @@ export const workshopFormSchema = z
   )
   .refine(
     (data) => {
-      // Check for unique prices across base price and all variations
+      // Check for unique prices among variations only (base price is now disabled)
       if (
         data.hasPriceVariations &&
         data.priceVariations &&
         data.priceVariations.length > 0
       ) {
-        const allPrices = [
-          data.price,
-          ...data.priceVariations.map((v) => v.price),
-        ];
-        const uniquePrices = new Set(allPrices);
-        return allPrices.length === uniquePrices.size;
+        const variationPrices = data.priceVariations.map((v) => v.price);
+        const uniquePrices = new Set(variationPrices);
+        return variationPrices.length === uniquePrices.size;
       }
       return true;
     },
     {
-      message:
-        "All prices must be unique. The base price and variation prices cannot be the same.",
+      message: "All pricing option prices must be unique.",
       path: ["priceVariations"],
     }
   )
@@ -124,6 +120,42 @@ export const workshopFormSchema = z
     {
       message: "Variation capacities cannot exceed the total workshop capacity",
       path: ["priceVariations"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Check that the sum of all variation capacities doesn't exceed total workshop capacity
+      if (
+        data.hasPriceVariations &&
+        data.priceVariations &&
+        data.priceVariations.length > 0
+      ) {
+        const totalVariationCapacity = data.priceVariations.reduce(
+          (sum, variation) => sum + variation.capacity,
+          0
+        );
+        return totalVariationCapacity <= data.capacity;
+      }
+      return true;
+    },
+    {
+      message:
+        "The sum of all pricing option capacities cannot exceed the total workshop capacity",
+      path: ["priceVariations"],
+    }
+  )
+  .refine(
+    (data) => {
+      // Only validate positive price if price variations are NOT enabled
+      if (!data.hasPriceVariations) {
+        return data.price >= 0;
+      }
+      // If price variations are enabled, price can be -1 (ignored)
+      return true;
+    },
+    {
+      message: "Price must be a positive number",
+      path: ["price"],
     }
   );
 

@@ -42,13 +42,16 @@ model User {
   waiverSignature String?
 
   // Relationships
-  userWorkshops      UserWorkshop[]
-  equipmentbookings  EquipmentBooking[]
-  userMemberships    UserMembership[]
-  paymentInformation UserPaymentInformation?
-  issuesReported     Issue[]
-  volunteers         Volunteer[]
-  volunteerHours     VolunteerTimetable[]
+  userWorkshops          UserWorkshop[]
+  equipmentbookings      EquipmentBooking[]
+  userMemberships        UserMembership[]
+  userMembershipForms    UserMembershipForm[]
+  paymentInformation     UserPaymentInformation?
+  issuesReported         Issue[]
+  volunteers             Volunteer[]
+  volunteerHours         VolunteerTimetable[]
+  workshopCancellations  WorkshopCancelledRegistration[]
+  equipmentCancellations EquipmentCancelledBooking[]
 }
 
 model Volunteer {
@@ -129,9 +132,10 @@ model Workshop {
   registrationCutoff Int      @default(60) // Registration cut-off in minutes before the workshop starts
 
   // Relationships
-  occurrences       WorkshopOccurrence[] // Relationship to occurrences
-  userWorkshops     UserWorkshop[] // Many-to-many relationship with User
-  equipmentBookings EquipmentBooking[]
+  occurrences           WorkshopOccurrence[] // Relationship to occurrences
+  userWorkshops         UserWorkshop[] // Many-to-many relationship with User
+  equipmentBookings     EquipmentBooking[]
+  workshopCancellations WorkshopCancelledRegistration[]
 
   // Prerequisite relationships
   prerequisiteFor WorkshopPrerequisite[] @relation("PrerequisiteWorkshop")
@@ -143,20 +147,22 @@ model Workshop {
 }
 
 model WorkshopOccurrence {
-  id           Int       @id @default(autoincrement())
-  workshopId   Int
-  startDate    DateTime
-  endDate      DateTime
-  startDatePST DateTime?
-  endDatePST   DateTime?
-  status       String    @default("active") // "open", "closed", "cancelled"
-  connectId    Int? // For multi-day workshop tracking
-  offerId      Int       @default(1)
+  id            Int       @id @default(autoincrement())
+  workshopId    Int
+  startDate     DateTime
+  endDate       DateTime
+  startDatePST  DateTime?
+  endDatePST    DateTime?
+  status        String    @default("active") // "open", "closed", "cancelled"
+  connectId     Int? // For multi-day workshop tracking
+  offerId       Int       @default(1)
+  googleEventId String?
 
   // Relationships
-  workshop       Workshop        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  userWorkshops  UserWorkshop[]
-  equipmentSlots EquipmentSlot[] // This ensures each workshop occurrence can have multiple equipment slots.
+  workshop              Workshop                        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  userWorkshops         UserWorkshop[]
+  equipmentSlots        EquipmentSlot[] // This ensures each workshop occurrence can have multiple equipment slots.
+  workshopCancellations WorkshopCancelledRegistration[]
 
   @@unique([workshopId, id], name: "workshopOccurrence_workshop_id")
 }
@@ -173,7 +179,8 @@ model Equipment {
   slots        EquipmentSlot[]
   bookings     EquipmentBooking[]
 
-  prerequisites EquipmentPrerequisite[] @relation("EquipmentWithPrerequisite")
+  prerequisites EquipmentPrerequisite[]     @relation("EquipmentWithPrerequisite")
+  cancellations EquipmentCancelledBooking[]
 }
 
 model EquipmentSlot {
@@ -194,20 +201,22 @@ model EquipmentSlot {
 }
 
 model EquipmentBooking {
-  id          Int    @id @default(autoincrement())
-  userId      Int
-  equipmentId Int
-  slotId      Int
-  workshopId  Int?
-  status      String @default("pending")
-  bookedFor   String @default("user") // "user" or "workshop"
+  id              Int     @id @default(autoincrement())
+  userId          Int
+  equipmentId     Int
+  slotId          Int
+  workshopId      Int?
+  status          String  @default("pending")
+  bookedFor       String  @default("user") // "user" or "workshop"
+  paymentIntentId String? // Stripe Payment Intent ID
 
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking")
   workshop  Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
 
-  @@unique([slotId]) // Prevents double booking of slots
+  // Removed unique constraint to allow cancelled bookings + new bookings for same slot
+  // @@unique([slotId]) // Prevents double booking of slots
 }
 
 model UserWorkshop {
@@ -218,6 +227,7 @@ model UserWorkshop {
   priceVariationId Int?
   result           String   @default("passed")
   date             DateTime @default(now())
+  paymentIntentId  String? // Stripe Payment Intent ID
 
   user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   workshop   Workshop           @relation(fields: [workshopId], references: [id], onDelete: Cascade)
@@ -229,19 +239,77 @@ model UserWorkshop {
 }
 
 model WorkshopPriceVariation {
-  id          Int     @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   workshopId  Int
   name        String
   price       Float
   description String
   capacity    Int
-  status      String  @default("active") // "active", "cancelled"
+  status      String @default("active") // "active", "cancelled"
 
   // Relationships
-  workshop      Workshop       @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  userWorkshops UserWorkshop[] @relation("UserWorkshopPriceVariation")
+  workshop              Workshop                        @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  userWorkshops         UserWorkshop[]                  @relation("UserWorkshopPriceVariation")
+  workshopCancellations WorkshopCancelledRegistration[]
 
   @@unique([workshopId, name]) // Prevent duplicate variation names for same workshop
+}
+
+model WorkshopCancelledRegistration {
+  id                   Int      @id @default(autoincrement())
+  userId               Int
+  workshopId           Int
+  workshopOccurrenceId Int
+  priceVariationId     Int?
+  registrationDate     DateTime
+  cancellationDate     DateTime
+  paymentIntentId      String? // Stripe Payment Intent ID
+  resolved             Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relationships
+  user               User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workshop           Workshop                @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  workshopOccurrence WorkshopOccurrence      @relation(fields: [workshopOccurrenceId], references: [id], onDelete: Cascade)
+  priceVariation     WorkshopPriceVariation? @relation(fields: [priceVariationId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([workshopId])
+  @@index([resolved])
+  @@index([cancellationDate])
+}
+
+model EquipmentCancelledBooking {
+  id              Int     @id @default(autoincrement())
+  userId          Int
+  equipmentId     Int
+  paymentIntentId String? // The original Stripe payment intent for the entire booking
+
+  // Equipment booking details
+  totalSlotsBooked Int // Total number of slots in the original booking
+  slotsRefunded    Int // Number of slots being refunded in this cancellation
+  totalPricePaid   Float // Total amount paid for all slots (including tax)
+  priceToRefund    Float // Amount to refund for the cancelled slots
+
+  // Cancellation tracking
+  cancellationDate  DateTime @default(now())
+  eligibleForRefund Boolean // Calculated based on 2-day rule
+  resolved          Boolean  @default(false)
+
+  // Store the cancelled slot times as JSON for multiple bookings
+  cancelledSlotTimes Json // Array of { startTime: DateTime, endTime: DateTime, slotId: Int }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([equipmentId])
+  @@index([paymentIntentId])
 }
 
 model MembershipPlan {
@@ -258,7 +326,8 @@ model MembershipPlan {
 
   type String // "monthly", "one-time", "limited", "24/7"
 
-  userMemberships UserMembership[]
+  userMemberships     UserMembership[]
+  userMembershipForms UserMembershipForm[]
 }
 
 model UserMembership {
@@ -268,6 +337,20 @@ model UserMembership {
   date             DateTime @default(now())
   nextPaymentDate  DateTime
   status           String   @default("active") // "active", "cancelled"
+  paymentIntentId  String? // Stripe Payment Intent ID
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+}
+
+model UserMembershipForm {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  membershipPlanId   Int
+  agreementSignature String // Encrypted signature data
+  status             String   @default("pending") // "pending", "active", "inactive", "cancelled", "ending"
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)

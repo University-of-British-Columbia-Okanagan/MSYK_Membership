@@ -1,9 +1,9 @@
 import { Outlet, Link, redirect } from "react-router-dom";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
-import WorkshopList from "~/components/ui/Dashboard/Workshoplist";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import WorkshopList from "~/components/ui/Dashboard/workshoplist";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import {
   getWorkshops,
   deleteWorkshop,
@@ -234,7 +234,7 @@ export default function AdminDashboard() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isGuest ? (
           <GuestAppSidebar />
         ) : isAdmin ? (
@@ -243,9 +243,15 @@ export default function AdminDashboard() {
           <AppSidebar />
         )}
         <main className="flex-grow p-6">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Admin Dashboard</h1>
+          </div>
+
           <div className="flex justify-end mb-6 pr-4">
             <Link to="/dashboard/addworkshop">
-              <button className="flex items-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition">
+              <button className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition">
                 <FiPlus size={18} /> Add Workshop
               </button>
             </Link>

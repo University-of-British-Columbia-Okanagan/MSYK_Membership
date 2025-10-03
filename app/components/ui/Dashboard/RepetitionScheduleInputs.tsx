@@ -62,13 +62,13 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
 
   // Helper function to update date with time
   const updateDateTime = (
-    currentDate: string, 
-    field: "startDate" | "endDate", 
+    currentDate: string,
+    field: "startDate" | "endDate",
     newTime: string
   ) => {
     const [datePart] = currentDate.split('T');
     const newDateTime = `${datePart}T${newTime}`;
-    
+
     if (field === "startDate") {
       setStartDate(newDateTime);
     } else {
@@ -201,7 +201,7 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
       <Button
         type="button"
         onClick={handleAppendDates}
-        className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
+        className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md shadow transition text-sm"
       >
         {scheduleType === "weekly"
           ? "Append Weekly Dates"

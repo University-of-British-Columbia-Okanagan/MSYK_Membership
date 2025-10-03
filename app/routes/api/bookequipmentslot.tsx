@@ -1,12 +1,12 @@
 import { logger } from "~/logging/logger";
-import { bookEquipment } from "~/models/equipment.server";
+import { bookEquipment, bookEquipmentBulkByTimes } from "~/models/equipment.server";
 
 export async function action({ request }: { request: Request }) {
   try {
     const body = await request.json();
-    const { equipmentId, startTime, endTime } = body;
+    const { equipmentId, startTime, endTime, paymentIntentId, slots } = body;
 
-    if (!equipmentId || !startTime || !endTime) {
+    if (!equipmentId || (!slots && (!startTime || !endTime))) {
       return new Response(JSON.stringify({ error: "Missing required data" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -17,7 +17,22 @@ export async function action({ request }: { request: Request }) {
       url: request.url,
     });
 
-    await bookEquipment(request, equipmentId, startTime, endTime);
+    if (Array.isArray(slots) && slots.length > 0) {
+      await bookEquipmentBulkByTimes(
+        request,
+        equipmentId,
+        slots,
+        paymentIntentId
+      );
+    } else {
+      await bookEquipment(
+        request,
+        equipmentId,
+        startTime,
+        endTime,
+        paymentIntentId
+      );
+    }
 
     logger.info("Equipment booked successfully", {
       url: request.url,

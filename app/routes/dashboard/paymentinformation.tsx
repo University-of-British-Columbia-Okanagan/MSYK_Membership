@@ -6,8 +6,8 @@ import {
   Form,
 } from "react-router-dom";
 import type { ActionFunction, LoaderFunction } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import Sidebar from "../../components/ui/Dashboard/Sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { getUserId } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
 import { getSavedPaymentMethod } from "~/models/user.server";
@@ -199,11 +199,17 @@ export default function PaymentInformationPage() {
         <Sidebar />
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Payment Info</h1>
+            </div>
+
             {/* Header */}
             <div className="mb-8">
               <button
                 onClick={() => navigate(-1)}
-                className="inline-flex items-center text-sm text-yellow-600 mb-4 hover:text-yellow-700"
+                className="inline-flex items-center text-sm text-indigo-600 mb-4 hover:text-indigo-700"
               >
                 <svg
                   className="w-4 h-4 mr-1"
@@ -271,7 +277,7 @@ export default function PaymentInformationPage() {
                 <div className="p-6 border-b border-gray-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-yellow-500" />
+                      <CreditCard className="h-5 w-5 text-indigo-500" />
                       <h3 className="text-lg font-semibold text-gray-900">
                         Current Payment Method
                       </h3>
@@ -391,7 +397,7 @@ export default function PaymentInformationPage() {
               <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
                 <div className="p-6 border-b border-gray-200">
                   <div className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5 text-yellow-500" />
+                    <CreditCard className="h-5 w-5 text-indigo-500" />
                     <h3 className="text-lg font-semibold text-gray-900">
                       Card Information
                     </h3>
@@ -417,7 +423,7 @@ export default function PaymentInformationPage() {
                             className={`w-full px-3 py-2 border rounded-md ${
                               actionData?.errors?.cardholderName
                                 ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                             }`}
                             placeholder="Name as it appears on card"
                             defaultValue={
@@ -447,7 +453,7 @@ export default function PaymentInformationPage() {
                             className={`w-full px-3 py-2 border rounded-md ${
                               actionData?.errors?.email
                                 ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                             }`}
                             placeholder="you@example.com"
                             defaultValue={
@@ -476,7 +482,7 @@ export default function PaymentInformationPage() {
                               className={`w-full px-3 py-2 border rounded-md ${
                                 actionData?.errors?.cardNumber
                                   ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                  : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                               }`}
                               placeholder="1234 5678 9012 3456"
                               maxLength={19}
@@ -515,7 +521,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.expiry
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 defaultValue={
                                   actionData?.values?.expiryMonth ||
@@ -543,7 +549,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.expiry
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 defaultValue={
                                   actionData?.values?.expiryYear ||
@@ -592,7 +598,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.cvc
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 placeholder="123"
                                 maxLength={4}
@@ -614,7 +620,7 @@ export default function PaymentInformationPage() {
                       {/* Billing Address Section */}
                       <div className="md:col-span-2 pt-4 border-t border-gray-200">
                         <h4 className="text-base font-medium text-gray-900 mb-4 flex items-center">
-                          <MapPin className="h-4 w-4 text-yellow-500 mr-2" />
+                          <MapPin className="h-4 w-4 text-indigo-500 mr-2" />
                           Billing Address
                         </h4>
 
@@ -633,7 +639,7 @@ export default function PaymentInformationPage() {
                               className={`w-full px-3 py-2 border rounded-md ${
                                 actionData?.errors?.billingAddressLine1
                                   ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                  : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                               }`}
                               placeholder="Street address"
                               defaultValue={
@@ -661,7 +667,7 @@ export default function PaymentInformationPage() {
                               type="text"
                               id="billingAddressLine2"
                               name="billingAddressLine2"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                               placeholder="Apartment, suite, unit, etc."
                               defaultValue={
                                 actionData?.values?.billingAddressLine2 ||
@@ -686,7 +692,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.billingCity
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 defaultValue={
                                   actionData?.values?.billingCity ||
@@ -714,7 +720,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.billingState
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 defaultValue={
                                   actionData?.values?.billingState ||
@@ -745,7 +751,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.billingZip
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 defaultValue={
                                   actionData?.values?.billingZip ||
@@ -772,7 +778,7 @@ export default function PaymentInformationPage() {
                                 className={`w-full px-3 py-2 border rounded-md ${
                                   actionData?.errors?.billingCountry
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-yellow-500 focus:border-yellow-500"
+                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 defaultValue={
                                   actionData?.values?.billingCountry ||
@@ -808,13 +814,13 @@ export default function PaymentInformationPage() {
                       <button
                         type="button"
                         onClick={() => navigate("/dashboard/profile")}
-                        className="mr-4 bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                        className="mr-4 bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="bg-yellow-500 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                        className="bg-indigo-500 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                       >
                         Save Payment Method
                       </button>
@@ -828,7 +834,7 @@ export default function PaymentInformationPage() {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center gap-2">
-                  <Lock className="h-5 w-5 text-yellow-500" />
+                  <Lock className="h-5 w-5 text-indigo-500" />
                   <h3 className="text-lg font-semibold text-gray-900">
                     Secure Payment Processing
                   </h3>

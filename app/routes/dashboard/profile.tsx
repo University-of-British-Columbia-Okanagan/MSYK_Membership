@@ -9,8 +9,8 @@ import {
   checkVolunteerHourOverlap,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
-import Sidebar from "../../components/ui/Dashboard/Sidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import Sidebar from "../../components/ui/Dashboard/sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
 import {
   CreditCard,
@@ -32,9 +32,10 @@ import {
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
+import { getUserCompletedOrientations } from "~/models/workshop.server";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   const user = await getProfileDetails(request);
@@ -43,6 +44,7 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   // Check if user is an active volunteer and get their hours
   let isActiveVolunteer = false;
   let volunteerHours: VolunteerHourEntry[] = [];
+  let completedOrientations: any[] = [];
 
   if (roleUser?.userId) {
     isActiveVolunteer = await checkActiveVolunteerStatus(roleUser.userId);
@@ -50,9 +52,18 @@ export async function loader({ request }: Parameters<LoaderFunction>[0]) {
     if (isActiveVolunteer) {
       volunteerHours = await getVolunteerHours(roleUser.userId, 10);
     }
+
+    // Get user's completed orientations
+    completedOrientations = await getUserCompletedOrientations(roleUser.userId);
   }
 
-  return { user, roleUser, isActiveVolunteer, volunteerHours };
+  return {
+    user,
+    roleUser,
+    isActiveVolunteer,
+    volunteerHours,
+    completedOrientations,
+  };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -144,11 +155,18 @@ export async function action({ request }: { request: Request }) {
 }
 
 export default function ProfilePage() {
-  const { user, roleUser, isActiveVolunteer, volunteerHours } = useLoaderData<{
+  const {
+    user,
+    roleUser,
+    isActiveVolunteer,
+    volunteerHours,
+    completedOrientations,
+  } = useLoaderData<{
     user: UserProfileData;
     roleUser: { roleId: number; roleName: string; userId: number };
     isActiveVolunteer: boolean;
     volunteerHours: VolunteerHourEntry[];
+    completedOrientations: any[];
   }>();
 
   const actionData = useActionData<{
@@ -362,7 +380,7 @@ export default function ProfilePage() {
                   ? "bg-red-100 text-red-800"
                   : entry.status === "resolved"
                     ? "bg-purple-100 text-purple-800"
-                    : "bg-yellow-100 text-yellow-800"
+                    : "bg-indigo-100 text-indigo-800"
             }`}
           >
             {entry.status.charAt(0).toUpperCase() + entry.status.slice(1)}
@@ -474,12 +492,18 @@ export default function ProfilePage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-gray-100">
+      <div className="absolute inset-0 flex bg-gray-100">
         {renderSidebar()}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Profile</h1>
+            </div>
+
             {/* Header */}
-            <div className="mb-8">
+            <div className="mb-8 hidden md:block">
               <h1 className="text-3xl font-bold text-gray-900">My Profile</h1>
               <p className="text-gray-600">
                 Manage your account details and preferences
@@ -488,7 +512,7 @@ export default function ProfilePage() {
 
             {/* Profile Card */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-              <div className="p-6 sm:p-8 bg-gradient-to-r from-yellow-500 to-yellow-600">
+              <div className="p-6 sm:p-8 bg-gradient-to-r from-indigo-500 to-indigo-600">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
                   <div className="relative">
                     <img
@@ -507,8 +531,8 @@ export default function ProfilePage() {
                     <h2 className="text-2xl sm:text-3xl font-bold">
                       {user.name}
                     </h2>
-                    <p className="text-yellow-100 mb-2">{user.email}</p>
-                    <div className="inline-block bg-yellow-700 bg-opacity-30 px-3 py-1 rounded-full text-sm text-yellow-50">
+                    <p className="text-indigo-100 mb-2">{user.email}</p>
+                    <div className="inline-block bg-indigo-700 bg-opacity-30 px-3 py-1 rounded-full text-sm text-indigo-50">
                       {user.membershipTitle !== "None"
                         ? user.membershipTitle
                         : "Free Account"}
@@ -522,7 +546,7 @@ export default function ProfilePage() {
                   {/* Membership Section */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      <Medal className="h-5 w-5 text-yellow-500" />
+                      <Medal className="h-5 w-5 text-indigo-500" />
                       <h3 className="text-lg font-semibold text-gray-900">
                         Membership Details
                       </h3>
@@ -554,7 +578,7 @@ export default function ProfilePage() {
                   {/* Payment Information */}
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5 text-yellow-500" />
+                      <CreditCard className="h-5 w-5 text-indigo-500" />
                       <h3 className="text-lg font-semibold text-gray-900">
                         Payment Information
                       </h3>
@@ -600,7 +624,7 @@ export default function ProfilePage() {
                       <div className="pt-2">
                         <a
                           href="/user/profile/paymentinformation"
-                          className="block w-full bg-yellow-500 hover:bg-yellow-600 text-white text-center py-2 px-4 rounded-md transition duration-200 font-medium"
+                          className="block w-full bg-indigo-500 hover:bg-indigo-600 text-white text-center py-2 px-4 rounded-md transition duration-200 font-medium"
                         >
                           {user.cardLast4 !== "N/A"
                             ? "Update Payment Method"
@@ -615,7 +639,7 @@ export default function ProfilePage() {
             <div>
               <div className="p-6 sm:p-8 border-t border-gray-200">
                 <div className="flex items-center gap-2 mb-4">
-                  <FileText className="h-5 w-5 text-yellow-500" />
+                  <FileText className="h-5 w-5 text-indigo-500" />
                   <h3 className="text-lg font-semibold text-gray-900">
                     Documents
                   </h3>
@@ -636,7 +660,7 @@ export default function ProfilePage() {
                       !user.waiverSignature.includes("Placeholder") ? (
                         <a
                           href="/dashboard/profile/download-waiver"
-                          className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                          className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
                         >
                           <Download className="h-4 w-4" />
                           Download
@@ -649,6 +673,48 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Membership Agreement Documents */}
+                {user.userMembershipForms &&
+                  user.userMembershipForms.length > 0 && (
+                    <>
+                      {user.userMembershipForms
+                        .filter(
+                          (form: any) =>
+                            form.status !== "inactive" &&
+                            form.agreementSignature
+                        )
+                        .map((form: any, index: number) => (
+                          <div
+                            key={form.id}
+                            className="bg-gray-50 rounded-lg p-4 mt-4"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div>
+                                <span className="font-medium text-gray-900">
+                                  Membership Agreement
+                                  {form.membershipPlan?.needAdminPermission
+                                    ? " (24/7)"
+                                    : ""}
+                                </span>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Your signed membership agreement document
+                                </p>
+                              </div>
+                              <div>
+                                <a
+                                  href={`/dashboard/profile/download-membership-agreement/${form.id}`}
+                                  className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition-colors text-decoration-none"
+                                >
+                                  <Download className="h-4 w-4" />
+                                  Download
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </>
+                  )}
               </div>
             </div>
 
@@ -666,6 +732,174 @@ export default function ProfilePage() {
                     No recent activity to display
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Orientation History */}
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Medal className="h-5 w-5 text-green-500" />
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Orientation History
+                  </h3>
+                </div>
+              </div>
+              <div className="p-6">
+                {completedOrientations.length > 0 ? (
+                  <div className="space-y-4">
+                    {completedOrientations.map((orientation, index) => {
+                      // Check if this is a multi-day orientation by grouping by workshop
+                      const workshopGroup = completedOrientations.filter(
+                        (item) => item.workshop.id === orientation.workshop.id
+                      );
+
+                      // Only render the first occurrence of each workshop
+                      const isFirstOccurrence =
+                        completedOrientations.findIndex(
+                          (item) => item.workshop.id === orientation.workshop.id
+                        ) === index;
+
+                      if (!isFirstOccurrence) return null;
+
+                      return (
+                        <div
+                          key={orientation.workshop.id}
+                          className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900 mb-1">
+                                {orientation.workshop.name}
+                              </h4>
+                              {orientation.workshop.description && (
+                                <p className="text-sm text-gray-600 mb-2">
+                                  {orientation.workshop.description}
+                                </p>
+                              )}
+
+                              {/* Price Variation Display */}
+                              <div className="flex flex-wrap items-center gap-4 text-sm">
+                                <span className="text-green-600 font-medium">
+                                  ✓ Completed
+                                </span>
+
+                                {orientation.priceVariation ? (
+                                  <span className="text-blue-600">
+                                    Variation: {orientation.priceVariation.name}{" "}
+                                    - CA$
+                                    {orientation.priceVariation.price.toFixed(
+                                      2
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="text-blue-600">
+                                    No variation - CA$
+                                    {orientation.workshop.price.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Date(s) Display */}
+                            <div className="text-right">
+                              {workshopGroup.length > 1 ? (
+                                <div className="text-sm text-gray-600">
+                                  <p className="font-medium">
+                                    Multi-day training/orientation:
+                                  </p>
+                                  {workshopGroup
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(
+                                          a.occurrence.startDate
+                                        ).getTime() -
+                                        new Date(
+                                          b.occurrence.startDate
+                                        ).getTime()
+                                    )
+                                    .map((item, idx) => (
+                                      <p key={idx}>
+                                        {new Date(
+                                          item.occurrence.startDate
+                                        ).toLocaleDateString("en-CA", {
+                                          year: "numeric",
+                                          month: "short",
+                                          day: "numeric",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                        {item.occurrence.startDate !==
+                                          item.occurrence.endDate && (
+                                          <span className="text-gray-500">
+                                            {" - "}
+                                            {new Date(
+                                              item.occurrence.endDate
+                                            ).toLocaleDateString("en-CA", {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        )}
+                                      </p>
+                                    ))}
+                                </div>
+                              ) : (
+                                <div className="text-sm text-gray-600">
+                                  <p>
+                                    {new Date(
+                                      orientation.occurrence.startDate
+                                    ).toLocaleDateString("en-CA", {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </p>
+                                  {orientation.occurrence.startDate !==
+                                    orientation.occurrence.endDate && (
+                                    <p className="text-gray-500">
+                                      to{" "}
+                                      {new Date(
+                                        orientation.occurrence.endDate
+                                      ).toLocaleDateString("en-CA", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              <p className="text-xs text-gray-500 mt-1">
+                                Registered:{" "}
+                                {new Date(orientation.date).toLocaleDateString(
+                                  "en-CA"
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="bg-gray-50 rounded-lg p-6 border-2 border-dashed border-gray-300">
+                      <Medal className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h4 className="text-lg font-medium text-gray-900 mb-2">
+                        No Training History
+                      </h4>
+                      <p className="text-gray-600 mb-4">
+                        Complete orientations to see your training history here.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

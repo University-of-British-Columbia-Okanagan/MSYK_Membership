@@ -6,8 +6,8 @@ import {
   redirect,
   useSubmit,
 } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import {
   Card,
   CardContent,
@@ -34,8 +34,15 @@ import {
 import {
   getLevel3ScheduleRestrictions,
   getLevel4UnavailableHours,
+  getAllEquipmentCancellations,
+  updateEquipmentCancellationResolved,
 } from "~/models/equipment.server";
-import { getWorkshops } from "~/models/workshop.server";
+import {
+  getWorkshops,
+  getAllWorkshopCancellations,
+  updateWorkshopCancellationResolved,
+  getWorkshopOccurrencesByConnectId,
+} from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import {
   Table,
@@ -54,6 +61,8 @@ import {
   updateUserAllowLevel,
   getAllUsersWithVolunteerStatus,
   updateUserVolunteerStatus,
+  makeUserAdmin,
+  removeUserAdmin,
 } from "~/models/user.server";
 import {
   ShadTable,
@@ -72,10 +81,20 @@ import {
 } from "@/components/ui/alert-dialog";
 import { logger } from "~/logging/logger";
 import {
+  listCalendars,
+  isGoogleConnected,
+} from "~/utils/googleCalendar.server";
+import {
   getAllVolunteerHours,
   updateVolunteerHourStatus,
   getRecentVolunteerHourActions,
 } from "~/models/profile.server";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -128,6 +147,43 @@ export async function loader({ request }: { request: Request }) {
   const allVolunteerHours = await getAllVolunteerHours();
   const recentVolunteerActions = await getRecentVolunteerHourActions(50);
 
+  const workshopCancellations = await getAllWorkshopCancellations();
+  const enhancedWorkshopCancellations = await Promise.all(
+    workshopCancellations.map(async (cancellation) => {
+      if (cancellation.workshopOccurrence.connectId) {
+        // This is a multi-day workshop, fetch all occurrences
+        const allOccurrences = await getWorkshopOccurrencesByConnectId(
+          cancellation.workshopId,
+          cancellation.workshopOccurrence.connectId
+        );
+        return {
+          ...cancellation,
+          allOccurrences,
+        };
+      }
+      return cancellation;
+    })
+  );
+
+  const equipmentCancellations = await getAllEquipmentCancellations();
+
+  // Google Calendar config for integrations tab
+  const googleConnected = await isGoogleConnected();
+  const googleCalendarId = await getAdminSetting("google_calendar_id", "");
+  const googleTimezone = await getAdminSetting(
+    "google_calendar_timezone",
+    "America/Yellowknife"
+  );
+  let googleCalendars: Array<{ id: string; summary: string }> = [];
+  if (googleConnected) {
+    try {
+      const cals = await listCalendars();
+      googleCalendars = cals.map((c) => ({ id: c.id, summary: c.summary }));
+    } catch (e) {
+      logger.error(`Failed to list Google calendars: ${String(e)}`);
+    }
+  }
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -157,6 +213,14 @@ export async function loader({ request }: { request: Request }) {
     users,
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
+    workshopCancellations: enhancedWorkshopCancellations,
+    equipmentCancellations,
+    google: {
+      connected: googleConnected,
+      selectedCalendarId: googleCalendarId,
+      timezone: googleTimezone,
+      calendars: googleCalendars,
+    },
   };
 }
 
@@ -276,6 +340,26 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: "Failed to update settings",
+      };
+    }
+  }
+
+  if (actionType === "googleCalendarSave") {
+    const selectedId = formData.get("googleCalendarId");
+    const tz = formData.get("googleTimezone") || "America/Yellowknife";
+    try {
+      if (selectedId) {
+        await updateAdminSetting("google_calendar_id", String(selectedId));
+      }
+      await updateAdminSetting("google_calendar_timezone", String(tz));
+      return { success: true, message: "Google Calendar settings saved" };
+    } catch (error) {
+      logger.error(`Error saving Google Calendar settings: ${error}`, {
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to save Google Calendar settings",
       };
     }
   }
@@ -433,6 +517,44 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "updateAdminStatus") {
+    const userId = formData.get("userId");
+    const makeAdmin = formData.get("makeAdmin");
+    try {
+      if (makeAdmin === "true") {
+        await makeUserAdmin(Number(userId));
+        logger.info(
+          `[User: ${roleUser.userId}] Granted admin status to user ${userId}`,
+          {
+            url: request.url,
+          }
+        );
+      } else {
+        await removeUserAdmin(Number(userId), roleUser.userId);
+        logger.info(
+          `[User: ${roleUser.userId}] Removed admin status from user ${userId}`,
+          {
+            url: request.url,
+          }
+        );
+      }
+
+      return {
+        success: true,
+        message: "Admin status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating admin status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update admin status",
+      };
+    }
+  }
+
   if (actionType === "updateVolunteerHourStatus") {
     const hourId = formData.get("hourId");
     const newStatus = formData.get("newStatus");
@@ -458,6 +580,54 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: "Failed to update volunteer hour status",
+      };
+    }
+  }
+
+  if (actionType === "updateWorkshopCancellationResolved") {
+    const cancellationId = formData.get("cancellationId");
+    const resolved = formData.get("resolved");
+    try {
+      await updateWorkshopCancellationResolved(
+        Number(cancellationId),
+        resolved === "true"
+      );
+
+      logger.info(
+        `[User: ${roleUser.userId}] Updated workshop cancellation resolved status for cancellation ${cancellationId} to ${resolved}`,
+        {
+          url: request.url,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Workshop cancellation status updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating workshop cancellation status: ${error}`, {
+        userId: roleUser.userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to update workshop cancellation status",
+      };
+    }
+  }
+
+  if (actionType === "updateEquipmentCancellationResolved") {
+    const cancellationId = Number(formData.get("cancellationId"));
+    const resolved = formData.get("resolved") === "true";
+
+    try {
+      await updateEquipmentCancellationResolved(cancellationId, resolved);
+      return redirect("/dashboard/admin/settings?tab=cancelledEvents");
+    } catch (error) {
+      return {
+        errors: {
+          message: "Failed to update cancellation status",
+        },
       };
     }
   }
@@ -520,6 +690,52 @@ function RoleControl({
   );
 }
 
+/**
+ * AdminControl component:
+ * - Displays the user's current admin status.
+ * - Shows "Make Admin" button if user is not admin.
+ * - Shows "Remove Admin" button if user is admin.
+ * Uses ConfirmButton with POST to updateAdminStatus.
+ */
+function AdminControl({
+  user,
+}: {
+  user: { id: number; roleUser: { name: string } };
+}) {
+  const isAdmin = user.roleUser.name === "Admin";
+  const submit = useSubmit();
+
+  const updateAdminStatus = (makeAdmin: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateAdminStatus");
+    formData.append("userId", user.id.toString());
+    formData.append("makeAdmin", makeAdmin.toString());
+    submit(formData, { method: "post" });
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {isAdmin ? (
+        <ConfirmButton
+          confirmTitle="Confirm Remove Admin"
+          confirmDescription="Are you sure you want to remove admin privileges from this user?"
+          onConfirm={() => updateAdminStatus(false)}
+          buttonLabel="Remove Admin"
+          buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+        />
+      ) : (
+        <ConfirmButton
+          confirmTitle="Confirm Make Admin"
+          confirmDescription="Are you sure you want to grant admin privileges to this user? They will have full administrative access."
+          onConfirm={() => updateAdminStatus(true)}
+          buttonLabel="Make Admin"
+          buttonClassName="bg-green-500 hover:bg-green-600 text-white"
+        />
+      )}
+    </div>
+  );
+}
+
 // For volunteer control, this component allows toggling volunteer status
 function VolunteerControl({
   user,
@@ -569,7 +785,7 @@ function VolunteerControl({
         type="checkbox"
         checked={isVolunteer}
         onChange={(e) => handleCheckboxChange(e.target.checked)}
-        className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+        className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500"
         id={`volunteer-${user.id}`}
       />
       <label
@@ -681,7 +897,7 @@ function Pagination({
               onClick={() => onPageChange(page as number)}
               className={`px-3 py-1 ${
                 currentPage === page
-                  ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+                  ? "bg-indigo-500 hover:bg-indigo-600 text-white"
                   : ""
               }`}
             >
@@ -703,6 +919,70 @@ function Pagination({
     </div>
   );
 }
+
+const WorkshopCancellationsPagination = ({
+  currentPage,
+  totalPages,
+  setCurrentPage,
+}: {
+  currentPage: number;
+  totalPages: number;
+  setCurrentPage: (page: number) => void;
+}) => {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <div className="text-sm text-gray-500">
+        Page {currentPage} of {totalPages}
+      </div>
+      <div className="flex items-center space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+        >
+          Previous
+        </Button>
+
+        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+          let pageNumber;
+          if (totalPages <= 5) {
+            pageNumber = i + 1;
+          } else if (currentPage <= 3) {
+            pageNumber = i + 1;
+          } else if (currentPage >= totalPages - 2) {
+            pageNumber = totalPages - 4 + i;
+          } else {
+            pageNumber = currentPage - 2 + i;
+          }
+
+          return (
+            <Button
+              key={pageNumber}
+              variant={currentPage === pageNumber ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCurrentPage(pageNumber)}
+              className="w-8 h-8"
+            >
+              {pageNumber}
+            </Button>
+          );
+        })}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+};
 
 // For volunteer hour status control, this component allows changing the status of volunteer hours
 function VolunteerHourStatusControl({
@@ -758,7 +1038,7 @@ function VolunteerHourStatusControl({
       case "resolved":
         return "bg-purple-100 text-purple-800";
       default:
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-indigo-100 text-indigo-800";
     }
   };
 
@@ -794,7 +1074,7 @@ function VolunteerHourStatusControl({
       case "resolved":
         return "bg-purple-600 hover:bg-purple-700";
       case "pending":
-        return "bg-yellow-600 hover:bg-yellow-700";
+        return "bg-indigo-600 hover:bg-indigo-700";
       default:
         return "bg-blue-600 hover:bg-blue-700";
     }
@@ -844,87 +1124,359 @@ function VolunteerHourStatusControl({
   );
 }
 
+function WorkshopCancellationResolvedControl({
+  cancellation,
+}: {
+  cancellation: {
+    id: number;
+    resolved: boolean;
+    user: {
+      firstName: string;
+      lastName: string;
+    };
+  };
+}) {
+  const [resolved, setResolved] = useState<boolean>(cancellation.resolved);
+  const [showConfirmDialog, setShowConfirmDialog] = useState<boolean>(false);
+  const [pendingStatus, setPendingStatus] = useState<boolean>(false);
+  const submit = useSubmit();
+
+  // Update local state when the actual data changes
+  React.useEffect(() => {
+    setResolved(cancellation.resolved);
+  }, [cancellation.resolved, cancellation.id]);
+
+  const updateResolvedStatus = (newStatus: boolean) => {
+    const formData = new FormData();
+    formData.append("actionType", "updateWorkshopCancellationResolved");
+    formData.append("cancellationId", cancellation.id.toString());
+    formData.append("resolved", newStatus.toString());
+    submit(formData, { method: "post" });
+    setResolved(newStatus);
+    setShowConfirmDialog(false);
+  };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setPendingStatus(checked);
+    setShowConfirmDialog(true);
+  };
+
+  return (
+    <div className="flex items-center">
+      <input
+        type="checkbox"
+        checked={resolved}
+        onChange={(e) => handleCheckboxChange(e.target.checked)}
+        className="h-4 w-4 rounded border-gray-300 text-green-500 focus:ring-green-500"
+        id={`resolved-${cancellation.id}`}
+      />
+      <label
+        htmlFor={`resolved-${cancellation.id}`}
+        className="ml-2 text-sm text-gray-600"
+      >
+        Resolved
+      </label>
+
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingStatus ? "Mark as Resolved" : "Mark as Unresolved"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatus
+                ? "Are you sure you want to mark this workshop cancellation as resolved? This indicates the user's situation has been dealt with."
+                : "Are you sure you want to mark this workshop cancellation as unresolved? This indicates the user's situation still needs attention."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowConfirmDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => updateResolvedStatus(pendingStatus)}
+            >
+              {pendingStatus ? "Mark Resolved" : "Mark Unresolved"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+const EquipmentCancellationsPagination = ({
+  currentPage,
+  totalPages,
+  setCurrentPage,
+}: {
+  currentPage: number;
+  totalPages: number;
+  setCurrentPage: (page: number) => void;
+}) => {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <div className="text-sm text-gray-500">
+        Page {currentPage} of {totalPages}
+      </div>
+      <div className="flex items-center space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+        >
+          Previous
+        </Button>
+
+        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+          let pageNumber;
+          if (totalPages <= 5) {
+            pageNumber = i + 1;
+          } else if (currentPage <= 3) {
+            pageNumber = i + 1;
+          } else if (currentPage >= totalPages - 2) {
+            pageNumber = totalPages - 4 + i;
+          } else {
+            pageNumber = currentPage - 2 + i;
+          }
+
+          return (
+            <Button
+              key={pageNumber}
+              variant={currentPage === pageNumber ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCurrentPage(pageNumber)}
+              className="w-8 h-8"
+            >
+              {pageNumber}
+            </Button>
+          );
+        })}
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+function EquipmentCancellationResolvedControl({
+  cancellation,
+}: {
+  cancellation: any;
+}) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const submit = useSubmit();
+
+  const handleResolvedToggle = () => {
+    const formData = new FormData();
+    formData.append("actionType", "updateEquipmentCancellationResolved");
+    formData.append("cancellationId", cancellation.id.toString());
+    formData.append("resolved", (!cancellation.resolved).toString());
+
+    submit(formData, { method: "post" });
+    setIsDialogOpen(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          checked={cancellation.resolved}
+          onChange={() => setIsDialogOpen(true)}
+          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+        />
+        <span className="ml-2 text-sm">Resolved</span>
+      </div>
+
+      <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {cancellation.resolved
+                ? "Mark as Unresolved"
+                : "Mark as Resolved"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancellation.resolved
+                ? "Are you sure you want to mark this equipment cancellation as unresolved? This will move it back to the unresolved list."
+                : "Are you sure you want to mark this equipment cancellation as resolved? This indicates that any necessary refunds or actions have been completed."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResolvedToggle}>
+              {cancellation.resolved ? "Mark Unresolved" : "Mark Resolved"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
 export default function AdminSettings() {
-  const { settings, workshops, users, volunteerHours, recentVolunteerActions } =
-    useLoaderData<{
-      settings: {
-        workshopVisibilityDays: number;
-        pastWorkshopVisibility: number;
-        equipmentVisibilityDays: number;
-        level3Schedule: {
-          [day: string]: { start: number; end: number; closed?: boolean };
-        };
-        level4UnavailableHours: {
-          start: number;
-          end: number;
-        };
-        plannedClosures: Array<{
-          id: number;
-          startDate: string;
-          endDate: string;
-        }>;
-        maxEquipmentSlotsPerDay: number;
-        maxEquipmentSlotsPerWeek: number;
-        gstPercentage: number;
+  const {
+    settings,
+    workshops,
+    users,
+    volunteerHours,
+    recentVolunteerActions,
+    workshopCancellations,
+    equipmentCancellations,
+  } = useLoaderData<{
+    settings: {
+      workshopVisibilityDays: number;
+      pastWorkshopVisibility: number;
+      equipmentVisibilityDays: number;
+      level3Schedule: {
+        [day: string]: { start: number; end: number; closed?: boolean };
       };
-      workshops: Array<{
+      level4UnavailableHours: {
+        start: number;
+        end: number;
+      };
+      plannedClosures: Array<{
         id: number;
-        name: string;
-        price: number;
-        registrationCutoff: number;
-        hasActiveOccurrences: boolean;
+        startDate: string;
+        endDate: string;
       }>;
-      users: Array<{
+      maxEquipmentSlotsPerDay: number;
+      maxEquipmentSlotsPerWeek: number;
+      gstPercentage: number;
+    };
+    workshops: Array<{
+      id: number;
+      name: string;
+      price: number;
+      registrationCutoff: number;
+      hasActiveOccurrences: boolean;
+    }>;
+    users: Array<{
+      id: number;
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      trainingCardUserNumber: string;
+      roleLevel: number;
+      allowLevel4: boolean;
+      roleUser: { name: string };
+      isVolunteer: boolean;
+      volunteerSince: Date | null;
+      volunteerHistory?: Array<{
         id: number;
+        volunteerStart: Date;
+        volunteerEnd: Date | null;
+      }>;
+    }>;
+    volunteerHours: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      isResubmission: boolean;
+      createdAt: string;
+      updatedAt: string;
+      user: {
         firstName: string;
         lastName: string;
         email: string;
-        phone: string;
-        trainingCardUserNumber: string;
-        roleLevel: number;
-        allowLevel4: boolean;
-        isVolunteer: boolean;
-        volunteerSince: Date | null;
-        volunteerHistory?: Array<{
-          id: number;
-          volunteerStart: Date;
-          volunteerEnd: Date | null;
-        }>;
-      }>;
-      volunteerHours: Array<{
+      };
+    }>;
+    recentVolunteerActions: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string | null;
+      status: string;
+      previousStatus: string | null;
+      isResubmission: boolean;
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+    }>;
+    workshopCancellations: Array<{
+      id: number;
+      userId: number;
+      workshopId: number;
+      workshopOccurrenceId: number;
+      registrationDate: string;
+      cancellationDate: string;
+      resolved: boolean;
+      createdAt: string;
+      updatedAt: string;
+      stripePaymentIntentId: string | null;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+      workshop: {
         id: number;
-        userId: number;
+        name: string;
+        type: string;
+      };
+      workshopOccurrence: {
+        id: number;
+        startDate: string;
+        endDate: string;
+        connectId: number | null;
+      };
+      priceVariation: {
+        id: number;
+        name: string;
+        price: number;
+      } | null;
+      allOccurrences?: Array<any>;
+    }>;
+    equipmentCancellations: Array<{
+      id: number;
+      userId: number;
+      equipmentId: number;
+      paymentIntentId: string | null;
+      totalSlotsBooked: number;
+      slotsRefunded: number;
+      totalPricePaid: number;
+      priceToRefund: number;
+      cancellationDate: string;
+      eligibleForRefund: boolean;
+      resolved: boolean;
+      cancelledSlotTimes: Array<{
         startTime: string;
         endTime: string;
-        description: string | null;
-        status: string;
-        isResubmission: boolean;
-        createdAt: string;
-        updatedAt: string;
-        user: {
-          firstName: string;
-          lastName: string;
-          email: string;
-        };
+        slotId: number;
       }>;
-      recentVolunteerActions: Array<{
+      createdAt: string;
+      updatedAt: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+      equipment: {
         id: number;
-        userId: number;
-        startTime: string;
-        endTime: string;
-        description: string | null;
-        status: string;
-        previousStatus: string | null;
-        isResubmission: boolean;
-        createdAt: string;
-        updatedAt: string;
-        user: {
-          firstName: string;
-          lastName: string;
-          email: string;
-        };
-      }>;
-    }>();
+        name: string;
+        price: number;
+      };
+    }>;
+  }>();
 
   const actionData = useActionData<{
     success?: boolean;
@@ -1015,6 +1567,83 @@ export default function AdminSettings() {
   const [volunteerHoursPerPage] = useState(10);
   const [actionsCurrentPage, setActionsCurrentPage] = useState(1);
   const [actionsPerPage] = useState(10);
+
+  // Workshop cancellations
+  const [unresolvedCurrentPage, setUnresolvedCurrentPage] = useState(1);
+  const [resolvedCurrentPage, setResolvedCurrentPage] = useState(1);
+  const [workshopCancellationsPerPage] = useState(10);
+
+  // Equipment cancellations pagination
+  const [equipmentUnresolvedCurrentPage, setEquipmentUnresolvedCurrentPage] =
+    useState(1);
+  const [equipmentResolvedCurrentPage, setEquipmentResolvedCurrentPage] =
+    useState(1);
+  const [equipmentCancellationsPerPage] = useState(10);
+
+  // Unresolved and resolved workshop cancellations
+  const unresolvedCancellations = workshopCancellations.filter(
+    (cancellation: any) => !cancellation.resolved
+  );
+  const resolvedCancellations = workshopCancellations.filter(
+    (cancellation: any) => cancellation.resolved
+  );
+
+  const unresolvedTotalPages = Math.ceil(
+    unresolvedCancellations.length / workshopCancellationsPerPage
+  );
+  const unresolvedStartIndex =
+    (unresolvedCurrentPage - 1) * workshopCancellationsPerPage;
+  const unresolvedEndIndex =
+    unresolvedStartIndex + workshopCancellationsPerPage;
+  const paginatedUnresolvedCancellations = unresolvedCancellations.slice(
+    unresolvedStartIndex,
+    unresolvedEndIndex
+  );
+
+  const resolvedTotalPages = Math.ceil(
+    resolvedCancellations.length / workshopCancellationsPerPage
+  );
+  const resolvedStartIndex =
+    (resolvedCurrentPage - 1) * workshopCancellationsPerPage;
+  const resolvedEndIndex = resolvedStartIndex + workshopCancellationsPerPage;
+  const paginatedResolvedCancellations = resolvedCancellations.slice(
+    resolvedStartIndex,
+    resolvedEndIndex
+  );
+
+  // Equipment cancellations pagination logic
+  const equipmentUnresolvedCancellations = equipmentCancellations.filter(
+    (cancellation: any) => !cancellation.resolved
+  );
+  const equipmentResolvedCancellations = equipmentCancellations.filter(
+    (cancellation: any) => cancellation.resolved
+  );
+
+  const equipmentUnresolvedTotalPages = Math.ceil(
+    equipmentUnresolvedCancellations.length / equipmentCancellationsPerPage
+  );
+  const equipmentUnresolvedStartIndex =
+    (equipmentUnresolvedCurrentPage - 1) * equipmentCancellationsPerPage;
+  const equipmentUnresolvedEndIndex =
+    equipmentUnresolvedStartIndex + equipmentCancellationsPerPage;
+  const paginatedEquipmentUnresolvedCancellations =
+    equipmentUnresolvedCancellations.slice(
+      equipmentUnresolvedStartIndex,
+      equipmentUnresolvedEndIndex
+    );
+
+  const equipmentResolvedTotalPages = Math.ceil(
+    equipmentResolvedCancellations.length / equipmentCancellationsPerPage
+  );
+  const equipmentResolvedStartIndex =
+    (equipmentResolvedCurrentPage - 1) * equipmentCancellationsPerPage;
+  const equipmentResolvedEndIndex =
+    equipmentResolvedStartIndex + equipmentCancellationsPerPage;
+  const paginatedEquipmentResolvedCancellations =
+    equipmentResolvedCancellations.slice(
+      equipmentResolvedStartIndex,
+      equipmentResolvedEndIndex
+    );
 
   // Recent actions filters state
   const [actionsSearchName, setActionsSearchName] = useState("");
@@ -1279,6 +1908,24 @@ export default function AdminSettings() {
     appliedActionsToTime,
   ]);
 
+  // Reset workshop cancellations pagination when data changes
+  React.useEffect(() => {
+    setUnresolvedCurrentPage(1);
+  }, [workshopCancellations]);
+
+  React.useEffect(() => {
+    setResolvedCurrentPage(1);
+  }, [workshopCancellations]);
+
+  // Reset equipment cancellations pagination when data changes
+  React.useEffect(() => {
+    setEquipmentUnresolvedCurrentPage(1);
+  }, [equipmentCancellations]);
+
+  React.useEffect(() => {
+    setEquipmentResolvedCurrentPage(1);
+  }, [equipmentCancellations]);
+
   // Helper function to calculate total hours from volunteer hour entries
   const calculateTotalHours = (hours: any[]) => {
     return hours.reduce((total, entry) => {
@@ -1361,6 +2008,7 @@ export default function AdminSettings() {
       render: (user) => user.trainingCardUserNumber,
     },
     { header: "Role Level", render: (user) => <RoleControl user={user} /> },
+    { header: "Admin Status", render: (user) => <AdminControl user={user} /> },
   ];
 
   // Helper function to convert time units to minutes
@@ -1633,12 +2281,18 @@ export default function AdminSettings() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-4xl mx-auto">
-            <div className="flex items-center gap-2 mb-6">
-              <Settings className="h-6 w-6 text-yellow-500" />
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Admin Settings</h1>
+            </div>
+
+            <div className="flex items-center gap-2 mb-6 hidden md:flex">
+              <Settings className="h-6 w-6 text-indigo-500" />
               <h1 className="text-2xl font-bold">Admin Settings</h1>
             </div>
 
@@ -1679,10 +2333,22 @@ export default function AdminSettings() {
                     Planned Closures
                   </TabsTrigger>
                   <TabsTrigger
+                    value="cancelledEvents"
+                    className="whitespace-nowrap"
+                  >
+                    Cancelled Events
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="miscellaneous"
                     className="whitespace-nowrap"
                   >
                     Miscellaneous Settings
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="integrations"
+                    className="whitespace-nowrap"
+                  >
+                    Integrations
                   </TabsTrigger>
                   <TabsTrigger
                     value="placeholder"
@@ -1739,7 +2405,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Visibility Settings
@@ -1795,7 +2461,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Past Visibility Settings
@@ -2221,7 +2887,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Visibility Settings
@@ -2347,7 +3013,7 @@ export default function AdminSettings() {
                       <Button
                         type="submit"
                         disabled={weeklyFormBeingEdited || !!weeklyLimitError}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Daily Limits
@@ -2474,7 +3140,7 @@ export default function AdminSettings() {
                       <Button
                         type="submit"
                         disabled={dailyFormBeingEdited || !!weeklyLimitError}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Weekly Limits
@@ -2597,7 +3263,7 @@ export default function AdminSettings() {
                                         e.target.checked
                                       )
                                     }
-                                    className="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-500"
                                     id={`closed-${day}`}
                                   />
                                   <label
@@ -2645,7 +3311,7 @@ export default function AdminSettings() {
                   <CardFooter>
                     <Button
                       onClick={handleScheduleSave}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white"
                     >
                       <Save className="h-4 w-4 mr-2" />
                       Save All Schedule Changes
@@ -2926,7 +3592,7 @@ export default function AdminSettings() {
                                 setVolunteerStatusFilter(e.target.value)
                               }
                               disabled={showResubmissionsOnly}
-                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base ${
+                              className={`w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base ${
                                 showResubmissionsOnly
                                   ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                                   : ""
@@ -3010,7 +3676,7 @@ export default function AdminSettings() {
                                     setVolunteerFromTime(e.target.value)
                                   }
                                   disabled={!volunteerFromDate}
-                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                                 >
                                   <option value="">
                                     {!volunteerFromDate
@@ -3058,7 +3724,7 @@ export default function AdminSettings() {
                                     setVolunteerToTime(e.target.value)
                                   }
                                   disabled={!volunteerToDate}
-                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                  className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                                 >
                                   <option value="">
                                     {!volunteerToDate
@@ -3088,7 +3754,7 @@ export default function AdminSettings() {
                               !volunteerToDate ||
                               !volunteerToTime
                             }
-                            className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
                           >
                             Apply Date/Time Filter
                           </Button>
@@ -3241,7 +3907,7 @@ export default function AdminSettings() {
                             onChange={(e) =>
                               setActionsStatusFilter(e.target.value)
                             }
-                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 text-base"
+                            className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-base"
                           >
                             <option value="all">All Status</option>
                             <option value="pending">Pending</option>
@@ -3283,7 +3949,7 @@ export default function AdminSettings() {
                                   setActionsFromTime(e.target.value)
                                 }
                                 disabled={!actionsFromDate}
-                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                               >
                                 <option value="">
                                   {!actionsFromDate
@@ -3329,7 +3995,7 @@ export default function AdminSettings() {
                                   setActionsToTime(e.target.value)
                                 }
                                 disabled={!actionsToDate}
-                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
+                                className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-gray-50 disabled:text-gray-400 text-base"
                               >
                                 <option value="">
                                   {!actionsToDate
@@ -3357,7 +4023,7 @@ export default function AdminSettings() {
                             !actionsToDate ||
                             !actionsToTime
                           }
-                          className="bg-yellow-500 hover:bg-yellow-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
+                          className="bg-indigo-500 hover:bg-indigo-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed h-10 px-6 font-medium"
                         >
                           Apply Date/Time Filter
                         </Button>
@@ -3394,7 +4060,7 @@ export default function AdminSettings() {
                               appliedActionsFromTime &&
                               appliedActionsToDate &&
                               appliedActionsToTime && (
-                                <span className="ml-2 text-yellow-600">
+                                <span className="ml-2 text-indigo-600">
                                   (filtered from{" "}
                                   {new Date(
                                     `${appliedActionsFromDate}T${appliedActionsFromTime}`
@@ -3482,7 +4148,7 @@ export default function AdminSettings() {
                                               ? "bg-red-100 text-red-800"
                                               : previousStatus === "resolved"
                                                 ? "bg-purple-100 text-purple-800"
-                                                : "bg-yellow-100 text-yellow-800"
+                                                : "bg-indigo-100 text-indigo-800"
                                         }`}
                                       >
                                         {previousStatus
@@ -3501,7 +4167,7 @@ export default function AdminSettings() {
                                           ? "bg-red-100 text-red-800"
                                           : currentStatus === "resolved"
                                             ? "bg-purple-100 text-purple-800"
-                                            : "bg-yellow-100 text-yellow-800"
+                                            : "bg-indigo-100 text-indigo-800"
                                     }`}
                                   >
                                     {currentStatus.charAt(0).toUpperCase() +
@@ -3648,7 +4314,7 @@ export default function AdminSettings() {
                         </div>
                         <Button
                           onClick={handleAddClosure}
-                          className="mt-4 bg-yellow-500 hover:bg-yellow-600 text-white"
+                          className="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white"
                         >
                           Add Closure Period
                         </Button>
@@ -3781,6 +4447,796 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="cancelledEvents">
+                {/* Unresolved Workshop Cancelled Events Card */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Workshop Cancelled Events</CardTitle>
+                    <CardDescription>
+                      View and manage unresolved workshop cancellations to track
+                      refunds and resolve user issues
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Workshop Name",
+                          render: (cancellation: any) =>
+                            cancellation.workshop.name,
+                        },
+                        {
+                          header: "Workshop Time(s)",
+                          render: (cancellation: any) => {
+                            const startDate = new Date(
+                              cancellation.workshopOccurrence.startDate
+                            );
+                            const endDate = new Date(
+                              cancellation.workshopOccurrence.endDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            if (isMultiDay) {
+                              // Multi-day workshop with clickable link - show Connect ID
+                              return (
+                                <div className="text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={`/dashboard/workshops/${cancellation.workshop.id}`}
+                                      className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      Multi-Day Workshop
+                                    </a>
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    Connect ID:{" "}
+                                    {cancellation.workshopOccurrence.connectId}
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              // Single occurrence workshop
+                              return (
+                                <div className="text-sm">
+                                  <div className="font-medium">
+                                    {startDate.toLocaleDateString()}
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    {startDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}{" "}
+                                    →{" "}
+                                    {endDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          },
+                        },
+                        {
+                          header: "Price Variation",
+                          render: (cancellation: any) =>
+                            cancellation.priceVariation ? (
+                              <span className="text-sm font-medium">
+                                {cancellation.priceVariation.name}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-sm">N/A</span>
+                            ),
+                        },
+                        {
+                          header: "Stripe Payment ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.stripePaymentIntentId || "N/A"}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => {
+                            const cancellationDate = new Date(
+                              cancellation.cancellationDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            let workshopStartDate: Date;
+
+                            if (
+                              isMultiDay &&
+                              cancellation.allOccurrences &&
+                              cancellation.allOccurrences.length > 0
+                            ) {
+                              // For multi-day workshops, find the earliest start date from all occurrences
+                              const earliestOccurrence =
+                                cancellation.allOccurrences.reduce(
+                                  (earliest: any, current: any) => {
+                                    const currentStart = new Date(
+                                      current.startDate
+                                    );
+                                    const earliestStart = new Date(
+                                      earliest.startDate
+                                    );
+                                    return currentStart < earliestStart
+                                      ? current
+                                      : earliest;
+                                  }
+                                );
+                              workshopStartDate = new Date(
+                                earliestOccurrence.startDate
+                              );
+                            } else {
+                              // For regular workshops, use the single occurrence start date
+                              workshopStartDate = new Date(
+                                cancellation.workshopOccurrence.startDate
+                              );
+                            }
+
+                            // Check if cancelled at least 2 days before the workshop start time
+                            const eligibleDate = new Date(
+                              workshopStartDate.getTime() -
+                                2 * 24 * 60 * 60 * 1000
+                            );
+                            const isEligible = cancellationDate <= eligibleDate;
+
+                            return (
+                              <div className="flex items-center">
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    isEligible
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {isEligible ? "Yes" : "No"}
+                                </span>
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Resolved?",
+                          render: (cancellation: any) => (
+                            <WorkshopCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={paginatedUnresolvedCancellations}
+                      emptyMessage="No unresolved cancelled workshop events found"
+                    />
+                    <WorkshopCancellationsPagination
+                      currentPage={unresolvedCurrentPage}
+                      totalPages={unresolvedTotalPages}
+                      setCurrentPage={setUnresolvedCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Resolved Workshop Cancelled Events Card */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Resolved Workshop Cancelled Events</CardTitle>
+                    <CardDescription>
+                      Previously resolved workshop cancellations for reference
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Workshop Name",
+                          render: (cancellation: any) =>
+                            cancellation.workshop.name,
+                        },
+                        {
+                          header: "Workshop Time(s)",
+                          render: (cancellation: any) => {
+                            const startDate = new Date(
+                              cancellation.workshopOccurrence.startDate
+                            );
+                            const endDate = new Date(
+                              cancellation.workshopOccurrence.endDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            if (isMultiDay) {
+                              // Multi-day workshop with clickable link - show Connect ID
+                              return (
+                                <div className="text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <a
+                                      href={`/dashboard/workshops/${cancellation.workshop.id}`}
+                                      className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    >
+                                      Multi-Day Workshop
+                                    </a>
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    Connect ID:{" "}
+                                    {cancellation.workshopOccurrence.connectId}
+                                  </div>
+                                </div>
+                              );
+                            } else {
+                              // Single occurrence workshop
+                              return (
+                                <div className="text-sm">
+                                  <div className="font-medium">
+                                    {startDate.toLocaleDateString()}
+                                  </div>
+                                  <div className="text-gray-500 text-xs">
+                                    {startDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}{" "}
+                                    →{" "}
+                                    {endDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            }
+                          },
+                        },
+                        {
+                          header: "Price Variation",
+                          render: (cancellation: any) =>
+                            cancellation.priceVariation ? (
+                              <span className="text-sm font-medium">
+                                {cancellation.priceVariation.name}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-sm">N/A</span>
+                            ),
+                        },
+                        {
+                          header: "Stripe Payment ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.stripePaymentIntentId || "N/A"}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => {
+                            const cancellationDate = new Date(
+                              cancellation.cancellationDate
+                            );
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            let workshopStartDate: Date;
+
+                            if (
+                              isMultiDay &&
+                              cancellation.allOccurrences &&
+                              cancellation.allOccurrences.length > 0
+                            ) {
+                              // For multi-day workshops, find the earliest start date from all occurrences
+                              const earliestOccurrence =
+                                cancellation.allOccurrences.reduce(
+                                  (earliest: any, current: any) => {
+                                    const currentStart = new Date(
+                                      current.startDate
+                                    );
+                                    const earliestStart = new Date(
+                                      earliest.startDate
+                                    );
+                                    return currentStart < earliestStart
+                                      ? current
+                                      : earliest;
+                                  }
+                                );
+                              workshopStartDate = new Date(
+                                earliestOccurrence.startDate
+                              );
+                            } else {
+                              // For regular workshops, use the single occurrence start date
+                              workshopStartDate = new Date(
+                                cancellation.workshopOccurrence.startDate
+                              );
+                            }
+
+                            // Check if cancelled at least 2 days before the workshop start time
+                            const eligibleDate = new Date(
+                              workshopStartDate.getTime() -
+                                2 * 24 * 60 * 60 * 1000
+                            );
+                            const isEligible = cancellationDate <= eligibleDate;
+
+                            return (
+                              <div className="flex items-center">
+                                <span
+                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                    isEligible
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {isEligible ? "Yes" : "No"}
+                                </span>
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Resolved",
+                          render: (cancellation: any) => (
+                            <WorkshopCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={paginatedResolvedCancellations}
+                      emptyMessage="No resolved cancelled workshop events found"
+                    />
+                    <WorkshopCancellationsPagination
+                      currentPage={resolvedCurrentPage}
+                      totalPages={resolvedTotalPages}
+                      setCurrentPage={setResolvedCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Equipment Cancelled Events Card */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Equipment Cancelled Events</CardTitle>
+                    <CardDescription>
+                      View and manage unresolved equipment cancellations to
+                      track refunds and resolve user issues
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Name",
+                          render: (cancellation: any) => (
+                            <div className="font-medium">
+                              {cancellation.equipment.name}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Time(s)",
+                          render: (cancellation: any) => {
+                            const times = cancellation.cancelledSlotTimes;
+                            if (!times || times.length === 0) {
+                              return (
+                                <span className="text-gray-500">No times</span>
+                              );
+                            }
+
+                            if (times.length === 1) {
+                              const time = times[0];
+                              return (
+                                <div className="text-sm">
+                                  {new Date(
+                                    time.startTime
+                                  ).toLocaleDateString()}{" "}
+                                  {new Date(time.startTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}{" "}
+                                  -{" "}
+                                  {new Date(time.endTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      className="p-0 h-auto text-sm"
+                                    >
+                                      {times.length} time slots
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="space-y-1">
+                                      {times.map((time: any, index: number) => (
+                                        <div key={index} className="text-xs">
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleDateString()}{" "}
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}{" "}
+                                          -{" "}
+                                          {new Date(
+                                            time.endTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          },
+                        },
+                        {
+                          header: "Slots Refunded / Total",
+                          render: (cancellation: any) => {
+                            // Calculate cumulative slots refunded for this payment intent
+                            const cumulativeRefunded = equipmentCancellations
+                              .filter(
+                                (c) =>
+                                  c.userId === cancellation.userId &&
+                                  c.equipmentId === cancellation.equipmentId &&
+                                  c.paymentIntentId ===
+                                    cancellation.paymentIntentId &&
+                                  c.id <= cancellation.id // Only count cancellations up to this one
+                              )
+                              .reduce((total, c) => total + c.slotsRefunded, 0);
+
+                            return (
+                              <div className="text-sm font-medium">
+                                {cumulativeRefunded}/
+                                {cancellation.totalSlotsBooked}
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Price to Refund",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.priceToRefund.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Total Price Paid",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.totalPricePaid.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Stripe Payment ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.paymentIntentId ? (
+                                <span className="text-blue-600">
+                                  {cancellation.paymentIntentId}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">
+                                  No Payment ID
+                                </span>
+                              )}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => (
+                            <div>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                  cancellation.eligibleForRefund
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {cancellation.eligibleForRefund ? "Yes" : "No"}
+                              </span>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Resolved?",
+                          render: (cancellation: any) => (
+                            <EquipmentCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={paginatedEquipmentUnresolvedCancellations}
+                      emptyMessage="No unresolved cancelled equipment events found"
+                    />
+                    <EquipmentCancellationsPagination
+                      currentPage={equipmentUnresolvedCurrentPage}
+                      totalPages={equipmentUnresolvedTotalPages}
+                      setCurrentPage={setEquipmentUnresolvedCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Resolved Equipment Cancelled Events Card */}
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle>Resolved Equipment Cancelled Events</CardTitle>
+                    <CardDescription>
+                      Previously resolved equipment cancellations for reference
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ShadTable
+                      columns={[
+                        {
+                          header: "User",
+                          render: (cancellation: any) => (
+                            <div>
+                              <div className="font-medium">
+                                {cancellation.user.firstName}{" "}
+                                {cancellation.user.lastName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {cancellation.user.email}
+                              </div>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Name",
+                          render: (cancellation: any) => (
+                            <div className="font-medium">
+                              {cancellation.equipment.name}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Equipment Time(s)",
+                          render: (cancellation: any) => {
+                            const times = cancellation.cancelledSlotTimes;
+                            if (!times || times.length === 0) {
+                              return (
+                                <span className="text-gray-500">No times</span>
+                              );
+                            }
+
+                            if (times.length === 1) {
+                              const time = times[0];
+                              return (
+                                <div className="text-sm">
+                                  {new Date(
+                                    time.startTime
+                                  ).toLocaleDateString()}{" "}
+                                  {new Date(time.startTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}{" "}
+                                  -{" "}
+                                  {new Date(time.endTime).toLocaleTimeString(
+                                    [],
+                                    { hour: "2-digit", minute: "2-digit" }
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      className="p-0 h-auto text-sm"
+                                    >
+                                      {times.length} time slots
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <div className="space-y-1">
+                                      {times.map((time: any, index: number) => (
+                                        <div key={index} className="text-xs">
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleDateString()}{" "}
+                                          {new Date(
+                                            time.startTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}{" "}
+                                          -{" "}
+                                          {new Date(
+                                            time.endTime
+                                          ).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                          })}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            );
+                          },
+                        },
+                        {
+                          header: "Slots Refunded / Total",
+                          render: (cancellation: any) => {
+                            // Calculate cumulative slots refunded for this payment intent
+                            const cumulativeRefunded = equipmentCancellations
+                              .filter(
+                                (c) =>
+                                  c.userId === cancellation.userId &&
+                                  c.equipmentId === cancellation.equipmentId &&
+                                  c.paymentIntentId ===
+                                    cancellation.paymentIntentId &&
+                                  c.id <= cancellation.id // Only count cancellations up to this one
+                              )
+                              .reduce((total, c) => total + c.slotsRefunded, 0);
+
+                            return (
+                              <div className="text-sm font-medium">
+                                {cumulativeRefunded}/
+                                {cancellation.totalSlotsBooked}
+                              </div>
+                            );
+                          },
+                        },
+                        {
+                          header: "Price to Refund",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.priceToRefund.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Total Price Paid",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-medium">
+                              ${cancellation.totalPricePaid.toFixed(2)}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Stripe Payment ID",
+                          render: (cancellation: any) => (
+                            <div className="text-sm font-mono">
+                              {cancellation.paymentIntentId ? (
+                                <span className="text-blue-600">
+                                  {cancellation.paymentIntentId}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">
+                                  No Payment ID
+                                </span>
+                              )}
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Eligible for Refund",
+                          render: (cancellation: any) => (
+                            <div>
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                  cancellation.eligibleForRefund
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {cancellation.eligibleForRefund ? "Yes" : "No"}
+                              </span>
+                            </div>
+                          ),
+                        },
+                        {
+                          header: "Resolved",
+                          render: (cancellation: any) => (
+                            <EquipmentCancellationResolvedControl
+                              cancellation={cancellation}
+                            />
+                          ),
+                        },
+                      ]}
+                      data={paginatedEquipmentResolvedCancellations}
+                      emptyMessage="No resolved cancelled equipment events found"
+                    />
+                    <EquipmentCancellationsPagination
+                      currentPage={equipmentResolvedCurrentPage}
+                      totalPages={equipmentResolvedTotalPages}
+                      setCurrentPage={setEquipmentResolvedCurrentPage}
+                    />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
               {/* Tab: Miscellaneous Settings */}
               <TabsContent value="miscellaneous">
                 <Form method="post" className="space-y-6">
@@ -3832,7 +5288,7 @@ export default function AdminSettings() {
                     <CardFooter>
                       <Button
                         type="submit"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Tax Settings
@@ -3840,6 +5296,120 @@ export default function AdminSettings() {
                     </CardFooter>
                   </Card>
                 </Form>
+              </TabsContent>
+
+              <TabsContent value="integrations">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Google Calendar</CardTitle>
+                    <CardDescription>
+                      Connect an organization Google account and choose a public
+                      calendar. New workshops and orientations will be published
+                      automatically. You can make the calendar public in Google
+                      Calendar settings.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* @ts-ignore server-injected via loader */}
+                    {(() => {
+                      const data = (
+                        typeof window === "undefined" ? undefined : undefined
+                      ) as any;
+                      return null;
+                    })()}
+                    {/* Using loader data through hook */}
+                    {(() => {
+                      const { google } = (useLoaderData() as any) || {
+                        google: {},
+                      };
+                      return (
+                        <div className="space-y-4">
+                          {!google?.connected ? (
+                            <div className="space-y-2">
+                              <p className="text-sm text-gray-600">
+                                Not connected to Google Calendar.
+                              </p>
+                              <a
+                                href="/api/google-calendar/connect"
+                                className="inline-flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md"
+                              >
+                                Connect Google
+                              </a>
+                              <p className="text-xs text-gray-500">
+                                After granting access, you will come back here
+                                to select a calendar.
+                              </p>
+                            </div>
+                          ) : (
+                            <Form method="post" className="space-y-4">
+                              <input
+                                type="hidden"
+                                name="actionType"
+                                value="googleCalendarSave"
+                              />
+                              <div className="space-y-2">
+                                <Label htmlFor="googleCalendarId">
+                                  Select Calendar
+                                </Label>
+                                <select
+                                  id="googleCalendarId"
+                                  name="googleCalendarId"
+                                  defaultValue={
+                                    google?.selectedCalendarId || ""
+                                  }
+                                  className="border rounded px-3 py-2 w-full max-w-md"
+                                >
+                                  <option value="" disabled>
+                                    Choose a calendar
+                                  </option>
+                                  {google?.calendars?.map((c: any) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.summary} ({c.id})
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className="text-xs text-gray-500">
+                                  Ensure this calendar is public in Google
+                                  Calendar settings to embed it on the website.
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="googleTimezone">Timezone</Label>
+                                <Input
+                                  id="googleTimezone"
+                                  name="googleTimezone"
+                                  type="text"
+                                  defaultValue={
+                                    google?.timezone || "America/Yellowknife"
+                                  }
+                                  className="w-full max-w-md"
+                                />
+                                <p className="text-xs text-gray-500">
+                                  Use a valid IANA timezone like
+                                  America/Yellowknife.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Button
+                                  type="submit"
+                                  className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                                >
+                                  Save Google Calendar Settings
+                                </Button>
+                                <a
+                                  href="/api/google-calendar/disconnect"
+                                  className="inline-flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md"
+                                >
+                                  Sign out
+                                </a>
+                              </div>
+                            </Form>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               {/* Tabb Placeholder for Future Settings */}

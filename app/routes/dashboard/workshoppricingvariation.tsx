@@ -1,15 +1,22 @@
 import { useState } from "react";
-import { useLoaderData, useNavigate, useSearchParams } from "react-router";
+import {
+  useLoaderData,
+  useNavigate,
+  useSearchParams,
+  redirect,
+} from "react-router";
 import { Button } from "@/components/ui/button";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import {
   getWorkshopWithPriceVariations,
   getWorkshopRegistrationCounts,
   getMultiDayWorkshopRegistrationCounts,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
 } from "~/models/workshop.server";
 import type { Route } from "./+types/workshoppricingvariation";
 
@@ -17,6 +24,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const user = await getUser(request);
   const roleUser = await getRoleUser(request);
   const isAdmin = roleUser?.roleName === "Admin";
+
+  // Determine redirect path based on user role
+  const getRedirectPath = () => {
+    if (!user) return "/dashboard";
+    if (isAdmin) return "/dashboard/admin";
+    return "/dashboard/user";
+  };
 
   const workshopId = Number(params.workshopId);
   if (isNaN(workshopId)) {
@@ -37,12 +51,60 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   let capacityInfo = null;
 
   if (connectId) {
+    // Multi-day workshop validation
+    const occurrences = await getWorkshopOccurrencesByConnectId(
+      workshopId,
+      Number(connectId)
+    );
+
+    if (!occurrences || occurrences.length === 0) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if ANY occurrence is cancelled
+    const hasAnyCancelledOccurrence = occurrences.some(
+      (occ) => occ.status === "cancelled"
+    );
+    if (hasAnyCancelledOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if ANY occurrence is in the past
+    const now = new Date();
+    const hasAnyPastOccurrence = occurrences.some(
+      (occ) => new Date(occ.endDate) < now
+    );
+    if (hasAnyPastOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
     // Multi-day workshop capacity
     capacityInfo = await getMultiDayWorkshopRegistrationCounts(
       workshopId,
       Number(connectId)
     );
   } else if (occurrenceId) {
+    // Regular workshop validation
+    const occurrence = await getWorkshopOccurrence(
+      workshopId,
+      Number(occurrenceId)
+    );
+
+    if (!occurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if occurrence is cancelled
+    if (occurrence.status === "cancelled") {
+      throw redirect(getRedirectPath());
+    }
+
+    // Check if occurrence is in the past
+    const now = new Date();
+    if (new Date(occurrence.endDate) < now) {
+      throw redirect(getRedirectPath());
+    }
+
     // Regular workshop capacity
     capacityInfo = await getWorkshopRegistrationCounts(
       workshopId,
@@ -52,14 +114,20 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   return { workshop, user, isAdmin, capacityInfo };
 }
+
 export default function WorkshopPricingVariation() {
   const { workshop, user, isAdmin, capacityInfo } =
     useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const occurrenceId = searchParams.get("occurrenceId");
+
+  // Only select from active (non-cancelled) variations for default selection
+  const activeVariations = workshop.priceVariations.filter(
+    (variation: any) => variation.status !== "cancelled"
+  );
   const [selectedVariation, setSelectedVariation] = useState<number | null>(
-    null
+    activeVariations.length > 0 ? activeVariations[0].id : null
   );
 
   const handleContinue = () => {
@@ -71,23 +139,15 @@ export default function WorkshopPricingVariation() {
     const connectId = searchParams.get("connectId");
 
     if (connectId) {
-      // Multi-day workshop with variation
-      if (selectedVariation === 0) {
-        navigate(`/dashboard/payment/${workshop.id}/connect/${connectId}`);
-      } else {
-        navigate(
-          `/dashboard/payment/${workshop.id}/connect/${connectId}/${selectedVariation}`
-        );
-      }
+      // Multi-day workshop with variation - always use variation ID
+      navigate(
+        `/dashboard/payment/${workshop.id}/connect/${connectId}/${selectedVariation}`
+      );
     } else if (occurrenceId) {
-      // Single occurrence workflow
-      if (selectedVariation === 0) {
-        navigate(`/dashboard/payment/${workshop.id}/${occurrenceId}`);
-      } else {
-        navigate(
-          `/dashboard/payment/${workshop.id}/${occurrenceId}/${selectedVariation}`
-        );
-      }
+      // Single occurrence workflow - always use variation ID
+      navigate(
+        `/dashboard/payment/${workshop.id}/${occurrenceId}/${selectedVariation}`
+      );
     } else {
       console.error("Missing both connectId and occurrenceId");
       // Could show an error message to the user here
@@ -96,7 +156,7 @@ export default function WorkshopPricingVariation() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {!user ? (
           <GuestAppSidebar />
         ) : isAdmin ? (
@@ -107,6 +167,12 @@ export default function WorkshopPricingVariation() {
 
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-6">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Workshop Pricing</h1>
+            </div>
+
             <div className="mb-6">
               <Button
                 variant="outline"
@@ -123,13 +189,12 @@ export default function WorkshopPricingVariation() {
             {/* Informational Header */}
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h3 className="text-lg font-semibold text-blue-800 mb-2">
-                Pricing Options
+                Choose Your Pricing Option
               </h3>
               <p className="text-blue-700 text-sm">
-                Select your preferred pricing option. The{" "}
-                <strong>Base Price</strong> is the standard workshop pricing,
-                while the additional options may offer different features or
-                pricing.
+                Select your preferred pricing option for this workshop. Each
+                option may different include features. Refer to the description
+                of each option
               </p>
 
               {/* Workshop Capacity Display */}
@@ -144,7 +209,7 @@ export default function WorkshopPricingVariation() {
                     {capacityInfo.totalRegistrations >=
                       capacityInfo.workshopCapacity && (
                       <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                        WORKSHOP FULL
+                        Workshop Full
                       </span>
                     )}
                   </div>
@@ -153,179 +218,111 @@ export default function WorkshopPricingVariation() {
             </div>
 
             <div className="space-y-4">
-              {/* Base Price Option */}
-              <div
-                className={`border rounded-lg p-6 transition-all ${
-                  capacityInfo &&
-                  capacityInfo.totalRegistrations >=
-                    capacityInfo.workshopCapacity
-                    ? "opacity-50 cursor-not-allowed border-gray-300"
-                    : selectedVariation === 0
-                      ? "border-blue-500 bg-blue-50 cursor-pointer"
-                      : "border-gray-200 hover:border-gray-300 cursor-pointer"
-                }`}
-                onClick={() => {
-                  if (
-                    !capacityInfo ||
-                    capacityInfo.totalRegistrations <
-                      capacityInfo.workshopCapacity
-                  ) {
-                    setSelectedVariation(0);
-                  }
-                }}
-              >
-                <div className="flex items-center">
-                  <input
-                    type="radio"
-                    name="variation"
-                    value={0}
-                    checked={selectedVariation === 0}
-                    onChange={() => {
-                      if (
-                        !capacityInfo ||
-                        capacityInfo.totalRegistrations <
-                          capacityInfo.workshopCapacity
-                      ) {
-                        setSelectedVariation(0);
+              {/* All Pricing Options Combined */}
+              {workshop.priceVariations.map((variation, index) => {
+                const variationCapacityInfo = capacityInfo?.variations?.find(
+                  (v) => v.variationId === variation.id
+                );
+                const isVariationFull = variationCapacityInfo
+                  ? variationCapacityInfo.registrations >=
+                    variationCapacityInfo.capacity
+                  : false;
+
+                const isCancelled = variation.status === "cancelled";
+                const isDisabled = isVariationFull || isCancelled;
+
+                return (
+                  <div
+                    key={variation.id}
+                    className={`border rounded-lg p-6 transition-all ${
+                      isCancelled
+                        ? "opacity-50 cursor-not-allowed border-red-300 bg-red-50"
+                        : isVariationFull
+                          ? "opacity-50 cursor-not-allowed border-gray-300"
+                          : selectedVariation === variation.id
+                            ? "border-blue-500 bg-blue-50 cursor-pointer"
+                            : "border-gray-200 hover:border-gray-300 cursor-pointer"
+                    }`}
+                    onClick={() => {
+                      if (!isDisabled) {
+                        setSelectedVariation(variation.id);
                       }
                     }}
-                    disabled={
-                      !!(
-                        capacityInfo &&
-                        capacityInfo.totalRegistrations >=
-                          capacityInfo.workshopCapacity
-                      )
-                    }
-                    className="mr-4"
-                  />
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="text-xl font-semibold">Base Price</h3>
-                          <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
-                            STANDARD
-                          </span>
-                          {/* Workshop Full Badge */}
-                          {capacityInfo &&
-                            capacityInfo.totalRegistrations >=
-                              capacityInfo.workshopCapacity && (
-                              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                                WORKSHOP FULL
-                              </span>
-                            )}
-                        </div>
-                        <p className="text-gray-600">{workshop.description}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-2xl font-bold text-blue-600">
-                          ${workshop.price}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Price Variations */}
-              {workshop.priceVariations.length > 0 && (
-                <div className="mt-6">
-                  <h4 className="text-md font-medium text-gray-700 mb-3">
-                    Alternative Pricing Options
-                  </h4>
-                  {workshop.priceVariations.map((variation) => {
-                    const variationCapacity = capacityInfo?.variations?.find(
-                      (v: any) => v.variationId === variation.id
-                    );
-
-                    // Check if workshop is full OR variation is full OR variation is cancelled
-                    const isWorkshopFull =
-                      capacityInfo &&
-                      capacityInfo.totalRegistrations >=
-                        capacityInfo.workshopCapacity;
-                    const isVariationFull =
-                      variationCapacity && !variationCapacity.hasCapacity;
-                    const isVariationCancelled =
-                      variation.status === "cancelled";
-                    const isDisabled =
-                      isWorkshopFull || isVariationFull || isVariationCancelled;
-
-                    return (
-                      <div
-                        key={variation.id}
-                        className={`border rounded-lg p-6 transition-all mb-4 ${
-                          isDisabled
-                            ? "opacity-50 cursor-not-allowed border-gray-300"
-                            : selectedVariation === variation.id
-                              ? "border-blue-500 bg-blue-50 cursor-pointer"
-                              : "border-gray-200 hover:border-gray-300 cursor-pointer"
-                        }`}
-                        onClick={() => {
-                          if (!isDisabled && !isVariationCancelled) {
+                  >
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        name="variation"
+                        value={variation.id}
+                        checked={
+                          selectedVariation === variation.id && !isCancelled
+                        }
+                        onChange={() => {
+                          if (!isDisabled) {
                             setSelectedVariation(variation.id);
                           }
                         }}
-                      >
-                        <div className="flex items-center">
-                          <input
-                            type="radio"
-                            name="variation"
-                            value={variation.id}
-                            checked={selectedVariation === variation.id}
-                            onChange={() => {
-                              if (!isDisabled && !isVariationCancelled) {
-                                setSelectedVariation(variation.id);
-                              }
-                            }}
-                            disabled={isDisabled}
-                            className="mr-4"
-                          />
-                          <div className="flex-1">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  <h3 className="text-xl font-semibold">
-                                    {variation.name}
-                                  </h3>
-                                  {/* Capacity Display */}
-                                  {variationCapacity && (
-                                    <span className="text-sm text-gray-600">
-                                      ({variationCapacity.registrations}/
-                                      {variationCapacity.capacity} registered)
-                                    </span>
-                                  )}
-                                  {/* Status Badges */}
-                                  {isVariationCancelled ? (
-                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                                      CANCELLED
-                                    </span>
-                                  ) : isWorkshopFull ? (
-                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                                      WORKSHOP FULL
-                                    </span>
-                                  ) : isVariationFull ? (
-                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
-                                      FULL
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <p className="text-gray-600">
-                                  {variation.description}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-2xl font-bold text-blue-600">
-                                  ${variation.price}
+                        disabled={isDisabled}
+                        className="mr-4"
+                      />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3
+                                className={`text-xl font-semibold ${isCancelled ? "text-gray-500 line-through" : ""}`}
+                              >
+                                {variation.name}
+                              </h3>
+                              {index === 0 && !isCancelled && (
+                                <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">
+                                  Standard
                                 </span>
-                              </div>
+                              )}
+                              {isCancelled && (
+                                <span className="bg-red-500 text-white text-xs px-2 py-1 rounded">
+                                  Cancelled
+                                </span>
+                              )}
+                              {!isCancelled && isVariationFull && (
+                                <span className="bg-orange-500 text-white text-xs px-2 py-1 rounded">
+                                  Full
+                                </span>
+                              )}
                             </div>
+                            <p
+                              className={`${isCancelled ? "text-gray-400" : "text-gray-600"}`}
+                            >
+                              {isCancelled
+                                ? "This pricing option has been cancelled and is no longer available."
+                                : variation.description}
+                            </p>
+                            {!isCancelled && variationCapacityInfo && (
+                              <p className="text-sm text-gray-500 mt-1">
+                                {variationCapacityInfo.registrations}/
+                                {variationCapacityInfo.capacity} registered
+                              </p>
+                            )}
+                            {isCancelled && (
+                              <p className="text-sm text-red-500 mt-1">
+                                All users registered for this option have been
+                                notified.
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span
+                              className={`text-2xl font-bold ${isCancelled ? "text-gray-400 line-through" : "text-blue-600"}`}
+                            >
+                              ${variation.price}
+                            </span>
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex justify-between items-center mt-8">
@@ -335,29 +332,106 @@ export default function WorkshopPricingVariation() {
               >
                 Cancel
               </Button>
+
               <Button
                 onClick={handleContinue}
-                disabled={
-                  selectedVariation === null ||
-                  !!(
+                disabled={(() => {
+                  // Check if no variation is selected
+                  if (selectedVariation === null) return true;
+
+                  // Check if no active variations exist
+                  if (activeVariations.length === 0) return true;
+
+                  // Check if workshop is full
+                  if (
                     capacityInfo &&
                     capacityInfo.totalRegistrations >=
                       capacityInfo.workshopCapacity
                   )
-                }
-                className={`${
-                  selectedVariation === null ||
-                  (capacityInfo &&
+                    return true;
+
+                  // Check if all active variations are full
+                  const selectableVariations = activeVariations.filter(
+                    (variation) => {
+                      const variationCapacityInfo =
+                        capacityInfo?.variations?.find(
+                          (v) => v.variationId === variation.id
+                        );
+                      const isVariationFull = variationCapacityInfo
+                        ? variationCapacityInfo.registrations >=
+                          variationCapacityInfo.capacity
+                        : false;
+                      return !isVariationFull;
+                    }
+                  );
+
+                  if (selectableVariations.length === 0) return true;
+
+                  return false;
+                })()}
+                className={`${(() => {
+                  // Same logic as disabled check
+                  if (selectedVariation === null)
+                    return "bg-gray-400 cursor-not-allowed";
+                  if (activeVariations.length === 0)
+                    return "bg-gray-400 cursor-not-allowed";
+                  if (
+                    capacityInfo &&
                     capacityInfo.totalRegistrations >=
-                      capacityInfo.workshopCapacity)
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-yellow-500 hover:bg-yellow-600"
-                } text-white px-6 py-2 rounded-lg`}
+                      capacityInfo.workshopCapacity
+                  )
+                    return "bg-gray-400 cursor-not-allowed";
+
+                  const selectableVariations = activeVariations.filter(
+                    (variation) => {
+                      const variationCapacityInfo =
+                        capacityInfo?.variations?.find(
+                          (v) => v.variationId === variation.id
+                        );
+                      const isVariationFull = variationCapacityInfo
+                        ? variationCapacityInfo.registrations >=
+                          variationCapacityInfo.capacity
+                        : false;
+                      return !isVariationFull;
+                    }
+                  );
+
+                  if (selectableVariations.length === 0)
+                    return "bg-gray-400 cursor-not-allowed";
+
+                  return "bg-indigo-500 hover:bg-indigo-600";
+                })()} text-white px-6 py-2 rounded-lg`}
               >
-                {capacityInfo &&
-                capacityInfo.totalRegistrations >= capacityInfo.workshopCapacity
-                  ? "Workshop Full"
-                  : "Continue to Payment"}
+                {(() => {
+                  // Check conditions and return appropriate text
+                  if (activeVariations.length === 0)
+                    return "No Options Available";
+                  if (
+                    capacityInfo &&
+                    capacityInfo.totalRegistrations >=
+                      capacityInfo.workshopCapacity
+                  )
+                    return "Workshop Full";
+
+                  const selectableVariations = activeVariations.filter(
+                    (variation) => {
+                      const variationCapacityInfo =
+                        capacityInfo?.variations?.find(
+                          (v) => v.variationId === variation.id
+                        );
+                      const isVariationFull = variationCapacityInfo
+                        ? variationCapacityInfo.registrations >=
+                          variationCapacityInfo.capacity
+                        : false;
+                      return !isVariationFull;
+                    }
+                  );
+
+                  if (selectableVariations.length === 0)
+                    return "All Options Unavailable";
+
+                  return "Continue to Payment";
+                })()}
               </Button>
             </div>
           </div>

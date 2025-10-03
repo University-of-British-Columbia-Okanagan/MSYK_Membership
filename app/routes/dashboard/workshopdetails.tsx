@@ -22,6 +22,8 @@ import {
   getUserCompletedPrerequisites,
   cancelUserWorkshopRegistration,
   getUserWorkshopRegistrationInfo,
+  getWorkshopOccurrence,
+  cancelMultiDayWorkshopRegistration,
 } from "../../models/workshop.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
@@ -46,10 +48,11 @@ import {
   getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { logger } from "~/logging/logger";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { sendWorkshopCancellationEmail } from "~/utils/email.server";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 interface Occurrence {
   id: number;
@@ -163,11 +166,12 @@ export async function loader({
   // Replace the occurrences with ones that include capacity info
   workshop.occurrences = occurrencesWithCapacity;
 
-  // Instead of storing just a boolean, we'll store { registered, registeredAt } for each occurrence
+  // Store registration info including cancellation status
   let registrations: {
     [occurrenceId: number]: {
       registered: boolean;
       registeredAt: Date | null;
+      status?: string;
     };
   } = {};
 
@@ -187,10 +191,11 @@ export async function loader({
     // For each occurrence, check if the user is registered and get the registration time
     for (const occ of workshop.occurrences) {
       const regRow = await checkUserRegistration(workshopId, user.id, occ.id);
-      // regRow returns { registered, registeredAt }
+      // regRow returns { registered, registeredAt, status }
       registrations[occ.id] = {
         registered: regRow.registered,
         registeredAt: regRow.registeredAt,
+        status: regRow.status,
       };
     }
 
@@ -277,6 +282,43 @@ export async function action({ request }: { request: Request }) {
         occurrenceId: Number(occurrenceId),
         userId: user.id,
       });
+      // Send cancellation confirmation email (non-blocking)
+      try {
+        const workshop = await getWorkshopById(Number(workshopId));
+        const occurrence = await getWorkshopOccurrence(
+          Number(workshopId),
+          Number(occurrenceId)
+        );
+
+        // Include price variation info if present for this user
+        const registrationInfo = await getUserWorkshopRegistrationInfo(
+          user.id,
+          Number(workshopId)
+        );
+        const priceVariation = registrationInfo?.priceVariation
+          ? {
+              name: registrationInfo.priceVariation.name,
+              description: registrationInfo.priceVariation.description,
+              price: registrationInfo.priceVariation.price,
+            }
+          : null;
+
+        await sendWorkshopCancellationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          startDate: new Date(occurrence.startDate),
+          endDate: new Date(occurrence.endDate),
+          basePrice: workshop.price,
+          priceVariation,
+        });
+      } catch (emailErr) {
+        logger.error(
+          `Failed to send workshop cancellation email: ${emailErr}`,
+          {
+            url: request.url,
+          }
+        );
+      }
       logger.info(
         `User ${user.id}'s workshop registration cancelled successfully.`,
         { url: request.url }
@@ -290,25 +332,156 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  if (actionType === "duplicate") {
-    const roleUser = await getRoleUser(request);
-    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      throw new Response("Not Authorized", { status: 419 });
-    }
+  // if (actionType === "cancelAllRegistrations") {
+  //   const workshopId = formData.get("workshopId");
+  //   const connectId = formData.get("connectId");
+
+  //   const user = await getUser(request);
+  //   if (!user) {
+  //     return { error: "User not authenticated" };
+  //   }
+
+  //   try {
+  //     const ws = await getWorkshopById(Number(workshopId));
+  //     const occurrences = ws.occurrences
+  //       .filter(
+  //         (occ: any) => occ.connectId && occ.connectId === Number(connectId)
+  //       )
+  //       .sort(
+  //         (a: any, b: any) =>
+  //           new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+  //       );
+
+  //     // Cancel all user registrations for these occurrences
+  //     for (const occ of occurrences) {
+  //       await cancelUserWorkshopRegistration({
+  //         workshopId: Number(workshopId),
+  //         occurrenceId: Number(occ.id),
+  //         userId: user.id,
+  //       });
+  //     }
+
+  //     // Build sessions list for email
+  //     const sessions = occurrences.map((occ: any) => ({
+  //       startDate: new Date(occ.startDate),
+  //       endDate: new Date(occ.endDate),
+  //     }));
+
+  //     // Price variation (if any)
+  //     const registrationInfo = await getUserWorkshopRegistrationInfo(
+  //       user.id,
+  //       Number(workshopId)
+  //     );
+  //     const priceVariation = registrationInfo?.priceVariation
+  //       ? {
+  //           name: registrationInfo.priceVariation.name,
+  //           description: registrationInfo.priceVariation.description,
+  //           price: registrationInfo.priceVariation.price,
+  //         }
+  //       : null;
+
+  //     try {
+  //       await sendWorkshopCancellationEmail({
+  //         userEmail: user.email,
+  //         workshopName: ws.name,
+  //         sessions,
+  //         basePrice: ws.price,
+  //         priceVariation,
+  //       });
+  //     } catch (emailErr) {
+  //       logger.error(
+  //         `Failed to send multi-day workshop cancellation email: ${emailErr}`,
+  //         { url: request.url }
+  //       );
+  //     }
+
+  //     logger.info(
+  //       `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
+  //       { url: request.url }
+  //     );
+  //     return { success: true, cancelled: true };
+  //   } catch (error) {
+  //     logger.error(`Error cancelling multi-day registration: ${error}`, {
+  //       url: request.url,
+  //     });
+  //     return { error: "Failed to cancel registration" };
+  //   }
+  // }
+
+  if (actionType === "cancelAllRegistrations") {
     const workshopId = formData.get("workshopId");
+    const connectId = formData.get("connectId");
+
+    // Retrieve user from session
     const user = await getUser(request);
     if (!user) {
       return { error: "User not authenticated" };
     }
 
     try {
-      await duplicateWorkshop(Number(workshopId));
+      // Get workshop details for email
+      const ws = await getWorkshopById(Number(workshopId));
+      const occurrences = ws.occurrences
+        .filter(
+          (occ: any) => occ.connectId && occ.connectId === Number(connectId)
+        )
+        .sort(
+          (a: any, b: any) =>
+            new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        );
 
-      // Redirect to admin dashboard after duplication
-      return redirect("/dashboard/admin");
+      // Cancel the multi-day workshop registration (creates only ONE cancellation record)
+      await cancelMultiDayWorkshopRegistration({
+        workshopId: Number(workshopId),
+        connectId: Number(connectId),
+        userId: user.id,
+      });
+
+      // Build sessions list for email
+      const sessions = occurrences.map((occ: any) => ({
+        startDate: new Date(occ.startDate),
+        endDate: new Date(occ.endDate),
+      }));
+
+      // Get price variation info if any
+      const registrationInfo = await getUserWorkshopRegistrationInfo(
+        user.id,
+        Number(workshopId)
+      );
+      const priceVariation = registrationInfo?.priceVariation
+        ? {
+            name: registrationInfo.priceVariation.name,
+            description: registrationInfo.priceVariation.description,
+            price: registrationInfo.priceVariation.price,
+          }
+        : null;
+
+      // Send cancellation email
+      try {
+        await sendWorkshopCancellationEmail({
+          userEmail: user.email,
+          workshopName: ws.name,
+          sessions,
+          basePrice: ws.price,
+          priceVariation,
+        });
+      } catch (emailErr) {
+        logger.error(
+          `Failed to send multi-day workshop cancellation email: ${emailErr}`,
+          { url: request.url }
+        );
+      }
+
+      logger.info(
+        `User ${user.id}'s multi-day workshop registration cancelled successfully.`,
+        { url: request.url }
+      );
+      return { success: true, cancelled: true };
     } catch (error) {
-      logger.error("Error duplicating workshop:", error);
-      return { error: "Failed to duplicate workshop" };
+      logger.error(`Error cancelling multi-day registration: ${error}`, {
+        url: request.url,
+      });
+      return { error: "Failed to cancel multi-day registration" };
     }
   }
 }
@@ -511,6 +684,7 @@ export default function WorkshopDetails() {
       [occurrenceId: number]: {
         registered: boolean;
         registeredAt: Date | null;
+        status: string | null;
       };
     };
     roleUser: any;
@@ -663,19 +837,47 @@ export default function WorkshopDetails() {
 
   function handleCancelAll() {
     if (!user) return;
-    // Cancel each active occurrence
-    workshop.occurrences.forEach((occ: any) => {
-      if (occ.status !== "past" && occ.status !== "cancelled") {
-        fetcher.submit(
-          {
-            workshopId: String(workshop.id),
-            occurrenceId: occ.id.toString(),
-            actionType: "cancelRegistration",
-          },
-          { method: "post" }
-        );
-      }
-    });
+
+    // Find the first registered occurrence to get the connectId
+    const firstRegisteredOcc = workshop.occurrences.find(
+      (occ: any) => registrations[occ.id]?.registered
+    );
+
+    if (!firstRegisteredOcc) {
+      console.log("No registered occurrences found");
+      return;
+    }
+
+    // For multi-day workshops, ALWAYS use the multi-day cancellation
+    // even if connectId is 0, null, or undefined, as long as there's a connectId property
+    if (isMultiDayWorkshop && firstRegisteredOcc.connectId !== undefined) {
+      fetcher.submit(
+        {
+          workshopId: String(workshop.id),
+          connectId: firstRegisteredOcc.connectId.toString(),
+          actionType: "cancelAllRegistrations",
+        },
+        { method: "post" }
+      );
+    } else {
+      // Only use individual cancellations for truly single-occurrence workshops
+      workshop.occurrences.forEach((occ: any) => {
+        if (
+          occ.status !== "past" &&
+          occ.status !== "cancelled" &&
+          registrations[occ.id]?.registered
+        ) {
+          fetcher.submit(
+            {
+              workshopId: String(workshop.id),
+              occurrenceId: occ.id.toString(),
+              actionType: "cancelRegistration",
+            },
+            { method: "post" }
+          );
+        }
+      });
+    }
   }
 
   const sortedOccurrences = [...workshop.occurrences].sort((a, b) => {
@@ -688,9 +890,16 @@ export default function WorkshopDetails() {
   );
 
   // If user is registered for ANY occurrence in a multi-day workshop,
-  // Consider them registered for the entire workshop.
+  // Consider them registered for the entire workshop (exclude cancelled)
   const isUserRegisteredForAny = sortedOccurrences.some(
-    (occ: any) => registrations[occ.id]?.registered
+    (occ: any) =>
+      registrations[occ.id]?.registered &&
+      registrations[occ.id]?.status !== "cancelled"
+  );
+
+  // Check if user has any cancelled registrations
+  const hasAnyCancelledRegistration = sortedOccurrences.some(
+    (occ: any) => registrations[occ.id]?.status === "cancelled"
   );
 
   const allPast = sortedOccurrences.every((occ: any) => occ.status === "past");
@@ -701,7 +910,7 @@ export default function WorkshopDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {/* Conditional sidebar rendering based on user role */}
         {!user ? (
           <GuestAppSidebar />
@@ -713,6 +922,12 @@ export default function WorkshopDetails() {
 
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-6">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Workshop Details</h1>
+            </div>
+
             {/* Popup Notification */}
             {showPopup && (
               <div
@@ -731,17 +946,15 @@ export default function WorkshopDetails() {
                 <CardTitle className="text-2xl font-bold">
                   {workshop.name}
                 </CardTitle>
-                {workshop.priceVariations.length === 0 && (
-                  <CardDescription className="text-gray-600 max-w-2xl mx-auto">
-                    {workshop.description}
-                  </CardDescription>
-                )}
+                <CardDescription className="text-gray-600 max-w-2xl mx-auto">
+                  {workshop.description}
+                </CardDescription>
 
                 {/* Admin Only: View Users Button */}
                 {isAdmin && (
                   <div className="flex items-center gap-2 mt-4">
                     <Button
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2"
                       onClick={() =>
                         navigate(
                           `/dashboard/admin/workshop/${workshop.id}/users`
@@ -782,11 +995,11 @@ export default function WorkshopDetails() {
                           navigate("/dashboard/addworkshop");
                         }}
                         buttonLabel="Duplicate"
-                        buttonClassName="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                        buttonClassName="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg"
                       />
                     ) : (
                       <Button
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg"
                         onClick={() => handleOfferAgain()}
                       >
                         Offer Again
@@ -802,14 +1015,8 @@ export default function WorkshopDetails() {
                   workshop.priceVariations &&
                   workshop.priceVariations.length > 0 ? (
                     <div className="w-full">
-                      {/* Base price display */}
+                      {/* Location display */}
                       <div className="flex items-center gap-4 mb-4">
-                        <Badge
-                          variant="outline"
-                          className="px-4 py-2 text-lg font-medium bg-yellow-50 border-yellow-300 text-yellow-800"
-                        >
-                          Base price of ${workshop.price}
-                        </Badge>
                         <Badge
                           variant="outline"
                           className="px-4 py-2 text-lg font-medium"
@@ -826,45 +1033,66 @@ export default function WorkshopDetails() {
                         </h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Base Price Card */}
-                          <div className="border p-4 rounded-lg shadow-md bg-blue-50 border-blue-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <h3 className="text-lg font-medium text-gray-800">
-                                Standard pricing for {workshop.name}
-                              </h3>
-                              <span className="text-xl font-bold text-blue-600">
-                                ${workshop.price}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-600">
-                              {workshop.description}
-                            </p>
-                            <div className="mt-2">
-                              <Badge className="bg-blue-100 text-blue-800 border-blue-300">
-                                Default Option
-                              </Badge>
-                            </div>
-                          </div>
-
-                          {/* Price Variations */}
-                          {workshop.priceVariations.map((variation: any) => (
-                            <div
-                              key={variation.id}
-                              className="border p-4 rounded-lg shadow-md bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="text-lg font-medium text-gray-800">
-                                  {variation.name}
-                                </h3>
-                                <span className="text-xl font-bold text-blue-600">
-                                  ${variation.price}
-                                </span>
+                          {/* Render only price variations */}
+                          {workshop.priceVariations.map(
+                            (variation: any, index: number) => (
+                              <div
+                                key={variation.id}
+                                className={`border p-4 rounded-lg shadow-md transition-colors ${
+                                  variation.status === "cancelled"
+                                    ? "bg-red-50 border-red-200 opacity-75"
+                                    : index === 0
+                                      ? "bg-blue-50 border-blue-200"
+                                      : "bg-gray-50 border-gray-200 hover:bg-gray-100 cursor-pointer"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <h3
+                                      className={`text-lg font-medium ${
+                                        variation.status === "cancelled"
+                                          ? "text-red-700"
+                                          : "text-gray-800"
+                                      }`}
+                                    >
+                                      {variation.name}
+                                    </h3>
+                                    {variation.status === "cancelled" && (
+                                      <Badge className="bg-red-500 text-white border-red-600 text-xs">
+                                        Cancelled
+                                      </Badge>
+                                    )}
+                                    {index === 0 &&
+                                      variation.status !== "cancelled" && (
+                                        <Badge className="bg-blue-100 text-blue-800 border-blue-300">
+                                          Standard Option
+                                        </Badge>
+                                      )}
+                                  </div>
+                                  <span
+                                    className={`text-xl font-bold ${
+                                      variation.status === "cancelled"
+                                        ? "text-red-600 line-through"
+                                        : "text-blue-600"
+                                    }`}
+                                  >
+                                    ${variation.price}
+                                  </span>
+                                </div>
+                                <p
+                                  className={`text-sm ${
+                                    variation.status === "cancelled"
+                                      ? "text-red-600"
+                                      : "text-gray-600"
+                                  }`}
+                                >
+                                  {variation.status === "cancelled"
+                                    ? "This pricing option is no longer available"
+                                    : variation.description}
+                                </p>
                               </div>
-                              <p className="text-sm text-gray-600">
-                                {variation.description}
-                              </p>
-                            </div>
-                          ))}
+                            )
+                          )}
                         </div>
 
                         {/* Instruction message */}
@@ -888,7 +1116,7 @@ export default function WorkshopDetails() {
                               <p className="text-blue-700 mt-1">
                                 After clicking to register for the workshop
                                 time(s), you'll be able to choose from these
-                                pricing options during the checkout process.
+                                pricing options during the checkout process
                               </p>
                             </div>
                           </div>
@@ -995,7 +1223,7 @@ export default function WorkshopDetails() {
                           >
                             <div className="flex-1">
                               <div className="flex items-center">
-                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-yellow-500 text-white text-xs mr-2">
+                                <span className="w-6 h-6 flex items-center justify-center rounded-full bg-indigo-500 text-white text-xs mr-2">
                                   {index + 1}
                                 </span>
                                 <p className="font-medium">
@@ -1057,12 +1285,11 @@ export default function WorkshopDetails() {
                               Workshop registration has passed
                             </Badge>
                           );
-                        } else if (isUserRegisteredForAny) {
-                          const canCancel =
-                            earliestRegDate &&
-                            (new Date().getTime() - earliestRegDate.getTime()) /
-                              (1000 * 60 * 60) <
-                              48;
+                        } else if (
+                          hasAnyCancelledRegistration &&
+                          !isUserRegisteredForAny
+                        ) {
+                          // Show cancelled status if all registrations are cancelled
                           return (
                             <div className="flex items-center gap-4">
                               {userRegistrationInfo &&
@@ -1074,12 +1301,200 @@ export default function WorkshopDetails() {
                                       <div>
                                         <DropdownMenu>
                                           <DropdownMenuTrigger asChild>
-                                            <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
-                                              Registered (Entire Workshop)
+                                            <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                              Registration Cancelled (Entire
+                                              Workshop)
                                             </Badge>
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end">
-                                            {canCancel ? (
+                                            <DropdownMenuItem
+                                              onClick={handleRegisterAll}
+                                              disabled={
+                                                !user ||
+                                                !hasCompletedAllPrerequisites ||
+                                                (() => {
+                                                  const activeOccurrences =
+                                                    sortedOccurrences.filter(
+                                                      (occ: any) =>
+                                                        occ.status !== "past" &&
+                                                        occ.status !==
+                                                          "cancelled"
+                                                    );
+                                                  const firstOccurrence =
+                                                    activeOccurrences[0];
+                                                  const capacityCheck =
+                                                    firstOccurrence?.capacityInfo
+                                                      ? checkMultiDayWorkshopCapacity(
+                                                          firstOccurrence.capacityInfo
+                                                        )
+                                                      : { hasCapacity: true };
+                                                  return !capacityCheck.hasCapacity;
+                                                })()
+                                              }
+                                            >
+                                              Register Again
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="bg-red-50 border border-red-200 p-3 max-w-xs">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                                          <svg
+                                            className="w-2.5 h-2.5 text-white"
+                                            fill="currentColor"
+                                            viewBox="0 0 20 20"
+                                          >
+                                            <path
+                                              fillRule="evenodd"
+                                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                              clipRule="evenodd"
+                                            />
+                                          </svg>
+                                        </div>
+                                        <span className="font-semibold text-red-800">
+                                          Registration Cancelled
+                                        </span>
+                                      </div>
+                                      <div className="space-y-1">
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-sm text-red-700">
+                                            Option:
+                                          </span>
+                                          <span className="text-sm font-medium text-red-800">
+                                            {userRegistrationInfo.priceVariation
+                                              ? String(
+                                                  userRegistrationInfo
+                                                    .priceVariation.name ||
+                                                    "Unknown Option"
+                                                )
+                                              : "Base Price"}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-sm text-red-700">
+                                            Price:
+                                          </span>
+                                          <span className="text-sm font-bold text-red-600">
+                                            CA$
+                                            {userRegistrationInfo.priceVariation
+                                              ? Number(
+                                                  userRegistrationInfo
+                                                    .priceVariation.price
+                                                ) || 0
+                                              : workshop.price}
+                                          </span>
+                                        </div>
+                                        <div className="mt-2 pt-2 border-t border-red-200">
+                                          <p className="text-xs text-red-600 font-medium">
+                                            Contact support if this cancellation
+                                            was unexpected
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                      Registration Cancelled
+                                    </Badge>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem
+                                      onClick={handleRegisterAll}
+                                      disabled={
+                                        !user ||
+                                        !hasCompletedAllPrerequisites ||
+                                        (() => {
+                                          const activeOccurrences =
+                                            sortedOccurrences.filter(
+                                              (occ: any) =>
+                                                occ.status !== "past" &&
+                                                occ.status !== "cancelled"
+                                            );
+                                          const firstOccurrence =
+                                            activeOccurrences[0];
+                                          const capacityCheck =
+                                            firstOccurrence?.capacityInfo
+                                              ? checkMultiDayWorkshopCapacity(
+                                                  firstOccurrence.capacityInfo
+                                                )
+                                              : { hasCapacity: true };
+                                          return !capacityCheck.hasCapacity;
+                                        })()
+                                      }
+                                    >
+                                      Register Again
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+                            </div>
+                          );
+                        } else if (isUserRegisteredForAny) {
+                          const canCancel =
+                            earliestRegDate &&
+                            (new Date().getTime() - earliestRegDate.getTime()) /
+                              (1000 * 60 * 60);
+                          48;
+                          return (
+                            <div className="flex items-center gap-4">
+                              {userRegistrationInfo &&
+                              workshop.priceVariations &&
+                              workshop.priceVariations.length > 0 ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Badge
+                                              className={`px-3 py-1 cursor-pointer ${
+                                                hasAnyCancelledRegistration
+                                                  ? "bg-red-500 text-white border-red-600"
+                                                  : "bg-green-500 text-white"
+                                              }`}
+                                            >
+                                              {hasAnyCancelledRegistration
+                                                ? "Registration Cancelled (Entire Workshop)"
+                                                : "Registered (Entire Workshop)"}
+                                            </Badge>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            {hasAnyCancelledRegistration ? (
+                                              <DropdownMenuItem
+                                                onClick={handleRegisterAll}
+                                                disabled={
+                                                  !user ||
+                                                  !hasCompletedAllPrerequisites ||
+                                                  (() => {
+                                                    const activeOccurrences =
+                                                      sortedOccurrences.filter(
+                                                        (occ: any) =>
+                                                          occ.status !==
+                                                            "past" &&
+                                                          occ.status !==
+                                                            "cancelled"
+                                                      );
+                                                    const firstOccurrence =
+                                                      activeOccurrences[0];
+                                                    const capacityCheck =
+                                                      firstOccurrence?.capacityInfo
+                                                        ? checkMultiDayWorkshopCapacity(
+                                                            firstOccurrence.capacityInfo
+                                                          )
+                                                        : { hasCapacity: true };
+                                                    return !capacityCheck.hasCapacity;
+                                                  })()
+                                                }
+                                              >
+                                                Register Again
+                                              </DropdownMenuItem>
+                                            ) : canCancel ? (
                                               <>
                                                 <DropdownMenuItem
                                                   onSelect={(e) => {
@@ -1107,31 +1522,84 @@ export default function WorkshopDetails() {
                                         </DropdownMenu>
                                       </div>
                                     </TooltipTrigger>
-                                    <TooltipContent className="bg-emerald-50 border border-emerald-200 p-3 max-w-xs">
+                                    <TooltipContent
+                                      className={`border p-3 max-w-xs ${
+                                        hasAnyCancelledRegistration &&
+                                        !isUserRegisteredForAny
+                                          ? "bg-red-50 border-red-200"
+                                          : "bg-emerald-50 border-emerald-200"
+                                      }`}
+                                    >
                                       <div className="flex items-center gap-2 mb-2">
-                                        <div className="w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                                          <svg
-                                            className="w-2.5 h-2.5 text-white"
-                                            fill="currentColor"
-                                            viewBox="0 0 20 20"
-                                          >
-                                            <path
-                                              fillRule="evenodd"
-                                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                              clipRule="evenodd"
-                                            />
-                                          </svg>
+                                        <div
+                                          className={`w-4 h-4 rounded-full flex items-center justify-center ${
+                                            hasAnyCancelledRegistration &&
+                                            !isUserRegisteredForAny
+                                              ? "bg-red-500"
+                                              : "bg-emerald-500"
+                                          }`}
+                                        >
+                                          {hasAnyCancelledRegistration &&
+                                          !isUserRegisteredForAny ? (
+                                            <svg
+                                              className="w-2.5 h-2.5 text-white"
+                                              fill="currentColor"
+                                              viewBox="0 0 20 20"
+                                            >
+                                              <path
+                                                fillRule="evenodd"
+                                                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                                clipRule="evenodd"
+                                              />
+                                            </svg>
+                                          ) : (
+                                            <svg
+                                              className="w-2.5 h-2.5 text-white"
+                                              fill="currentColor"
+                                              viewBox="0 0 20 20"
+                                            >
+                                              <path
+                                                fillRule="evenodd"
+                                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                clipRule="evenodd"
+                                              />
+                                            </svg>
+                                          )}
                                         </div>
-                                        <span className="font-semibold text-emerald-800">
-                                          Your Registration
+                                        <span
+                                          className={`font-semibold ${
+                                            hasAnyCancelledRegistration &&
+                                            !isUserRegisteredForAny
+                                              ? "text-red-800"
+                                              : "text-emerald-800"
+                                          }`}
+                                        >
+                                          {hasAnyCancelledRegistration &&
+                                          !isUserRegisteredForAny
+                                            ? "Registration Cancelled"
+                                            : "Your Registration"}
                                         </span>
                                       </div>
                                       <div className="space-y-1">
                                         <div className="flex justify-between items-center">
-                                          <span className="text-sm text-emerald-700">
+                                          <span
+                                            className={`text-sm ${
+                                              hasAnyCancelledRegistration &&
+                                              !isUserRegisteredForAny
+                                                ? "text-red-700"
+                                                : "text-emerald-700"
+                                            }`}
+                                          >
                                             Option:
                                           </span>
-                                          <span className="text-sm font-medium text-emerald-800">
+                                          <span
+                                            className={`text-sm font-medium ${
+                                              hasAnyCancelledRegistration &&
+                                              !isUserRegisteredForAny
+                                                ? "text-red-800"
+                                                : "text-emerald-800"
+                                            }`}
+                                          >
                                             {userRegistrationInfo.priceVariation
                                               ? userRegistrationInfo
                                                   .priceVariation.name
@@ -1139,10 +1607,24 @@ export default function WorkshopDetails() {
                                           </span>
                                         </div>
                                         <div className="flex justify-between items-center">
-                                          <span className="text-sm text-emerald-700">
+                                          <span
+                                            className={`text-sm ${
+                                              hasAnyCancelledRegistration &&
+                                              !isUserRegisteredForAny
+                                                ? "text-red-700"
+                                                : "text-emerald-700"
+                                            }`}
+                                          >
                                             Price:
                                           </span>
-                                          <span className="text-sm font-bold text-emerald-600">
+                                          <span
+                                            className={`text-sm font-bold ${
+                                              hasAnyCancelledRegistration &&
+                                              !isUserRegisteredForAny
+                                                ? "text-red-600"
+                                                : "text-emerald-600"
+                                            }`}
+                                          >
                                             CA$
                                             {userRegistrationInfo.priceVariation
                                               ? userRegistrationInfo
@@ -1152,15 +1634,39 @@ export default function WorkshopDetails() {
                                         </div>
                                         {userRegistrationInfo.priceVariation
                                           ?.description && (
-                                          <div className="mt-2 pt-2 border-t border-emerald-200">
-                                            <p className="text-xs text-emerald-600">
-                                              {
-                                                userRegistrationInfo
-                                                  .priceVariation.description
-                                              }
+                                          <div
+                                            className={`mt-2 pt-2 border-t ${
+                                              hasAnyCancelledRegistration &&
+                                              !isUserRegisteredForAny
+                                                ? "border-red-200"
+                                                : "border-emerald-200"
+                                            }`}
+                                          >
+                                            <p
+                                              className={`text-xs ${
+                                                hasAnyCancelledRegistration &&
+                                                !isUserRegisteredForAny
+                                                  ? "text-red-600"
+                                                  : "text-emerald-600"
+                                              }`}
+                                            >
+                                              {hasAnyCancelledRegistration &&
+                                              !isUserRegisteredForAny
+                                                ? "This pricing option was cancelled"
+                                                : userRegistrationInfo
+                                                    .priceVariation.description}
                                             </p>
                                           </div>
                                         )}
+                                        {hasAnyCancelledRegistration &&
+                                          !isUserRegisteredForAny && (
+                                            <div className="mt-2 pt-2 border-t border-red-200">
+                                              <p className="text-xs text-red-600 font-medium">
+                                                Contact support if this
+                                                cancellation was unexpected
+                                              </p>
+                                            </div>
+                                          )}
                                       </div>
                                     </TooltipContent>
                                   </Tooltip>
@@ -1173,7 +1679,34 @@ export default function WorkshopDetails() {
                                     </Badge>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    {canCancel ? (
+                                    {hasAnyCancelledRegistration ? (
+                                      <DropdownMenuItem
+                                        onClick={handleRegisterAll}
+                                        disabled={
+                                          !user ||
+                                          !hasCompletedAllPrerequisites ||
+                                          (() => {
+                                            const activeOccurrences =
+                                              sortedOccurrences.filter(
+                                                (occ: any) =>
+                                                  occ.status !== "past" &&
+                                                  occ.status !== "cancelled"
+                                              );
+                                            const firstOccurrence =
+                                              activeOccurrences[0];
+                                            const capacityCheck =
+                                              firstOccurrence?.capacityInfo
+                                                ? checkMultiDayWorkshopCapacity(
+                                                    firstOccurrence.capacityInfo
+                                                  )
+                                                : { hasCapacity: true };
+                                            return !capacityCheck.hasCapacity;
+                                          })()
+                                        }
+                                      >
+                                        Register Again
+                                      </DropdownMenuItem>
+                                    ) : canCancel ? (
                                       <>
                                         <DropdownMenuItem
                                           onSelect={(e) => {
@@ -1391,8 +1924,11 @@ export default function WorkshopDetails() {
                         const regData = registrations[occurrence.id] || {
                           registered: false,
                           registeredAt: null,
+                          status: undefined,
                         };
                         const isOccurrenceRegistered = regData.registered;
+                        const isCancelledRegistration =
+                          regData.status === "cancelled";
 
                         return (
                           <div
@@ -1462,13 +1998,47 @@ export default function WorkshopDetails() {
                                           <div>
                                             <DropdownMenu>
                                               <DropdownMenuTrigger asChild>
-                                                <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
-                                                  Registered
+                                                <Badge
+                                                  className={`px-3 py-1 cursor-pointer ${
+                                                    registrations[occurrence.id]
+                                                      ?.status === "cancelled"
+                                                      ? "bg-red-500 text-white border-red-600"
+                                                      : "bg-green-500 text-white"
+                                                  }`}
+                                                >
+                                                  {registrations[occurrence.id]
+                                                    ?.status === "cancelled"
+                                                    ? "Registration Cancelled"
+                                                    : "Registered"}
                                                 </Badge>
                                               </DropdownMenuTrigger>
                                               <DropdownMenuContent align="end">
-                                                {confirmOccurrenceId ===
-                                                occurrence.id ? (
+                                                {registrations[occurrence.id]
+                                                  ?.status === "cancelled" ? (
+                                                  <DropdownMenuItem
+                                                    onClick={() =>
+                                                      handleRegister(
+                                                        occurrence.id
+                                                      )
+                                                    }
+                                                    disabled={
+                                                      !user ||
+                                                      !hasCompletedAllPrerequisites ||
+                                                      !checkWorkshopCapacity(
+                                                        occurrence.capacityInfo
+                                                      ).hasCapacity ||
+                                                      isWithinCutoffPeriod(
+                                                        new Date(
+                                                          occurrence.startDate
+                                                        ),
+                                                        workshop.registrationCutoff
+                                                      )
+                                                    }
+                                                  >
+                                                    Register Again
+                                                  </DropdownMenuItem>
+                                                ) : confirmOccurrenceId ===
+                                                  occurrence.id ? (
                                                   <>
                                                     <DropdownMenuItem
                                                       onSelect={(e) => {
@@ -1528,31 +2098,84 @@ export default function WorkshopDetails() {
                                             </DropdownMenu>
                                           </div>
                                         </TooltipTrigger>
-                                        <TooltipContent className="bg-emerald-50 border border-emerald-200 p-3 max-w-xs">
+                                        <TooltipContent
+                                          className={`border p-3 max-w-xs ${
+                                            registrations[occurrence.id]
+                                              ?.status === "cancelled"
+                                              ? "bg-red-50 border-red-200"
+                                              : "bg-emerald-50 border-emerald-200"
+                                          }`}
+                                        >
                                           <div className="flex items-center gap-2 mb-2">
-                                            <div className="w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                                              <svg
-                                                className="w-2.5 h-2.5 text-white"
-                                                fill="currentColor"
-                                                viewBox="0 0 20 20"
-                                              >
-                                                <path
-                                                  fillRule="evenodd"
-                                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                                  clipRule="evenodd"
-                                                />
-                                              </svg>
+                                            <div
+                                              className={`w-4 h-4 rounded-full flex items-center justify-center ${
+                                                registrations[occurrence.id]
+                                                  ?.status === "cancelled"
+                                                  ? "bg-red-500"
+                                                  : "bg-emerald-500"
+                                              }`}
+                                            >
+                                              {registrations[occurrence.id]
+                                                ?.status === "cancelled" ? (
+                                                <svg
+                                                  className="w-2.5 h-2.5 text-white"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 20 20"
+                                                >
+                                                  <path
+                                                    fillRule="evenodd"
+                                                    d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                                    clipRule="evenodd"
+                                                  />
+                                                </svg>
+                                              ) : (
+                                                <svg
+                                                  className="w-2.5 h-2.5 text-white"
+                                                  fill="currentColor"
+                                                  viewBox="0 0 20 20"
+                                                >
+                                                  <path
+                                                    fillRule="evenodd"
+                                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                    clipRule="evenodd"
+                                                  />
+                                                </svg>
+                                              )}
                                             </div>
-                                            <span className="font-semibold text-emerald-800">
-                                              Your Registration
+                                            <span
+                                              className={`font-semibold ${
+                                                registrations[occurrence.id]
+                                                  ?.status === "cancelled"
+                                                  ? "text-red-800"
+                                                  : "text-emerald-800"
+                                              }`}
+                                            >
+                                              {registrations[occurrence.id]
+                                                ?.status === "cancelled"
+                                                ? "Registration Cancelled"
+                                                : "Your Registration"}
                                             </span>
                                           </div>
                                           <div className="space-y-1">
                                             <div className="flex justify-between items-center">
-                                              <span className="text-sm text-emerald-700">
+                                              <span
+                                                className={`text-sm ${
+                                                  registrations[occurrence.id]
+                                                    ?.status === "cancelled"
+                                                    ? "text-red-700"
+                                                    : "text-emerald-700"
+                                                }`}
+                                              >
                                                 Option:
                                               </span>
-                                              <span className="text-sm font-medium text-emerald-800">
+                                              <span
+                                                className={`text-sm font-medium ${
+                                                  registrations[occurrence.id]
+                                                    ?.status === "cancelled"
+                                                    ? "text-red-800"
+                                                    : "text-emerald-800"
+                                                }`}
+                                              >
                                                 {userRegistrationInfo.priceVariation
                                                   ? userRegistrationInfo
                                                       .priceVariation.name
@@ -1560,10 +2183,24 @@ export default function WorkshopDetails() {
                                               </span>
                                             </div>
                                             <div className="flex justify-between items-center">
-                                              <span className="text-sm text-emerald-700">
+                                              <span
+                                                className={`text-sm ${
+                                                  registrations[occurrence.id]
+                                                    ?.status === "cancelled"
+                                                    ? "text-red-700"
+                                                    : "text-emerald-700"
+                                                }`}
+                                              >
                                                 Price:
                                               </span>
-                                              <span className="text-sm font-bold text-emerald-600">
+                                              <span
+                                                className={`text-sm font-bold ${
+                                                  registrations[occurrence.id]
+                                                    ?.status === "cancelled"
+                                                    ? "text-red-600"
+                                                    : "text-emerald-600"
+                                                }`}
+                                              >
                                                 CA$
                                                 {userRegistrationInfo.priceVariation
                                                   ? userRegistrationInfo
@@ -1571,15 +2208,13 @@ export default function WorkshopDetails() {
                                                   : workshop.price}
                                               </span>
                                             </div>
-                                            {userRegistrationInfo.priceVariation
-                                              ?.description && (
-                                              <div className="mt-2 pt-2 border-t border-emerald-200">
-                                                <p className="text-xs text-emerald-600">
-                                                  {
-                                                    userRegistrationInfo
-                                                      .priceVariation
-                                                      .description
-                                                  }
+
+                                            {registrations[occurrence.id]
+                                              ?.status === "cancelled" && (
+                                              <div className="mt-2 pt-2 border-t border-red-200">
+                                                <p className="text-xs text-red-600 font-medium">
+                                                  Contact support if this
+                                                  cancellation was unexpected
                                                 </p>
                                               </div>
                                             )}
@@ -1587,6 +2222,35 @@ export default function WorkshopDetails() {
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
+                                  ) : registrations[occurrence.id]?.status ===
+                                    "cancelled" ? (
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Badge className="bg-red-500 text-white border-red-600 px-3 py-1 cursor-pointer">
+                                          Registration Cancelled
+                                        </Badge>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            handleRegister(occurrence.id)
+                                          }
+                                          disabled={
+                                            !user ||
+                                            !hasCompletedAllPrerequisites ||
+                                            !checkWorkshopCapacity(
+                                              occurrence.capacityInfo
+                                            ).hasCapacity ||
+                                            isWithinCutoffPeriod(
+                                              new Date(occurrence.startDate),
+                                              workshop.registrationCutoff
+                                            )
+                                          }
+                                        >
+                                          Register Again
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   ) : (
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
@@ -1595,8 +2259,28 @@ export default function WorkshopDetails() {
                                         </Badge>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
-                                        {confirmOccurrenceId ===
-                                        occurrence.id ? (
+                                        {registrations[occurrence.id]
+                                          ?.status === "cancelled" ? (
+                                          <DropdownMenuItem
+                                            onClick={() =>
+                                              handleRegister(occurrence.id)
+                                            }
+                                            disabled={
+                                              !user ||
+                                              !hasCompletedAllPrerequisites ||
+                                              !checkWorkshopCapacity(
+                                                occurrence.capacityInfo
+                                              ).hasCapacity ||
+                                              isWithinCutoffPeriod(
+                                                new Date(occurrence.startDate),
+                                                workshop.registrationCutoff
+                                              )
+                                            }
+                                          >
+                                            Register Again
+                                          </DropdownMenuItem>
+                                        ) : confirmOccurrenceId ===
+                                          occurrence.id ? (
                                           <>
                                             <DropdownMenuItem
                                               onSelect={(e) => {
@@ -1837,7 +2521,7 @@ export default function WorkshopDetails() {
                   <div className="mt-6 mb-8">
                     <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                       <h2 className="text-lg font-semibold mb-3 flex items-center">
-                        <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                        <span className="bg-indigo-500 text-white p-1 rounded-md mr-2">
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 24 24"
@@ -1942,7 +2626,7 @@ export default function WorkshopDetails() {
 
                 <div className="mt-6">
                   <Button
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg"
+                    className="bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-lg"
                     onClick={() => navigate("/dashboard/workshops")}
                   >
                     Back to Workshops

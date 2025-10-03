@@ -27,8 +27,9 @@ import {
   getWorkshops,
   getMultiDayWorkshopUserCount,
   getWorkshopWithPriceVariations,
-  getWorkshopRegistrationCounts,
   cancelWorkshopPriceVariation,
+  getMaxRegistrationCountsPerWorkshopPriceVariation,
+  getMultiDayWorkshopRegistrationCounts,
 } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Badge } from "@/components/ui/badge";
@@ -68,13 +69,13 @@ import {
 } from "~/models/equipment.server";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import EquipmentBookingGrid from "~/components/ui/Dashboard/Equipmentbookinggrid";
-import type { SlotsByDay } from "~/components/ui/Dashboard/Equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/equipmentbookinggrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/equipmentbookinggrid";
 import { db } from "~/utils/db.server";
 import { logger } from "~/logging/logger";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -113,11 +114,54 @@ export async function loader({
   const availableEquipments = await getAvailableEquipment();
   const userCounts = await getMultiDayWorkshopUserCount(workshopId);
 
-  // Get registration counts for capacity validation
-  const registrationCounts = await getWorkshopRegistrationCounts(
-    workshopId,
-    workshop.occurrences?.[0]?.id || 0
-  ).catch(() => null);
+  // Check if this is a multi-day workshop
+  const isMultiDayWorkshop =
+    workshop.occurrences && workshop.occurrences.length > 0
+      ? workshop.occurrences.some((occ: any) => occ.connectId != null)
+      : false;
+
+  // Get registration counts with proper logic for regular vs multi-day workshops
+  let registrationCounts = null;
+  if (workshop.occurrences && workshop.occurrences.length > 0) {
+    try {
+      if (isMultiDayWorkshop) {
+        // For multi-day workshops: use unique user count logic
+        const firstConnectId = workshop.occurrences.find(
+          (occ: any) => occ.connectId
+        )?.connectId;
+        if (firstConnectId) {
+          registrationCounts = await getMultiDayWorkshopRegistrationCounts(
+            workshopId,
+            firstConnectId
+          );
+        }
+      } else {
+        // For regular workshops: use max registrations per occurrence logic
+        registrationCounts =
+          await getMaxRegistrationCountsPerWorkshopPriceVariation(workshopId);
+      }
+    } catch (error) {
+      console.error("Error getting registration counts:", error);
+      // Fallback to empty counts
+      registrationCounts = {
+        workshopCapacity: workshop.capacity,
+        totalRegistrations: 0,
+        baseRegistrations: 0,
+        hasBaseCapacity: true,
+        variations: workshop.priceVariations
+          ? workshop.priceVariations
+              .filter((v: any) => v.status !== "cancelled")
+              .map((variation: any) => ({
+                variationId: variation.id,
+                name: variation.name,
+                capacity: variation.capacity,
+                registrations: 0,
+                hasCapacity: true,
+              }))
+          : [],
+      };
+    }
+  }
 
   const cancelledPriceVariations =
     workshop.priceVariations?.filter(
@@ -277,7 +321,10 @@ export async function action({
   }
 
   // Convert price & capacity
-  const price = parseFloat(rawValues.price as string);
+  const hasPriceVariationsCheck = rawValues.hasPriceVariations === "true";
+  const price = hasPriceVariationsCheck
+    ? -1
+    : parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
   const prerequisites = JSON.parse(rawValues.prerequisites as string).map(
     Number
@@ -570,7 +617,7 @@ const getOfferIdColor = (offerId: number | null | undefined): string => {
     "bg-purple-100 text-purple-800",
     "bg-pink-100 text-pink-800",
     "bg-indigo-100 text-indigo-800",
-    "bg-yellow-100 text-yellow-800",
+    "bg-indigo-100 text-indigo-800",
     "bg-orange-100 text-orange-800",
     "bg-teal-100 text-teal-800",
   ];
@@ -804,6 +851,9 @@ export default function EditWorkshop() {
   const isMultiDay =
     initialOccurrences.some((occ) => occ.connectId != null) || false;
 
+  const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
+    useState<boolean>(isMultiDay);
+
   const navigate = useNavigate();
   const fetcher = useFetcher();
 
@@ -845,6 +895,34 @@ export default function EditWorkshop() {
     (occ) => occ.status === "cancelled"
   );
 
+  // Check if all occurrences are cancelled for multi-day workshop
+  const allCancelled =
+    occurrences.length > 0 &&
+    occurrences.every((occ) => occ.status === "cancelled");
+
+  const shouldDisableAddDate = (() => {
+    // Original logic: disable if all dates are cancelled in multi-day workshop
+    if (isMultiDayWorkshop && allCancelled) {
+      return true;
+    }
+
+    // New logic: disable if any users are registered in multi-day workshop
+    if (isMultiDayWorkshop) {
+      // Check if there are existing occurrences (saved to database) with users
+      const hasExistingOccurrences = activeOccurrences.some(
+        (occ) => occ.id !== undefined
+      );
+
+      if (hasExistingOccurrences) {
+        // Use the first occurrence's user count for multi-day workshops
+        const userCount = activeOccurrences[0]?.userCount ?? 0;
+        return userCount > 0;
+      }
+    }
+
+    return false;
+  })();
+
   // New state for prerequisites – initialize from the workshop data.
   // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
@@ -878,9 +956,6 @@ export default function EditWorkshop() {
   >([]);
   const [showOverlapConfirm, setShowOverlapConfirm] = useState(false);
   const [proceedDespiteOverlaps, setProceedDespiteOverlaps] = useState(false);
-
-  const [isMultiDayWorkshop, setIsMultiDayWorkshop] =
-    useState<boolean>(isMultiDay);
 
   const [hasPriceVariations, setHasPriceVariations] = useState(() => {
     return workshop.priceVariations && workshop.priceVariations.length > 0;
@@ -939,20 +1014,31 @@ export default function EditWorkshop() {
   const [monthlyStartDate, setMonthlyStartDate] = useState("");
   const [monthlyEndDate, setMonthlyEndDate] = useState("");
 
-  // For custom approach, add an empty row
   const addOccurrence = () => {
-    // Check if any users are registered
+    // Prevent adding dates if all are cancelled in multi-day workshop
+    if (shouldDisableAddDate) {
+      return;
+    }
+
+    // Check if any users are registered (only for active/non-cancelled occurrences)
     let hasUsers = false;
 
     if (isMultiDayWorkshop) {
-      // For multi-day workshop, check total users across all occurrences
-      hasUsers = userCounts.totalUsers > 0;
+      // For multi-day workshop, check if there are active occurrences with users
+      const activeOccurrencesWithUsers = activeOccurrences.some(
+        (occ) => occ.userCount && occ.userCount > 0
+      );
+      hasUsers = activeOccurrencesWithUsers;
     } else {
-      // For regular workshops, check each occurrence
-      hasUsers = occurrences.some((occ) => occ.userCount && occ.userCount > 0);
+      // For regular workshops, check only active occurrences
+      const activeOccurrencesWithUsers = occurrences.some(
+        (occ) =>
+          occ.status !== "cancelled" && occ.userCount && occ.userCount > 0
+      );
+      hasUsers = activeOccurrencesWithUsers;
     }
 
-    // If users are registered, show confirmation dialog
+    // If users are registered for active occurrences, show confirmation dialog
     if (hasUsers) {
       const confirmed = window.confirm(
         "Are you sure you want to add new dates? There are users registered."
@@ -1174,11 +1260,22 @@ export default function EditWorkshop() {
       formData.append("priceVariations", JSON.stringify(priceVariations));
     }
 
-    // Use fetcher to submit the form
-    fetcher.submit(formData, {
-      method: "post",
-      action: `/dashboard/editworkshop/${workshop.id}`,
-    });
+    // Use regular form submission to trigger redirect
+    const submitForm = document.createElement("form");
+    submitForm.method = "post";
+    submitForm.action = `/dashboard/editworkshop/${workshop.id}`;
+
+    // Add all form data as hidden inputs
+    for (const [key, value] of formData.entries()) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value.toString();
+      submitForm.appendChild(input);
+    }
+
+    document.body.appendChild(submitForm);
+    submitForm.submit();
   }
 
   function handleCancelPriceVariation(variationId: number) {
@@ -1397,10 +1494,16 @@ export default function EditWorkshop() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
           <div className="max-w-7xl mx-auto p-8 w-full">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Edit Workshop</h1>
+            </div>
+
             {/* Back Button */}
             <div className="mb-6">
               <Button
@@ -1485,11 +1588,22 @@ export default function EditWorkshop() {
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label={hasPriceVariations ? "Price (Base)" : "Price"}
-                    placeholder="Price"
-                    required
+                    label="Price"
+                    placeholder={
+                      hasPriceVariations
+                        ? "Managed through pricing options below"
+                        : "Price"
+                    }
+                    required={!hasPriceVariations}
                     type="number"
                     error={actionData?.errors?.price}
+                    disabled={hasPriceVariations}
+                    className={`w-full lg:w-[500px] ${hasPriceVariations ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                    tooltip={
+                      hasPriceVariations
+                        ? "Price is managed through pricing options below. The first pricing option will be the default."
+                        : undefined
+                    }
                   />
 
                   <GenericFormField
@@ -1539,7 +1653,7 @@ export default function EditWorkshop() {
                         className="sr-only peer"
                         disabled={true}
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">Multi-day Workshop</span>
@@ -1567,12 +1681,26 @@ export default function EditWorkshop() {
                             setHasPriceVariations(isChecked);
                             if (!isChecked) {
                               setPriceVariations([]);
+                              // Re-enable the price field when unchecking
+                              const originalPrice = workshop.price || 0;
+                              form.setValue("price", originalPrice);
+                            } else {
+                              setPriceVariations([
+                                {
+                                  name: "",
+                                  price: "",
+                                  description: "",
+                                  capacity: "",
+                                },
+                              ]);
+                              // Set the base price to -1 since it's now managed in variations
+                              form.setValue("price", -1);
                             }
                           }
                         }}
                         className="sr-only peer"
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">
@@ -1580,14 +1708,15 @@ export default function EditWorkshop() {
                     </span>
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
-                    Check this to add different pricing options for this
-                    workshop
+                    Enable this to create multiple pricing options. The first
+                    price field will be disabled and pricing will be managed
+                    through price variations
                   </p>
                 </div>
 
                 {/* Price Variations Management */}
                 {hasPriceVariations && (
-                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                  <div className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium">Price Variations</h3>
                       <Button
@@ -1604,41 +1733,26 @@ export default function EditWorkshop() {
                             },
                           ])
                         }
-                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                        className="text-indigo-600 border-indigo-300 hover:bg-indigo-100"
                       >
                         Add Variation
                       </Button>
                     </div>
 
-                    {/* Base Price Display */}
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-semibold text-blue-800">
-                            Base Price (Standard Option)
-                          </h4>
-                          <p className="text-xs text-blue-600 mt-1">
-                            This is your workshop's standard pricing that users
-                            can select (editable from the price input box above)
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-lg font-bold text-blue-700">
-                            ${form.watch("price") || "0"}
-                          </span>
-                          <p className="text-xs text-blue-600">Base Price</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Additional Pricing Options Header */}
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-700">
-                        Additional Pricing Options
+                    {/* Pricing Options Header */}
+                    <div className="mb-4">
+                      <h4 className="text-l font-medium text-gray-700">
+                        Pricing Options
                       </h4>
                       <p className="text-xs text-gray-500">
-                        Create alternative pricing tiers
+                        Create different pricing options for this workshop
                       </p>
+                      {priceVariations.length > 0 && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          <strong>Note:</strong> The first option will be the
+                          standard selection for users
+                        </p>
+                      )}
                     </div>
 
                     {/* ERROR DISPLAY: */}
@@ -1670,7 +1784,7 @@ export default function EditWorkshop() {
                                 newVariations[index].name = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.name`
@@ -1709,7 +1823,7 @@ export default function EditWorkshop() {
                                       setPriceVariations(newVariations);
                                     }
                               }
-                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                              className={`w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
                                 index < initialPriceVariationsCount
                                   ? "bg-gray-100 text-gray-600 cursor-not-allowed"
                                   : ""
@@ -1769,7 +1883,7 @@ export default function EditWorkshop() {
                                 newVariations[index].capacity = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500
                                 ${
                                   actionData?.errors?.[
                                     `priceVariations.${index}.capacity`
@@ -1838,7 +1952,7 @@ export default function EditWorkshop() {
                                   e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.description`
@@ -2070,15 +2184,22 @@ export default function EditWorkshop() {
                           Edit Workshop Dates{" "}
                           <span className="text-red-500">*</span>
                         </FormLabel>
-                        {occurrences.length > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="ml-2 bg-yellow-100 border-yellow-200"
-                          >
-                            {occurrences.length} date
-                            {occurrences.length !== 1 ? "s" : ""} added
-                          </Badge>
-                        )}
+                        {(() => {
+                          const nonCancelledCount = occurrences.filter(
+                            (occ) => occ.status !== "cancelled"
+                          ).length;
+                          return (
+                            nonCancelledCount > 0 && (
+                              <Badge
+                                variant="outline"
+                                className="ml-2 bg-indigo-100 border-indigo-200"
+                              >
+                                {nonCancelledCount} date
+                                {nonCancelledCount !== 1 ? "s" : ""} added
+                              </Badge>
+                            )
+                          );
+                        })()}
                       </div>
                       <FormControl>
                         <div className="flex flex-col items-start space-y-6 w-full">
@@ -2117,7 +2238,9 @@ export default function EditWorkshop() {
                           {/* Custom Dates Input */}
                           {dateSelectionType === "custom" && (
                             <div className="flex flex-col items-center w-full p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
-                              {occurrences.length === 0 ? (
+                              {occurrences.filter(
+                                (occ) => occ.status !== "cancelled"
+                              ).length === 0 ? (
                                 <div className="text-center py-6 text-gray-500">
                                   <p className="text-sm">
                                     No dates added yet. Click the button below
@@ -2125,74 +2248,154 @@ export default function EditWorkshop() {
                                   </p>
                                 </div>
                               ) : (
-                                occurrences.map((occ, index) => {
-                                  const isStartDatePast = isDateInPast(
-                                    occ.startDate
-                                  );
-                                  const isEndDatePast = isDateInPast(
-                                    occ.endDate
-                                  );
-                                  const hasWarning =
-                                    isStartDatePast || isEndDatePast;
+                                (() => {
+                                  // Create a filtered list with correct indices
+                                  const nonCancelledOccurrences: Occurrence[] =
+                                    [];
+                                  const indexMapping: number[] = [];
 
-                                  return (
-                                    <div key={index} style={{ width: "100%" }}>
-                                      <TooltipProvider>
-                                        <Tooltip
-                                          open={hasWarning ? undefined : false}
+                                  occurrences.forEach((occ, originalIndex) => {
+                                    if (occ.status !== "cancelled") {
+                                      nonCancelledOccurrences.push(occ);
+                                      indexMapping.push(originalIndex);
+                                    }
+                                  });
+
+                                  return nonCancelledOccurrences.map(
+                                    (occ, displayIndex) => {
+                                      const originalIndex =
+                                        indexMapping[displayIndex];
+
+                                      const isStartDatePast = isDateInPast(
+                                        occ.startDate
+                                      );
+                                      const isEndDatePast = isDateInPast(
+                                        occ.endDate
+                                      );
+                                      const hasWarning =
+                                        isStartDatePast || isEndDatePast;
+
+                                      return (
+                                        <div
+                                          key={`occurrence-${originalIndex}`}
+                                          style={{ width: "100%" }}
                                         >
-                                          <TooltipTrigger asChild>
-                                            <div
-                                              style={{
-                                                borderLeft: hasWarning
-                                                  ? "4px solid #f59e0b"
-                                                  : "none",
-                                                paddingLeft: hasWarning
-                                                  ? "8px"
-                                                  : "0",
-                                                width: "100%",
-                                              }}
-                                            >
-                                              <OccurrenceRow
-                                                index={index}
-                                                occurrence={occ}
-                                                updateOccurrence={
-                                                  updateOccurrence
-                                                }
-                                                formatLocalDatetime={
-                                                  formatLocalDatetime
-                                                }
-                                              />
-                                            </div>
-                                          </TooltipTrigger>
-                                          {hasWarning && (
-                                            <TooltipContent
-                                              side="right"
-                                              className="bg-amber-100 text-amber-800 border border-amber-300"
-                                            >
-                                              <p className="text-sm font-medium">
-                                                {isStartDatePast &&
-                                                isEndDatePast
-                                                  ? "Both start and end dates are in the past"
-                                                  : isStartDatePast
-                                                    ? "Start date is in the past"
-                                                    : "End date is in the past"}
-                                              </p>
-                                            </TooltipContent>
-                                          )}
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    </div>
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <div
+                                                  style={{
+                                                    borderLeft: hasWarning
+                                                      ? "4px solid #f59e0b"
+                                                      : occ.userCount &&
+                                                          occ.userCount > 0
+                                                        ? "4px solid #dc2626"
+                                                        : "none",
+                                                    paddingLeft:
+                                                      hasWarning ||
+                                                      (occ.userCount &&
+                                                        occ.userCount > 0)
+                                                        ? "8px"
+                                                        : "0",
+                                                    width: "100%",
+                                                  }}
+                                                >
+                                                  <OccurrenceRow
+                                                    index={originalIndex}
+                                                    occurrence={occ}
+                                                    updateOccurrence={
+                                                      updateOccurrence
+                                                    }
+                                                    formatLocalDatetime={
+                                                      formatLocalDatetime
+                                                    }
+                                                    disabled={
+                                                      !!(
+                                                        occ.userCount &&
+                                                        occ.userCount > 0
+                                                      )
+                                                    }
+                                                  />
+                                                </div>
+                                              </TooltipTrigger>
+                                              {occ.userCount &&
+                                              occ.userCount > 0 ? (
+                                                <TooltipContent
+                                                  side="top"
+                                                  align="start"
+                                                  className="bg-red-100 text-red-800 border border-red-300 max-w-sm z-50"
+                                                  sideOffset={5}
+                                                >
+                                                  <p className="text-sm font-medium">
+                                                    You cannot edit a workshop
+                                                    time which has users
+                                                    registered in it (
+                                                    {occ.userCount} user
+                                                    {occ.userCount !== 1
+                                                      ? "s"
+                                                      : ""}{" "}
+                                                    registered)
+                                                  </p>
+                                                </TooltipContent>
+                                              ) : hasWarning ? (
+                                                <TooltipContent
+                                                  side="top"
+                                                  align="start"
+                                                  className="bg-amber-100 text-amber-800 border border-amber-300 max-w-sm z-50"
+                                                  sideOffset={5}
+                                                >
+                                                  <p className="text-sm font-medium">
+                                                    {isStartDatePast &&
+                                                    isEndDatePast
+                                                      ? "Both start and end dates are in the past"
+                                                      : isStartDatePast
+                                                        ? "Start date is in the past"
+                                                        : "End date is in the past"}
+                                                  </p>
+                                                </TooltipContent>
+                                              ) : null}
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                        </div>
+                                      );
+                                    }
                                   );
-                                })
+                                })()
                               )}
-                              <Button
-                                type="button"
-                                onClick={addOccurrence}
-                                className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
-                              >
-                                <span className="mr-1">+</span> Add Date
-                              </Button>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div>
+                                      <Button
+                                        type="button"
+                                        onClick={addOccurrence}
+                                        disabled={shouldDisableAddDate}
+                                        className={`mt-1 px-6 py-2 rounded-md shadow transition text-sm flex items-center ${
+                                          shouldDisableAddDate
+                                            ? "bg-gray-400 hover:bg-gray-400 text-gray-600 cursor-not-allowed"
+                                            : "bg-indigo-500 hover:bg-indigo-600 text-white"
+                                        }`}
+                                      >
+                                        <span className="mr-1">+</span> Add Date
+                                      </Button>
+                                    </div>
+                                  </TooltipTrigger>
+                                  {shouldDisableAddDate && (
+                                    <TooltipContent
+                                      side="top"
+                                      align="center"
+                                      className="bg-gray-100 text-gray-800 border border-gray-300 max-w-sm z-50"
+                                      sideOffset={5}
+                                    >
+                                      <p className="text-sm font-medium">
+                                        {isMultiDayWorkshop && allCancelled
+                                          ? "You cannot add dates after cancelling a multi-day workshop"
+                                          : "You cannot add dates when users are registered for this multi-day workshop"}
+                                      </p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                           )}
 
@@ -2256,7 +2459,7 @@ export default function EditWorkshop() {
                           {occurrences.length > 0 && (
                             <>
                               <h3 className="font-medium mb-4 flex items-center">
-                                <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                                <CalendarIcon className="w-5 h-5 mr-2 text-indigo-500" />
                                 Workshop Dates:
                               </h3>
                               <OccurrencesTabs
@@ -2284,7 +2487,7 @@ export default function EditWorkshop() {
                                       </span>
                                     ),
                                     triggerClassName:
-                                      "data-[state=active]:bg-yellow-500 data-[state=active]:text-white font-medium",
+                                      "data-[state=active]:bg-indigo-500 data-[state=active]:text-white font-medium",
                                     content:
                                       activeOccurrences.length > 0 ? (
                                         <div className="space-y-3">
@@ -2360,14 +2563,29 @@ export default function EditWorkshop() {
                                                             />
                                                           </svg>
                                                           {isMultiDayWorkshop
-                                                            ? `${
-                                                                userCounts.totalUsers
-                                                              } ${
-                                                                userCounts.totalUsers ===
-                                                                1
-                                                                  ? "user"
-                                                                  : "users"
-                                                              } registered`
+                                                            ? (() => {
+                                                                // For multi-day workshops, only show user count if occurrences have IDs (saved to database)
+                                                                const hasExistingOccurrences =
+                                                                  activeOccurrences.some(
+                                                                    (occ) =>
+                                                                      occ.id !==
+                                                                      undefined
+                                                                  );
+
+                                                                if (
+                                                                  !hasExistingOccurrences
+                                                                ) {
+                                                                  // New dates that haven't been saved yet - no users registered
+                                                                  return "0 users registered";
+                                                                }
+
+                                                                // For existing occurrences, use the first occurrence's user count
+                                                                const userCount =
+                                                                  activeOccurrences[0]
+                                                                    ?.userCount ??
+                                                                  0;
+                                                                return `${userCount} ${userCount === 1 ? "user" : "users"} registered`;
+                                                              })()
                                                             : `${
                                                                 occ.userCount ??
                                                                 0
@@ -2382,101 +2600,165 @@ export default function EditWorkshop() {
                                                         </span>
                                                       </div>
                                                     )}
-                                                    {shouldShowCancelButton ? (
-                                                      hasUsers ||
-                                                      (isMultiDayWorkshop &&
-                                                        userCounts.totalUsers >
-                                                          0) ? (
-                                                        <ConfirmButton
-                                                          confirmTitle={
+                                                    {shouldShowCancelButton
+                                                      ? (() => {
+                                                          // For multi-day workshops, check if any occurrence has users or has been saved to database
+                                                          if (
                                                             isMultiDayWorkshop
-                                                              ? "Cancel All Occurrences"
-                                                              : "Cancel Occurrence"
-                                                          }
-                                                          confirmDescription={
-                                                            isMultiDayWorkshop
-                                                              ? "Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
-                                                              : "Are you sure you want to cancel this occurrence? This action cannot be undone."
-                                                          }
-                                                          onConfirm={() => {
+                                                          ) {
+                                                            const hasExistingOccurrences =
+                                                              activeOccurrences.some(
+                                                                (occ) =>
+                                                                  occ.id !==
+                                                                  undefined
+                                                              );
+                                                            const hasUsers =
+                                                              userCounts.totalUsers >
+                                                              0;
+
+                                                            // If no existing occurrences (all new dates), show Delete button
                                                             if (
-                                                              isMultiDayWorkshop
+                                                              !hasExistingOccurrences
                                                             ) {
-                                                              // Cancel all active occurrences for multi-day workshops
-                                                              activeOccurrences.forEach(
-                                                                (
-                                                                  occurrence
-                                                                ) => {
-                                                                  if (
-                                                                    occurrence.id
-                                                                  ) {
-                                                                    handleCancelOccurrence(
-                                                                      occurrence.id
+                                                              return (
+                                                                <ConfirmButton
+                                                                  confirmTitle="Delete All Occurrences"
+                                                                  confirmDescription="Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
+                                                                  onConfirm={() => {
+                                                                    // Create a new array without any of the active occurrences
+                                                                    const remainingOccurrences =
+                                                                      occurrences.filter(
+                                                                        (occ) =>
+                                                                          occ.status !==
+                                                                          "active"
+                                                                      );
+                                                                    setOccurrences(
+                                                                      remainingOccurrences
                                                                     );
+                                                                    form.setValue(
+                                                                      "occurrences",
+                                                                      remainingOccurrences
+                                                                    );
+                                                                  }}
+                                                                  buttonLabel="Delete All"
+                                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                                />
+                                                              );
+                                                            }
+
+                                                            // If existing occurrences with users, show Cancel button
+                                                            if (hasUsers) {
+                                                              return (
+                                                                <ConfirmButton
+                                                                  confirmTitle="Cancel All Occurrences"
+                                                                  confirmDescription="Are you sure you want to cancel all occurrences for this workshop? This action cannot be undone."
+                                                                  onConfirm={() => {
+                                                                    // Update local state to mark all active occurrences as cancelled
+                                                                    const updatedOccurrences =
+                                                                      occurrences.map(
+                                                                        (
+                                                                          occ
+                                                                        ) =>
+                                                                          occ.status ===
+                                                                          "active"
+                                                                            ? {
+                                                                                ...occ,
+                                                                                status:
+                                                                                  "cancelled" as const,
+                                                                              }
+                                                                            : occ
+                                                                      );
+                                                                    setOccurrences(
+                                                                      updatedOccurrences
+                                                                    );
+                                                                    form.setValue(
+                                                                      "occurrences",
+                                                                      updatedOccurrences
+                                                                    );
+
+                                                                    // Also handle the server-side cancellation
+                                                                    activeOccurrences.forEach(
+                                                                      (
+                                                                        occurrence
+                                                                      ) => {
+                                                                        if (
+                                                                          occurrence.id
+                                                                        ) {
+                                                                          handleCancelOccurrence(
+                                                                            occurrence.id
+                                                                          );
+                                                                        }
+                                                                      }
+                                                                    );
+                                                                  }}
+                                                                  buttonLabel="Cancel All"
+                                                                  buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+                                                                />
+                                                              );
+                                                            }
+
+                                                            // If existing occurrences without users, show Delete button
+                                                            return (
+                                                              <ConfirmButton
+                                                                confirmTitle="Delete All Occurrences"
+                                                                confirmDescription="Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
+                                                                onConfirm={() => {
+                                                                  const remainingOccurrences =
+                                                                    occurrences.filter(
+                                                                      (occ) =>
+                                                                        occ.status !==
+                                                                        "active"
+                                                                    );
+                                                                  setOccurrences(
+                                                                    remainingOccurrences
+                                                                  );
+                                                                  form.setValue(
+                                                                    "occurrences",
+                                                                    remainingOccurrences
+                                                                  );
+                                                                }}
+                                                                buttonLabel="Delete All"
+                                                                buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                              />
+                                                            );
+                                                          } else {
+                                                            // For single workshops
+                                                            const hasUsers =
+                                                              occ.userCount &&
+                                                              occ.userCount > 0;
+
+                                                            if (hasUsers) {
+                                                              return (
+                                                                <ConfirmButton
+                                                                  confirmTitle="Cancel Occurrence"
+                                                                  confirmDescription="Are you sure you want to cancel this occurrence? This action cannot be undone."
+                                                                  onConfirm={() =>
+                                                                    handleCancelOccurrence(
+                                                                      occ.id
+                                                                    )
                                                                   }
-                                                                }
+                                                                  buttonLabel="Cancel"
+                                                                  buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
+                                                                />
                                                               );
                                                             } else {
-                                                              // Cancel just this occurrence for regular workshops
-                                                              handleCancelOccurrence(
-                                                                occ.id
+                                                              return (
+                                                                <ConfirmButton
+                                                                  confirmTitle="Delete Occurrence"
+                                                                  confirmDescription="Are you sure you want to delete this occurrence?"
+                                                                  onConfirm={() =>
+                                                                    removeOccurrence(
+                                                                      originalIndex
+                                                                    )
+                                                                  }
+                                                                  buttonLabel="Delete"
+                                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                                />
                                                               );
                                                             }
-                                                          }}
-                                                          buttonLabel={
-                                                            isMultiDayWorkshop
-                                                              ? "Cancel All"
-                                                              : "Cancel"
                                                           }
-                                                          buttonClassName="bg-blue-500 hover:bg-blue-600 text-white h-8 px-3 rounded-full"
-                                                        />
-                                                      ) : (
-                                                        <ConfirmButton
-                                                          confirmTitle={
-                                                            isMultiDayWorkshop
-                                                              ? "Delete All Occurrences"
-                                                              : "Delete Occurrence"
-                                                          }
-                                                          confirmDescription={
-                                                            isMultiDayWorkshop
-                                                              ? "Are you sure you want to delete all occurrences for this workshop? This action cannot be undone."
-                                                              : "Are you sure you want to delete this occurrence?"
-                                                          }
-                                                          onConfirm={() => {
-                                                            if (
-                                                              isMultiDayWorkshop
-                                                            ) {
-                                                              // Create a new array without any of the active occurrences
-                                                              const remainingOccurrences =
-                                                                occurrences.filter(
-                                                                  (occ) =>
-                                                                    occ.status !==
-                                                                    "active"
-                                                                );
-                                                              // Set the new filtered array of occurrences
-                                                              setOccurrences(
-                                                                remainingOccurrences
-                                                              );
-                                                              form.setValue(
-                                                                "occurrences",
-                                                                remainingOccurrences
-                                                              );
-                                                            } else {
-                                                              // Remove just this occurrence
-                                                              removeOccurrence(
-                                                                originalIndex
-                                                              );
-                                                            }
-                                                          }}
-                                                          buttonLabel={
-                                                            isMultiDayWorkshop
-                                                              ? "Delete All"
-                                                              : "Delete"
-                                                          }
-                                                          buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                                        />
-                                                      )
-                                                    ) : null}
+                                                        })()
+                                                      : null}
                                                   </div>
                                                 </div>
                                               );
@@ -2528,7 +2810,7 @@ export default function EditWorkshop() {
                                       "data-[state=active]:bg-gray-500 data-[state=active]:text-white font-medium",
                                     content:
                                       pastOccurrences.length > 0 ? (
-                                        <div className="space-y-3 px-4">
+                                        <div className="space-y-3">
                                           {pastOccurrences.map((occ, index) => {
                                             const originalIndex =
                                               occurrences.findIndex(
@@ -2541,7 +2823,7 @@ export default function EditWorkshop() {
                                             return (
                                               <div
                                                 key={index}
-                                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 border-l-4 border-l-amber-500 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
+                                                className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
                                               >
                                                 <div className="text-sm">
                                                   <div className="font-medium text-gray-700 flex items-center">
@@ -2573,41 +2855,44 @@ export default function EditWorkshop() {
                                                     )}
                                                   </div>
                                                 </div>
-                                                <div className="flex items-center mr-2 px-3 py-1 bg-gray-100 border border-gray-300 rounded-full">
-                                                  <span className="flex items-center text-sm font-medium text-gray-700">
-                                                    <svg
-                                                      xmlns="http://www.w3.org/2000/svg"
-                                                      className="h-4 w-4 mr-1"
-                                                      fill="none"
-                                                      viewBox="0 0 24 24"
-                                                      stroke="currentColor"
-                                                    >
-                                                      <path
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                        strokeWidth={2}
-                                                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                                                      />
-                                                    </svg>
-                                                    {occ.userCount ?? 0}{" "}
-                                                    {occ.userCount === 1 ||
-                                                    occ.userCount === undefined
-                                                      ? "user"
-                                                      : "users"}{" "}
-                                                    registered
-                                                  </span>
+                                                <div className="flex items-center">
+                                                  <div className="flex items-center mr-2 px-3 py-1 bg-gray-100 border border-gray-300 rounded-full">
+                                                    <span className="flex items-center text-sm font-medium text-gray-700">
+                                                      <svg
+                                                        xmlns="http://www.w3.org/2000/svg"
+                                                        className="h-4 w-4 mr-1"
+                                                        fill="none"
+                                                        viewBox="0 0 24 24"
+                                                        stroke="currentColor"
+                                                      >
+                                                        <path
+                                                          strokeLinecap="round"
+                                                          strokeLinejoin="round"
+                                                          strokeWidth={2}
+                                                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                                        />
+                                                      </svg>
+                                                      {occ.userCount ?? 0}{" "}
+                                                      {occ.userCount === 1 ||
+                                                      occ.userCount ===
+                                                        undefined
+                                                        ? "user"
+                                                        : "users"}{" "}
+                                                      registered
+                                                    </span>
+                                                  </div>
+                                                  <ConfirmButton
+                                                    confirmTitle="Delete Occurrence"
+                                                    confirmDescription="Are you sure you want to delete this occurrence?"
+                                                    onConfirm={() =>
+                                                      removeOccurrence(
+                                                        originalIndex
+                                                      )
+                                                    }
+                                                    buttonLabel="Delete"
+                                                    buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
+                                                  />
                                                 </div>
-                                                <ConfirmButton
-                                                  confirmTitle="Delete Occurrence"
-                                                  confirmDescription="Are you sure you want to delete this occurrence?"
-                                                  onConfirm={() =>
-                                                    removeOccurrence(
-                                                      originalIndex
-                                                    )
-                                                  }
-                                                  buttonLabel="X"
-                                                  buttonClassName="bg-red-500 hover:bg-red-600 text-white h-8 px-3 rounded-full"
-                                                />
                                               </div>
                                             );
                                           })}
@@ -2655,6 +2940,14 @@ export default function EditWorkshop() {
                                                     o.endDate.getTime() ===
                                                       occ.endDate.getTime()
                                                 );
+
+                                              // For multi-day workshops, we'll display user count only on the first occurrence
+                                              const isFirstCancelledOccurrence =
+                                                index === 0;
+                                              const shouldShowUserCount =
+                                                !isMultiDayWorkshop ||
+                                                isFirstCancelledOccurrence;
+
                                               return (
                                                 <div
                                                   key={index}
@@ -2684,30 +2977,36 @@ export default function EditWorkshop() {
                                                       )}
                                                     </div>
                                                   </div>
-                                                  <div className="flex items-center mr-2 px-3 py-1 bg-red-50 border border-red-200 rounded-full">
-                                                    <span className="flex items-center text-sm font-medium text-red-700">
-                                                      <svg
-                                                        xmlns="http://www.w3.org/2000/svg"
-                                                        className="h-4 w-4 mr-1"
-                                                        fill="none"
-                                                        viewBox="0 0 24 24"
-                                                        stroke="currentColor"
-                                                      >
-                                                        <path
-                                                          strokeLinecap="round"
-                                                          strokeLinejoin="round"
-                                                          strokeWidth={2}
-                                                          d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                                                        />
-                                                      </svg>
-                                                      {occ.userCount ?? 0}{" "}
-                                                      {occ.userCount === 1 ||
-                                                      occ.userCount ===
-                                                        undefined
-                                                        ? "user"
-                                                        : "users"}{" "}
-                                                      registered
-                                                    </span>
+                                                  <div className="flex items-center">
+                                                    {shouldShowUserCount && (
+                                                      <div className="flex items-center mr-2 px-3 py-1 bg-red-100 border border-red-200 rounded-full">
+                                                        <span className="flex items-center text-sm font-medium text-red-700">
+                                                          <svg
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                            className="h-4 w-4 mr-1"
+                                                            fill="none"
+                                                            viewBox="0 0 24 24"
+                                                            stroke="currentColor"
+                                                          >
+                                                            <path
+                                                              strokeLinecap="round"
+                                                              strokeLinejoin="round"
+                                                              strokeWidth={2}
+                                                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                                            />
+                                                          </svg>
+                                                          {isMultiDayWorkshop
+                                                            ? `${userCounts.uniqueUsers ?? userCounts.totalUsers} ${(userCounts.uniqueUsers ?? userCounts.totalUsers) === 1 ? "user" : "users"} registered`
+                                                            : `${occ.userCount ?? 0} ${occ.userCount === 1 || occ.userCount === undefined ? "user" : "users"} registered`}
+                                                        </span>
+                                                      </div>
+                                                    )}
+                                                    {(!isMultiDayWorkshop ||
+                                                      isFirstCancelledOccurrence) && (
+                                                      <div className="px-3 py-1 bg-red-600 text-white text-sm font-medium rounded-full">
+                                                        Cancelled
+                                                      </div>
+                                                    )}
                                                   </div>
                                                 </div>
                                               );
@@ -3112,6 +3411,9 @@ export default function EditWorkshop() {
                           setHasPriceVariations(false);
                           setPriceVariations([]);
                           setShowPriceVariationConfirm(false);
+                          // Re-enable the price field
+                          const originalPrice = workshop.price || 0;
+                          form.setValue("price", originalPrice);
                         }}
                         className="bg-red-600 hover:bg-red-700"
                       >
@@ -3124,7 +3426,7 @@ export default function EditWorkshop() {
                 <div className="flex justify-center mt-6">
                   <Button
                     type="submit"
-                    className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                    className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                     disabled={formSubmitting}
                   >
                     {formSubmitting ? "Updating..." : "Update Workshop"}

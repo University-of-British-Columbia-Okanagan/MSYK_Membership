@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate, useFetcher } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { getRoleUser } from "~/utils/session.server";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,7 @@ import {
   getAllEquipment,
 } from "~/models/equipment.server";
 import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const equipments = await getAllEquipment();
@@ -37,7 +37,7 @@ export default function Equipments() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isGuest ? (
           <GuestAppSidebar />
         ) : isAdmin ? (
@@ -46,12 +46,18 @@ export default function Equipments() {
           <AppSidebar />
         )}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-6">Available Equipment</h1>
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Equipment</h1>
+          </div>
+
+          <h1 className="text-2xl font-bold mb-6 hidden md:block">Available Equipment</h1>
 
           <div className="flex justify-end items-center mb-6">
             {isAdmin && (
               <Button
-                className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-md shadow transition"
+                className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-md shadow transition"
                 onClick={() => navigate("/dashboard/addequipment")}
               >
                 + Add Equipment
@@ -60,7 +66,7 @@ export default function Equipments() {
           </div>
 
           {equipments.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-wrap gap-4 md:gap-6 justify-start items-stretch">
               {equipments.map((equipment) => (
                 <EquipmentCard
                   key={equipment.id}

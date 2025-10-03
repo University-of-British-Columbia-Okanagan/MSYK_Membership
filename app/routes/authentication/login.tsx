@@ -85,7 +85,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white border border-yellow-400 rounded-xl shadow-md p-8">
+      <div className="w-full max-w-md bg-white border border-indigo-400 rounded-xl shadow-md p-8">
         <div className="flex flex-col items-center mb-6">
           <img
             src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
@@ -142,7 +142,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
 
                 <Button
                   type="submit"
-                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
                   disabled={loading}
                 >
                   {loading ? "Logging in..." : "Login"}
@@ -153,7 +153,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                     Forgot your password?{" "}
                     <a
                       href="/passwordReset"
-                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                      className="text-indigo-600 hover:text-indigo-700 font-medium"
                     >
                       Reset Password
                     </a>
@@ -165,7 +165,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                     Don't have an account?{" "}
                     <a
                       href="/register"
-                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                      className="text-indigo-600 hover:text-indigo-700 font-medium"
                     >
                       Register here
                     </a>
@@ -177,7 +177,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                     View the portal as a guest?{" "}
                     <a
                       href="/dashboard"
-                      className="text-yellow-600 hover:text-yellow-700 font-medium"
+                      className="text-indigo-600 hover:text-indigo-700 font-medium"
                     >
                       View here
                     </a>

@@ -1,11 +1,13 @@
 import { useLoaderData, redirect } from "react-router-dom";
 import { getUserBookedEquipments } from "~/models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
+import { getBookingEmailDetails } from "~/models/equipment.server";
+import { sendEquipmentCancellationEmail } from "~/utils/email.server";
 import { json } from "@remix-run/node";
 import { logger } from "~/logging/logger";
 
@@ -56,7 +58,30 @@ export async function action({ request }: { request: Request }) {
 
   if (actionType === "cancel" && bookingId) {
     try {
+      // Get details before deletion for email composition
+      const emailDetails = await getBookingEmailDetails(bookingId);
+
       await cancelEquipmentBooking(bookingId);
+
+      // Send email after successful cancellation (non-blocking)
+      if (emailDetails) {
+        const { userEmail, equipmentName, startTime, endTime } = emailDetails;
+        try {
+          await sendEquipmentCancellationEmail({
+            userEmail,
+            equipmentName,
+            startTime: new Date(startTime),
+            endTime: new Date(endTime),
+          });
+        } catch (emailErr) {
+          logger.error(
+            `Failed to send equipment cancellation email: ${emailErr}`,
+            {
+              url: request.url,
+            }
+          );
+        }
+      }
       return json({ success: "Booking cancelled successfully!" });
     } catch (error) {
       return json(
@@ -79,10 +104,16 @@ export default function MyEquipments() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-6">My Equipments</h1>
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">My Equipment</h1>
+          </div>
+
+          <h1 className="text-2xl font-bold mb-6 hidden md:block">My Equipments</h1>
 
           {equipments.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -95,6 +126,8 @@ export default function MyEquipments() {
                   imageUrl={booking.imageUrl || undefined}
                   status="booked" // Always "booked" in MyEquipments.tsx
                   bookingId={booking.bookingId} // Required for cancel button
+                  startTime={booking.startTime}
+                  endTime={booking.endTime}
                 />
               ))}
             </div>

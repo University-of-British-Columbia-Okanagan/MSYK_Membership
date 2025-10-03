@@ -920,7 +920,7 @@ export default function EquipmentBookingGrid({
                 <th
                   key={day}
                   className={`border border-gray-300 px-1 py-0.5 text-center w-24 ${
-                    isToday ? "bg-yellow-100 font-bold" : "bg-white"
+                    isToday ? "bg-indigo-100 font-bold" : "bg-white"
                   }`}
                 >
                   <div className="text-xs leading-tight">{dayName}</div>
@@ -1061,7 +1061,7 @@ export default function EquipmentBookingGrid({
                   const colorClass = isCurrentWorkshopSlot
                     ? "bg-green-500 cursor-not-allowed" // Green for current workshop slots
                     : isCurrentWorkshopEditingSlot
-                    ? "bg-yellow-400 cursor-not-allowed" // Yellow for slots being edited
+                    ? "bg-indigo-400 cursor-not-allowed" // Indigo for slots being edited
                     : isOtherWorkshopSlot
                     ? "bg-purple-400 cursor-not-allowed" // Reserved by another workshop
                     : slot?.isBooked
@@ -1098,7 +1098,7 @@ export default function EquipmentBookingGrid({
                         handleSlotToggle(day, time)
                       }
                     >
-                      {/* One tooltip shows at a time based on priority (admin restrictions > planned closures > 
+                      {/* One tooltip shows at a time based on priority (admin restrictions > planned closures >
                       workshop reservations > past slots) */}
                       {isAnyRestriction && (
                         <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-red-100 border border-red-200 rounded text-red-700 text-xs whitespace-nowrap shadow-lg">
@@ -1122,7 +1122,7 @@ export default function EquipmentBookingGrid({
                         !isCurrentWorkshopSlot &&
                         !isAnyRestriction &&
                         !isPlannedClosure && (
-                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-yellow-100 border border-yellow-200 rounded text-yellow-700 text-xs whitespace-nowrap shadow-lg">
+                          <div className="hidden group-hover:block absolute z-20 -mt-10 left-1/2 transform -translate-x-1/2 px-2 py-1 bg-indigo-100 border border-indigo-200 rounded text-indigo-700 text-xs whitespace-nowrap shadow-lg">
                             {/* Currently editing this workshop date */}
                             Old Workshop Time
                           </div>
@@ -1229,7 +1229,7 @@ export default function EquipmentBookingGrid({
                 <TabsTrigger
                   key={`week-${index}`}
                   value={`week-${index}`}
-                  className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-yellow-500 data-[state=active]:shadow-none data-[state=active]:bg-transparent rounded-none"
+                  className="px-4 py-2 data-[state=active]:border-b-2 data-[state=active]:border-indigo-500 data-[state=active]:shadow-none data-[state=active]:bg-transparent rounded-none"
                 >
                   {getTabLabel(index, days)}
                 </TabsTrigger>
@@ -1297,7 +1297,7 @@ export default function EquipmentBookingGrid({
             </span>
           </div>
           <div className="flex items-center gap-0.5">
-            <div className="w-3 h-3 bg-yellow-400 border border-gray-300" />
+            <div className="w-3 h-3 bg-indigo-400 border border-gray-300" />
             <span>
               {currentWorkshopOccurrences &&
               currentWorkshopOccurrences.length > 0

@@ -13,7 +13,7 @@ export default [
   route("/contact", "routes/about/contact.tsx"),
   route("/programming", "routes/programming/programming.tsx"),
   route("/workshopregistration", "routes/programming/workshopregistration.tsx"),
-  route("/eventcalendar", "routes/programming/eventcalendar.tsx"),
+  route("/dashboard/events", "routes/dashboard/events.tsx"),
   route("/makertomarket", "routes/programming/makertomarket.tsx"),
   route("/muralproject", "routes/programming/muralproject.tsx"),
   route("/dontfakeit", "routes/programming/dontfakeit.tsx"),
@@ -39,10 +39,10 @@ export default [
     "/dashboard/workshops/pricevariations/:workshopId",
     "routes/dashboard/workshoppricingvariation.tsx"
   ),
-  route("/addmembershipplan", "routes/getinvolved/addmembershipplan.tsx"),
+  route("/dashboard/addmembershipplan", "routes/dashboard/addmembershipplan.tsx"),
   route(
-    "/editmembershipplan/:planId",
-    "routes/getinvolved/editmembershipplan.tsx"
+    "/dashboard/editmembershipplan/:planId",
+    "routes/dashboard/editmembershipplan.tsx"
   ),
   route("/dashboard/addworkshop", "routes/dashboard/addworkshop.tsx"),
   route(
@@ -77,6 +77,10 @@ export default [
   route("dashboard/payment/:membershipPlanId", "routes/dashboard/payment.tsx", {
     id: "dashboard/payment/membership",
   }),
+  route(
+    "/dashboard/memberships/:membershipId",
+    "routes/dashboard/membershipdetails.tsx"
+  ),
   route("dashboard/paymentprocess", "routes/api/paymentprocess.tsx"),
   route("dashboard/payment/success", "routes/dashboard/paymentsuccess.tsx"),
   route("dashboard/payment/downgrade", "routes/api/paymentdowngrade.tsx"),
@@ -116,6 +120,22 @@ export default [
   route("/dashboard/logs", "routes/dashboard/serverlogs.tsx"),
   route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
   route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
+  route(
+    "/dashboard/profile/download-membership-agreement/:formId",
+    "routes/api/download-membership-agreement.tsx"
+  ),
+  route(
+    "/api/google-calendar/connect",
+    "routes/api/google-calendar.connect.tsx"
+  ),
+  route(
+    "/api/google-calendar/callback",
+    "routes/api/google-calendar.callback.tsx"
+  ),
+  route(
+    "/api/google-calendar/disconnect",
+    "routes/api/google-calendar.disconnect.tsx"
+  ),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
 ] satisfies RouteConfig;

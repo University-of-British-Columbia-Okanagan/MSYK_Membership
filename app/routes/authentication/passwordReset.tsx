@@ -23,20 +23,20 @@ export async function action({ request }: { request: Request }) {
         .join(", ");
       throw new Response(errorMessage, { status: 400 });
     }
-    
+
     var decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET as string);
     } catch (err) {
       throw new Response("Invalid token", {status: 419,});
     }
-    
+
     if (typeof decoded !== "object" || decoded === null || !("email" in decoded)) throw new Response("Invalid Request", {status: 419,});
     const userEmail = decoded.email;
 
     const user = await findUserByEmail(userEmail);
     if (!user) throw new Response("User with this email does not exists", {status: 404,});
-    
+
     await updateUserPassword(userEmail, newPassword);
 
     return redirect("/login");
@@ -109,7 +109,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-md bg-white border border-yellow-400 rounded-xl shadow-md p-8">
+      <div className="w-full max-w-md bg-white border border-indigo-400 rounded-xl shadow-md p-8">
         <div className="flex flex-col items-center mb-6">
           <img
             src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
@@ -128,11 +128,11 @@ export default function ForgotPasswordPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <button
                 type="submit"
-                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded"
               >
                 Send Reset Link
               </button>
@@ -149,7 +149,7 @@ export default function ForgotPasswordPage() {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <input
                 type="password"
@@ -157,11 +157,11 @@ export default function ForgotPasswordPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400"
               />
               <button
                 type="submit"
-                className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded"
               >
                 Reset Password
               </button>

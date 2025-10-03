@@ -3,9 +3,27 @@ import { Stripe } from "stripe";
 import {
   registerForWorkshop,
   registerUserForAllOccurrences,
+  getWorkshopById,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
+  checkWorkshopCapacity,
+  checkMultiDayWorkshopCapacity,
+  getWorkshopPriceVariation,
 } from "../../models/workshop.server";
-import { registerMembershipSubscription } from "../../models/membership.server";
+import {
+  getMembershipPlanById,
+  registerMembershipSubscription,
+  activateMembershipForm,
+} from "../../models/membership.server";
 import { useState, useEffect } from "react";
+import {
+  sendWorkshopConfirmationEmail,
+  sendEquipmentConfirmationEmail,
+  sendMembershipConfirmationEmail,
+} from "~/utils/email.server";
+import { getUserById } from "~/models/user.server";
+import { getEquipmentById } from "~/models/equipment.server";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
@@ -32,6 +50,7 @@ export async function loader({ request }: { request: Request }) {
         // For equipment quick checkout, we need to handle the booking
         const equipmentId = url.searchParams.get("equipment_id");
         const slotsDataKey = url.searchParams.get("slots_data_key");
+        const paymentIntentId = url.searchParams.get("payment_intent_id");
 
         if (equipmentId && slotsDataKey) {
           return new Response(
@@ -44,6 +63,7 @@ export async function loader({ request }: { request: Request }) {
               message,
               equipmentId: parseInt(equipmentId),
               slotsDataKey: slotsDataKey,
+              paymentIntentId: paymentIntentId,
             }),
             { headers: { "Content-Type": "application/json" } }
           );
@@ -115,13 +135,26 @@ export async function loader({ request }: { request: Request }) {
     variationId,
   } = metadata;
 
+  let user = await getUserById(Number(userId));
+  if (!user) {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: "User not found",
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   if (equipmentId && userId && isEquipmentBooking === "true") {
+    const paymentIntentId = session.payment_intent as string;
     return new Response(
       JSON.stringify({
         success: true,
         isEquipment: true,
         slotsDataKey: slotsDataKey,
         equipmentId: parseInt(equipmentId),
+        paymentIntentId: paymentIntentId,
         message:
           "🎉 Equipment payment successful! Your booking slots will be processed.",
       }),
@@ -136,11 +169,49 @@ export async function loader({ request }: { request: Request }) {
         ? parseInt(metadata.currentMembershipId)
         : null;
 
+      const paymentIntentId = session.payment_intent as string;
+
+      // Register the membership subscription
       await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
-        currentMembershipId
+        currentMembershipId,
+        false, // Not a downgrade
+        false, // Not a resubscription
+        paymentIntentId
       );
+
+      // Activate the pending membership form
+      await activateMembershipForm(
+        parseInt(userId),
+        parseInt(membershipPlanId)
+      );
+
+      try {
+        let membershipPlan = await getMembershipPlanById(
+          Number(membershipPlanId)
+        );
+        if (membershipPlan) {
+          // Calculate next billing date (one month from now)
+          const nextBillingDate = new Date();
+          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+
+          await sendMembershipConfirmationEmail({
+            userEmail: user.email,
+            planTitle: membershipPlan.title,
+            planDescription: membershipPlan.description,
+            monthlyPrice: membershipPlan.price,
+            features: membershipPlan.feature as Record<string, string>,
+            accessHours: membershipPlan.accessHours as string,
+            nextBillingDate,
+          });
+        }
+      } catch (emailConfirmationFailedError) {
+        console.error(
+          "Email confirmation failed:",
+          emailConfirmationFailedError
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -151,12 +222,14 @@ export async function loader({ request }: { request: Request }) {
         }),
         { headers: { "Content-Type": "application/json" } }
       );
-    } catch (error: any) {
+    } catch (error) {
+      logger.error(`Membership registration error: ${error}`, {
+        url: request.url,
+      });
       return new Response(
         JSON.stringify({
           success: false,
-          isMembership: true,
-          message: "Membership subscription failed: " + error.message,
+          message: "Failed to process membership",
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -166,16 +239,120 @@ export async function loader({ request }: { request: Request }) {
   // Multi-day workshop
   else if (workshopId && connectId && userId) {
     try {
+      // Get workshop and occurrences to check status and time
+      const workshop = await getWorkshopById(parseInt(workshopId));
+      const occurrences = await getWorkshopOccurrencesByConnectId(
+        parseInt(workshopId),
+        parseInt(connectId)
+      );
+
+      if (!workshop || !occurrences || occurrences.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop or occurrences not found",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if ANY occurrence is cancelled
+      const hasAnyCancelledOccurrence = occurrences.some(
+        (occ) => occ.status === "cancelled"
+      );
+      if (hasAnyCancelledOccurrence) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop has been cancelled",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if ANY occurrence is in the past
+      const now = new Date();
+      const hasAnyPastOccurrence = occurrences.some(
+        (occ) => new Date(occ.endDate) < now
+      );
+      if (hasAnyPastOccurrence) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop time has passed",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       const variationId = metadata.variationId
         ? parseInt(metadata.variationId)
         : null;
+
+      // Check if workshop is full
+      const capacityCheck = await checkMultiDayWorkshopCapacity(
+        parseInt(workshopId),
+        parseInt(connectId),
+        variationId
+      );
+      if (!capacityCheck.hasCapacity) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop is full",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const paymentIntentId = session.payment_intent as string;
 
       await registerUserForAllOccurrences(
         parseInt(workshopId),
         parseInt(connectId),
         parseInt(userId),
-        variationId
+        variationId,
+        paymentIntentId
       );
+
+      try {
+        // Get price variation details if applicable
+        let priceVariation = null;
+        if (variationId) {
+          priceVariation = await getWorkshopPriceVariation(variationId);
+        }
+
+        // Prepare sessions data for multi-day workshop
+        const sessions = occurrences.map((occ) => ({
+          startDate: occ.startDate,
+          endDate: occ.endDate,
+        }));
+
+        await sendWorkshopConfirmationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          sessions,
+          location: workshop.location,
+          basePrice: workshop.price,
+          priceVariation: priceVariation
+            ? {
+                name: priceVariation.name,
+                description: priceVariation.description,
+                price: priceVariation.price,
+              }
+            : null,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error(
+          "Email confirmation failed:",
+          emailConfirmationFailedError
+        );
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -200,16 +377,107 @@ export async function loader({ request }: { request: Request }) {
   // Workshop single occurrence
   else if (workshopId && occurrenceId && userId) {
     try {
+      // Get workshop and occurrence to check status and time
+      const workshop = await getWorkshopById(parseInt(workshopId));
+      const occurrence = await getWorkshopOccurrence(
+        parseInt(workshopId),
+        parseInt(occurrenceId)
+      );
+
+      if (!workshop || !occurrence) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop or occurrence not found",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if occurrence is cancelled
+      if (occurrence.status === "cancelled") {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop has been cancelled",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Check if occurrence is in the past
+      const now = new Date();
+      if (new Date(occurrence.endDate) < now) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop time has passed",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       const variationId = metadata.variationId
         ? parseInt(metadata.variationId)
         : null;
+
+      // Check if workshop is full
+      const capacityCheck = await checkWorkshopCapacity(
+        parseInt(workshopId),
+        parseInt(occurrenceId),
+        variationId
+      );
+      if (!capacityCheck.hasCapacity) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            isMembership: false,
+            message: "Workshop is full",
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const paymentIntentId = session.payment_intent as string;
 
       await registerForWorkshop(
         parseInt(workshopId),
         parseInt(occurrenceId),
         parseInt(userId),
-        variationId
+        variationId,
+        paymentIntentId
       );
+      try {
+        // Get price variation details if applicable
+        let priceVariation = null;
+        if (variationId) {
+          priceVariation = await getWorkshopPriceVariation(variationId);
+        }
+
+        await sendWorkshopConfirmationEmail({
+          userEmail: user.email,
+          workshopName: workshop.name,
+          startDate: occurrence.startDate,
+          endDate: occurrence.endDate,
+          location: workshop.location,
+          basePrice: workshop.price,
+          priceVariation: priceVariation
+            ? {
+                name: priceVariation.name,
+                description: priceVariation.description,
+                price: priceVariation.price,
+              }
+            : null,
+        });
+      } catch (emailConfirmationFailedError) {
+        console.error(
+          "Email confirmation failed:",
+          emailConfirmationFailedError
+        );
+      }
       return new Response(
         JSON.stringify({
           success: true,
@@ -247,6 +515,7 @@ export default function PaymentSuccess() {
     message: string;
     slotsDataKey?: string;
     equipmentId?: number;
+    paymentIntentId?: string;
   };
   const navigate = useNavigate();
   const [bookingStatus, setBookingStatus] = useState<string>("");
@@ -265,26 +534,26 @@ export default function PaymentSuccess() {
             return;
           }
 
+          // Use paymentIntentId from data instead of session
           const slots = JSON.parse(slotsData);
+          const paymentIntentId = data.paymentIntentId;
 
-          // Book each slot by making individual requests to the equipment booking endpoint
-          for (const slotString of slots) {
-            const [startTime, endTime] = slotString.split("|");
-
-            // Make a request to book each slot
-            const response = await fetch("/dashboard/equipments/book-slot", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                equipmentId: data.equipmentId,
-                startTime,
-                endTime,
+          // Send one batch booking request; server will send a single consolidated email
+          const response = await fetch("/dashboard/equipments/book-slot", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              equipmentId: data.equipmentId,
+              slots: slots.map((slotString: string) => {
+                const [startTime, endTime] = slotString.split("|");
+                return { startTime, endTime };
               }),
-            });
+              paymentIntentId,
+            }),
+          });
 
-            if (!response.ok) {
-              throw new Error(`Failed to book slot: ${startTime}`);
-            }
+          if (!response.ok) {
+            throw new Error("Failed to book equipment slots");
           }
 
           // Clean up sessionStorage

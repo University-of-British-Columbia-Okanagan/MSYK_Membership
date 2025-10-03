@@ -19,10 +19,10 @@ import { getUserCompletedEquipmentPrerequisites } from "../../models/equipment.s
 import { getUser } from "~/utils/session.server";
 import { getWorkshopById } from "../../models/workshop.server";
 import { Link } from "react-router";
-import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { ArrowLeft } from "lucide-react";
 import { logger } from "~/logging/logger";
 
@@ -162,7 +162,7 @@ export default function EquipmentDetails() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {/* Conditional sidebar rendering */}
         {!user ? (
           <GuestAppSidebar />
@@ -175,6 +175,12 @@ export default function EquipmentDetails() {
         {/* Main content area */}
         <main className="flex-grow p-6 overflow-auto">
           <div className="max-w-3xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Equipment Details</h1>
+            </div>
+
             <div className="mb-6">
               <Button
                 variant="outline"
@@ -222,7 +228,7 @@ export default function EquipmentDetails() {
                     <div className="mt-6 mb-8">
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <h2 className="text-lg font-semibold mb-3 flex items-center">
-                          <span className="bg-yellow-500 text-white p-1 rounded-md mr-2">
+                          <span className="bg-indigo-500 text-white p-1 rounded-md mr-2">
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 24 24"
@@ -293,7 +299,7 @@ export default function EquipmentDetails() {
                 {/* Book + Edit Equipment */}
                 <div className="flex gap-4">
                   <Button
-                    className="flex-[3] bg-yellow-500 text-white"
+                    className="flex-[3] bg-indigo-500 text-white"
                     onClick={handleBooking}
                     disabled={!equipment.availability}
                   >

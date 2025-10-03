@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { redirect, useActionData, useLoaderData } from "react-router";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
@@ -34,8 +34,8 @@ import {
   CalendarRange as CalendarRangeIcon,
   Check as CheckIcon,
 } from "lucide-react";
-import EquipmentBookingGrid from "~/components/ui/Dashboard/Equipmentbookinggrid";
-import type { SlotsByDay } from "~/components/ui/Dashboard/Equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/equipmentbookinggrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/equipmentbookinggrid";
 import {
   bulkBookEquipment,
   createEquipmentSlotsForOccurrence,
@@ -58,9 +58,9 @@ import {
 import { getEquipmentVisibilityDays } from "../../models/admin.server";
 import { getUser, getRoleUser } from "../../utils/session.server";
 import { logger } from "~/logging/logger";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -390,8 +390,11 @@ export async function action({ request }: { request: Request }) {
     return { errors: { selectedSlots: ["Invalid selected slots format"] } };
   }
 
-  // Parse price and capacity
-  const price = parseFloat(rawValues.price as string);
+  // Parse price and capacity - handle price variations case
+  const hasPriceVariationsCheck = rawValues.hasPriceVariations === "true";
+  const price = hasPriceVariationsCheck
+    ? -1
+    : parseFloat(rawValues.price as string);
   const capacity = parseInt(rawValues.capacity as string, 10);
 
   // Parse prerequisites from JSON string
@@ -672,26 +675,26 @@ export async function action({ request }: { request: Request }) {
         );
       }
 
-      // Create slots for all workshop occurrences
-      for (const occurrence of savedWorkshop.occurrences) {
-        for (const equipmentId of equipments) {
-          try {
-            await createEquipmentSlotsForOccurrence(
-              occurrence.id,
-              equipmentId,
-              occurrence.startDate,
-              occurrence.endDate,
-              userId
-            );
-          } catch (error) {
-            logger.error(
-              `[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`,
-              { url: request.url }
-            );
-            // Continue with other equipment instead of failing the whole operation
-          }
-        }
-      }
+      // // Create slots for all workshop occurrences
+      // for (const occurrence of savedWorkshop.occurrences) {
+      //   for (const equipmentId of equipments) {
+      //     try {
+      //       await createEquipmentSlotsForOccurrence(
+      //         occurrence.id,
+      //         equipmentId,
+      //         occurrence.startDate,
+      //         occurrence.endDate,
+      //         userId
+      //       );
+      //     } catch (error) {
+      //       logger.error(
+      //         `[Add workshop] Error creating slots for equipment ${equipmentId}: ${error}`,
+      //         { url: request.url }
+      //       );
+      //       // Continue with other equipment instead of failing the whole operation
+      //     }
+      //   }
+      // }
 
       return redirect("/dashboard/admin");
     } catch (error) {
@@ -721,7 +724,12 @@ export default function AddWorkshop() {
     equipmentVisibilityDays,
     roleUser,
   } = useLoaderData() as {
-    workshops: { id: number; name: string; type: string }[];
+    workshops: {
+      id: number;
+      name: string;
+      type: string;
+      occurrences: { status: string }[];
+    }[];
     equipments: {
       id: number;
       name: string;
@@ -759,6 +767,7 @@ export default function AddWorkshop() {
   >("custom");
 
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const formElementRef = useRef<HTMLFormElement | null>(null);
 
   // This will track the selected prerequisites
   const [selectedPrerequisites, setSelectedPrerequisites] = useState<number[]>(
@@ -888,7 +897,7 @@ export default function AddWorkshop() {
     form.setValue("prerequisites", updated);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Check for overlaps first
@@ -909,9 +918,17 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
+    const isValid = await form.trigger();
+    if (!isValid) return;
+
+    try {
+      sessionStorage.setItem(
+        "addWorkshopFormValues",
+        JSON.stringify(form.getValues())
+      );
+    } catch {}
     setFormSubmitting(true);
-    const form = e.currentTarget as HTMLFormElement;
-    form.submit();
+    formElementRef.current?.submit();
   };
 
   {
@@ -1027,11 +1044,37 @@ export default function AddWorkshop() {
 
   const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
 
+  // Restore values on server errors and surface to RHF
+  React.useEffect(() => {
+    if (actionData?.errors) {
+      setFormSubmitting(false);
+      const saved = sessionStorage.getItem("addWorkshopFormValues");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          form.reset(parsed);
+        } catch {}
+      }
+      Object.entries(actionData.errors).forEach(([key, value]) => {
+        const message = Array.isArray(value) ? value[0] : value;
+        if (message) {
+          form.setError(key as any, { type: "server", message: String(message) } as any);
+        }
+      });
+    }
+    // Clear stored values on success-like paths (no explicit success flag here)
+  }, [actionData, form]);
+
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 p-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Add Workshop</h1>
+          </div>
           <div className="max-w-7xl mx-auto p-8 w-full">
             {/* Back Button */}
             <div className="mb-6">
@@ -1102,7 +1145,7 @@ export default function AddWorkshop() {
               )}
 
             <Form {...form}>
-              <form method="post" onSubmit={handleFormSubmit}>
+              <form method="post" onSubmit={handleFormSubmit} noValidate ref={formElementRef}>
                 {/* Workshop Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <GenericFormField
@@ -1116,11 +1159,22 @@ export default function AddWorkshop() {
                   <GenericFormField
                     control={form.control}
                     name="price"
-                    label={hasPriceVariations ? "Price (Base)" : "Price"}
-                    placeholder="Price"
-                    required
-                    error={actionData?.errors?.price}
+                    label="Price"
+                    placeholder={
+                      hasPriceVariations
+                        ? "Managed through pricing options below"
+                        : "Price"
+                    }
+                    required={!hasPriceVariations}
                     type="number"
+                    error={actionData?.errors?.price}
+                    disabled={hasPriceVariations}
+                    className={`w-full lg:w-[500px] ${hasPriceVariations ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                    tooltip={
+                      hasPriceVariations
+                        ? "Price is managed through pricing options below."
+                        : undefined
+                    }
                   />
                   <GenericFormField
                     control={form.control}
@@ -1167,7 +1221,7 @@ export default function AddWorkshop() {
                         }
                         className="sr-only peer"
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">Multi-day Workshop</span>
@@ -1185,14 +1239,28 @@ export default function AddWorkshop() {
                         type="checkbox"
                         checked={hasPriceVariations}
                         onChange={(e) => {
-                          setHasPriceVariations(e.target.checked);
-                          if (!e.target.checked) {
+                          const isChecked = e.target.checked;
+                          setHasPriceVariations(isChecked);
+                          if (!isChecked) {
                             setPriceVariations([]);
+                            // Re-enable the price field when unchecking
+                            form.setValue("price", 0);
+                          } else {
+                            setPriceVariations([
+                              {
+                                name: "",
+                                price: "",
+                                description: "",
+                                capacity: "",
+                              },
+                            ]);
+                            // Clear the base price since it's now managed in variations
+                            form.setValue("price", -1);
                           }
                         }}
                         className="sr-only peer"
                       />
-                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-yellow-500 peer-checked:border-yellow-500 transition-all duration-200"></div>
+                      <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
                     </div>
                     <span className="font-small">
@@ -1200,14 +1268,15 @@ export default function AddWorkshop() {
                     </span>
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
-                    Check this to add different pricing options for this
-                    workshop
+                    Enable this to create multiple pricing options. The first
+                    price field will be disabled and pricing will be managed
+                    through price variations
                   </p>
                 </div>
 
                 {/* Price Variations Management */}
                 {hasPriceVariations && (
-                  <div className="mt-6 mb-6 p-4 border border-yellow-200 rounded-lg bg-yellow-50">
+                  <div className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium">Price Variations</h3>
                       <Button
@@ -1224,41 +1293,26 @@ export default function AddWorkshop() {
                             },
                           ])
                         }
-                        className="text-yellow-600 border-yellow-300 hover:bg-yellow-100"
+                        className="text-indigo-600 border-indigo-300 hover:bg-indigo-100"
                       >
                         Add Variation
                       </Button>
                     </div>
 
-                    {/* Base Price Display */}
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-semibold text-blue-800">
-                            Base Price (Standard Option)
-                          </h4>
-                          <p className="text-xs text-blue-600 mt-1">
-                            This is your workshop's standard pricing that users
-                            can select (editable from the price input box above)
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-lg font-bold text-blue-700">
-                            ${form.watch("price") || "0"}
-                          </span>
-                          <p className="text-xs text-blue-600">Base Price</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Additional Pricing Options Header */}
-                    <div className="mb-3">
-                      <h4 className="text-sm font-medium text-gray-700">
-                        Additional Pricing Options
+                    {/* Pricing Options Header */}
+                    <div className="mb-4">
+                      <h4 className="text-l font-medium text-gray-700">
+                        Pricing Options
                       </h4>
                       <p className="text-xs text-gray-500">
-                        Create alternative pricing tiers
+                        Create different pricing options for this workshop
                       </p>
+                      {priceVariations.length > 0 && (
+                        <p className="text-xs text-blue-600 mt-1">
+                          <strong>Note:</strong> The first option will be the
+                          standard selection for users
+                        </p>
+                      )}
                     </div>
 
                     {actionData?.errors?.priceVariations && (
@@ -1289,7 +1343,7 @@ export default function AddWorkshop() {
                                 newVariations[index].name = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.name`
@@ -1320,7 +1374,7 @@ export default function AddWorkshop() {
                                 newVariations[index].price = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.price`
@@ -1350,7 +1404,7 @@ export default function AddWorkshop() {
                                 newVariations[index].capacity = e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-yellow-500 ${
+                              className={`w-full px-2 py-1.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 ${
                                 actionData?.errors?.[
                                   `priceVariations.${index}.capacity`
                                 ]
@@ -1383,7 +1437,7 @@ export default function AddWorkshop() {
                                   e.target.value;
                                 setPriceVariations(newVariations);
                               }}
-                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                             />
                             {actionData?.errors?.[
                               `priceVariations.${index}.description`
@@ -1446,7 +1500,7 @@ export default function AddWorkshop() {
                         {occurrences.length > 0 && (
                           <Badge
                             variant="outline"
-                            className="ml-2 bg-yellow-100 border-yellow-200"
+                            className="ml-2 bg-indigo-100 border-indigo-200"
                           >
                             {occurrences.length} date
                             {occurrences.length !== 1 ? "s" : ""} added
@@ -1556,7 +1610,7 @@ export default function AddWorkshop() {
                               <Button
                                 type="button"
                                 onClick={addOccurrence}
-                                className="mt-1 bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
+                                className="mt-1 bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-md shadow transition text-sm flex items-center"
                               >
                                 <span className="mr-1">+</span> Add Date
                               </Button>
@@ -1631,7 +1685,7 @@ export default function AddWorkshop() {
                           {occurrences.length > 0 && (
                             <div className="w-full">
                               <h3 className="font-medium mb-4 flex items-center">
-                                <CalendarIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                                <CalendarIcon className="w-5 h-5 mr-2 text-indigo-500" />
                                 Your Workshop Dates
                               </h3>
                               <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -1715,9 +1769,11 @@ export default function AddWorkshop() {
                     onRemove={removePrerequisite}
                     error={actionData?.errors?.prerequisites}
                     placeholder="Select prerequisites..."
-                    helperText="Select workshops of type Orientation that must be completed before enrolling."
+                    helperText="Select active workshops of type Orientation that must be completed before enrolling."
                     filterFn={(item) =>
-                      item.type.toLowerCase() === "orientation"
+                      item.type.toLowerCase() === "orientation" &&
+                      Array.isArray(item.occurrences) &&
+                      item.occurrences.some((o) => o.status === "active")
                     }
                   />
                 ) : (
@@ -1995,7 +2051,7 @@ export default function AddWorkshop() {
                 <div className="flex justify-center mt-6">
                   <Button
                     type="submit"
-                    className="bg-yellow-500 text-white px-8 py-3 rounded-md shadow hover:bg-yellow-600 transition min-w-[200px]"
+                    className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                     onClick={() => {
                       console.log("Final Form Data:", form.getValues());
                     }}

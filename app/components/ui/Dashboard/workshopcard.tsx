@@ -21,9 +21,12 @@ interface WorkshopProps {
   name: string;
   description: string;
   price: number;
+  displayPrice?: number;
   type: "workshop" | "orientation" | string;
   isAdmin: boolean;
   imageUrl?: string;
+  priceRange?: { min: number; max: number } | null;
+  hasPriceVariations?: boolean;
 }
 
 export default function WorkshopCard({
@@ -34,6 +37,9 @@ export default function WorkshopCard({
   type,
   isAdmin,
   imageUrl,
+  displayPrice,
+  priceRange,
+  hasPriceVariations,
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -42,7 +48,7 @@ export default function WorkshopCard({
   const placeholderImage = "/images/gallerysectionimg3.avif";
 
   return (
-    <Card className="w-full md:w-72 min-h-[350px] rounded-lg shadow-md flex flex-col justify-between relative border">
+    <Card className="w-full md:w-72 flex-none min-h-[350px] rounded-lg shadow-md flex flex-col justify-between relative border">
       {/* Image Section */}
       <div className="w-full h-40 bg-gray-200 rounded-t-lg overflow-hidden">
         <img
@@ -122,14 +128,18 @@ export default function WorkshopCard({
         {/* Price Box */}
         <div className="mt-3 flex justify-start">
           <span className="border border-purple-500 text-purple-700 font-semibold text-lg px-3 py-1 rounded-md">
-            ${price}
+            {hasPriceVariations &&
+            priceRange &&
+            priceRange.min !== priceRange.max
+              ? `$${priceRange.min} - $${priceRange.max}`
+              : `$${displayPrice !== undefined ? displayPrice : price}`}
           </span>
         </div>
       </CardHeader>
 
       <CardContent className="mt-auto">
         <Button
-          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white"
+          className="w-full bg-indigo-500 hover:bg-indigo-600 text-white"
           onClick={() => navigate(`/dashboard/workshops/${id}`)}
         >
           {type === "orientation" ? "View Orientation" : "View Workshop"}

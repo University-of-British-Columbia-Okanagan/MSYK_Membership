@@ -12,8 +12,8 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { useEffect, useState } from "react";
-import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { getRoleUser } from "~/utils/session.server";
 export type LoaderData = {
   logs: string;
@@ -91,8 +91,16 @@ export default function LogsTab() {
 
   return (
     <SidebarProvider>
-      <AdminAppSidebar />
-      <Card>
+      <div className="absolute inset-0 flex">
+        <AdminAppSidebar />
+        <div className="flex-1 p-6 overflow-auto">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Server Logs</h1>
+          </div>
+
+          <Card>
         <CardHeader>
           <CardTitle>Server Logs</CardTitle>
           <CardDescription>View server logs here.</CardDescription>
@@ -162,7 +170,7 @@ export default function LogsTab() {
                   return (
                     <div
                       key={i}
-                      className="flex gap-2 whitespace-pre-wrap break-words"
+                      className="flex gap-2 break-words"
                     >
                       <span className={`font-bold ${color}`}>[{level}]</span>
                       <span className="text-muted-foreground">{time}</span>
@@ -195,6 +203,8 @@ export default function LogsTab() {
           </div>
         </CardContent>
       </Card>
+        </div>
+      </div>
     </SidebarProvider>
   );
 }

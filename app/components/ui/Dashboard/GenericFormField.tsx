@@ -7,6 +7,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Helper: format a Date as "YYYY-MM-DDTHH:mm"
 function formatLocalDatetime(dateInput: Date): string {
@@ -36,6 +42,9 @@ export interface GenericFormFieldProps {
   rows?: number;
   autoComplete?: string;
   children?: React.ReactNode;
+  disabled?: boolean;
+  title?: string;
+  tooltip?: string;
 }
 
 const GenericFormField: React.FC<GenericFormFieldProps> = ({
@@ -51,6 +60,9 @@ const GenericFormField: React.FC<GenericFormFieldProps> = ({
   rows,
   autoComplete = "off",
   children,
+  disabled = false,
+  title,
+  tooltip,
 }) => {
   return (
     <FormField
@@ -69,25 +81,45 @@ const GenericFormField: React.FC<GenericFormFieldProps> = ({
             field.onChange(new Date(e.target.value));
           };
         }
+
+        const inputElement = (
+          <Component
+            id={name}
+            placeholder={placeholder}
+            type={type}
+            autoComplete={autoComplete}
+            {...field}
+            value={valueToShow}
+            onChange={onChangeHandler}
+            className={className}
+            disabled={disabled}
+            title={title}
+            {...(rows ? { rows } : {})}
+          >
+            {children}
+          </Component>
+        );
+
         return (
           <FormItem>
             <FormLabel htmlFor={name}>
               {label} {required && <span className="text-red-500">*</span>}
             </FormLabel>
             <FormControl>
-              <Component
-                id={name}
-                placeholder={placeholder}
-                type={type}
-                autoComplete={autoComplete}
-                {...field}
-                value={valueToShow}
-                onChange={onChangeHandler}
-                className={className}
-                {...(rows ? { rows } : {})}
-              >
-                {children}
-              </Component>
+              {tooltip && disabled ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="w-full">{inputElement}</div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                inputElement
+              )}
             </FormControl>
             <FormMessage>{error}</FormMessage>
           </FormItem>

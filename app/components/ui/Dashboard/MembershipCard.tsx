@@ -44,6 +44,7 @@ interface MembershipCardProps {
     roleName: string;
     userId: number;
   } | null;
+  isCurrentlyActivePlan?: boolean;
 }
 
 export default function MembershipCard({
@@ -62,6 +63,7 @@ export default function MembershipCard({
   membershipRecordId,
   needAdminPermission,
   roleUser,
+  isCurrentlyActivePlan = false,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -77,6 +79,8 @@ export default function MembershipCard({
         return ArrowUp;
       case "Downgrade":
         return ArrowDown;
+      case "Current Plan":
+        return CheckCircle;
       default:
         return null;
     }
@@ -84,7 +88,20 @@ export default function MembershipCard({
 
   // Handler for membership "Select" or "Resubscribe"
   const handleSelect = () => {
-    navigate(`/dashboard/payment/${planId}`);
+    // For resubscriptions, go directly to payment
+    // For new subscriptions and upgrades/downgrades, go to agreement signing first
+    const isResubscribeAction =
+      membershipStatus === "cancelled" && hasCancelledSubscription;
+
+    if (isResubscribeAction) {
+      navigate(
+        `/dashboard/payment/${planId}?resubscribe=true${
+          membershipRecordId ? `&membershipRecordId=${membershipRecordId}` : ""
+        }`
+      );
+    } else {
+      navigate(`/dashboard/memberships/${planId}`);
+    }
   };
 
   // By default, the user can select a membership plan
@@ -118,7 +135,7 @@ export default function MembershipCard({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md border border-yellow-400 p-6 w-full max-w-sm mx-auto text-center">
+    <div className="bg-white rounded-lg shadow-md border border-indigo-400 p-6 w-96 text-center flex-none">
       {membershipStatus === "active" && (
         <div className="mt-2 mb-4 flex justify-center">
           <fetcher.Form method="post" className="w-full flex justify-center">
@@ -156,7 +173,7 @@ export default function MembershipCard({
                 }`
               );
             }}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-full shadow-md transition flex items-center justify-center"
+            className="bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-full shadow-md transition flex items-center justify-center"
           >
             <RefreshCw className="w-5 h-5 mr-2" />
             Resubscribe
@@ -171,7 +188,7 @@ export default function MembershipCard({
         <span className="text-gray-600 text-sm"> /month</span>
       </div>
 
-      {/* 
+      {/*
         Show different UI depending on membership status:
           1) cancelled -> "You have cancelled this membership" + Resubscribe button
           2) active -> "You are already subscribed" + Cancel button
@@ -311,15 +328,27 @@ export default function MembershipCard({
               );
             }
 
-            // 3) Normal upgrade/downgrade when not mid‑cycle
+            // 3) Normal upgrade/downgrade
             if (hasActiveSubscription) {
-              const buttonLabel =
-                price > highestActivePrice ? "Upgrade" : "Downgrade";
+              // Check if this plan is currently active (not just compare prices)
+
+              const buttonLabel = isCurrentlyActivePlan
+                ? "Current Plan"
+                : price > highestActivePrice
+                  ? "Upgrade"
+                  : "Downgrade";
               const Icon = getIconForLabel(buttonLabel);
               return (
                 <Button
-                  onClick={handleSelect}
-                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
+                  onClick={
+                    buttonLabel === "Current Plan" ? undefined : handleSelect
+                  }
+                  disabled={buttonLabel === "Current Plan"}
+                  className={`px-6 py-2 rounded-full shadow-md transition flex items-center justify-center ${
+                    buttonLabel === "Current Plan"
+                      ? "bg-green-500 text-white cursor-default"
+                      : "bg-indigo-500 text-white hover:bg-indigo-600"
+                  }`}
                 >
                   {Icon && <Icon className="w-5 h-5 mr-2" />}
                   {buttonLabel}
@@ -332,7 +361,7 @@ export default function MembershipCard({
               return (
                 <Button
                   onClick={handleSelect}
-                  className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
+                  className="bg-indigo-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-indigo-600 transition flex items-center justify-center"
                 >
                   <RefreshCw className="w-5 h-5 mr-2" />
                   Resubscribe
@@ -344,7 +373,7 @@ export default function MembershipCard({
             return (
               <Button
                 onClick={handleSelect}
-                className="bg-yellow-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-yellow-600 transition flex items-center justify-center"
+                className="bg-indigo-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-indigo-600 transition flex items-center justify-center"
               >
                 <PlusCircle className="w-5 h-5 mr-2" />
                 Subscribe
@@ -357,7 +386,7 @@ export default function MembershipCard({
       <ul className="text-left text-gray-700 mt-6 space-y-2">
         {feature.map((f, i) => (
           <li key={i} className="flex items-center">
-            <span className="text-yellow-500 mr-2">→</span> {f}
+            <span className="text-indigo-500 mr-2">→</span> {f}
           </li>
         ))}
       </ul>
@@ -371,7 +400,7 @@ export default function MembershipCard({
               type="submit"
               name="action"
               value="edit"
-              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2"
+              className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition flex items-center space-x-2"
             >
               <Edit className="w-5 h-5" />
               <span>Edit</span>
@@ -381,7 +410,7 @@ export default function MembershipCard({
               type="submit"
               name="action"
               value="delete"
-              className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2"
+              className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition flex items-center space-x-2"
               onClick={() => {
                 if (
                   window.confirm(

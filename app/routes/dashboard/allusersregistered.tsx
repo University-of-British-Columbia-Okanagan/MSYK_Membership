@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { Outlet, redirect, useLoaderData } from "react-router";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { getRoleUser } from "~/utils/session.server";
 import {
   getAllUsers,
@@ -205,10 +205,16 @@ export default function AllUsersRegistered() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">All Users Registered</h1>
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">All Users</h1>
+          </div>
+
+          <h1 className="text-2xl font-bold mb-4 hidden md:block">All Users Registered</h1>
           <div className="flex items-center gap-2 mb-6">
             <FiSearch className="text-gray-500" />
             <Input

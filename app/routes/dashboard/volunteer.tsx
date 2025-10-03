@@ -2,10 +2,10 @@ import { useLoaderData } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { getRoleUser } from "~/utils/session.server";
 import {
   Mail,
@@ -37,42 +37,42 @@ export default function VolunteerPage() {
   const volunteerRoles = [
     {
       title: "Woodshop Supervisor",
-      icon: <Wrench className="h-8 w-8 text-yellow-500" />,
+      icon: <Wrench className="h-8 w-8 text-indigo-500" />,
       description:
         "Help people with their woodworking projects and ensure they stay safe and following our community guidelines when using the woodshop!",
       skills: ["Safety Knowledge", "Woodworking Experience", "Teaching Skills"],
     },
     {
       title: "Hackspace Supervisor",
-      icon: <Monitor className="h-8 w-8 text-yellow-500" />,
+      icon: <Monitor className="h-8 w-8 text-indigo-500" />,
       description:
         "Help people use the equipment in the Hackspace. Support them with their digital fabrication projects and ensure they are following our community guidelines.",
       skills: ["Technical Knowledge", "3D Printing", "Digital Fabrication"],
     },
     {
       title: "Front Desk Support",
-      icon: <Users className="h-8 w-8 text-yellow-500" />,
+      icon: <Users className="h-8 w-8 text-indigo-500" />,
       description:
         "Help people sign-in when they visit the makerspace for events and workshops, collect payments and give short tours to visitors.",
       skills: ["Customer Service", "Organization", "Communication"],
     },
     {
       title: "Workshop Facilitator",
-      icon: <Calendar className="h-8 w-8 text-yellow-500" />,
+      icon: <Calendar className="h-8 w-8 text-indigo-500" />,
       description:
         "Have an idea for a workshop you would like to host at MSYK?",
       skills: ["Teaching", "Subject Expertise", "Workshop Planning"],
     },
     {
       title: "Social Media and Marketing",
-      icon: <MessageSquare className="h-8 w-8 text-yellow-500" />,
+      icon: <MessageSquare className="h-8 w-8 text-indigo-500" />,
       description:
         "Support MSYK with our digital communications! Update our Instagram and Facebook, create our monthly newsletter and share content from activities in the space!",
       skills: ["Social Media", "Content Creation", "Marketing"],
     },
     {
       title: "General Event Volunteer",
-      icon: <Heart className="h-8 w-8 text-yellow-500" />,
+      icon: <Heart className="h-8 w-8 text-indigo-500" />,
       description:
         "We don't always have events, but when we do we may need volunteers! This could be for tradeshows, concerts at our space, and more. Event volunteers will be notified when an event is on!",
       skills: ["Flexibility", "Event Support", "Community Spirit"],
@@ -98,12 +98,18 @@ export default function VolunteerPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen">
+      <div className="absolute inset-0 flex">
         {renderSidebar()}
 
         <main className="flex-1 overflow-auto bg-gray-50">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 p-4 md:hidden bg-white border-b">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Volunteer</h1>
+          </div>
+
           {/* Hero Section */}
-          <div className="relative bg-yellow-500 text-white overflow-hidden">
+          <div className="relative bg-indigo-500 text-white overflow-hidden">
             <div className="absolute inset-0"></div>
             <div className="relative container mx-auto px-4 py-16 md:py-24">
               <div className="text-center max-w-4xl mx-auto">
@@ -156,9 +162,9 @@ export default function VolunteerPage() {
 
               {/* Contact Information Cards */}
               <div className="grid md:grid-cols-2 gap-6 mb-12">
-                <Card className="border-2 border-yellow-200 hover:border-yellow-300 transition-colors">
+                <Card className="border-2 border-indigo-200 hover:border-indigo-300 transition-colors">
                   <CardContent className="p-8 text-center">
-                    <Mail className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                    <Mail className="h-12 w-12 text-indigo-500 mx-auto mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900 mb-3">
                       Email Us
                     </h3>
@@ -166,7 +172,7 @@ export default function VolunteerPage() {
                       Send us an email with your interests and availability
                     </p>
                     <Button
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white"
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white"
                       onClick={() =>
                         window.open("mailto:info@makerspaceyk.com", "_blank")
                       }
@@ -176,9 +182,9 @@ export default function VolunteerPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-2 border-yellow-200 hover:border-yellow-300 transition-colors">
+                <Card className="border-2 border-indigo-200 hover:border-indigo-300 transition-colors">
                   <CardContent className="p-8 text-center">
-                    <MapPin className="h-12 w-12 text-yellow-500 mx-auto mb-4" />
+                    <MapPin className="h-12 w-12 text-indigo-500 mx-auto mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900 mb-3">
                       Visit Our Space
                     </h3>
@@ -188,7 +194,7 @@ export default function VolunteerPage() {
                     </p>
                     <Button
                       variant="outline"
-                      className="border-yellow-500 text-yellow-600 hover:bg-yellow-50"
+                      className="border-indigo-500 text-indigo-600 hover:bg-indigo-50"
                       onClick={() =>
                         window.open(
                           "https://www.google.com/maps/place/Makerspace+YK/@62.4457716,-114.3921434,17z/data=!3m1!4b1!4m6!3m5!1s0x53d1f793bd5706f1:0xf9c85b974c229a12!8m2!3d62.4457691!4d-114.3895685!16s%2Fg%2F11tjfg42z0?entry=ttu&g_ep=EgoyMDI1MDcyMC4wIKXMDSoASAFQAw%3D%3D",
@@ -242,7 +248,7 @@ export default function VolunteerPage() {
                             <Badge
                               key={skillIndex}
                               variant="outline"
-                              className="text-xs bg-yellow-50 border-yellow-200 text-yellow-700"
+                              className="text-xs bg-indigo-50 border-indigo-200 text-indigo-700"
                             >
                               {skill}
                             </Badge>
@@ -257,9 +263,9 @@ export default function VolunteerPage() {
 
             {/* Call to Action */}
             <div className="text-center">
-              <Card className="border-2 border-yellow-200 bg-yellow-50/50">
+              <Card className="border-2 border-indigo-200 bg-indigo-50/50">
                 <CardContent className="p-12">
-                  <UserPlus className="h-16 w-16 text-yellow-500 mx-auto mb-6" />
+                  <UserPlus className="h-16 w-16 text-indigo-500 mx-auto mb-6" />
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">
                     Ready to Get Started?
                   </h2>
@@ -279,7 +285,7 @@ export default function VolunteerPage() {
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     <Button
                       size="lg"
-                      className="bg-yellow-500 hover:bg-yellow-600 text-white px-8 py-3"
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white px-8 py-3"
                       onClick={() =>
                         window.open("mailto:info@makerspaceyk.com", "_blank")
                       }
@@ -290,7 +296,7 @@ export default function VolunteerPage() {
                     <Button
                       variant="outline"
                       size="lg"
-                      className="border-yellow-500 text-yellow-600 hover:bg-yellow-50 px-8 py-3"
+                      className="border-indigo-500 text-indigo-600 hover:bg-indigo-50 px-8 py-3"
                       onClick={() =>
                         window.open(
                           "https://www.google.com/maps/place/Makerspace+YK/@62.4457716,-114.3921434,17z/data=!3m1!4b1!4m6!3m5!1s0x53d1f793bd5706f1:0xf9c85b974c229a12!8m2!3d62.4457691!4d-114.3895685!16s%2Fg%2F11tjfg42z0?entry=ttu&g_ep=EgoyMDI1MDcyMC4wIKXMDSoASAFQAw%3D%3D",

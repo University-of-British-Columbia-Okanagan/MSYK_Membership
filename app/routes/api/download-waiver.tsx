@@ -40,7 +40,7 @@ export const loader: LoaderFunction = async ({ request }) => {
     }
 
     // Return the PDF as a downloadable file
-    return new Response(decryptedPdfBuffer, {
+    return new Response(decryptedPdfBuffer as BodyInit, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",

@@ -114,7 +114,7 @@ export default function EquipmentEdit() {
   }, [fetcher.data]);
 
   return (
-    <div className="w-full p-10">
+    <div className="absolute inset-0 w-full p-10">
       {showPopup && (
         <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
           {popupMessage}
@@ -171,7 +171,7 @@ export default function EquipmentEdit() {
             name="availability"
             checked={availability}
             onChange={(e) => setAvailability(e.target.checked)}
-            className="w-4 h-4 accent-yellow-500 "
+            className="w-4 h-4 accent-indigo-500 "
           />
         </div>
 
@@ -183,7 +183,7 @@ export default function EquipmentEdit() {
           <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
             Cancel
           </Button>
-          <Button type="submit" className="bg-yellow-500 text-white">
+          <Button type="submit" className="bg-indigo-500 text-white">
             Save Changes
           </Button>
         </div>

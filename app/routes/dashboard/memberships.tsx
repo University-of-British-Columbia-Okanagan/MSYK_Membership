@@ -1,24 +1,28 @@
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminSidebar from "~/components/ui/Dashboard/adminsidebar";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
   getMembershipPlans,
   deleteMembershipPlan,
   getUserMemberships,
   cancelMembership,
+  getMembershipPlanById,
 } from "~/models/membership.server";
+import { getUser } from "~/utils/session.server";
+import { sendMembershipCancellationEmail } from "~/utils/email.server";
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
 
 type UserMembershipData = {
+  id: number;
   membershipPlanId: number;
   status: MembershipStatus;
   nextPaymentDate?: Date;
@@ -64,6 +68,7 @@ export async function loader({ request }: { request: Request }) {
       }
 
       return {
+        id: m.id,
         membershipPlanId: m.membershipPlanId,
         status,
         nextPaymentDate: m.nextPaymentDate,
@@ -129,7 +134,19 @@ export async function action({ request }: { request: Request }) {
     const roleUser = await getRoleUser(request);
     if (!roleUser?.userId) return null;
     if (planId) {
-      await cancelMembership(roleUser.userId, Number(planId));
+      const result = await cancelMembership(roleUser.userId, Number(planId));
+      try {
+        const plan = await getMembershipPlanById(Number(planId));
+        const user = await getUser(request);
+        await sendMembershipCancellationEmail({
+          userEmail: user!.email!,
+          planTitle: plan?.title || "Membership",
+          accessUntil:
+            result && (result as any).status === "cancelled" && (result as any).nextPaymentDate
+              ? new Date((result as any).nextPaymentDate)
+              : null,
+        });
+      } catch {}
       logger.info(
         `[User: ${
           roleUser?.userId ?? "unknown"
@@ -166,7 +183,7 @@ export async function action({ request }: { request: Request }) {
   }
 
   if (action === "edit") {
-    return redirect(`/editmembershipplan/${planId}`);
+    return redirect(`/dashboard/editmembershipplan/${planId}`);
   }
 
   return null;
@@ -202,7 +219,7 @@ export default function MembershipPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen">
+      <div className="absolute inset-0 flex">
         {/* Sidebar */}
         {isGuest ? (
           <GuestAppSidebar />
@@ -214,10 +231,15 @@ export default function MembershipPage() {
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Memberships</h1>
+          </div>
           {isAdmin && (
             <div className="flex justify-end mb-6">
-              <Link to="/addmembershipplan">
-                <button className="bg-yellow-500 text-white px-4 py-2 rounded-md shadow hover:bg-yellow-600 transition flex items-center space-x-2">
+              <Link to="/dashboard/addmembershipplan">
+                <button className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition flex items-center space-x-2">
                   <PlusCircle className="w-5 h-5" />
                   <span>Add Membership Plan</span>
                 </button>
@@ -229,11 +251,20 @@ export default function MembershipPage() {
             Choose your Membership Plan
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="flex flex-wrap gap-6 justify-center items-stretch">
             {membershipPlans.map((plan) => {
-              const membership = userMemberships.find(
+              // Find the most recent membership for this plan, prioritizing active status
+              const allMembershipsForPlan = userMemberships.filter(
                 (m) => m.membershipPlanId === plan.id
               );
+
+              // Prioritize active memberships, then cancelled, then inactive
+              const membership =
+                allMembershipsForPlan.find((m) => m.status === "active") ||
+                allMembershipsForPlan.find((m) => m.status === "cancelled") ||
+                allMembershipsForPlan.find((m) => m.status === "inactive") ||
+                allMembershipsForPlan[0]; // fallback to first if none match
+
               const membershipStatus = membership?.status;
 
               return (
@@ -252,7 +283,9 @@ export default function MembershipPage() {
                   hasCancelledSubscription={hasCancelledSubscription}
                   highestActivePrice={highestActivePrice}
                   nextPaymentDate={membership?.nextPaymentDate}
+                  membershipRecordId={membership?.id}
                   roleUser={roleUser}
+                  isCurrentlyActivePlan={membershipStatus === "active"}
                 />
               );
             })}
