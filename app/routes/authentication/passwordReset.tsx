@@ -112,7 +112,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md bg-white border border-indigo-400 rounded-xl shadow-md p-8">
         <div className="flex flex-col items-center mb-6">
           <img
-            src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
+            src="images/Makerspace Horizontal Text Logo Colour-01.avif"
             alt="Makerspace Logo"
             className="h-16 mb-2"
           />

@@ -361,7 +361,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
         {/* Header with logo */}
         <div className="flex flex-col items-center mb-6">
           <img
-            src="public/images/Makerspace Horizontal Text Logo Colour-01.avif"
+            src="images/Makerspace Horizontal Text Logo Colour-01.avif"
             alt="Makerspace Logo"
             className="h-16 mb-2"
           />
