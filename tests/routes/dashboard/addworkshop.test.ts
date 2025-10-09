@@ -1,4 +1,4 @@
-import { getWorkshopsFixture } from 'tests/fixtures/workshop/getWorkshops';
+import { getWorkshopsFixture } from 'tests/fixtures/workshop/workshops';
 import { getUserFixture, getUserAdminFixture } from 'tests/fixtures/session/getUser';
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { addWorkshop, getWorkshops } from "~/models/workshop.server";
@@ -48,7 +48,7 @@ describe('loader', () => {
     mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
     mockGetEquipmentSlotsWithStatus.mockResolvedValue(getEquipmentSlotsWithStatusFixture);
     mockGetEquipmentVisibilityDays.mockResolvedValue(1);
-    
+
     const request = new Request('http://localhost:5173/dashboard/addworkshop', {
       method: 'GET',
     });
