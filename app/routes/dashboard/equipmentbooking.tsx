@@ -175,7 +175,6 @@ export async function action({ request }: { request: Request }) {
       body: JSON.stringify({
         equipmentId,
         userId: user.id,
-        userEmail: user.email,
         price: totalPrice,
         slotCount: slotCount,
         slotsDataKey: slotsDataKey.toString(),
@@ -496,9 +495,7 @@ export default function EquipmentBookingForm() {
                     selectedSlots.length === 0
                   }
                 >
-                  {navigation.state === "submitting"
-                    ? "Booking..."
-                    : "Proceed to Payment"}
+                  {navigation.state === "submitting" ? "Booking..." : "Proceed"}
                 </Button>
               </div>
             </Form>
