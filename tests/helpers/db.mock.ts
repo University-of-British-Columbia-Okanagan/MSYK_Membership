@@ -43,14 +43,41 @@ export const createDbMock = () => ({
       findFirst: jest.fn(),
     },
     user: {
+      findUnique: jest.fn(),
       update: jest.fn(),
     },
+    adminSettings: {
+      findUnique: jest.fn(),
+    },
     equipmentSlot: {
+      findFirst: jest.fn(),
       findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
     equipmentBooking: {
+      findMany: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    equipmentPrerequisite: {
+      createMany: jest.fn(),
+    },
+    equipment: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    equipmentCancelledBooking: {
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
     },
