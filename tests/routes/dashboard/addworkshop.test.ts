@@ -5,7 +5,7 @@ import { addWorkshop, getWorkshops } from "~/models/workshop.server";
 import { getRoleUserAdminFixture, getRoleUserFixture } from 'tests/fixtures/session/getRoleUser';
 import { bulkBookEquipment, createEquipmentSlotsForOccurrence, getAvailableEquipmentForAdmin, getEquipmentSlotsWithStatus } from '~/models/equipment.server';
 import { getEquipmentVisibilityDays } from '~/models/admin.server';
-import { getEquipmentSlotsWithStatusFixture } from 'tests/fixtures/equipments/getEquipmentSlotsWithStatus';
+import { getEquipmentSlotsWithStatusFixture } from 'tests/fixtures/equipment/getEquipmentSlotsWithStatus';
 import { logger } from '~/logging/logger';
 import { loader, action} from '~/routes/dashboard/addworkshop';
 

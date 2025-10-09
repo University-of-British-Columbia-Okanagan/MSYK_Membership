@@ -5,3 +5,4 @@ export const newEquipmentFixture = {
     availability: 'true',
     workshopPrerequisites: ''
 }
+
