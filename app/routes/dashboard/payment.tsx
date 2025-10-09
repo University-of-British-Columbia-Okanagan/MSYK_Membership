@@ -430,7 +430,6 @@ export async function action({ request }: { request: Request }) {
             quantity: 1,
           },
         ],
-        customer_email: user.email,
         success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `http://localhost:5173/dashboard/memberships`,
         metadata: {
@@ -503,7 +502,6 @@ export async function action({ request }: { request: Request }) {
             quantity: 1,
           },
         ],
-        customer_email: user.email,
         success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `http://localhost:5173/dashboard/workshops`,
         metadata: {
@@ -572,7 +570,6 @@ export async function action({ request }: { request: Request }) {
             quantity: 1,
           },
         ],
-        customer_email: user.email,
         success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `http://localhost:5173/dashboard/workshops`,
         metadata: {
