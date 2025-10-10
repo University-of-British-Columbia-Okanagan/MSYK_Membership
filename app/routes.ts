@@ -7,6 +7,7 @@ export default [
   route("/login", "routes/authentication/login.tsx"),
   route("/logout", "routes/authentication/logout.tsx"),
   route("/passwordReset", "routes/authentication/passwordReset.tsx"),
+  route("/esp32", "routes/api/esp32.tsx"),
   route("/about", "routes/about/about.tsx"),
   route("/board", "routes/about/board.tsx"),
   route("/staff", "routes/about/staff.tsx"),
@@ -118,4 +119,6 @@ export default [
   route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
+  route("/dashbard/esp32", "routes/dashboard/esp32.tsx"),
+  route("/dashbard/esp32t", "routes/dashboard/testesp32.tsx"),
 ] satisfies RouteConfig;

@@ -46,6 +46,7 @@ async function main() {
         operationsPolicy: true,
         waiverSignature: "EncryptedWaiverPlaceholder1",
         roleUserId: 2,
+        passcode: 1234
       },
       {
         email: "testuser2@gmail.com",
@@ -62,6 +63,7 @@ async function main() {
         communityGuidelines: true,
         operationsPolicy: true,
         waiverSignature: "EncryptedWaiverPlaceholder2",
+        passcode: 1235
       },
       {
         email: "testuser3@gmail.com",
@@ -78,6 +80,7 @@ async function main() {
         communityGuidelines: true,
         operationsPolicy: true,
         waiverSignature: "EncryptedWaiverPlaceholder3",
+        passcode: 1236
       },
     ],
   });

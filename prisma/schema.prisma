@@ -32,6 +32,13 @@ model User {
   communityGuidelines   Boolean
   operationsPolicy      Boolean
 
+  // ESP 32
+  passcode            Int     @unique
+  equipmentCertified  Boolean @default(true)
+  millCertified       Boolean @default(true)
+  cncCertified        Boolean @default(true)
+  welderCertified     Boolean @default(true)
+
   // Role Connection
   roleUserId  Int      @default(1)
   roleUser    RoleUser @relation(fields: [roleUserId], references: [id])
@@ -50,6 +57,7 @@ model User {
   volunteers            Volunteer[]
   volunteerHours        VolunteerTimetable[]
   workshopCancellations WorkshopCancelledRegistration[]
+  accessLogs            AccessLog[]
 }
 
 model Volunteer {
@@ -364,4 +372,27 @@ model IssueScreenshot {
   issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
 
   @@index([issueId])
+}
+
+model AccessLog {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())   // Timestamp of the log
+
+  // Foreign key to User
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Access Info
+  passcodeUsed Int              // Store the PIN used at time of access
+  status       String           @default("granted") // "granted", "denied"
+  method       String?          // e.g. "manual", "RFID", "admin_override"
+
+  // Optional Metadata
+  ipAddress    String?          // If accessed from web/app
+  location     String?          // Physical location (if multiple entrances)
+  notes        String?          // Admin notes for audit purposes
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([passcodeUsed])
 }
