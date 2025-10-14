@@ -24,6 +24,11 @@ export async function action({ request }: { request: Request }) {
       newMembershipPlanId,
       userId,
       billingCycle = "monthly",
+    }: {
+      currentMembershipId: string;
+      newMembershipPlanId: string;
+      userId: string;
+      billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
     } = body;
 
     if (!currentMembershipId || !newMembershipPlanId || !userId) {
@@ -47,7 +52,11 @@ export async function action({ request }: { request: Request }) {
       true, // Flag to indicate this is a downgrade
       false, // Not a resubscription
       undefined, // No payment intent
-      billingCycle as "monthly" | "6months" | "yearly"
+      billingCycle as
+        | "monthly"
+        | "quarterly"
+        | "6months"
+        | "yearly"
     );
 
     try {

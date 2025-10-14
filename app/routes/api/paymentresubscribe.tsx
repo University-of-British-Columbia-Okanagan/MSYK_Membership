@@ -21,7 +21,8 @@ export async function action({ request }: { request: Request }) {
     const { currentMembershipId, membershipPlanId, userId } = body;
 
     try {
-      let billingCycle: "monthly" | "6months" | "yearly" = "monthly";
+      let billingCycle: "monthly" | "quarterly" | "6months" | "yearly" =
+        "monthly";
 
       if (currentMembershipId) {
         const cancelledMembership = await db.userMembership.findUnique({
@@ -32,6 +33,7 @@ export async function action({ request }: { request: Request }) {
         if (cancelledMembership?.billingCycle) {
           billingCycle = cancelledMembership.billingCycle as
             | "monthly"
+            | "quarterly"
             | "6months"
             | "yearly";
         }
@@ -55,18 +57,21 @@ export async function action({ request }: { request: Request }) {
       try {
         const plan = await getMembershipPlanById(membershipPlanId);
         const nextBillingDate = new Date();
-        if (billingCycle === "6months") {
-          nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
-        } else if (billingCycle === "yearly") {
-          nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
-        } else {
-          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-        }
+        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
         await sendMembershipResubscribeEmail({
           userEmail: user.email!,
           planTitle: plan?.title || "Membership",
           monthlyPrice: plan?.price,
-          nextBillingDate,
+          billingCycle,
+          planPrice:
+            billingCycle === "quarterly"
+              ? plan?.price3Months ?? plan?.price
+              : billingCycle === "6months"
+              ? plan?.price6Months ?? plan?.price
+              : billingCycle === "yearly"
+              ? plan?.priceYearly ?? plan?.price
+              : plan?.price,
+          nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
         });
       } catch {
         // non-blocking
