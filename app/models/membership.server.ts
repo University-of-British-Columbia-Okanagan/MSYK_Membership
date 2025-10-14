@@ -18,15 +18,27 @@ interface MembershipPlanData {
   title: string;
   description: string;
   price: number;
+  price3Months?: number | null;
   price6Months?: number | null;
   priceYearly?: number | null;
   features: string[];
   needAdminPermission?: boolean;
 }
 
-function incrementMonth(date: Date): Date {
+function addMonthsForCycle(
+  date: Date,
+  cycle: "monthly" | "quarterly" | "6months" | "yearly"
+): Date {
   const newDate = new Date(date);
-  newDate.setMonth(newDate.getMonth() + 1);
+  if (cycle === "yearly") {
+    newDate.setFullYear(newDate.getFullYear() + 1);
+  } else if (cycle === "6months") {
+    newDate.setMonth(newDate.getMonth() + 6);
+  } else if (cycle === "quarterly") {
+    newDate.setMonth(newDate.getMonth() + 3);
+  } else {
+    newDate.setMonth(newDate.getMonth() + 1);
+  }
   return newDate;
 }
 
@@ -68,6 +80,7 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         title: data.title,
         description: data.description,
         price: data.price,
+        price3Months: data.price3Months,
         price6Months: data.price6Months,
         priceYearly: data.priceYearly,
         needAdminPermission: data.needAdminPermission ?? false,
@@ -133,6 +146,9 @@ export async function updateMembershipPlan(
     title: string;
     description: string;
     price: number;
+    price3Months?: number | null;
+    price6Months?: number | null;
+    priceYearly?: number | null;
     // features: string[];
     features: Record<string, string>;
   }
@@ -143,6 +159,9 @@ export async function updateMembershipPlan(
       title: data.title,
       description: data.description,
       price: data.price,
+      price3Months: data.price3Months ?? null,
+      price6Months: data.price6Months ?? null,
+      priceYearly: data.priceYearly ?? null,
       feature: data.features, // Convert features array to JSON
     },
   });
@@ -177,7 +196,7 @@ export async function registerMembershipSubscription(
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false,
   paymentIntentId?: string,
-  billingCycle: "monthly" | "6months" | "yearly" = "monthly"
+  billingCycle: "monthly" | "quarterly" | "6months" | "yearly" = "monthly"
 ) {
   let subscription;
   const now = new Date();
@@ -206,14 +225,7 @@ export async function registerMembershipSubscription(
     }
     // Update the cancelled record to active and set new next payment date
     const now = new Date();
-    const newNextPaymentDate = new Date(now);
-    if (billingCycle === "6months") {
-      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 6);
-    } else if (billingCycle === "yearly") {
-      newNextPaymentDate.setFullYear(newNextPaymentDate.getFullYear() + 1);
-    } else {
-      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-    }
+    const newNextPaymentDate = addMonthsForCycle(now, billingCycle);
 
     const subscription = await db.userMembership.update({
       where: { id: cancelledMembership.id },
@@ -248,14 +260,7 @@ export async function registerMembershipSubscription(
     // For downgrades, keep the current membership active until the next payment date
     // and schedule the new (cheaper) membership to start at the next payment date.
     const startDate = new Date(currentMembership.nextPaymentDate);
-    const newNextPaymentDate = new Date(startDate);
-    if (billingCycle === "6months") {
-      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 6);
-    } else if (billingCycle === "yearly") {
-      newNextPaymentDate.setFullYear(newNextPaymentDate.getFullYear() + 1);
-    } else {
-      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-    }
+    const newNextPaymentDate = addMonthsForCycle(startDate, billingCycle);
 
     // 1) Mark the old (more expensive) membership as ending
     await db.userMembership.update({
@@ -347,14 +352,7 @@ export async function registerMembershipSubscription(
     // Create or update a new membership record for the upgraded plan
     // so that we only have 1 record in "active"/"ending" for the new plan.
     const startDate = new Date(currentMembership.nextPaymentDate);
-    const newNextPaymentDate = new Date(startDate);
-    if (billingCycle === "6months") {
-      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 6);
-    } else if (billingCycle === "yearly") {
-      newNextPaymentDate.setFullYear(newNextPaymentDate.getFullYear() + 1);
-    } else {
-      newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
-    }
+    const newNextPaymentDate = addMonthsForCycle(startDate, billingCycle);
 
     // Check if there's an existing record for the new plan in active/ending
     let newMembership = await db.userMembership.findFirst({
@@ -425,6 +423,8 @@ export async function registerMembershipSubscription(
     const nextPaymentDate = new Date(startDate);
     if (billingCycle === "6months") {
       nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 6);
+    } else if (billingCycle === "quarterly") {
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
     } else if (billingCycle === "yearly") {
       nextPaymentDate.setFullYear(nextPaymentDate.getFullYear() + 1);
     } else {
@@ -631,6 +631,7 @@ export function startMonthlyMembershipCheck() {
       const reminderCandidates = await db.userMembership.findMany({
         where: {
           status: "active",
+          billingCycle: "monthly",
           nextPaymentDate: { gt: now, lte: reminderWindowEnd },
         },
         include: { membershipPlan: true },
@@ -673,6 +674,19 @@ export function startMonthlyMembershipCheck() {
         }
 
         if (membership.status === "active") {
+          // Non-monthly subscriptions are not auto-renewed; expire when due
+          if (membership.billingCycle !== "monthly") {
+            await db.userMembership.update({
+              where: { id: membership.id },
+              data: { status: "inactive" },
+            });
+            await updateMembershipFormStatus(
+              membership.userId,
+              membership.membershipPlanId,
+              "inactive"
+            );
+            continue;
+          }
           // Calculate charge amount with GST
           const baseAmount = Number(membership.membershipPlan.price);
 
@@ -732,7 +746,14 @@ export function startMonthlyMembershipCheck() {
               await db.userMembership.update({
                 where: { id: membership.id },
                 data: {
-                  nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+                  nextPaymentDate: addMonthsForCycle(
+                    membership.nextPaymentDate,
+                    membership.billingCycle as
+                      | "monthly"
+                      | "quarterly"
+                      | "6months"
+                      | "yearly"
+                  ),
                   paymentIntentId: pi.id,
                 },
               });
