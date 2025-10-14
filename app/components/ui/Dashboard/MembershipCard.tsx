@@ -28,6 +28,7 @@ interface MembershipCardProps {
   title: string;
   description: string;
   price: number;
+  price3Months?: number | null;
   price6Months?: number | null;
   priceYearly?: number | null;
   feature: string[];
@@ -57,6 +58,7 @@ export default function MembershipCard({
   title,
   description,
   price,
+  price3Months,
   price6Months,
   priceYearly,
   feature,
@@ -77,10 +79,11 @@ export default function MembershipCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
-    "monthly" | "6months" | "yearly"
+    "monthly" | "quarterly" | "6months" | "yearly"
   >("monthly");
 
-  const hasMultipleBillingOptions = !!price6Months || !!priceYearly;
+  const hasMultipleBillingOptions =
+    !!price3Months || !!price6Months || !!priceYearly;
 
   const calculateSavings = (billingPrice: number, months: number) => {
     const monthlyTotal = price * months;
@@ -219,6 +222,21 @@ export default function MembershipCard({
                 ${price.toFixed(2)}/mo
               </span>
             </div>
+
+            {/* Quarterly */}
+            {price3Months && price3Months > 0 && (
+              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-200">
+                <span className="text-gray-700 font-medium">Every 3 Months</span>
+                <div className="text-right">
+                  <span className="text-gray-900 font-bold">
+                    ${price3Months.toFixed(2)}
+                  </span>
+                  <span className="ml-2 text-xs text-green-600 font-medium">
+                    Save {calculateSavings(price3Months, 3).savingsPercent}%
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* 6 Months */}
             {price6Months && price6Months > 0 && (
