@@ -55,10 +55,18 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw new Response("Membership Plan not found", { status: 404 });
 
     const url = new URL(request.url);
-    const billingCycle = url.searchParams.get("billingCycle") || "monthly";
+    const billingCycle =
+      (url.searchParams.get("billingCycle") as
+        | "monthly"
+        | "quarterly"
+        | "6months"
+        | "yearly"
+        | null) || "monthly";
 
     let membershipPrice = membershipPlan.price;
-    if (billingCycle === "6months" && membershipPlan.price6Months) {
+    if (billingCycle === "quarterly" && membershipPlan.price3Months) {
+      membershipPrice = membershipPlan.price3Months;
+    } else if (billingCycle === "6months" && membershipPlan.price6Months) {
       membershipPrice = membershipPlan.price6Months;
     } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
       membershipPrice = membershipPlan.priceYearly;
@@ -641,7 +649,7 @@ export default function Payment() {
     savedPaymentMethod?: any;
     gstPercentage: number;
     selectedVariation?: any;
-    billingCycle?: "monthly" | "6months" | "yearly";
+    billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
   };
 
   const navigate = useNavigate();
@@ -849,7 +857,11 @@ export default function Payment() {
                 currentMembershipId: data.userActiveMembership?.id,
                 upgradeFee: data.upgradeFee,
                 billingCycle:
-                  (data.billingCycle as "monthly" | "6months" | "yearly") ||
+                  (data.billingCycle as
+                    | "monthly"
+                    | "quarterly"
+                    | "6months"
+                    | "yearly") ||
                   "monthly",
               }}
               itemName={data.membershipPlan.title}

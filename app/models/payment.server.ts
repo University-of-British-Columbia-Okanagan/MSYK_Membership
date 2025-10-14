@@ -92,7 +92,7 @@ export async function quickCheckout(
     currentMembershipId?: number;
     upgradeFee?: number;
     variationId?: number;
-    billingCycle?: "monthly" | "6months" | "yearly";
+    billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
   }
 ) {
   const user = await db.user.findUnique({
@@ -347,7 +347,11 @@ export async function quickCheckout(
             false, // Not a downgrade
             false, // Not a resubscription
             paymentIntent.id,
-            billingCycle as "monthly" | "6months" | "yearly"
+            billingCycle as
+              | "monthly"
+              | "quarterly"
+              | "6months"
+              | "yearly"
           );
 
           // Activate the pending membership form and link it to the subscription
@@ -371,6 +375,8 @@ export async function quickCheckout(
               const nextBillingDate = new Date();
               if (billingCycle === "6months") {
                 nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
+              } else if (billingCycle === "quarterly") {
+                nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
               } else if (billingCycle === "yearly") {
                 nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
               } else {
@@ -384,7 +390,16 @@ export async function quickCheckout(
                 monthlyPrice: membershipPlan.price,
                 features: membershipPlan.feature as Record<string, string>,
                 accessHours: membershipPlan.accessHours as string,
-                nextBillingDate,
+                billingCycle,
+                planPrice:
+                  billingCycle === "quarterly"
+                    ? membershipPlan.price3Months ?? membershipPlan.price
+                    : billingCycle === "6months"
+                    ? membershipPlan.price6Months ?? membershipPlan.price
+                    : billingCycle === "yearly"
+                    ? membershipPlan.priceYearly ?? membershipPlan.price
+                    : membershipPlan.price,
+                nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
               });
             }
           } catch (emailError) {
