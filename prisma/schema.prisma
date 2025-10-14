@@ -320,6 +320,7 @@ model MembershipPlan {
   title               String
   description         String
   price               Float // Price for monthly subscription
+  price3Months        Float? // Price for 3-month subscription
   price6Months        Float? // Price for 6-month subscription
   priceYearly         Float? // Price for yearly subscription
   needAdminPermission Boolean @default(false)
@@ -340,7 +341,7 @@ model UserMembership {
   nextPaymentDate  DateTime
   status           String   @default("active") // "active", "cancelled"
   paymentIntentId  String? // Stripe Payment Intent ID
-  billingCycle     String   @default("monthly") // "monthly", "6months", "yearly"
+  billingCycle     String   @default("monthly") // "monthly", "quarterly", "6months", "yearly"
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
