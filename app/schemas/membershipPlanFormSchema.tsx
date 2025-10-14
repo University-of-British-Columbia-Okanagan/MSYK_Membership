@@ -4,6 +4,14 @@ export const membershipPlanFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().min(1, "Description is required"),
   price: z.number().min(0, "Price must be at least 0").default(0),
+  price3Months: z
+    .number()
+    .min(0, "3-month price must be at least 0")
+    .optional()
+    .nullable()
+    .refine((val) => val === null || val === undefined || val > 0, {
+      message: "3-month price must be greater than 0 if provided",
+    }),
   price6Months: z
     .number()
     .min(0, "6-month price must be at least 0")
