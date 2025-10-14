@@ -468,8 +468,10 @@ export async function sendMembershipConfirmationEmail(params: {
   accessHours?: string | Record<string, unknown>;
   gstPercentage?: number;
   nextBillingDate?: Date;
+  billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+  planPrice?: number;
 }): Promise<void> {
-  const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate } = params;
+  const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate, billingCycle, planPrice } = params;
 
   function formatAccessHours(value: unknown): string | null {
     if (!value) return null;
@@ -501,7 +503,12 @@ export async function sendMembershipConfirmationEmail(params: {
   }
 
   const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
-  const billingInfo = nextBillingDate ? `\nNext billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : "";
+  const showNextLine = billingCycle === "monthly" && nextBillingDate;
+  const nextLine = showNextLine ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}` : "";
+
+  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "6months" ? "6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
+  const cycleLine = billingCycle ? `\nBilling cycle: ${cycleLabel}` : "";
+  const selectedPrice = typeof planPrice === "number" ? planPrice : monthlyPrice;
 
   // Format features list
   const featuresList = Object.values(features)
@@ -517,7 +524,7 @@ export async function sendMembershipConfirmationEmail(params: {
     `Your membership subscription has been confirmed.`,
     `Plan Details:`,
     `Description: ${planDescription}`,
-    `Monthly Price: $${monthlyPrice.toFixed(2)}${gstLine}${billingInfo}`,
+    `Price: $${selectedPrice.toFixed(2)}${gstLine}${cycleLine}${nextLine}`,
     `Features included:`,
     featuresList,
     accessInfo,
@@ -598,10 +605,14 @@ export async function sendMembershipResubscribeEmail(params: {
   planTitle: string;
   monthlyPrice?: number;
   nextBillingDate?: Date;
+  billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+  planPrice?: number;
 }): Promise<void> {
-  const { userEmail, planTitle, monthlyPrice, nextBillingDate } = params;
-  const priceLine = monthlyPrice != null ? `Monthly price: $${monthlyPrice.toFixed(2)}` : undefined;
-  const nextLine = nextBillingDate ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : undefined;
+  const { userEmail, planTitle, monthlyPrice, nextBillingDate, billingCycle, planPrice } = params;
+  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "6months" ? "6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
+  const priceVal = typeof planPrice === "number" ? planPrice : monthlyPrice;
+  const priceLine = priceVal != null ? `Price: $${priceVal.toFixed(2)} (${cycleLabel})` : `Billing cycle: ${cycleLabel}`;
+  const nextLine = billingCycle === "monthly" && nextBillingDate ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : undefined;
   const parts = [
     `Your membership has been reactivated: "${planTitle}".`,
     priceLine,
