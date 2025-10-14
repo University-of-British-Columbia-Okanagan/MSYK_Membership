@@ -270,6 +270,7 @@ export default function MembershipPage() {
                   title={plan.title}
                   description={plan.description}
                   price={plan.price}
+                  price3Months={plan.price3Months}
                   price6Months={plan.price6Months}
                   priceYearly={plan.priceYearly}
                   feature={plan.feature}

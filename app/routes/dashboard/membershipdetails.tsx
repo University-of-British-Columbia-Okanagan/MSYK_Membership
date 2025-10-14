@@ -329,7 +329,7 @@ export default function MembershipDetails() {
   const [showNewSignature, setShowNewSignature] = useState(false);
 
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
-    "monthly" | "6months" | "yearly"
+    "monthly" | "quarterly" | "6months" | "yearly"
   >("monthly");
 
   const form = useForm<MembershipAgreementFormValues>({
@@ -476,7 +476,9 @@ export default function MembershipDetails() {
               </div>
 
               {/* Billing Cycle Selection */}
-              {(membershipPlan.price6Months || membershipPlan.priceYearly) && (
+              {(membershipPlan.price3Months ||
+                membershipPlan.price6Months ||
+                membershipPlan.priceYearly) && (
                 <div className="mb-8 p-6 bg-gray-50 rounded-lg">
                   <h2 className="text-xl font-semibold mb-4">
                     Select Billing Cycle
@@ -492,7 +494,11 @@ export default function MembershipDetails() {
                           checked={selectedBillingCycle === "monthly"}
                           onChange={(e) =>
                             setSelectedBillingCycle(
-                              e.target.value as "monthly" | "6months" | "yearly"
+                              e.target.value as
+                                | "monthly"
+                                | "quarterly"
+                                | "6months"
+                                | "yearly"
                             )
                           }
                           className="w-4 h-4 text-indigo-600"
@@ -511,6 +517,54 @@ export default function MembershipDetails() {
                       </div>
                     </label>
 
+                    {membershipPlan.price3Months && (
+                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="radio"
+                            name="billingCycle"
+                            value="quarterly"
+                            checked={selectedBillingCycle === "quarterly"}
+                            onChange={(e) =>
+                              setSelectedBillingCycle(
+                                e.target.value as
+                                  | "monthly"
+                                  | "quarterly"
+                                  | "6months"
+                                  | "yearly"
+                              )
+                            }
+                            className="w-4 h-4 text-indigo-600"
+                          />
+                          <div>
+                            <p className="font-semibold text-gray-900">
+                              Every 3 Months
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Save {" "}
+                              {(
+                                ((membershipPlan.price * 3 -
+                                  membershipPlan.price3Months) /
+                                  (membershipPlan.price * 3)) *
+                                100
+                              ).toFixed(0)}
+                              %
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-gray-900">
+                            CA${membershipPlan.price3Months.toFixed(2)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            (CA$
+                            {(membershipPlan.price3Months / 3).toFixed(2)}
+                            /mo)
+                          </p>
+                        </div>
+                      </label>
+                    )}
+
                     {/* 6 Months Option */}
                     {membershipPlan.price6Months && (
                       <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
@@ -524,6 +578,7 @@ export default function MembershipDetails() {
                               setSelectedBillingCycle(
                                 e.target.value as
                                   | "monthly"
+                                  | "quarterly"
                                   | "6months"
                                   | "yearly"
                               )
@@ -572,6 +627,7 @@ export default function MembershipDetails() {
                               setSelectedBillingCycle(
                                 e.target.value as
                                   | "monthly"
+                                  | "quarterly"
                                   | "6months"
                                   | "yearly"
                               )
