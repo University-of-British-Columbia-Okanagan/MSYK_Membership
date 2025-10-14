@@ -46,6 +46,15 @@ export async function action({ request }: { request: Request }) {
     rawValues.price = parseInt(rawValues.price);
   }
 
+  if (rawValues.price3Months) {
+    rawValues.price3Months =
+      rawValues.price3Months === ""
+        ? null
+        : parseInt(rawValues.price3Months);
+  } else {
+    rawValues.price3Months = null;
+  }
+
   if (rawValues.price6Months) {
     rawValues.price6Months =
       rawValues.price6Months === "" ? null : parseInt(rawValues.price6Months);
@@ -76,6 +85,7 @@ export async function action({ request }: { request: Request }) {
       title: parsed.data.title,
       description: parsed.data.description,
       price: parsed.data.price,
+      price3Months: parsed.data.price3Months ?? null,
       price6Months: parsed.data.price6Months ?? null,
       priceYearly: parsed.data.priceYearly ?? null,
       features: parsed.data.features,
@@ -255,6 +265,55 @@ export default function AddMembershipPlan() {
                   {/* Expanded Pricing Options */}
                   {showMultipleBilling && (
                     <div className="space-y-4 pt-4 border-t border-gray-300">
+                      <FormField
+                        control={form.control}
+                        name="price3Months"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="flex items-center gap-2">
+                              <span className="text-indigo-600">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
+                                >
+                                  <path d="M2.5 5A1.5 1.5 0 014 3.5h12A1.5 1.5 0 0117.5 5v2A1.5 1.5 0 0116 8.5H4A1.5 1.5 0 012.5 7V5z" />
+                                  <path d="M4 10a1 1 0 00-1 1v4A2 2 0 005 17h10a2 2 0 002-2v-4a1 1 0 00-1-1H4z" />
+                                </svg>
+                              </span>
+                              Quarterly Plan Price
+                            </FormLabel>
+                            <FormControl>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                  CA$
+                                </span>
+                                <Input
+                                  type="number"
+                                  placeholder="Enter your quarterly price"
+                                  className="pl-12"
+                                  {...field}
+                                  value={field.value ?? ""}
+                                  onChange={(e) =>
+                                    field.onChange(
+                                      e.target.value === ""
+                                        ? null
+                                        : parseFloat(e.target.value)
+                                    )
+                                  }
+                                />
+                              </div>
+                            </FormControl>
+                            <p className="text-xs text-gray-500">
+                              Leave empty if you don't want to offer quarterly
+                              billing
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
                       {/* 6 Months Price */}
                       <FormField
                         control={form.control}
