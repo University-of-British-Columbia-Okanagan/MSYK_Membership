@@ -33,10 +33,10 @@ import {
   invalidateExistingMembershipForms,
 } from "~/models/membership.server";
 import { getUserById } from "~/models/user.server";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 export async function loader({
   request,
@@ -422,8 +422,17 @@ export default function MembershipDetails() {
 
         <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
           <div className="max-w-4xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden bg-white p-4 rounded-lg shadow-md">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Membership Details</h1>
+            </div>
+
             <div className="bg-white rounded-lg shadow-md p-8">
-              <h1 className="text-3xl font-bold text-black mb-6 text-center">
+              <h1 className="text-3xl font-bold text-black mb-6 text-center hidden md:block">
+                {actionType} {membershipPlan.title}
+              </h1>
+              <h1 className="text-2xl font-bold text-black mb-6 text-center md:hidden">
                 {actionType} {membershipPlan.title}
               </h1>
 

@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { Outlet } from "react-router-dom";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { getRoleUser } from "~/utils/session.server";
 import { useLoaderData } from "react-router";
 import { FiSearch } from "react-icons/fi";
@@ -181,7 +181,13 @@ export default function AllUserWorkshop() {
       <div className="absolute inset-0 flex">
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-4">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">All Registrations</h1>
+          </div>
+
+          <h1 className="text-2xl font-bold mb-4 hidden md:block">
             User Workshop Registrations
           </h1>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">

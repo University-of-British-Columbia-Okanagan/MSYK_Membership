@@ -1,4 +1,4 @@
-import { getWorkshopsFixture } from 'tests/fixtures/workshop/getWorkshops';
+import { getWorkshopsFixture } from 'tests/fixtures/workshop/workshops';
 import { getRoleUserFixture, getRoleUserAdminFixture } from 'tests/fixtures/session/getRoleUser';
 import { newEquipmentFixture } from 'tests/fixtures/equipments/addEquimentForm';
 import { getEquipmentByName, addEquipment } from '~/models/equipment.server';

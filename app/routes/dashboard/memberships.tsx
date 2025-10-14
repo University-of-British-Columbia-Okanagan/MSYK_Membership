@@ -1,6 +1,6 @@
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminSidebar from "~/components/ui/Dashboard/adminsidebar";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
   getMembershipPlans,
@@ -16,7 +16,7 @@ import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
 import { PlusCircle } from "lucide-react";
 import { logger } from "~/logging/logger";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -233,6 +233,11 @@ export default function MembershipPage() {
 
         {/* Main content area */}
         <main className="flex-1 px-6 py-10 bg-white">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Memberships</h1>
+          </div>
           {isAdmin && (
             <div className="flex justify-end mb-6">
               <Link to="/dashboard/addmembershipplan">

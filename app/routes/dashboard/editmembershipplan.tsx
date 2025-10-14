@@ -18,9 +18,9 @@ import type { MembershipPlanFormValues } from "../../schemas/membershipPlanFormS
 import { updateMembershipPlan, getMembershipPlan } from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 
 export async function loader({ params, request }: { params: { planId: string }; request: Request }) {
@@ -140,6 +140,12 @@ export default function EditMembershipPlan() {
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
           <div className="max-w-4xl mx-auto p-8 w-full">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Edit Membership</h1>
+            </div>
+
             <div className="mb-6">
               <Button
                 variant="outline"

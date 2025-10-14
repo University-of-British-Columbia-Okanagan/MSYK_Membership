@@ -1,8 +1,8 @@
 import { useLoaderData } from "react-router";
 import { Outlet } from "react-router-dom";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import WorkshopList from "~/components/ui/Dashboard/Workshoplist";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import WorkshopList from "~/components/ui/Dashboard/workshoplist";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Link } from "react-router-dom";
 import {
   getWorkshops,
@@ -10,8 +10,8 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { FiPlus } from "react-icons/fi";
 
 export async function loader({ request }: { request: Request }) {
@@ -118,6 +118,12 @@ export default function UserDashboard() {
           <AppSidebar />
         )}
         <main className="flex-grow p-6">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Workshops</h1>
+          </div>
+
           {/* Add Workshop Button - Only show for admins */}
           {isAdmin && (
             <div className="flex justify-end mb-6">

@@ -69,13 +69,13 @@ import {
 } from "~/models/equipment.server";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import EquipmentBookingGrid from "~/components/ui/Dashboard/Equipmentbookinggrid";
-import type { SlotsByDay } from "~/components/ui/Dashboard/Equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/equipmentbookinggrid";
+import type { SlotsByDay } from "~/components/ui/Dashboard/equipmentbookinggrid";
 import { db } from "~/utils/db.server";
 import { logger } from "~/logging/logger";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 
@@ -1498,6 +1498,12 @@ export default function EditWorkshop() {
         {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
         <main className="flex-grow overflow-auto">
           <div className="max-w-7xl mx-auto p-8 w-full">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Edit Workshop</h1>
+            </div>
+
             {/* Back Button */}
             <div className="mb-6">
               <Button

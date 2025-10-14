@@ -2,10 +2,10 @@ import { useLoaderData } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { getRoleUser } from "~/utils/session.server";
 import { getAdminSetting } from "~/models/admin.server";
 import { isGoogleConnected } from "~/utils/googleCalendar.server";
@@ -60,6 +60,12 @@ export default function EventsPage() {
         {renderSidebar()}
 
         <main className="flex-1 bg-gray-50 overflow-y-auto">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 p-4 md:hidden bg-white border-b">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Events</h1>
+          </div>
+
           {/* Hero Section */}
           <div className="relative bg-indigo-500 text-white overflow-hidden">
             <div className="absolute inset-0"></div>

@@ -1,7 +1,7 @@
 import { useLoaderData, useNavigate, useFetcher } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { getRoleUser } from "~/utils/session.server";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,7 @@ import {
   getAllEquipment,
 } from "~/models/equipment.server";
 import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
 export async function loader({ request }: { request: Request }) {
   const equipments = await getAllEquipment();
@@ -46,7 +46,13 @@ export default function Equipments() {
           <AppSidebar />
         )}
         <main className="flex-grow p-6">
-          <h1 className="text-2xl font-bold mb-6">Available Equipment</h1>
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Equipment</h1>
+          </div>
+
+          <h1 className="text-2xl font-bold mb-6 hidden md:block">Available Equipment</h1>
 
           <div className="flex justify-end items-center mb-6">
             {isAdmin && (

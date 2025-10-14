@@ -664,7 +664,6 @@ export async function createCheckoutSession(request: Request) {
       userId,
       compensationPrice,
       oldMembershipNextPaymentDate,
-      userEmail,
       billingCycle = "monthly",
     } = body; // <--- Note we read compensationPrice here
     if (!membershipPlanId || !price || !userId) {
@@ -713,7 +712,6 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/memberships`,
       metadata: {
@@ -736,8 +734,7 @@ export async function createCheckoutSession(request: Request) {
   }
   // Workshop Single Occurrence Payment
   else if (body.workshopId && body.occurrenceId) {
-    const { workshopId, occurrenceId, price, userId, userEmail, variationId } =
-      body;
+    const { workshopId, occurrenceId, price, userId, variationId } = body;
     if (!workshopId || !occurrenceId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -782,7 +779,6 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/workshops`,
       metadata: {
@@ -801,8 +797,7 @@ export async function createCheckoutSession(request: Request) {
 
   // Multi-day Workshop Payment
   else if (body.workshopId && body.connectId) {
-    const { workshopId, connectId, price, userId, userEmail, variationId } =
-      body;
+    const { workshopId, connectId, price, userId, variationId } = body;
     if (!workshopId || !connectId || !price || !userId) {
       throw new Error("Missing required payment data");
     }
@@ -854,7 +849,6 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/workshops`,
       metadata: {
@@ -879,15 +873,7 @@ export async function createCheckoutSession(request: Request) {
     body.userId &&
     body.slotsDataKey
   ) {
-    const {
-      equipmentId,
-      slotCount,
-      price,
-      userId,
-      slots,
-      userEmail,
-      slotsDataKey,
-    } = body;
+    const { equipmentId, slotCount, price, userId, slots, slotsDataKey } = body;
 
     // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
@@ -911,7 +897,6 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      customer_email: userEmail,
       success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://localhost:5173/dashboard/equipment`,
       metadata: {

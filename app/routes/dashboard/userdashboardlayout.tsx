@@ -1,9 +1,9 @@
 import { Outlet, redirect } from "react-router-dom";
-import AppSidebar from "~/components/ui/Dashboard/Sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/Adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/Guestsidebar";
-import WorkshopList from "~/components/ui/Dashboard/Workshoplist";
-import { SidebarProvider } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import WorkshopList from "~/components/ui/Dashboard/workshoplist";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { getWorkshops } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
@@ -122,6 +122,12 @@ export default function UserDashboard() {
           <AppSidebar />
         )}
         <main className="flex-grow p-6">
+          {/* Mobile Header with Sidebar Trigger */}
+          <div className="flex items-center gap-4 mb-6 md:hidden">
+            <SidebarTrigger />
+            <h1 className="text-xl font-bold">Dashboard</h1>
+          </div>
+
           {/* Add Workshop Button - Only show for admins */}
           {isAdmin && (
             <div className="flex justify-end mb-6 pr-4">
@@ -133,7 +139,7 @@ export default function UserDashboard() {
             </div>
           )}
 
-          <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
+          <h1 className="text-2xl font-bold mb-4 hidden md:block">Dashboard</h1>
 
           {/* Active Workshops Section */}
           {activeWorkshops.length > 0 ? (

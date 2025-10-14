@@ -6,8 +6,8 @@ import {
   Form,
 } from "react-router-dom";
 import type { ActionFunction, LoaderFunction } from "react-router-dom";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import Sidebar from "../../components/ui/Dashboard/Sidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { getUserId } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
 import { getSavedPaymentMethod } from "~/models/user.server";
@@ -199,6 +199,12 @@ export default function PaymentInformationPage() {
         <Sidebar />
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Payment Info</h1>
+            </div>
+
             {/* Header */}
             <div className="mb-8">
               <button

@@ -1,6 +1,6 @@
 import { Link } from "react-router";
-import { SidebarProvider } from "@/components/ui/sidebar";
-import GuestSidebar from "~/components/ui/Dashboard/Guestsidebar";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import GuestSidebar from "~/components/ui/Dashboard/guestsidebar";
 import {
   Users,
   Calendar,
@@ -51,6 +51,12 @@ export default function DashboardLayout() {
 
         <main className="flex-1 overflow-auto">
           <div className="p-8">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Guest Dashboard</h1>
+            </div>
+
             {/* Hero Section */}
             <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-xl p-8 mb-8 text-white">
               <div className="mb-6">
