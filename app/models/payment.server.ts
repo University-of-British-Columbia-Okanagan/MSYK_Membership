@@ -92,6 +92,7 @@ export async function quickCheckout(
     currentMembershipId?: number;
     upgradeFee?: number;
     variationId?: number;
+    billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
   }
 ) {
   const user = await db.user.findUnique({
@@ -181,6 +182,10 @@ export async function quickCheckout(
       description = membershipPlan.title;
       price = checkoutData.price || membershipPlan.price;
       metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
+
+      if (checkoutData.billingCycle) {
+        metadata.billingCycle = checkoutData.billingCycle;
+      }
 
       if (checkoutData.currentMembershipId) {
         metadata.currentMembershipId =
@@ -332,17 +337,29 @@ export async function quickCheckout(
           } = await import("./membership.server");
 
           const currentMembershipId = checkoutData.currentMembershipId || null;
-          await registerMembershipSubscription(
+          const billingCycle = checkoutData.billingCycle || "monthly";
+
+          // Register the subscription and get the subscription object
+          const subscription = await registerMembershipSubscription(
             userId,
             checkoutData.membershipPlanId!,
             currentMembershipId,
             false, // Not a downgrade
             false, // Not a resubscription
-            paymentIntent.id
+            paymentIntent.id,
+            billingCycle as
+              | "monthly"
+              | "quarterly"
+              | "6months"
+              | "yearly"
           );
 
-          // Activate the pending membership form
-          await activateMembershipForm(userId, checkoutData.membershipPlanId!);
+          // Activate the pending membership form and link it to the subscription
+          await activateMembershipForm(
+            userId,
+            checkoutData.membershipPlanId!,
+            subscription.id // Pass the subscription ID!
+          );
 
           // Send confirmation email for membership
           try {
@@ -356,7 +373,15 @@ export async function quickCheckout(
             if (membershipPlan) {
               // Calculate next billing date (one month from now)
               const nextBillingDate = new Date();
-              nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+              if (billingCycle === "6months") {
+                nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
+              } else if (billingCycle === "quarterly") {
+                nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
+              } else if (billingCycle === "yearly") {
+                nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+              } else {
+                nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+              }
 
               await sendMembershipConfirmationEmail({
                 userEmail: user.email,
@@ -365,7 +390,16 @@ export async function quickCheckout(
                 monthlyPrice: membershipPlan.price,
                 features: membershipPlan.feature as Record<string, string>,
                 accessHours: membershipPlan.accessHours as string,
-                nextBillingDate,
+                billingCycle,
+                planPrice:
+                  billingCycle === "quarterly"
+                    ? membershipPlan.price3Months ?? membershipPlan.price
+                    : billingCycle === "6months"
+                    ? membershipPlan.price6Months ?? membershipPlan.price
+                    : billingCycle === "yearly"
+                    ? membershipPlan.priceYearly ?? membershipPlan.price
+                    : membershipPlan.price,
+                nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
               });
             }
           } catch (emailError) {
@@ -613,6 +647,7 @@ export async function createCheckoutSession(request: Request) {
         price: body.price,
         currentMembershipId: body.currentMembershipId,
         upgradeFee: body.upgradeFee,
+        billingCycle: body.billingCycle || "monthly",
       };
     }
 
@@ -629,6 +664,7 @@ export async function createCheckoutSession(request: Request) {
       userId,
       compensationPrice,
       oldMembershipNextPaymentDate,
+      billingCycle = "monthly",
     } = body; // <--- Note we read compensationPrice here
     if (!membershipPlanId || !price || !userId) {
       throw new Error("Missing required membership payment data");
@@ -688,6 +724,7 @@ export async function createCheckoutSession(request: Request) {
         currentMembershipId: body.currentMembershipId
           ? body.currentMembershipId.toString()
           : null,
+        billingCycle: billingCycle,
       },
     });
     return new Response(JSON.stringify({ url: session.url }), {

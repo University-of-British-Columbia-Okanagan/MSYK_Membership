@@ -319,7 +319,10 @@ model MembershipPlan {
 
   title               String
   description         String
-  price               Float
+  price               Float // Price for monthly subscription
+  price3Months        Float? // Price for 3-month subscription
+  price6Months        Float? // Price for 6-month subscription
+  priceYearly         Float? // Price for yearly subscription
   needAdminPermission Boolean @default(false)
   feature             Json
   accessHours         Json // Example: {"start": "09:00", "end": "18:00"}
@@ -338,22 +341,27 @@ model UserMembership {
   nextPaymentDate  DateTime
   status           String   @default("active") // "active", "cancelled"
   paymentIntentId  String? // Stripe Payment Intent ID
+  billingCycle     String   @default("monthly") // "monthly", "quarterly", "6months", "yearly"
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+
+  membershipForms UserMembershipForm[]
 }
 
 model UserMembershipForm {
   id                 Int      @id @default(autoincrement())
   userId             Int
   membershipPlanId   Int
+  userMembershipId   Int?
   agreementSignature String // Encrypted signature data
   status             String   @default("pending") // "pending", "active", "inactive", "cancelled", "ending"
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  membershipPlan MembershipPlan  @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
+  userMembership UserMembership? @relation(fields: [userMembershipId], references: [id], onDelete: Cascade)
 }
 
 model UserPaymentInformation {

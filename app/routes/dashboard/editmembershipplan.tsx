@@ -43,6 +43,27 @@ export async function action({ request, params }: { request: Request; params: { 
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
   if (rawValues.price) rawValues.price = parseInt(rawValues.price);
 
+  if (rawValues.price3Months) {
+    rawValues.price3Months =
+      rawValues.price3Months === "" ? null : parseInt(rawValues.price3Months);
+  } else {
+    rawValues.price3Months = null;
+  }
+
+  if (rawValues.price6Months) {
+    rawValues.price6Months =
+      rawValues.price6Months === "" ? null : parseInt(rawValues.price6Months);
+  } else {
+    rawValues.price6Months = null;
+  }
+
+  if (rawValues.priceYearly) {
+    rawValues.priceYearly =
+      rawValues.priceYearly === "" ? null : parseInt(rawValues.priceYearly);
+  } else {
+    rawValues.priceYearly = null;
+  }
+
   const featuresArray = formData.getAll("features") as string[];
   rawValues.features = featuresArray;
 
@@ -62,6 +83,9 @@ export async function action({ request, params }: { request: Request; params: { 
       title: rawValues.title,
       description: rawValues.description,
       price: rawValues.price,
+      price3Months: rawValues.price3Months,
+      price6Months: rawValues.price6Months,
+      priceYearly: rawValues.priceYearly,
       features: featuresJson,
     });
     logger.info(`Membership plan ${rawValues.title} updated successfully`, { url: request.url });
@@ -86,6 +110,9 @@ export default function EditMembershipPlan() {
       title: membershipPlan.title,
       description: membershipPlan.description,
       price: membershipPlan.price,
+      price3Months: membershipPlan.price3Months ?? null,
+      price6Months: membershipPlan.price6Months ?? null,
+      priceYearly: membershipPlan.priceYearly ?? null,
       features: membershipPlan.feature || [],
     },
   });
@@ -177,7 +204,7 @@ export default function EditMembershipPlan() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        Price <span className="text-red-500">*</span>
+                        Monthly Price <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
                         <Input type="number" placeholder="Price" {...field} step="0.01" className="w-full" />
@@ -186,6 +213,86 @@ export default function EditMembershipPlan() {
                     </FormItem>
                   )}
                 />
+
+                <div className="mt-6 space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="price3Months"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Quarterly Price</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="Enter quarterly price"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ""
+                                  ? null
+                                  : parseFloat(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage>{actionData?.errors?.price3Months}</FormMessage>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="price6Months"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>6-Month Price</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="Enter 6-month price"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ""
+                                  ? null
+                                  : parseFloat(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage>{actionData?.errors?.price6Months}</FormMessage>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="priceYearly"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Yearly Price</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="Enter yearly price"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ""
+                                  ? null
+                                  : parseFloat(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage>{actionData?.errors?.priceYearly}</FormMessage>
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 {features.map((feature, index) => (
                   <FormField
