@@ -468,7 +468,7 @@ export async function sendMembershipConfirmationEmail(params: {
   accessHours?: string | Record<string, unknown>;
   gstPercentage?: number;
   nextBillingDate?: Date;
-  billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+  billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
 }): Promise<void> {
   const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate, billingCycle, planPrice } = params;
@@ -506,7 +506,7 @@ export async function sendMembershipConfirmationEmail(params: {
   const showNextLine = billingCycle === "monthly" && nextBillingDate;
   const nextLine = showNextLine ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}` : "";
 
-  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "6months" ? "6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
+  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "semiannually" ? "Every 6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
   const cycleLine = billingCycle ? `\nBilling cycle: ${cycleLabel}` : "";
   const selectedPrice = typeof planPrice === "number" ? planPrice : monthlyPrice;
 
@@ -605,11 +605,11 @@ export async function sendMembershipResubscribeEmail(params: {
   planTitle: string;
   monthlyPrice?: number;
   nextBillingDate?: Date;
-  billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+  billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
 }): Promise<void> {
   const { userEmail, planTitle, monthlyPrice, nextBillingDate, billingCycle, planPrice } = params;
-  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "6months" ? "6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
+  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "semiannually" ? "Every 6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
   const priceVal = typeof planPrice === "number" ? planPrice : monthlyPrice;
   const priceLine = priceVal != null ? `Price: $${priceVal.toFixed(2)} (${cycleLabel})` : `Billing cycle: ${cycleLabel}`;
   const nextLine = billingCycle === "monthly" && nextBillingDate ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : undefined;

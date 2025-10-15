@@ -27,12 +27,12 @@ interface MembershipPlanData {
 
 function addMonthsForCycle(
   date: Date,
-  cycle: "monthly" | "quarterly" | "6months" | "yearly"
+  cycle: "monthly" | "quarterly" | "semiannually" | "yearly"
 ): Date {
   const newDate = new Date(date);
   if (cycle === "yearly") {
     newDate.setFullYear(newDate.getFullYear() + 1);
-  } else if (cycle === "6months") {
+  } else if (cycle === "semiannually") {
     newDate.setMonth(newDate.getMonth() + 6);
   } else if (cycle === "quarterly") {
     newDate.setMonth(newDate.getMonth() + 3);
@@ -196,7 +196,7 @@ export async function registerMembershipSubscription(
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false,
   paymentIntentId?: string,
-  billingCycle: "monthly" | "quarterly" | "6months" | "yearly" = "monthly"
+  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly"
 ) {
   let subscription;
   const now = new Date();
@@ -421,7 +421,7 @@ export async function registerMembershipSubscription(
     console.log("Creating brand‑new subscription record");
     const startDate = new Date(now);
     const nextPaymentDate = new Date(startDate);
-    if (billingCycle === "6months") {
+    if (billingCycle === "semiannually") {
       nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 6);
     } else if (billingCycle === "quarterly") {
       nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
@@ -751,7 +751,7 @@ export function startMonthlyMembershipCheck() {
                     membership.billingCycle as
                       | "monthly"
                       | "quarterly"
-                      | "6months"
+                      | "semiannually"
                       | "yearly"
                   ),
                   paymentIntentId: pi.id,

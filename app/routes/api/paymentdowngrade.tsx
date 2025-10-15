@@ -28,7 +28,7 @@ export async function action({ request }: { request: Request }) {
       currentMembershipId: string;
       newMembershipPlanId: string;
       userId: string;
-      billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+      billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
     } = body;
 
     if (!currentMembershipId || !newMembershipPlanId || !userId) {
@@ -55,7 +55,7 @@ export async function action({ request }: { request: Request }) {
       billingCycle as
         | "monthly"
         | "quarterly"
-        | "6months"
+        | "semiannually"
         | "yearly"
     );
 

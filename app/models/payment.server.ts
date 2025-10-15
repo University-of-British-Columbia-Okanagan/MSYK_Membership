@@ -92,7 +92,7 @@ export async function quickCheckout(
     currentMembershipId?: number;
     upgradeFee?: number;
     variationId?: number;
-    billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+    billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   }
 ) {
   const user = await db.user.findUnique({
@@ -350,7 +350,7 @@ export async function quickCheckout(
             billingCycle as
               | "monthly"
               | "quarterly"
-              | "6months"
+              | "semiannually"
               | "yearly"
           );
 
@@ -373,7 +373,7 @@ export async function quickCheckout(
             if (membershipPlan) {
               // Calculate next billing date (one month from now)
               const nextBillingDate = new Date();
-              if (billingCycle === "6months") {
+              if (billingCycle === "semiannually") {
                 nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
               } else if (billingCycle === "quarterly") {
                 nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
@@ -394,7 +394,7 @@ export async function quickCheckout(
                 planPrice:
                   billingCycle === "quarterly"
                     ? membershipPlan.price3Months ?? membershipPlan.price
-                    : billingCycle === "6months"
+                    : billingCycle === "semiannually"
                     ? membershipPlan.price6Months ?? membershipPlan.price
                     : billingCycle === "yearly"
                     ? membershipPlan.priceYearly ?? membershipPlan.price

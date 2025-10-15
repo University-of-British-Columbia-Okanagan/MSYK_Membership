@@ -59,14 +59,14 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       (url.searchParams.get("billingCycle") as
         | "monthly"
         | "quarterly"
-        | "6months"
+        | "semiannually"
         | "yearly"
         | null) || "monthly";
 
     let membershipPrice = membershipPlan.price;
     if (billingCycle === "quarterly" && membershipPlan.price3Months) {
       membershipPrice = membershipPlan.price3Months;
-    } else if (billingCycle === "6months" && membershipPlan.price6Months) {
+    } else if (billingCycle === "semiannually" && membershipPlan.price6Months) {
       membershipPrice = membershipPlan.price6Months;
     } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
       membershipPrice = membershipPlan.priceYearly;
@@ -646,7 +646,7 @@ export default function Payment() {
     savedPaymentMethod?: any;
     gstPercentage: number;
     selectedVariation?: any;
-    billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+    billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   };
 
   const navigate = useNavigate();
@@ -857,7 +857,7 @@ export default function Payment() {
                   (data.billingCycle as
                     | "monthly"
                     | "quarterly"
-                    | "6months"
+                    | "semiannually"
                     | "yearly") ||
                   "monthly",
               }}
