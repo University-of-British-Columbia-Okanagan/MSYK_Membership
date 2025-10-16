@@ -8,6 +8,7 @@ import {
   getWorkshopPriceVariation,
 } from "./workshop.server";
 import { getMembershipPlanById } from "./membership.server";
+import { calculateProratedUpgradeAmount } from "./membership.server";
 import { getSavedPaymentMethod } from "./user.server";
 import { db } from "../utils/db.server";
 import { getAdminSetting } from "./admin.server";
@@ -174,22 +175,56 @@ export async function quickCheckout(
       if (!checkoutData.membershipPlanId)
         throw new Error("Membership plan ID required");
 
-      const membershipPlan = await getMembershipPlanById(
-        checkoutData.membershipPlanId
-      );
-      if (!membershipPlan) throw new Error("Membership plan not found");
+      {
+        const membershipPlan = await getMembershipPlanById(
+          checkoutData.membershipPlanId
+        );
+        if (!membershipPlan) throw new Error("Membership plan not found");
 
-      description = membershipPlan.title;
-      price = checkoutData.price || membershipPlan.price;
-      metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
+        description = membershipPlan.title;
+        const billingCycle = checkoutData.billingCycle || "monthly";
+        metadata.billingCycle = billingCycle;
+        metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
 
-      if (checkoutData.billingCycle) {
-        metadata.billingCycle = checkoutData.billingCycle;
-      }
+        // Default for brand-new membership purchase
+        price = checkoutData.price || membershipPlan.price;
 
-      if (checkoutData.currentMembershipId) {
-        metadata.currentMembershipId =
-          checkoutData.currentMembershipId.toString();
+        // If upgrading from an existing membership, compute proration server-side
+        if (checkoutData.currentMembershipId) {
+          const current = await db.userMembership.findUnique({
+            where: { id: checkoutData.currentMembershipId },
+            include: { membershipPlan: true },
+          });
+
+          if (!current) throw new Error("Current membership not found");
+
+          if (current.billingCycle !== "monthly" || billingCycle !== "monthly") {
+            throw new Error(
+              "Only monthly-to-monthly upgrades can be paid; cancel non-monthly instead"
+            );
+          }
+
+          const now = new Date();
+          const oldMonthly = Number(current.membershipPlan.price);
+          const newMonthly = Number(membershipPlan.price);
+          const fee = calculateProratedUpgradeAmount(
+            now,
+            new Date(current.nextPaymentDate),
+            oldMonthly,
+            newMonthly
+          );
+
+          if (fee <= 0) {
+            return {
+              success: false,
+              error: "No payment required for this switch.",
+              type: "membership",
+            };
+          }
+
+          price = fee;
+          metadata.currentMembershipId = checkoutData.currentMembershipId.toString();
+        }
       }
       break;
 
@@ -660,37 +695,58 @@ export async function createCheckoutSession(request: Request) {
   if (body.membershipPlanId) {
     const {
       membershipPlanId,
-      price,
       userId,
-      compensationPrice,
-      oldMembershipNextPaymentDate,
+      currentMembershipId,
       billingCycle = "monthly",
-    } = body; // <--- Note we read compensationPrice here
-    if (!membershipPlanId || !price || !userId) {
+    } = body;
+    if (!membershipPlanId || !userId) {
       throw new Error("Missing required membership payment data");
     }
-    const membershipPlan = await getMembershipPlanById(
-      Number(membershipPlanId)
-    );
+
+    const membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
     if (!membershipPlan) {
       throw new Error("Membership Plan not found");
     }
 
-    let finalDescription = membershipPlan.description || "";
-    if (compensationPrice && compensationPrice > 0) {
-      finalDescription += `\nPay now: $${compensationPrice.toFixed(
-        2
-      )}. $${membershipPlan.price.toFixed(2)} starting ${
-        oldMembershipNextPaymentDate
-          ? new Date(oldMembershipNextPaymentDate).toLocaleDateString()
-          : "N/A"
-      }.`;
+    // Compute server-side proration when upgrading from an existing monthly plan
+    let chargeAmount = Number(membershipPlan.price);
+    if (currentMembershipId) {
+      const current = await db.userMembership.findUnique({
+        where: { id: Number(currentMembershipId) },
+        include: { membershipPlan: true },
+      });
+      if (!current) throw new Error("Current membership not found");
+
+      if (current.billingCycle !== "monthly" || billingCycle !== "monthly") {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error:
+              "Only monthly-to-monthly upgrades are supported. Please cancel your current term.",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const fee = calculateProratedUpgradeAmount(
+        new Date(),
+        new Date(current.nextPaymentDate),
+        Number(current.membershipPlan.price),
+        Number(membershipPlan.price)
+      );
+
+      if (fee <= 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: "No payment required for this switch." }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      chargeAmount = fee;
     }
 
-    // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
     const gstRate = parseFloat(gstPercentage) / 100;
-    const priceWithGST = price * (1 + gstRate);
+    const priceWithGST = chargeAmount * (1 + gstRate);
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -705,9 +761,9 @@ export async function createCheckoutSession(request: Request) {
             currency: "cad",
             product_data: {
               name: membershipPlan.title,
-              description: `${finalDescription} (Includes ${gstPercentage}% GST)`,
+              description: `${membershipPlan.description || "Membership"} (Includes ${gstPercentage}% GST)`,
             },
-            unit_amount: Math.round(priceWithGST * 100), // Price with GST included
+            unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
         },
@@ -717,13 +773,8 @@ export async function createCheckoutSession(request: Request) {
       metadata: {
         membershipPlanId: membershipPlanId.toString(),
         userId: userId.toString(),
-        compensationPrice: compensationPrice
-          ? compensationPrice.toString()
-          : "0",
         originalPrice: membershipPlan.price.toString(),
-        currentMembershipId: body.currentMembershipId
-          ? body.currentMembershipId.toString()
-          : null,
+        currentMembershipId: currentMembershipId ? String(currentMembershipId) : null,
         billingCycle: billingCycle,
       },
     });
