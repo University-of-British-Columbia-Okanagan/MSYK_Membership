@@ -43,6 +43,29 @@ function addMonthsForCycle(
 }
 
 /**
+ * Calculate prorated upgrade amount for monthly→monthly switch.
+ * Uses remaining fraction of current cycle multiplied by price delta.
+ */
+export function calculateProratedUpgradeAmount(
+  now: Date,
+  nextPaymentDate: Date,
+  oldMonthly: number,
+  newMonthly: number
+): number {
+  if (newMonthly <= oldMonthly) return 0;
+  const effectiveStart = new Date(nextPaymentDate);
+  effectiveStart.setMonth(effectiveStart.getMonth() - 1);
+  const totalMs = Math.max(0, nextPaymentDate.getTime() - effectiveStart.getTime());
+  const remainingMs = Math.max(
+    0,
+    Math.min(nextPaymentDate.getTime() - now.getTime(), totalMs)
+  );
+  if (totalMs === 0 || remainingMs === 0) return 0;
+  const delta = newMonthly - oldMonthly;
+  return (remainingMs / totalMs) * delta;
+}
+
+/**
  * Retrieve all membership plans ordered by ID
  * @returns Array of all membership plans ordered by ascending ID
  */
@@ -336,25 +359,32 @@ export async function registerMembershipSubscription(
       throw new Error("Current membership not found");
     }
 
-    // Mark the old membership as ending
+    // Enforce monthly -> monthly for upgrades
+    if (
+      currentMembership.billingCycle !== "monthly" ||
+      billingCycle !== "monthly"
+    ) {
+      throw new Error("Only monthly-to-monthly upgrades are supported");
+    }
+
+    // Mark the old membership as ending immediately; it won't be charged again
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
 
-    // Set the old membership's form to "inactive" since it's ending
+    // Sync the old membership's form to ending
     await updateMembershipFormStatus(
       userId,
       currentMembership.membershipPlanId,
       "ending"
     );
 
-    // Create or update a new membership record for the upgraded plan
-    // so that we only have 1 record in "active"/"ending" for the new plan.
-    const startDate = new Date(currentMembership.nextPaymentDate);
-    const newNextPaymentDate = addMonthsForCycle(startDate, billingCycle);
+    // New upgraded membership becomes active immediately, keeps old nextPaymentDate
+    const startDate = new Date(now);
+    const newNextPaymentDate = new Date(currentMembership.nextPaymentDate);
 
-    // Check if there's an existing record for the new plan in active/ending
+    // Ensure at most one active/ending record for the new plan
     let newMembership = await db.userMembership.findFirst({
       where: {
         userId,
@@ -364,20 +394,18 @@ export async function registerMembershipSubscription(
     });
 
     if (newMembership) {
-      // Update that record
       newMembership = await db.userMembership.update({
         where: { id: newMembership.id },
         data: {
-          date: startDate, // new membership starts when the old membership ends
+          date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          billingCycle,
+          billingCycle: "monthly",
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
       subscription = newMembership;
     } else {
-      // Otherwise, create a fresh record for the new plan
       subscription = await db.userMembership.create({
         data: {
           userId,
@@ -385,7 +413,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          billingCycle,
+          billingCycle: "monthly",
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -608,7 +636,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("29 13 * * *", async () => {
+  cron.schedule("0 0 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
