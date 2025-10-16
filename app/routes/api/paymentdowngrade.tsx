@@ -4,6 +4,7 @@ import {
   getUserActiveMembership,
   registerMembershipSubscription,
 } from "../../models/membership.server";
+import { db } from "~/utils/db.server";
 import { sendMembershipDowngradeEmail } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
@@ -41,8 +42,27 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
-    // Get the currently active membership BEFORE changing anything
+    // Fetch current membership and ensure monthly -> monthly only
     const currentActive = await getUserActiveMembership(parseInt(userId));
+    if (!currentActive) {
+      return new Response(
+        JSON.stringify({ error: "No active membership to downgrade" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    if (
+      currentActive.billingCycle !== "monthly" ||
+      billingCycle !== "monthly"
+    ) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Only monthly-to-monthly downgrades are supported. Please cancel your current term and wait for it to end.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     // Process the downgrade directly with no payment needed
     await registerMembershipSubscription(
