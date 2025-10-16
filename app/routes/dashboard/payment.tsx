@@ -101,12 +101,18 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     let oldMembershipPrice = null;
     let oldMembershipNextPaymentDate = null;
     let isDowngrade = false;
+    let changeNotAllowed = false;
+    let needsPayment = false;
 
     // Only compute compensation if the user has an active membership
     if (userActiveMembership) {
       const now = new Date();
       const oldPrice = userActiveMembership.membershipPlan.price;
       const newPrice = membershipPrice;
+
+      const isMonthlyToMonthly =
+        (userActiveMembership.billingCycle as string) === "monthly" &&
+        (billingCycle as string) === "monthly";
 
       // Instead of using the original signup date for A, use a date exactly one month before the next payment
       const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
@@ -119,7 +125,9 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const total = A + B; // This will now be approximately one month
 
       // Check if this is an upgrade or downgrade
-      if (newPrice > oldPrice) {
+      if (!isMonthlyToMonthly) {
+        changeNotAllowed = true;
+      } else if (newPrice > oldPrice) {
         upgradeFee = (B / total) * (newPrice - oldPrice);
       } else if (newPrice < oldPrice) {
         isDowngrade = true;
@@ -156,6 +164,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
+    needsPayment = !userActiveMembership || (upgradeFee > 0 && !isDowngrade && !changeNotAllowed);
+
     return {
       membershipPlan: {
         ...membershipPlan,
@@ -173,6 +183,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
       billingCycle,
+      changeNotAllowed,
+      needsPayment,
     };
   }
 
@@ -647,6 +659,8 @@ export default function Payment() {
     gstPercentage: number;
     selectedVariation?: any;
     billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+    changeNotAllowed?: boolean;
+    needsPayment?: boolean;
   };
 
   const navigate = useNavigate();
@@ -732,6 +746,32 @@ export default function Payment() {
           const resData = await response.json();
           if (resData.url) {
             window.location.href = resData.url;
+          } else if (resData.success === false && resData.error) {
+            // If server says no payment required, trigger zero-cost upgrade
+            if (
+              resData.error.includes("No payment required") &&
+              data.userActiveMembership &&
+              data.billingCycle === "monthly"
+            ) {
+              const r = await fetch("/dashboard/payment/upgrade", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  currentMembershipId: data.userActiveMembership?.id,
+                  newMembershipPlanId: data.membershipPlan.id,
+                  userId: data.user.id,
+                  billingCycle: data.billingCycle || "monthly",
+                }),
+              });
+              const j = await r.json();
+              if (j.success) {
+                return navigate(
+                  "/dashboard/payment/success?quick_checkout=true&type=membership"
+                );
+              }
+            }
+            console.error("Payment error:", resData.error);
+            setLoading(false);
           } else {
             console.error("Payment error:", resData.error);
             setLoading(false);
@@ -841,7 +881,8 @@ export default function Payment() {
       {data.membershipPlan &&
         data.savedPaymentMethod &&
         !data.isResubscription &&
-        !data.isDowngrade && (
+        !data.isDowngrade &&
+        data.needsPayment && (
           <div className="mb-6">
             <QuickCheckout
               userId={data.user.id}
@@ -914,6 +955,16 @@ export default function Payment() {
               ).toFixed(2)}
               /month incl. GST)
             </p>
+          )}
+
+          {data.changeNotAllowed && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-gray-700">
+                Switching between non-monthly plans or to/from non-monthly terms
+                isn't supported. Please cancel your current subscription and wait
+                for it to end before subscribing to a different term.
+              </p>
+            </div>
           )}
 
           {/*
