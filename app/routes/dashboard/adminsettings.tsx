@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 import React, { useState, useMemo } from "react";
 import {
   Form,
@@ -5,6 +6,7 @@ import {
   useActionData,
   redirect,
   useSubmit,
+  useFetcher,
 } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
@@ -36,6 +38,7 @@ import {
   getLevel4UnavailableHours,
   getAllEquipmentCancellations,
   updateEquipmentCancellationResolved,
+  getAllEquipment,
 } from "~/models/equipment.server";
 import {
   getWorkshops,
@@ -95,6 +98,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AccessCard,
+  getAccessCardByUUID,
+  updateAccessCard,
+} from "~/models/access_card.server";
+import { json } from "@remix-run/node";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -184,6 +193,19 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
+  // ESP32: Fetching existing equipments
+  const allEquipments = await getAllEquipment();
+  allEquipments.push({
+    id: 0,
+    name: "Door",
+    description: null,
+    imageUrl: null,
+    availability: true,
+    totalSlots: 0,
+    bookedSlots: 0,
+    status: "active",
+  });
+
   // Log successful load
   logger.info(
     `[User: ${roleUser.userId}] Admin settings page loaded successfully`,
@@ -221,6 +243,7 @@ export async function loader({ request }: { request: Request }) {
       timezone: googleTimezone,
       calendars: googleCalendars,
     },
+    allEquipments,
   };
 }
 
@@ -631,6 +654,97 @@ export async function action({ request }: { request: Request }) {
       };
     }
   }
+
+  if (actionType === "generateAccessToken") {
+    const selectedEquipment = formData.get("selectedEquipment") as string;
+    const deviceTag = formData.get("deviceTag") as string;
+    if (!selectedEquipment || !deviceTag) {
+      return {
+        success: false,
+        message: "Please select equipment or door and enter a tag value.",
+      };
+    }
+
+    const payload = {
+      isDoor: selectedEquipment === "Door",
+      type: selectedEquipment,
+      tag: deviceTag.trim(),
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET as string, {
+      algorithm: "HS256",
+    });
+
+    return {
+      success: true,
+      token,
+      message: "Access token generated successfully",
+    };
+  }
+
+  if (actionType === "getAccessCardInfo") {
+    const cardUUID = formData.get("cardUUID") as string;
+    if (!cardUUID) {
+      return {
+        success: false,
+        message: "Please enter a card UUID.",
+      };
+    }
+
+    const accessCard = await getAccessCardByUUID(cardUUID);
+
+    // If no card found, return default “unassigned” object
+    const resultCard = accessCard ?? {
+      id: cardUUID,
+      userId: null,
+      registeredAt: null,
+      updatedAt: new Date(),
+      permissions: [],
+      status: "unassigned",
+    };
+
+    return {
+      success: true,
+      accessCard: resultCard,
+      message: accessCard
+        ? "Fetched Access Card Details successfully"
+        : "No card found — showing unassigned card",
+      accessCardExists: !!accessCard,
+    };
+  }
+if (actionType === "updateAccessCard") {
+  const cardUUID = formData.get("cardUUID") as string;
+  const email = formData.get("email") as string | null;
+  const permissionsRaw = formData.get("permissions") as string; // single JSON string
+
+  if (!cardUUID) return { success: false, message: "Card UUID is required." };
+
+  let permissions: number[] = [];
+  try {
+    permissions = JSON.parse(permissionsRaw);
+  } catch {
+    permissions = [];
+  }
+
+  try {
+    await updateAccessCard(cardUUID, email || null, permissions);
+
+    return {
+      success: true,
+      message: "Access Card updated successfully",
+    };
+  } catch (error) {
+    logger.error(`Error updating access card: ${error}`, {
+      url: request.url,
+      cardUUID,
+    });
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Failed to update Access Card",
+    };
+  }
+}
+
 
   logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
     url: request.url,
@@ -1333,6 +1447,7 @@ export default function AdminSettings() {
     recentVolunteerActions,
     workshopCancellations,
     equipmentCancellations,
+    allEquipments,
   } = useLoaderData<{
     settings: {
       workshopVisibilityDays: number;
@@ -1476,11 +1591,24 @@ export default function AdminSettings() {
         price: number;
       };
     }>;
+    allEquipments: Array<{
+      id: number;
+      name: string;
+      description: string | null;
+      imageUrl: string | null;
+      availability: boolean;
+      totalSlots: number;
+      bookedSlots: number;
+      status: string;
+    }>;
   }>();
 
   const actionData = useActionData<{
     success?: boolean;
     message?: string;
+    token?: string;
+    accessCard?: AccessCard | null;
+    accessCardExists?: boolean;
   }>();
 
   const submit = useSubmit();
@@ -1655,6 +1783,15 @@ export default function AdminSettings() {
   const [appliedActionsFromTime, setAppliedActionsFromTime] = useState("");
   const [appliedActionsToDate, setAppliedActionsToDate] = useState("");
   const [appliedActionsToTime, setAppliedActionsToTime] = useState("");
+
+  // Security and Access state
+  const [selectedEquipment, setSelectedEquipment] = useState("");
+  const [deviceTag, setDeviceTag] = useState("");
+  const [cardUUID, setCardUUID] = useState("");
+  const [email, setEmail] = useState(actionData?.accessCard?.userEmail || "");
+  const [permissions, setPermissions] = useState<number[]>(
+    actionData?.accessCard?.permissions || []
+  );
 
   // Status filters for volunteer hours
   const [volunteerStatusFilter, setVolunteerStatusFilter] =
@@ -1925,6 +2062,14 @@ export default function AdminSettings() {
   React.useEffect(() => {
     setEquipmentResolvedCurrentPage(1);
   }, [equipmentCancellations]);
+
+  // Update email and permissions when actionData changes
+  React.useEffect(() => {
+    if (actionData?.accessCard) {
+      setEmail(actionData.accessCard.userEmail || "");
+      setPermissions(actionData.accessCard.permissions || []);
+    }
+  }, [actionData?.accessCard?.id]);
 
   // Helper function to calculate total hours from volunteer hour entries
   const calculateTotalHours = (hours: any[]) => {
@@ -2279,6 +2424,43 @@ export default function AdminSettings() {
 
   const level3TimeRange = calculateLevel3TimeRange();
 
+  // Create access token
+  const generateNeverExpiringToken = () => {
+    const formData = new FormData();
+    formData.append("actionType", "generateAccessToken");
+    formData.append("selectedEquipment", selectedEquipment);
+    formData.append("deviceTag", deviceTag);
+
+    submit(formData, { method: "post" });
+  };
+
+  // View access card details
+  const handleSearchCard = () => {
+    if (!cardUUID.trim()) return;
+
+    const formData = new FormData();
+    formData.append("actionType", "getAccessCardInfo");
+    formData.append("cardUUID", cardUUID.trim());
+
+    submit(formData, { method: "post" });
+  };
+
+  // Update or register access card details
+  const handleUpdate = () => {
+    const formData = new FormData();
+    if (!cardUUID.trim()) return;
+
+    formData.append(
+      "actionType",
+      "updateAccessCard"
+    );
+    formData.append("cardUUID", cardUUID.trim());
+    formData.append("email", email.trim());
+    formData.append("permissions", JSON.stringify(permissions));
+
+    submit(formData, { method: "post" });
+  };
+
   return (
     <SidebarProvider>
       <div className="absolute inset-0 flex">
@@ -2349,6 +2531,12 @@ export default function AdminSettings() {
                     className="whitespace-nowrap"
                   >
                     Integrations
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="securityAccess"
+                    className="whitespace-nowrap"
+                  >
+                    Security & Access
                   </TabsTrigger>
                   <TabsTrigger
                     value="placeholder"
@@ -5412,6 +5600,261 @@ export default function AdminSettings() {
                 </Card>
               </TabsContent>
 
+              <TabsContent value="securityAccess">
+                <div className="flex flex-col space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Access Provisioning</CardTitle>
+                      <CardDescription>
+                        Manage and view access card details including assignee
+                        and permissions.
+                      </CardDescription>
+                    </CardHeader>
+
+                    <CardContent>
+                      {/* Info Box */}
+                      <div className="bg-blue-50 p-4 rounded-md border border-blue-100 mb-6">
+                        <h3 className="text-blue-800 font-medium mb-1">
+                          Access Card Provisioning
+                        </h3>
+                        <p className="text-blue-700 text-sm">
+                          Use this feature to view or register access cards.
+                          Provide the UUID of a card to fetch details such as
+                          assignee information and equipment permissions.
+                        </p>
+                      </div>
+
+                      {/* Search Section */}
+                      <div className="border p-4 rounded-md bg-gray-50">
+                        <h3 className="font-medium mb-3">Search Card</h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                          {/* UUID Input */}
+                          <div className="space-y-2">
+                            <Label htmlFor="uuid">Card UUID</Label>
+                            <Input
+                              id="uuid"
+                              type="text"
+                              placeholder="Enter card UUID"
+                              value={cardUUID}
+                              onChange={(e) => setCardUUID(e.target.value)}
+                              className="bg-white"
+                            />
+                          </div>
+
+                          {/* Search Button */}
+                          <Button
+                            onClick={handleSearchCard}
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                          >
+                            Search
+                          </Button>
+                        </div>
+
+                        {/* Card Info Display */}
+                        {actionData?.accessCard && (
+                          <div className="mt-6 border-t pt-4">
+                            <h4 className="font-semibold text-gray-800 mb-3">
+                              Card Details
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-700">
+                              <p>
+                                <span className="font-medium">Card UUID:</span>{" "}
+                                {actionData.accessCard.id || "Unknown"}
+                              </p>
+                              <p>
+                                <span className="font-medium">User Name:</span>{" "}
+                                {actionData.accessCard.userId
+                                  ? `${actionData.accessCard.userFirstName} ${actionData.accessCard.userLastName}`
+                                  : "Unassigned"}
+                              </p>
+
+                              {/* Editable User Email */}
+                              <div className="space-y-1">
+                                <Label htmlFor="email">User Email</Label>
+                                <Input
+                                  id="email"
+                                  type="email"
+                                  placeholder="Enter user email"
+                                  value={email}
+                                  onChange={(e) => setEmail(e.target.value)}
+                                  className="bg-white text-sm"
+                                />
+                              </div>
+                              <p>
+                                <span className="font-medium">
+                                  Last Updated:
+                                </span>{" "}
+                                {actionData.accessCardExists
+                                  ? new Date(
+                                      actionData.accessCard.updatedAt
+                                    ).toLocaleString()
+                                  : "Unregistered"}
+                              </p>
+                            </div>
+
+                            {/* Permissions */}
+                            <div className="mt-5">
+                              <h4 className="font-semibold text-gray-800 mb-2">
+                                Equipment Permissions
+                              </h4>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {allEquipments.map((eq) => {
+                                  const hasPermission = permissions.includes(
+                                    eq.id
+                                  );
+                                  return (
+                                    <div
+                                      key={eq.id}
+                                      className={`flex items-center space-x-2 p-2 rounded-md border ${
+                                        hasPermission
+                                          ? "bg-green-50 border-green-200"
+                                          : "bg-gray-50 border-gray-200"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={hasPermission}
+                                        onChange={() => {
+                                          setPermissions((prev) =>
+                                            prev.includes(eq.id)
+                                              ? prev.filter((p) => p !== eq.id)
+                                              : [...prev, eq.id]
+                                          );
+                                        }}
+                                        className="h-4 w-4 text-green-600 border-gray-300 rounded cursor-pointer"
+                                      />
+                                      <span
+                                        className={`text-sm ${
+                                          hasPermission
+                                            ? "text-green-700"
+                                            : "text-gray-600"
+                                        }`}
+                                      >
+                                        {eq.name}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-3 mt-6">
+                              <Button
+                                onClick={handleUpdate}
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                                disabled={
+                                  email === actionData.accessCard.userEmail &&
+                                  JSON.stringify(permissions) ===
+                                    JSON.stringify(
+                                      actionData.accessCard.permissions
+                                    )
+                                }
+                              >
+                                {actionData.accessCardExists ? "Update" : "Register"} 
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Access Token */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Access Tokens</CardTitle>
+                      <CardDescription>
+                        Manage API access tokens for equipment and door locking
+                        systems.
+                      </CardDescription>
+                    </CardHeader>
+
+                    <CardContent>
+                      <div className="bg-blue-50 p-4 rounded-md border border-blue-100 mb-6">
+                        <h3 className="text-blue-800 font-medium mb-1">
+                          Generating Access Tokens
+                        </h3>
+                        <p className="text-blue-700 text-sm">
+                          Use this feature to get access tokens for internal
+                          locking and logging devices for equipment and doors.
+                          Select the equipment type or "Door" and provide a tag
+                          to uniquely identify the device. Save the generated
+                          access token in the device for authentication with the
+                          server.
+                        </p>
+                      </div>
+
+                      <div className="border p-4 rounded-md bg-gray-50">
+                        <h3 className="font-medium mb-3">
+                          Generate New Access Token
+                        </h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Equipment Dropdown */}
+                          <div className="space-y-2">
+                            <Label htmlFor="equipment">
+                              Select Equipment or Door
+                            </Label>
+                            <select
+                              id="equipment"
+                              className="w-full rounded-md border border-gray-300 p-2"
+                              value={selectedEquipment}
+                              onChange={(e) =>
+                                setSelectedEquipment(e.target.value)
+                              }
+                            >
+                              <option value="">Select Equipment</option>
+                              {allEquipments.map((eq) => (
+                                <option key={eq.id} value={eq.name}>
+                                  {eq.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          {/* Tag Input Field */}
+                          <div className="space-y-2">
+                            <Label htmlFor="tag">Device Tag</Label>
+                            <Input
+                              id="tag"
+                              type="text"
+                              placeholder="Enter unique tag identifier"
+                              value={deviceTag}
+                              onChange={(e) => setDeviceTag(e.target.value)}
+                              className="w-full max-w-xs bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Generate Button */}
+                        <Button
+                          onClick={generateNeverExpiringToken}
+                          className="mt-4 bg-indigo-500 hover:bg-indigo-600 text-white"
+                        >
+                          Generate Access Token
+                        </Button>
+
+                        {/* Display Generated Token */}
+                        {actionData?.token && (
+                          <div
+                            onClick={() => {
+                              navigator.clipboard.writeText(actionData.token!);
+                            }}
+                            className="mt-4 bg-green-50 border border-green-100 p-3 rounded-md cursor-pointer hover:bg-green-100 transition"
+                            title="Click to copy"
+                          >
+                            <p className="text-green-700 font-mono text-sm break-all">
+                              {actionData.token}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
               {/* Tabb Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
