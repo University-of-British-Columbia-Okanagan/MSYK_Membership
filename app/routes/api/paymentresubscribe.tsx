@@ -21,7 +21,7 @@ export async function action({ request }: { request: Request }) {
     const { currentMembershipId, membershipPlanId, userId } = body;
 
     try {
-      let billingCycle: "monthly" | "quarterly" | "6months" | "yearly" =
+      let billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" =
         "monthly";
 
       if (currentMembershipId) {
@@ -34,7 +34,7 @@ export async function action({ request }: { request: Request }) {
           billingCycle = cancelledMembership.billingCycle as
             | "monthly"
             | "quarterly"
-            | "6months"
+            | "semiannually"
             | "yearly";
         }
       }
@@ -66,7 +66,7 @@ export async function action({ request }: { request: Request }) {
           planPrice:
             billingCycle === "quarterly"
               ? plan?.price3Months ?? plan?.price
-              : billingCycle === "6months"
+              : billingCycle === "semiannually"
               ? plan?.price6Months ?? plan?.price
               : billingCycle === "yearly"
               ? plan?.priceYearly ?? plan?.price

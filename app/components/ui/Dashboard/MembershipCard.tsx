@@ -79,7 +79,7 @@ export default function MembershipCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
-    "monthly" | "quarterly" | "6months" | "yearly"
+    "monthly" | "quarterly" | "semiannually" | "yearly"
   >("monthly");
 
   const hasMultipleBillingOptions =

@@ -329,7 +329,7 @@ export default function MembershipDetails() {
   const [showNewSignature, setShowNewSignature] = useState(false);
 
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
-    "monthly" | "quarterly" | "6months" | "yearly"
+    "monthly" | "quarterly" | "semiannually" | "yearly"
   >("monthly");
 
   const form = useForm<MembershipAgreementFormValues>({
@@ -506,7 +506,7 @@ export default function MembershipDetails() {
                               e.target.value as
                                 | "monthly"
                                 | "quarterly"
-                                | "6months"
+                                | "semiannually"
                                 | "yearly"
                             )
                           }
@@ -539,7 +539,7 @@ export default function MembershipDetails() {
                                 e.target.value as
                                   | "monthly"
                                   | "quarterly"
-                                  | "6months"
+                                  | "semiannually"
                                   | "yearly"
                               )
                             }
@@ -581,14 +581,14 @@ export default function MembershipDetails() {
                           <input
                             type="radio"
                             name="billingCycle"
-                            value="6months"
-                            checked={selectedBillingCycle === "6months"}
+                            value="semiannually"
+                            checked={selectedBillingCycle === "semiannually"}
                             onChange={(e) =>
                               setSelectedBillingCycle(
                                 e.target.value as
                                   | "monthly"
                                   | "quarterly"
-                                  | "6months"
+                                  | "semiannually"
                                   | "yearly"
                               )
                             }
@@ -596,7 +596,7 @@ export default function MembershipDetails() {
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
-                              6 Months
+                              Every 6 Months
                             </p>
                             <p className="text-sm text-gray-600">
                               Save{" "}
@@ -637,7 +637,7 @@ export default function MembershipDetails() {
                                 e.target.value as
                                   | "monthly"
                                   | "quarterly"
-                                  | "6months"
+                                  | "semiannually"
                                   | "yearly"
                               )
                             }
