@@ -492,6 +492,18 @@ export default function MembershipDetails() {
                   <h2 className="text-xl font-semibold mb-4">
                     Select Billing Cycle
                   </h2>
+
+                  {/* Warning for non-monthly billing cycles when upgrading/downgrading */}
+                  {userActiveMembership && userActiveMembership.billingCycle !== "monthly" && (
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-sm text-gray-700">
+                        <strong>Note:</strong> You currently have a {userActiveMembership.billingCycle} billing cycle.
+                        To change plans, you must select <strong>monthly billing</strong> only.
+                        Other billing cycles are not available for upgrades or downgrades.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {/* Monthly Option */}
                     <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
@@ -527,7 +539,11 @@ export default function MembershipDetails() {
                     </label>
 
                     {membershipPlan.price3Months && (
-                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}>
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -543,6 +559,7 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
+                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
@@ -576,7 +593,11 @@ export default function MembershipDetails() {
 
                     {/* 6 Months Option */}
                     {membershipPlan.price6Months && (
-                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}>
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -592,6 +613,7 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
+                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
@@ -625,7 +647,11 @@ export default function MembershipDetails() {
 
                     {/* Yearly Option */}
                     {membershipPlan.priceYearly && (
-                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}>
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -641,6 +667,7 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
+                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
