@@ -967,97 +967,101 @@ export default function Payment() {
             </div>
           )}
 
-          {/*
-            If it's a resubscription, show a special message that no payment is required.
-            If it's a downgrade, show the existing message that no payment is required.
-            If it's an upgrade, show compensation details, etc.
-          */}
-          {data.isResubscription ? (
-            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
-              <p className="text-gray-700">
-                You previously cancelled this membership. Resubscribing now will
-                reactivate it immediately.
-              </p>
-              <p className="font-semibold mt-2">
-                No payment is required for resubscription.
-              </p>
-            </div>
-          ) : data.isDowngrade ? (
-            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
-              <p className="text-gray-700">
-                You will continue at your current rate of CA$
-                {data.oldMembershipPrice
-                  ? (
-                      data.oldMembershipPrice *
-                      (1 + data.gstPercentage / 100)
-                    ).toFixed(2)
-                  : "0.00"}
-                /month until your next payment date at{" "}
-                {data.oldMembershipNextPaymentDate
-                  ? new Date(
-                      data.oldMembershipNextPaymentDate
-                    ).toLocaleDateString()
-                  : "N/A"}
-                , then switch to CA$
-                {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
-                /month (incl. GST).
-              </p>
-              <p className="font-semibold mt-2">No payment is required now.</p>
-            </div>
-          ) : data.upgradeFee > 0 ? (
-            <p className="mt-2 text-gray-700">
-              You'll pay a prorated amount of CA$
-              {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
-                2
-              )}{" "}
-              now (incl. GST) to enjoy the benefits of{" "}
-              <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
-              <strong>
-                CA$
-                {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
-                /month
-              </strong>{" "}
-              starting from{" "}
-              {data.oldMembershipNextPaymentDate
-                ? new Date(
-                    data.oldMembershipNextPaymentDate
-                  ).toLocaleDateString()
-                : "N/A"}
-              .
-            </p>
-          ) : data.userActiveMembership ? (
-            <p className="mt-2 text-gray-700">
-              Switching to the same price plan. No additional payment is needed
-              now.
-            </p>
-          ) : null}
+          {!data.changeNotAllowed && (
+            <>
+              {/*
+                If it's a resubscription, show a special message that no payment is required.
+                If it's a downgrade, show the existing message that no payment is required.
+                If it's an upgrade, show compensation details, etc.
+              */}
+              {data.isResubscription ? (
+                <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
+                  <p className="text-gray-700">
+                    You previously cancelled this membership. Resubscribing now will
+                    reactivate it immediately.
+                  </p>
+                  <p className="font-semibold mt-2">
+                    No payment is required for resubscription.
+                  </p>
+                </div>
+              ) : data.isDowngrade ? (
+                <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
+                  <p className="text-gray-700">
+                    You will continue at your current rate of CA$
+                    {data.oldMembershipPrice
+                      ? (
+                          data.oldMembershipPrice *
+                          (1 + data.gstPercentage / 100)
+                        ).toFixed(2)
+                      : "0.00"}
+                    /month until your next payment date at{" "}
+                    {data.oldMembershipNextPaymentDate
+                      ? new Date(
+                          data.oldMembershipNextPaymentDate
+                        ).toLocaleDateString()
+                      : "N/A"}
+                    , then switch to CA$
+                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                    /month (incl. GST).
+                  </p>
+                  <p className="font-semibold mt-2">No payment is required now.</p>
+                </div>
+              ) : data.upgradeFee > 0 ? (
+                <p className="mt-2 text-gray-700">
+                  You'll pay a prorated amount of CA$
+                  {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                    2
+                  )}{" "}
+                  now (incl. GST) to enjoy the benefits of{" "}
+                  <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
+                  <strong>
+                    CA$
+                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                    /month
+                  </strong>{" "}
+                  starting from{" "}
+                  {data.oldMembershipNextPaymentDate
+                    ? new Date(
+                        data.oldMembershipNextPaymentDate
+                      ).toLocaleDateString()
+                    : "N/A"}
+                  .
+                </p>
+              ) : data.userActiveMembership ? (
+                <p className="mt-2 text-gray-700">
+                  Switching to the same price plan. No additional payment is needed
+                  now.
+                </p>
+              ) : null}
 
-          {/*
-            If it's not a downgrade or resubscription, show "Total due now" message
-            (in case of upgrade or brand-new membership).
-          */}
-          {!data.isDowngrade && !data.isResubscription && (
-            <div className="mt-2">
-              <p className="text-lg font-semibold">
-                Total due now: CA$
-                {data.userActiveMembership
-                  ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
-                      2
-                    )
-                  : (membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
-                      2
-                    )}
-              </p>
-              <p className="text-sm text-gray-600">
-                (Includes CA$
-                {data.userActiveMembership
-                  ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
-                  : (membershipPrice * (data.gstPercentage / 100)).toFixed(
-                      2
-                    )}{" "}
-                GST)
-              </p>
-            </div>
+              {/*
+                If it's not a downgrade or resubscription, show "Total due now" message
+                (in case of upgrade or brand-new membership).
+              */}
+              {!data.isDowngrade && !data.isResubscription && (
+                <div className="mt-2">
+                  <p className="text-lg font-semibold">
+                    Total due now: CA$
+                    {data.userActiveMembership
+                      ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                          2
+                        )
+                      : (membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
+                          2
+                        )}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    (Includes CA$
+                    {data.userActiveMembership
+                      ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
+                      : (membershipPrice * (data.gstPercentage / 100)).toFixed(
+                          2
+                        )}{" "}
+                    GST)
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </>
       ) : (
@@ -1109,7 +1113,7 @@ export default function Payment() {
 
       <Button
         onClick={handlePayment}
-        disabled={loading}
+        disabled={loading || (data.membershipPlan && data.changeNotAllowed)}
         className="mt-4 bg-blue-500 text-white w-full"
       >
         {loading ? "Processing..." : "Proceed"}
