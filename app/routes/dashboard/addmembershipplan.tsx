@@ -320,7 +320,7 @@ export default function AddMembershipPlan() {
                         )}
                       />
 
-                      {/* 6 Months Price */}
+                      {/* Semi-annual Price */}
                       <FormField
                         control={form.control}
                         name="price6Months"
@@ -341,7 +341,7 @@ export default function AddMembershipPlan() {
                                   />
                                 </svg>
                               </span>
-                              6-Month Plan Price
+                              Semi-annual Plan Price
                             </FormLabel>
                             <FormControl>
                               <div className="relative">
@@ -350,7 +350,7 @@ export default function AddMembershipPlan() {
                                 </span>
                                 <Input
                                   type="number"
-                                  placeholder="Enter your 6-month price"
+                                  placeholder="Enter your semi-annual price"
                                   className="pl-12"
                                   {...field}
                                   value={field.value ?? ""}
@@ -365,7 +365,7 @@ export default function AddMembershipPlan() {
                               </div>
                             </FormControl>
                             <p className="text-xs text-gray-500">
-                              Leave empty if you don't want to offer 6-month
+                              Leave empty if you don't want to offer semi-annual
                               billing
                             </p>
                             <FormMessage />

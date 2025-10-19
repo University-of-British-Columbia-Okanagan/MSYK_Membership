@@ -246,11 +246,11 @@ export default function EditMembershipPlan() {
                     name="price6Months"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>6-Month Price</FormLabel>
+                        <FormLabel>Semi-annual Price</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
-                            placeholder="Enter 6-month price"
+                            placeholder="Enter semi-annual price"
                             {...field}
                             value={field.value ?? ""}
                             onChange={(e) =>
