@@ -1,16 +1,47 @@
-import { useLoaderData, useFetcher, useNavigate } from "react-router-dom";
-import { Label } from "@/components/ui/label";
+import { redirect, useActionData, useLoaderData } from "react-router";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { useState, useEffect } from "react";
+import {
+  Form,
+  FormControl,
+  FormItem,
+  FormLabel,
+  FormMessage,
+  FormField,
+} from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { equipmentFormSchema } from "../../schemas/equipmentFormSchema";
+import type { EquipmentFormValues } from "../../schemas/equipmentFormSchema";
 import {
   updateEquipment,
   getEquipmentById,
-} from "../../models/equipment.server";
+  getEquipmentByName,
+} from "~/models/equipment.server";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
+import { getWorkshops } from "~/models/workshop.server";
+import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
+import { useState } from "react";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import { ArrowLeft } from "lucide-react";
+import { useNavigate } from "react-router";
 
 export async function loader({
   request,
@@ -19,17 +50,18 @@ export async function loader({
   request: Request;
   params: { id: string };
 }) {
-  const currentUserRole = await getRoleUser(request);
+  const workshops = await getWorkshops();
+  const roleUser = await getRoleUser(request);
   const equipment = await getEquipmentById(parseInt(params.id));
-  if (currentUserRole?.roleName !== "Admin") {
+
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
     logger.warn(
-      `[User: ${
-        currentUserRole?.userId ?? "unknown"
-      }] Not authorized to edit equipment`,
+      `[User: ${roleUser?.userId ?? "unknown"}] Not authorized to edit equipment`,
       { url: request.url }
     );
-    throw new Response("Access Denied", { status: 409 });
+    throw new Response("Access Denied", { status: 403 });
   }
+
   if (!equipment) {
     logger.warn(
       `Equipment ${parseInt(params.id)} not found and was tried to be updated.`,
@@ -37,157 +69,320 @@ export async function loader({
     );
     throw new Response("Equipment not found", { status: 404 });
   }
-  return { equipment, currentUserRole };
+
+  return { workshops, roleUser, equipment };
 }
 
-export async function action({ request }: { request: Request }) {
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { id: string };
+}) {
+  const formData = await request.formData();
+  const rawValues = Object.fromEntries(formData.entries());
+
+  const equipmentId = parseInt(params.id);
+  const price = parseFloat(rawValues.price as string);
+
+  const workshopPrerequisitesString = rawValues.workshopPrerequisites as string;
+  const workshopPrerequisites = workshopPrerequisitesString
+    ? workshopPrerequisitesString.split(",").map(Number)
+    : [];
+
+  // Validate data
+  const parsed = equipmentFormSchema.safeParse({
+    ...rawValues,
+    price,
+    workshopPrerequisites,
+  });
+
+  if (!parsed.success) {
+    return { errors: parsed.error.flatten().fieldErrors };
+  }
+
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
     logger.warn(
-      `[User: ${
-        roleUser?.userId ?? "unknown"
-      }] Not authorized to edit equipment`,
+      `[User: ${roleUser?.userId ?? "unknown"}] Not authorized to edit equipment`,
       { url: request.url }
     );
-    throw new Response("Not Authorized", { status: 419 });
+    throw new Response("Not Authorized", { status: 401 });
   }
 
-  const form = await request.formData();
-  const id = parseInt(form.get("equipmentId") as string);
-  const name = form.get("name") as string;
-  const description = form.get("description") as string;
-  const availability = form.get("availability") === "on";
-  const price = parseFloat(form.get("price") as string);
+  // Check if equipment name already exists (excluding current equipment)
+  const existingEquipment = await getEquipmentByName(parsed.data.name);
+  if (existingEquipment && existingEquipment.id !== equipmentId) {
+    logger.warn(
+      `[User: ${roleUser?.userId}] Equipment with this name already exists`,
+      { url: request.url }
+    );
+    return {
+      errors: { name: ["Equipment with this name already exists."] },
+    };
+  }
 
   try {
-    await updateEquipment(id, {
-      name,
-      description,
-      availability,
-      price,
+    await updateEquipment(equipmentId, {
+      name: parsed.data.name,
+      description: parsed.data.description,
+      price: parsed.data.price,
+      availability: parsed.data.availability === "true" ? true : false,
+      workshopPrerequisites: parsed.data.workshopPrerequisites || [],
     });
+
     logger.info(
-      `[User: ${
-        roleUser?.userId ?? "unknown"
-      }] Equipment ${id} updated successfully`,
-      {
-        url: request.url,
-      }
+      `[User: ${roleUser?.userId}] Equipment ${parsed.data.name} updated successfully`,
+      { url: request.url }
     );
 
-    return { success: true };
-  } catch (error) {
-    logger.error(`Failed to update equipment: ${error}`, {
-      url: request.url,
-    });
-    return { success: false, error: "Failed to update equipment." };
+    return redirect("/dashboard/equipments");
+  } catch (error: any) {
+    logger.error(`Error updating equipment ${error}`, { url: request.url });
+
+    if (error.code === "P2002") {
+      return { errors: { name: ["Equipment name must be unique."] } };
+    }
+
+    return { errors: { database: ["Failed to update equipment"] } };
   }
 }
 
-export default function EquipmentEdit() {
-  const { equipment } = useLoaderData();
-  const fetcher = useFetcher();
+export default function EditEquipment() {
+  const actionData = useActionData<{ errors?: Record<string, string[]> }>();
+  const { workshops, roleUser, equipment } = useLoaderData<typeof loader>();
+  const [selectedWorkshopPrerequisites, setSelectedWorkshopPrerequisites] =
+    useState<number[]>(equipment.prerequisites || []);
+
   const navigate = useNavigate();
 
-  const [name, setName] = useState(equipment.name);
-  const [description, setDescription] = useState(equipment.description);
-  const [availability, setAvailability] = useState(equipment.availability);
-  const [price, setPrice] = useState(equipment.price);
+  const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
 
-  useEffect(() => {
-    if (fetcher.data?.success) {
-      navigate(-1);
+  const form = useForm<EquipmentFormValues>({
+    resolver: zodResolver(equipmentFormSchema),
+    defaultValues: {
+      name: equipment.name || "",
+      description: equipment.description || "",
+      price: equipment.price || 0,
+      availability: equipment.availability ? "true" : "false",
+      workshopPrerequisites: equipment.prerequisites || [],
+    },
+  });
+
+  const handleWorkshopPrerequisiteSelect = (workshopId: number) => {
+    let updated: number[];
+    if (selectedWorkshopPrerequisites.includes(workshopId)) {
+      updated = selectedWorkshopPrerequisites.filter((id) => id !== workshopId);
+    } else {
+      updated = [...selectedWorkshopPrerequisites, workshopId];
     }
-  }, [fetcher.data]);
+    updated.sort((a, b) => a - b);
+    setSelectedWorkshopPrerequisites(updated);
+    form.setValue("workshopPrerequisites", updated);
+  };
 
-  const [showPopup, setShowPopup] = useState(false);
-  const [popupMessage, setPopupMessage] = useState("");
-
-  useEffect(() => {
-    if (fetcher.data?.success) {
-      setPopupMessage("🎉 Equipment booked successfully!");
-      setShowPopup(true);
-    } else if (fetcher.data?.error) {
-      setPopupMessage(fetcher.data.error);
-      setShowPopup(true);
-    }
-  }, [fetcher.data]);
+  const removeWorkshopPrerequisite = (workshopId: number) => {
+    const updated = selectedWorkshopPrerequisites.filter(
+      (id) => id !== workshopId
+    );
+    setSelectedWorkshopPrerequisites(updated);
+    form.setValue("workshopPrerequisites", updated);
+  };
 
   return (
-    <div className="absolute inset-0 w-full p-10">
-      {showPopup && (
-        <div className="fixed top-4 right-4 p-4 bg-green-500 text-white rounded-lg shadow-lg">
-          {popupMessage}
-        </div>
-      )}
+    <SidebarProvider>
+      <div className="absolute inset-0 flex">
+        {isAdmin ? <AdminAppSidebar /> : <AppSidebar />}
+        <main className="flex-grow p-6">
+          <div className="max-w-4xl mx-auto p-8 bg-white shadow-md rounded-lg">
+            {/* Mobile Header with Sidebar Trigger */}
+            <div className="flex items-center gap-4 mb-6 md:hidden">
+              <SidebarTrigger />
+              <h1 className="text-xl font-bold">Edit Equipment</h1>
+            </div>
 
-      <h1 className="text-2xl font-bold mb-10">Edit Equipment</h1>
-      <fetcher.Form method="post" className="space-y-5">
-        <div className="space-y-1 w-1/2">
-          <Label htmlFor="name" className="pl-1 text-lg">
-            Name
-          </Label>
-          <Input
-            id="name"
-            name="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
+            {/* Back Button */}
+            <div className="mb-6">
+              <Button
+                variant="outline"
+                onClick={() => navigate("/dashboard/equipments")}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Equipments
+              </Button>
+            </div>
 
-        <div className="space-y-1 w-1/2">
-          <Label htmlFor="description" className="pl-1 text-lg">
-            Description
-          </Label>
-          <Textarea
-            id="description"
-            name="description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
+            <h1 className="text-2xl font-bold mb-6 text-gray-900 text-center">
+              Edit Equipment
+            </h1>
 
-        <div className="space-y-1 w-1/2">
-          <Label htmlFor="price" className="pl-1 text-lg">
-            Price
-          </Label>
-          <Input
-            id="price"
-            name="price"
-            type="number"
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(parseFloat(e.target.value))}
-          />
-        </div>
+            {actionData?.errors &&
+              Object.keys(actionData.errors).length > 0 && (
+                <div className="mb-6 text-sm text-red-500 bg-red-100 border border-red-400 rounded p-2">
+                  There are some errors in your form. Please review the
+                  highlighted fields below.
+                </div>
+              )}
 
-        <div className="flex items-center space-x-4">
-          <Label htmlFor="availability" className="pl-1 text-lg">
-            Available
-          </Label>
-          <input
-            type="checkbox"
-            id="availability"
-            name="availability"
-            checked={availability}
-            onChange={(e) => setAvailability(e.target.checked)}
-            className="w-4 h-4 accent-indigo-500 "
-          />
-        </div>
+            <Form {...form}>
+              <form method="post" className="space-y-6">
+                {/* Name & Price */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel htmlFor="name">
+                          Name <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            id="name"
+                            placeholder="Enter equipment name"
+                            {...field}
+                            className="w-full"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-        <input type="hidden" name="equipmentId" value={equipment.id} />
+                  <FormField
+                    control={form.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel htmlFor="price">
+                          Price <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            id="price"
+                            type="number"
+                            placeholder="Enter price"
+                            {...field}
+                            step="0.01"
+                            className="w-full"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
-        <Separator />
+                {/* Description */}
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel htmlFor="description">
+                        Description <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Textarea
+                          id="description"
+                          placeholder="Enter equipment description"
+                          {...field}
+                          rows={4}
+                          className="w-full"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-        <div className="flex justify-end gap-4">
-          <Button type="button" variant="ghost" onClick={() => navigate(-1)}>
-            Cancel
-          </Button>
-          <Button type="submit" className="bg-indigo-500 text-white">
-            Save Changes
-          </Button>
-        </div>
-      </fetcher.Form>
-    </div>
+                {/* Availability */}
+                <FormField
+                  control={form.control}
+                  name="availability"
+                  render={({ field }) => (
+                    <FormItem className="w-full md:w-1/2">
+                      <FormLabel
+                        htmlFor="availability"
+                        className="flex items-center gap-1"
+                      >
+                        Availability <span className="text-red-500">*</span>
+                      </FormLabel>
+
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="text-sm text-muted-foreground cursor-help underline underline-offset-2">
+                              What does this mean?
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            This equipment is available 24/7 for users unless
+                            the admin sets it to unavailable.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      <FormControl>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          name={field.name}
+                        >
+                          <SelectTrigger id="availability" className="w-full">
+                            <SelectValue placeholder="Select availability" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="true">Available</SelectItem>
+                            <SelectItem value="false">Unavailable</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <MultiSelectField
+                  control={form.control}
+                  name="workshopPrerequisites"
+                  label="Workshop Prerequisites"
+                  options={workshops}
+                  selectedItems={selectedWorkshopPrerequisites}
+                  onSelect={handleWorkshopPrerequisiteSelect}
+                  onRemove={removeWorkshopPrerequisite}
+                  error={actionData?.errors?.workshopPrerequisites}
+                  placeholder="Select workshop prerequisites..."
+                  helperText="Select workshops of type Orientation that must be completed before using this equipment."
+                  filterFn={(item) =>
+                    item.type.toLowerCase() === "orientation" &&
+                    Array.isArray(item.occurrences) &&
+                    item.occurrences.some((o) => o.status === "active")
+                  }
+                />
+
+                {/* Hidden input for form submission */}
+                <input
+                  type="hidden"
+                  name="workshopPrerequisites"
+                  value={selectedWorkshopPrerequisites.join(",")}
+                />
+
+                {/* Submit Button */}
+                <Button
+                  type="submit"
+                  className="mt-6 w-full bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition"
+                >
+                  Update Equipment
+                </Button>
+              </form>
+            </Form>
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 }
