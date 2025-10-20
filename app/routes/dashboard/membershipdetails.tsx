@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { redirect, useLoaderData, Form as RouterForm } from "react-router";
+import { redirect, useLoaderData, Form as RouterForm, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -15,7 +15,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { Info, ChevronDown, ChevronUp, Download, ArrowLeft } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -324,6 +324,7 @@ export default function MembershipDetails() {
     userRecord,
     existingForm,
   } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [agreementDocumentViewed, setAgreementDocumentViewed] = useState(false);
   const [showNewSignature, setShowNewSignature] = useState(false);
@@ -426,6 +427,17 @@ export default function MembershipDetails() {
             <div className="flex items-center gap-4 mb-6 md:hidden bg-white p-4 rounded-lg shadow-md">
               <SidebarTrigger />
               <h1 className="text-xl font-bold">Membership Details</h1>
+            </div>
+
+            <div className="mb-6">
+              <Button
+                variant="outline"
+                onClick={() => navigate("/dashboard/memberships")}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Memberships
+              </Button>
             </div>
 
             <div className="bg-white rounded-lg shadow-md p-8">
