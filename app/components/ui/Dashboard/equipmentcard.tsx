@@ -121,7 +121,7 @@ export default function EquipmentCard({
 
   return (
     <Card
-      className={`w-full md:w-80 flex-none rounded-lg shadow-md flex flex-col overflow-hidden relative ${
+      className={`w-full md:w-80 flex-none rounded-lg shadow-md flex flex-col overflow-hidden relative h-full ${
         status === "unavailable" ? "opacity-50" : ""
       }`}
     >
@@ -170,14 +170,14 @@ export default function EquipmentCard({
         />
       </div>
 
-      <CardHeader className="p-4">
+      <CardHeader className="p-4 flex-grow">
         <CardTitle className="text-lg font-semibold">{name}</CardTitle>
         <CardDescription className="line-clamp-2 text-sm">
           {description}
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="p-4 flex flex-col gap-4">
+      <CardContent className="p-4 flex flex-col gap-4 mt-auto">
         {/* Status Badge */}
         <span
           className={`text-sm font-medium px-3 py-1 rounded-lg w-fit ${

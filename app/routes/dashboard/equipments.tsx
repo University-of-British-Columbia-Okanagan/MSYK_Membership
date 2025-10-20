@@ -52,7 +52,9 @@ export default function Equipments() {
             <h1 className="text-xl font-bold">Equipment</h1>
           </div>
 
-          <h1 className="text-2xl font-bold mb-6 hidden md:block">Available Equipment</h1>
+          <h1 className="text-2xl font-bold mb-6 hidden md:block">
+            Available Equipment
+          </h1>
 
           <div className="flex justify-end items-center mb-6">
             {isAdmin && (
@@ -68,15 +70,16 @@ export default function Equipments() {
           {equipments.length > 0 ? (
             <div className="flex flex-wrap gap-4 md:gap-6 justify-start items-stretch">
               {equipments.map((equipment) => (
-                <EquipmentCard
-                  key={equipment.id}
-                  id={equipment.id}
-                  name={equipment.name}
-                  description={equipment.description ?? ""}
-                  imageUrl={equipment.imageUrl ?? ""}
-                  status={equipment.status}
-                  isAdmin={isAdmin}
-                />
+                <div key={equipment.id} className="w-full md:w-80 flex">
+                  <EquipmentCard
+                    id={equipment.id}
+                    name={equipment.name}
+                    description={equipment.description ?? ""}
+                    imageUrl={equipment.imageUrl ?? ""}
+                    status={equipment.status}
+                    isAdmin={isAdmin}
+                  />
+                </div>
               ))}
             </div>
           ) : (
