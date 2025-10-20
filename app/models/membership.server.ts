@@ -174,6 +174,7 @@ export async function updateMembershipPlan(
     priceYearly?: number | null;
     // features: string[];
     features: Record<string, string>;
+    needAdminPermission?: boolean;
   }
 ) {
   return await db.membershipPlan.update({
@@ -186,6 +187,7 @@ export async function updateMembershipPlan(
       price6Months: data.price6Months ?? null,
       priceYearly: data.priceYearly ?? null,
       feature: data.features, // Convert features array to JSON
+      needAdminPermission: data.needAdminPermission ?? false,
     },
   });
 }
