@@ -398,7 +398,7 @@ export default function EquipmentBookingForm() {
                       !roleUser
                         ? "You need an account to book equipment."
                         : (roleLevel === 1 || roleLevel === 2) && roleUser.roleId !== 2
-                        ? "You do not have the required membership to book equipment."
+                        ? "You do not have the required permissions to book equipment."
                         : equipmentPrerequisiteMessage
                     }
                   />
