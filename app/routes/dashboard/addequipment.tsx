@@ -323,7 +323,11 @@ export default function AddEquipment() {
                   error={actionData?.errors?.workshopPrerequisites}
                   placeholder="Select workshop prerequisites..."
                   helperText="Select workshops of type Orientation that must be completed before using this equipment."
-                  filterFn={(item) => item.type.toLowerCase() === "orientation"}
+                  filterFn={(item) =>
+                    item.type.toLowerCase() === "orientation" &&
+                    Array.isArray(item.occurrences) &&
+                    item.occurrences.some((o) => o.status === "active")
+                  }
                 />
 
                 {/* Hidden input for form submission */}
