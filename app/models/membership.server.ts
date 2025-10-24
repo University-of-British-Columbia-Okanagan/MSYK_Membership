@@ -2,7 +2,10 @@ import { db } from "../utils/db.server";
 import cron from "node-cron";
 import Stripe from "stripe";
 import { getAdminSetting } from "./admin.server";
-import { sendMembershipPaymentReminderEmail } from "~/utils/email.server";
+import {
+  sendMembershipEndedNoPaymentMethodEmail,
+  sendMembershipPaymentReminderEmail,
+} from "~/utils/email.server";
 import CryptoJS from "crypto-js";
 import PDFDocument from "pdfkit";
 import { PassThrough } from "stream";
@@ -678,6 +681,10 @@ export function startMonthlyMembershipCheck() {
         const gstRate = parseFloat(gstPercentage) / 100;
         const chargeAmount = baseAmount * (1 + gstRate);
 
+        const savedPayment = await db.userPaymentInformation.findUnique({
+          where: { userId: membership.userId },
+        });
+
         try {
           await sendMembershipPaymentReminderEmail({
             userEmail: user.email,
@@ -685,6 +692,9 @@ export function startMonthlyMembershipCheck() {
             nextPaymentDate: membership.nextPaymentDate,
             amountDue: chargeAmount,
             gstPercentage: parseFloat(gstPercentage),
+            needsPaymentMethod:
+              !savedPayment?.stripeCustomerId ||
+              !savedPayment?.stripePaymentMethodId,
           });
         } catch (emailErr) {
           console.error(
@@ -734,14 +744,38 @@ export function startMonthlyMembershipCheck() {
             !savedPayment?.stripeCustomerId ||
             !savedPayment?.stripePaymentMethodId
           ) {
-            console.error(
-              `❌ No saved payment info for user ${membership.userId}, skipping`
+            console.warn(
+              `User ${membership.userId} has no saved payment info; membership ${membership.id} set to inactive.`
             );
+
+            await db.userMembership.update({
+              where: { id: membership.id },
+              data: { status: "inactive" },
+            });
+
+            await updateMembershipFormStatus(
+              membership.userId,
+              membership.membershipPlanId,
+              "inactive"
+            );
+
+            try {
+              await sendMembershipEndedNoPaymentMethodEmail({
+                userEmail: user.email,
+                planTitle: membership.membershipPlan.title,
+              });
+            } catch (emailErr) {
+              console.error(
+                `Failed to send missing payment method notice to user ${membership.userId}:`,
+                emailErr
+              );
+            }
+
             continue;
           }
 
           try {
-            // UPDATE THIS PART: Create payment intent with GST-inclusive amount and metadata
+            // Create payment intent with GST-inclusive amount and metadata
             const pi = await stripe.paymentIntents.create({
               amount: Math.round(chargeAmount * 100), // Now includes GST
               currency: "cad", // Changed from "usd" to match your other payments
@@ -750,12 +784,11 @@ export function startMonthlyMembershipCheck() {
               off_session: true,
               confirm: true,
               receipt_email: user.email,
-              description: `${membership.membershipPlan.title} - Monthly Payment (Includes ${gstPercentage}% GST)`, // Add description
+              description: `${membership.membershipPlan.title} - Monthly Payment (Includes ${gstPercentage}% GST)`,
               metadata: {
                 userId: String(membership.userId),
                 membershipId: String(membership.id),
                 planId: String(membership.membershipPlanId),
-                // Add GST breakdown to metadata
                 original_amount: baseAmount.toString(),
                 gst_amount: (chargeAmount - baseAmount).toString(),
                 total_with_gst: chargeAmount.toString(),
@@ -764,15 +797,11 @@ export function startMonthlyMembershipCheck() {
               },
             });
 
-            // Check if payment intent succeeded
             if (pi.status === "succeeded") {
               console.log(
-                `✅ Payment intent succeeded for user ${
-                  membership.userId
-                }, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
+                `✅ Payment intent succeeded for user ${membership.userId}, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
               );
 
-              // Update the next payment date after successful payment
               await db.userMembership.update({
                 where: { id: membership.id },
                 data: {
@@ -792,7 +821,6 @@ export function startMonthlyMembershipCheck() {
                 `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`
               );
 
-              // Payment intent didn't succeed, log the error
               if (pi.last_payment_error) {
                 console.error(
                   `Payment error: ${JSON.stringify(pi.last_payment_error)}`
@@ -804,7 +832,6 @@ export function startMonthlyMembershipCheck() {
               `❌ Charge failed for user ${membership.userId}:`,
               err.message
             );
-            continue;
           }
         } else if (
           membership.status === "ending" ||
