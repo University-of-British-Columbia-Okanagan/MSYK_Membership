@@ -110,6 +110,13 @@ export function AdminAppSidebar() {
             <FileTextIcon className="w-5 h-5" />
             Server Logs
           </Link>
+          <Link
+            to="/dashboard/accesslogs"
+            className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
+          >
+            <FileTextIcon className="w-5 h-5" />
+            Access Logs
+          </Link>
         </SidebarGroup>
       </SidebarContent>
 

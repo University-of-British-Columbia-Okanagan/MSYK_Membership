@@ -656,9 +656,9 @@ export async function getEquipmentSlotsWithStatus(
 }
 
 /**
- * Update existing equipment properties (Admin only)
+ * Update existing equipment properties
  * @param equipmentId The ID of the equipment to update
- * @param data Partial equipment data to update
+ * @param data Partial equipment data to update, including optional workshop prerequisites
  * @returns Updated equipment record
  */
 export async function updateEquipment(
@@ -668,13 +668,40 @@ export async function updateEquipment(
     description?: string;
     price?: number;
     availability?: boolean;
+    workshopPrerequisites?: number[];
   }
 ) {
   try {
-    return await db.equipment.update({
+    // Update equipment basic fields
+    const updatedEquipment = await db.equipment.update({
       where: { id: equipmentId },
-      data,
+      data: {
+        name: data.name,
+        description: data.description,
+        price: data.price,
+        availability: data.availability,
+      },
     });
+
+    // Handle workshop prerequisites if provided
+    if (data.workshopPrerequisites !== undefined) {
+      // Delete existing prerequisites
+      await db.equipmentPrerequisite.deleteMany({
+        where: { equipmentId },
+      });
+
+      // Add new prerequisites if any
+      if (data.workshopPrerequisites.length > 0) {
+        await db.equipmentPrerequisite.createMany({
+          data: data.workshopPrerequisites.map((prereqId) => ({
+            equipmentId,
+            workshopPrerequisiteId: prereqId,
+          })),
+        });
+      }
+    }
+
+    return updatedEquipment;
   } catch (error) {
     console.error("Error updating equipment:", error);
     throw new Error("Failed to update equipment.");

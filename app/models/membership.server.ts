@@ -18,12 +18,27 @@ interface MembershipPlanData {
   title: string;
   description: string;
   price: number;
+  price3Months?: number | null;
+  price6Months?: number | null;
+  priceYearly?: number | null;
   features: string[];
+  needAdminPermission?: boolean;
 }
 
-function incrementMonth(date: Date): Date {
+function addMonthsForCycle(
+  date: Date,
+  cycle: "monthly" | "quarterly" | "6months" | "yearly"
+): Date {
   const newDate = new Date(date);
-  newDate.setMonth(newDate.getMonth() + 1);
+  if (cycle === "yearly") {
+    newDate.setFullYear(newDate.getFullYear() + 1);
+  } else if (cycle === "6months") {
+    newDate.setMonth(newDate.getMonth() + 6);
+  } else if (cycle === "quarterly") {
+    newDate.setMonth(newDate.getMonth() + 3);
+  } else {
+    newDate.setMonth(newDate.getMonth() + 1);
+  }
   return newDate;
 }
 
@@ -65,6 +80,10 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         title: data.title,
         description: data.description,
         price: data.price,
+        price3Months: data.price3Months,
+        price6Months: data.price6Months,
+        priceYearly: data.priceYearly,
+        needAdminPermission: data.needAdminPermission ?? false,
         feature: featuresJson,
         accessHours: "24/7", // or any appropriate value
         type: "standard", // or any appropriate value
@@ -127,6 +146,9 @@ export async function updateMembershipPlan(
     title: string;
     description: string;
     price: number;
+    price3Months?: number | null;
+    price6Months?: number | null;
+    priceYearly?: number | null;
     // features: string[];
     features: Record<string, string>;
   }
@@ -137,6 +159,9 @@ export async function updateMembershipPlan(
       title: data.title,
       description: data.description,
       price: data.price,
+      price3Months: data.price3Months ?? null,
+      price6Months: data.price6Months ?? null,
+      priceYearly: data.priceYearly ?? null,
       feature: data.features, // Convert features array to JSON
     },
   });
@@ -170,7 +195,8 @@ export async function registerMembershipSubscription(
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false,
-  paymentIntentId?: string
+  paymentIntentId?: string,
+  billingCycle: "monthly" | "quarterly" | "6months" | "yearly" = "monthly"
 ) {
   let subscription;
   const now = new Date();
@@ -199,8 +225,7 @@ export async function registerMembershipSubscription(
     }
     // Update the cancelled record to active and set new next payment date
     const now = new Date();
-    const newNextPaymentDate = new Date(now);
-    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    const newNextPaymentDate = addMonthsForCycle(now, billingCycle);
 
     const subscription = await db.userMembership.update({
       where: { id: cancelledMembership.id },
@@ -211,7 +236,12 @@ export async function registerMembershipSubscription(
     });
 
     // Reactivate the UserMembershipForm as well
-    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+    await updateMembershipFormStatus(
+      userId,
+      membershipPlanId,
+      "active",
+      subscription.id
+    );
 
     return subscription;
   }
@@ -230,8 +260,7 @@ export async function registerMembershipSubscription(
     // For downgrades, keep the current membership active until the next payment date
     // and schedule the new (cheaper) membership to start at the next payment date.
     const startDate = new Date(currentMembership.nextPaymentDate);
-    const newNextPaymentDate = new Date(startDate);
-    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    const newNextPaymentDate = addMonthsForCycle(startDate, billingCycle);
 
     // 1) Mark the old (more expensive) membership as ending
     await db.userMembership.update({
@@ -278,13 +307,19 @@ export async function registerMembershipSubscription(
           date: startDate, // starts at old membership's nextPaymentDate
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          billingCycle,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
     }
 
     // Activate the new membership's form immediately (no payment needed for downgrade)
-    await updateMembershipFormStatus(userId, membershipPlanId, "active");
+    await updateMembershipFormStatus(
+      userId,
+      membershipPlanId,
+      "active",
+      subscription.id
+    );
 
     return subscription;
   }
@@ -317,8 +352,7 @@ export async function registerMembershipSubscription(
     // Create or update a new membership record for the upgraded plan
     // so that we only have 1 record in "active"/"ending" for the new plan.
     const startDate = new Date(currentMembership.nextPaymentDate);
-    const newNextPaymentDate = new Date(startDate);
-    newNextPaymentDate.setMonth(newNextPaymentDate.getMonth() + 1);
+    const newNextPaymentDate = addMonthsForCycle(startDate, billingCycle);
 
     // Check if there's an existing record for the new plan in active/ending
     let newMembership = await db.userMembership.findFirst({
@@ -337,6 +371,7 @@ export async function registerMembershipSubscription(
           date: startDate, // new membership starts when the old membership ends
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          billingCycle,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -350,6 +385,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          billingCycle,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -384,7 +420,16 @@ export async function registerMembershipSubscription(
     // Standard new subscription or simple update logic
     console.log("Creating brand‑new subscription record");
     const startDate = new Date(now);
-    const nextPaymentDate = incrementMonth(startDate);
+    const nextPaymentDate = new Date(startDate);
+    if (billingCycle === "6months") {
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 6);
+    } else if (billingCycle === "quarterly") {
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
+    } else if (billingCycle === "yearly") {
+      nextPaymentDate.setFullYear(nextPaymentDate.getFullYear() + 1);
+    } else {
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+    }
 
     subscription = await db.userMembership.create({
       data: {
@@ -393,6 +438,7 @@ export async function registerMembershipSubscription(
         date: startDate,
         nextPaymentDate,
         status: "active",
+        billingCycle,
         ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
@@ -562,7 +608,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("00 00 * * *", async () => {
+  cron.schedule("29 13 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -585,6 +631,7 @@ export function startMonthlyMembershipCheck() {
       const reminderCandidates = await db.userMembership.findMany({
         where: {
           status: "active",
+          billingCycle: "monthly",
           nextPaymentDate: { gt: now, lte: reminderWindowEnd },
         },
         include: { membershipPlan: true },
@@ -627,6 +674,19 @@ export function startMonthlyMembershipCheck() {
         }
 
         if (membership.status === "active") {
+          // Non-monthly subscriptions are not auto-renewed; expire when due
+          if (membership.billingCycle !== "monthly") {
+            await db.userMembership.update({
+              where: { id: membership.id },
+              data: { status: "inactive" },
+            });
+            await updateMembershipFormStatus(
+              membership.userId,
+              membership.membershipPlanId,
+              "inactive"
+            );
+            continue;
+          }
           // Calculate charge amount with GST
           const baseAmount = Number(membership.membershipPlan.price);
 
@@ -686,7 +746,14 @@ export function startMonthlyMembershipCheck() {
               await db.userMembership.update({
                 where: { id: membership.id },
                 data: {
-                  nextPaymentDate: incrementMonth(membership.nextPaymentDate),
+                  nextPaymentDate: addMonthsForCycle(
+                    membership.nextPaymentDate,
+                    membership.billingCycle as
+                      | "monthly"
+                      | "quarterly"
+                      | "6months"
+                      | "yearly"
+                  ),
                   paymentIntentId: pi.id,
                 },
               });
@@ -883,9 +950,8 @@ export async function registerMembershipSubscriptionWithForm(
     paymentIntentId
   );
 
-  // Activate the pending form (if it exists)
-  // Note: signatureData parameter is deprecated and ignored
-  await activateMembershipForm(userId, membershipPlanId);
+  // Activate the pending form (if it exists) and link it to the subscription
+  await activateMembershipForm(userId, membershipPlanId, subscription.id);
 
   return subscription;
 }
@@ -894,13 +960,14 @@ export async function registerMembershipSubscriptionWithForm(
  * Activate a pending membership form after successful payment
  * @param userId The ID of the user
  * @param membershipPlanId The ID of the membership plan
+ * @param userMembershipId The ID of the UserMembership to link
  * @returns Updated UserMembershipForm record
  */
 export async function activateMembershipForm(
   userId: number,
-  membershipPlanId: number
+  membershipPlanId: number,
+  userMembershipId?: number
 ) {
-  // First, set any existing active forms to inactive (in case of resubscription)
   await db.userMembershipForm.updateMany({
     where: {
       userId,
@@ -931,33 +998,43 @@ export async function activateMembershipForm(
       },
       data: {
         status: "active",
+        ...(userMembershipId ? { userMembershipId } : {}),
       },
     });
   }
 
   return null;
 }
-
 /**
  * Update UserMembershipForm status to match UserMembership status
  * @param userId The ID of the user
  * @param membershipPlanId The ID of the membership plan
  * @param newStatus The new status to set
+ * @param userMembershipId Optional UserMembership ID to link (only set when activating)
  */
 export async function updateMembershipFormStatus(
   userId: number,
   membershipPlanId: number,
-  newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending"
+  newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending",
+  userMembershipId?: number
 ) {
+  const updateData: any = {
+    status: newStatus,
+  };
+
+  // Only set userMembershipId when explicitly provided (typically when activating)
+  // This preserves the historical link when status changes to inactive/cancelled/ending
+  if (userMembershipId !== undefined) {
+    updateData.userMembershipId = userMembershipId;
+  }
+
   return await db.userMembershipForm.updateMany({
     where: {
       userId,
       membershipPlanId,
-      status: { in: ["pending", "active", "cancelled", "ending"] }, // Include "ending" in the filter
+      status: { in: ["pending", "active", "cancelled", "ending"] },
     },
-    data: {
-      status: newStatus,
-    },
+    data: updateData,
   });
 }
 

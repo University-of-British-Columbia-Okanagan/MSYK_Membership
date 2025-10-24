@@ -27,6 +27,9 @@ interface WorkshopProps {
   imageUrl?: string;
   priceRange?: { min: number; max: number } | null;
   hasPriceVariations?: boolean;
+  isMyWorkshops?: boolean;
+  registrationStartDate?: Date | string;
+  registrationEndDate?: Date | string;
 }
 
 export default function WorkshopCard({
@@ -40,6 +43,9 @@ export default function WorkshopCard({
   displayPrice,
   priceRange,
   hasPriceVariations,
+  isMyWorkshops = false,
+  registrationStartDate,
+  registrationEndDate,
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -125,16 +131,73 @@ export default function WorkshopCard({
           {description}
         </CardDescription>
 
-        {/* Price Box */}
-        <div className="mt-3 flex justify-start">
-          <span className="border border-purple-500 text-purple-700 font-semibold text-lg px-3 py-1 rounded-md">
-            {hasPriceVariations &&
-            priceRange &&
-            priceRange.min !== priceRange.max
-              ? `$${priceRange.min} - $${priceRange.max}`
-              : `$${displayPrice !== undefined ? displayPrice : price}`}
-          </span>
-        </div>
+        {/* Price Box or Registration Time */}
+        {isMyWorkshops && registrationStartDate && registrationEndDate ? (
+          <div className="mt-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm font-medium text-blue-900">
+                  Registration Time
+                </span>
+              </div>
+              <div className="text-xs text-gray-600">
+                {(() => {
+                  const start = new Date(registrationStartDate);
+                  const end = new Date(registrationEndDate);
+
+                  const formatDate = (date: Date) =>
+                    date.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+
+                  const formatTime = (date: Date) =>
+                    date.toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    });
+
+                  const isSameDay = start.toDateString() === end.toDateString();
+
+                  if (isSameDay) {
+                    return (
+                      <>
+                        <div className="font-medium">{formatDate(start)}</div>
+                        <div>
+                          {formatTime(start)} - {formatTime(end)}
+                        </div>
+                      </>
+                    );
+                  } else {
+                    return (
+                      <>
+                        <div>
+                          {formatDate(start)} {formatTime(start)}
+                        </div>
+                        <div>
+                          to {formatDate(end)} {formatTime(end)}
+                        </div>
+                      </>
+                    );
+                  }
+                })()}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 flex justify-start">
+            <span className="border border-purple-500 text-purple-700 font-semibold text-lg px-3 py-1 rounded-md">
+              {hasPriceVariations &&
+              priceRange &&
+              priceRange.min !== priceRange.max
+                ? `$${priceRange.min} - $${priceRange.max}`
+                : `$${displayPrice !== undefined ? displayPrice : price}`}
+            </span>
+          </div>
+        )}
       </CardHeader>
 
       <CardContent className="mt-auto">

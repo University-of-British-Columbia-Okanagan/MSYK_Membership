@@ -171,20 +171,29 @@ export async function loader({ request }: { request: Request }) {
 
       const paymentIntentId = session.payment_intent as string;
 
-      // Register the membership subscription
-      await registerMembershipSubscription(
+      const billingCycle =
+        (metadata.billingCycle as
+          | "monthly"
+          | "quarterly"
+          | "6months"
+          | "yearly") || "monthly";
+
+      // Register the membership subscription and get the created subscription
+      const subscription = await registerMembershipSubscription(
         parseInt(userId),
         parseInt(membershipPlanId),
         currentMembershipId,
         false, // Not a downgrade
-        false, // Not a resubscription
-        paymentIntentId
+        false, // Not a resubscriptionq
+        paymentIntentId,
+        billingCycle
       );
 
-      // Activate the pending membership form
+      // Activate the pending membership form and link it to the subscription
       await activateMembershipForm(
         parseInt(userId),
-        parseInt(membershipPlanId)
+        parseInt(membershipPlanId),
+        subscription.id
       );
 
       try {
@@ -194,7 +203,15 @@ export async function loader({ request }: { request: Request }) {
         if (membershipPlan) {
           // Calculate next billing date (one month from now)
           const nextBillingDate = new Date();
-          nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+          if (billingCycle === "6months") {
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
+          } else if (billingCycle === "quarterly") {
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
+          } else if (billingCycle === "yearly") {
+            nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+          } else {
+            nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+          }
 
           await sendMembershipConfirmationEmail({
             userEmail: user.email,
@@ -203,7 +220,16 @@ export async function loader({ request }: { request: Request }) {
             monthlyPrice: membershipPlan.price,
             features: membershipPlan.feature as Record<string, string>,
             accessHours: membershipPlan.accessHours as string,
-            nextBillingDate,
+            billingCycle,
+            planPrice:
+              billingCycle === "quarterly"
+                ? membershipPlan.price3Months ?? membershipPlan.price
+                : billingCycle === "6months"
+                ? membershipPlan.price6Months ?? membershipPlan.price
+                : billingCycle === "yearly"
+                ? membershipPlan.priceYearly ?? membershipPlan.price
+                : membershipPlan.price,
+            nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
           });
         }
       } catch (emailConfirmationFailedError) {
