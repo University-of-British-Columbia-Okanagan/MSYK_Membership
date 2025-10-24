@@ -7,8 +7,8 @@ export async function logAccessEvent(
     equipment: string,
     state: string,
 ) {
-    if (state !== "enter" && state !== "exit") {
-        throw new Error("Invalid state. Must be 'enter' or 'exit'.");
+    if (state !== "enter" && state !== "exit" && state !== "denied") {
+        throw new Error("Invalid state. Must be 'enter' or 'exit' or 'denied'.");
     }
 
     await db.accessLog.create({

@@ -51,6 +51,7 @@ export default [
   ),
   route("/dashboard/register/:id", "routes/api/register.tsx"),
   route("/dashboard/accesslogs", "routes/dashboard/accesslogs.tsx"),
+  route("/access", "routes/api/access.tsx"),
   route(
     "/dashboard/workshops/offer/:id",
     "routes/dashboard/workshopofferagain.tsx"
