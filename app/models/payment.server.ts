@@ -398,7 +398,7 @@ export async function quickCheckout(
 
           // Send confirmation email for membership
           try {
-            const { sendMembershipConfirmationEmail } = await import(
+            const { sendMembershipConfirmationEmail, checkPaymentMethodStatus } = await import(
               "../utils/email.server"
             );
             const membershipPlan = await getMembershipPlanById(
@@ -418,6 +418,7 @@ export async function quickCheckout(
                 nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
               }
 
+              const needsPaymentMethod = await checkPaymentMethodStatus(userId);
               await sendMembershipConfirmationEmail({
                 userEmail: user.email,
                 planTitle: membershipPlan.title,
@@ -435,6 +436,7 @@ export async function quickCheckout(
                     ? membershipPlan.priceYearly ?? membershipPlan.price
                     : membershipPlan.price,
                 nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
+                needsPaymentMethod,
               });
             }
           } catch (emailError) {

@@ -3,7 +3,7 @@ import {
   registerMembershipSubscription,
   getMembershipPlanById,
 } from "../../models/membership.server";
-import { sendMembershipResubscribeEmail } from "~/utils/email.server";
+import { sendMembershipResubscribeEmail, checkPaymentMethodStatus } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 import { db } from "~/utils/db.server";
 
@@ -58,6 +58,7 @@ export async function action({ request }: { request: Request }) {
         const plan = await getMembershipPlanById(membershipPlanId);
         const nextBillingDate = new Date();
         nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
         await sendMembershipResubscribeEmail({
           userEmail: user.email!,
           planTitle: plan?.title || "Membership",
@@ -72,6 +73,7 @@ export async function action({ request }: { request: Request }) {
               ? plan?.priceYearly ?? plan?.price
               : plan?.price,
           nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
+          needsPaymentMethod,
         });
       } catch {
         // non-blocking

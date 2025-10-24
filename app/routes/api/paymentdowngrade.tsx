@@ -5,7 +5,7 @@ import {
   registerMembershipSubscription,
 } from "../../models/membership.server";
 import { db } from "~/utils/db.server";
-import { sendMembershipDowngradeEmail } from "~/utils/email.server";
+import { sendMembershipDowngradeEmail, checkPaymentMethodStatus } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
 export async function action({ request }: { request: Request }) {
@@ -85,6 +85,7 @@ export async function action({ request }: { request: Request }) {
       );
 
       const effectiveDate = currentActive?.nextPaymentDate || new Date();
+      const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
 
       await sendMembershipDowngradeEmail({
         userEmail: user.email!,
@@ -95,6 +96,7 @@ export async function action({ request }: { request: Request }) {
         newMonthlyPrice: newPlan?.price,
         // Effective on the next payment date for the current membership if available
         effectiveDate,
+        needsPaymentMethod,
       });
     } catch (e) {
       // Non-blocking

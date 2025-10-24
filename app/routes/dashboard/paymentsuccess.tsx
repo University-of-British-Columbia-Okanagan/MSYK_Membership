@@ -20,6 +20,7 @@ import {
   sendWorkshopConfirmationEmail,
   sendEquipmentConfirmationEmail,
   sendMembershipConfirmationEmail,
+  checkPaymentMethodStatus,
 } from "~/utils/email.server";
 import { getUserById } from "~/models/user.server";
 import { getEquipmentById } from "~/models/equipment.server";
@@ -213,6 +214,7 @@ export async function loader({ request }: { request: Request }) {
             nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
           }
 
+          const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
           await sendMembershipConfirmationEmail({
             userEmail: user.email,
             planTitle: membershipPlan.title,
@@ -230,6 +232,7 @@ export async function loader({ request }: { request: Request }) {
                 ? membershipPlan.priceYearly ?? membershipPlan.price
                 : membershipPlan.price,
             nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
+            needsPaymentMethod,
           });
         }
       } catch (emailConfirmationFailedError) {

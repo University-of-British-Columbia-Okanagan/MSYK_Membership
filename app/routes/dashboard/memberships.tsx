@@ -10,7 +10,7 @@ import {
   getMembershipPlanById,
 } from "~/models/membership.server";
 import { getUser } from "~/utils/session.server";
-import { sendMembershipCancellationEmail } from "~/utils/email.server";
+import { sendMembershipCancellationEmail, checkPaymentMethodStatus } from "~/utils/email.server";
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
@@ -138,6 +138,7 @@ export async function action({ request }: { request: Request }) {
       try {
         const plan = await getMembershipPlanById(Number(planId));
         const user = await getUser(request);
+        const needsPaymentMethod = await checkPaymentMethodStatus(roleUser.userId);
         await sendMembershipCancellationEmail({
           userEmail: user!.email!,
           planTitle: plan?.title || "Membership",
@@ -147,6 +148,7 @@ export async function action({ request }: { request: Request }) {
             (result as any).nextPaymentDate
               ? new Date((result as any).nextPaymentDate)
               : null,
+          needsPaymentMethod,
         });
       } catch {}
       logger.info(
