@@ -89,3 +89,40 @@ export async function getUserIdByAccessCard(accessCardId: string) {
 
   return card?.userId ?? null;
 }
+
+/**
+ * Checks if an access card has permission to use a given equipment type.
+ *
+ * Rules:
+ * - "Door" corresponds to equipment ID 0.
+ * - Other equipment types must be matched by name in Equipment table.
+ */
+export async function hasPermissionForType(accessCardId: string, type: string): Promise<boolean> {
+  // Get the access card’s permissions
+  const card = await db.accessCard.findUnique({
+    where: { id: accessCardId },
+    select: { permissions: true },
+  });
+
+  if (!card) return false;
+
+  const { permissions } = card;
+
+  if (type.toLowerCase() === "door") {
+    // Special case for Door (id 0)
+    return permissions.includes(0);
+  }
+
+  // Look up equipment by name
+  const equipment = await db.equipment.findFirst({
+    where: { name: type },
+    select: { id: true },
+  });
+
+  if (!equipment) {
+    // If equipment name not found, deny access
+    return false;
+  }
+
+  return permissions.includes(equipment.id);
+}
