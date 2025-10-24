@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import Mailgun from "mailgun.js";
 import { randomUUID } from "crypto";
 import formData from "form-data";
+import { db } from "./db.server";
 
 dotenv.config();
 
@@ -459,6 +460,23 @@ export async function sendEquipmentCancellationEmail(params: {
   });
 }
 
+function paymentMethodAction(needsPaymentMethod?: boolean): string | undefined {
+  if (!needsPaymentMethod) return undefined;
+  return "Action needed: Add a payment method in your dashboard under Payment Information to avoid interruptions.";
+}
+
+/**
+ * Checks if a user needs to add a payment method
+ * @param userId - The user ID to check
+ * @returns Promise<boolean> - true if payment method is needed, false otherwise
+ */
+export async function checkPaymentMethodStatus(userId: number): Promise<boolean> {
+  const savedPayment = await db.userPaymentInformation.findUnique({
+    where: { userId },
+  });
+  return !savedPayment?.stripeCustomerId || !savedPayment?.stripePaymentMethodId;
+}
+
 export async function sendMembershipConfirmationEmail(params: {
   userEmail: string;
   planTitle: string;
@@ -470,8 +488,9 @@ export async function sendMembershipConfirmationEmail(params: {
   nextBillingDate?: Date;
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
+  needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate, billingCycle, planPrice } = params;
+  const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate, billingCycle, planPrice, needsPaymentMethod } = params;
 
   function formatAccessHours(value: unknown): string | null {
     if (!value) return null;
@@ -529,6 +548,7 @@ export async function sendMembershipConfirmationEmail(params: {
     featuresList,
     accessInfo,
     `Thank you for joining Makerspace YK! We're excited to have you as a member.`,
+    paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean);
 
   await sendMail({
@@ -544,15 +564,20 @@ export async function sendMembershipPaymentReminderEmail(params: {
   nextPaymentDate: Date;
   amountDue: number;
   gstPercentage?: number;
+  needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, nextPaymentDate, amountDue, gstPercentage } = params;
+  const { userEmail, planTitle, nextPaymentDate, amountDue, gstPercentage, needsPaymentMethod } = params;
   const when = new Date(nextPaymentDate).toLocaleString();
   const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
-  const text = `Reminder: Your membership plan "${planTitle}" will be charged on ${when}.\nAmount due: $${amountDue.toFixed(2)}${gstLine}.\nIf you need to update your payment method, please visit your account settings.`;
+  const parts = [
+    `Reminder: Your membership plan "${planTitle}" will be charged on ${when}.`,
+    `Amount due: $${amountDue.toFixed(2)}${gstLine}.`,
+    paymentMethodAction(needsPaymentMethod),
+  ].filter(Boolean);
   await sendMail({
     to: userEmail,
     subject: `Membership payment reminder: ${planTitle}`,
-    text,
+    text: parts.join("\n"),
   });
 }
 
@@ -563,8 +588,9 @@ export async function sendMembershipDowngradeEmail(params: {
   currentMonthlyPrice?: number;
   newMonthlyPrice?: number;
   effectiveDate: Date;
+  needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, currentPlanTitle, newPlanTitle, currentMonthlyPrice, newMonthlyPrice, effectiveDate } = params;
+  const { userEmail, currentPlanTitle, newPlanTitle, currentMonthlyPrice, newMonthlyPrice, effectiveDate, needsPaymentMethod } = params;
   const priceLine = currentMonthlyPrice != null && newMonthlyPrice != null
     ? `Current price: $${currentMonthlyPrice.toFixed(2)} → New price: $${newMonthlyPrice.toFixed(2)}`
     : undefined;
@@ -575,6 +601,7 @@ export async function sendMembershipDowngradeEmail(params: {
     priceLine,
     `Effective on: ${new Date(effectiveDate).toLocaleDateString()}`,
     `You'll continue to enjoy your current benefits until the effective date.`,
+    paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean) as string[];
   await sendMail({
     to: userEmail,
@@ -587,16 +614,23 @@ export async function sendMembershipCancellationEmail(params: {
   userEmail: string;
   planTitle: string;
   accessUntil?: Date | null;
+  needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, accessUntil } = params;
+  const { userEmail, planTitle, accessUntil, needsPaymentMethod } = params;
   const accessLine = accessUntil
     ? `You'll retain access until ${new Date(accessUntil).toLocaleDateString()}.`
     : `Your access has ended.`;
   const text = `Your membership for "${planTitle}" has been cancelled.\n${accessLine}\nIf this was a mistake, you can resubscribe from your dashboard at any time.`;
+  const parts = [
+    `Your membership for "${planTitle}" has been cancelled.`,
+    accessLine,
+    `If this was a mistake, you can resubscribe from your dashboard at any time.`,
+    paymentMethodAction(needsPaymentMethod),
+  ].filter(Boolean);
   await sendMail({
     to: userEmail,
     subject: `Membership cancelled: ${planTitle}`,
-    text,
+    text: parts.join("\n"),
   });
 }
 
@@ -607,8 +641,9 @@ export async function sendMembershipResubscribeEmail(params: {
   nextBillingDate?: Date;
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
+  needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, monthlyPrice, nextBillingDate, billingCycle, planPrice } = params;
+  const { userEmail, planTitle, monthlyPrice, nextBillingDate, billingCycle, planPrice, needsPaymentMethod } = params;
   const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "semiannually" ? "Every 6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
   const priceVal = typeof planPrice === "number" ? planPrice : monthlyPrice;
   const priceLine = priceVal != null ? `Price: $${priceVal.toFixed(2)} (${cycleLabel})` : `Billing cycle: ${cycleLabel}`;
@@ -618,10 +653,28 @@ export async function sendMembershipResubscribeEmail(params: {
     priceLine,
     nextLine,
     `Welcome back to Makerspace YK!`,
+    paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean) as string[];
   await sendMail({
     to: userEmail,
     subject: `Membership reactivated: ${planTitle}`,
+    text: parts.join("\n\n"),
+  });
+}
+
+export async function sendMembershipEndedNoPaymentMethodEmail(params: {
+  userEmail: string;
+  planTitle: string;
+}): Promise<void> {
+  const { userEmail, planTitle } = params;
+  const parts = [
+    `Your membership for "${planTitle}" is now inactive because we couldn't find a payment method on file.`,
+    paymentMethodAction(true),
+    `Once you've added a payment method, you can reactivate your membership from your dashboard.`,
+  ];
+  await sendMail({
+    to: userEmail,
+    subject: `Membership inactive: payment method required`,
     text: parts.join("\n\n"),
   });
 }
