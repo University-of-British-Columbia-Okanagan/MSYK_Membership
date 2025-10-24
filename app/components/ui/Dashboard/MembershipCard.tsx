@@ -79,7 +79,7 @@ export default function MembershipCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
-    "monthly" | "quarterly" | "6months" | "yearly"
+    "monthly" | "quarterly" | "semiannually" | "yearly"
   >("monthly");
 
   const hasMultipleBillingOptions =
@@ -102,6 +102,8 @@ export default function MembershipCard({
         return ArrowUp;
       case "Downgrade":
         return ArrowDown;
+      case "Switch":
+        return RefreshCw;
       case "Current Plan":
         return CheckCircle;
       default:
@@ -389,7 +391,9 @@ export default function MembershipCard({
               const buttonLabel = hasActiveSubscription
                 ? price > highestActivePrice
                   ? "Upgrade"
-                  : "Downgrade"
+                  : price === highestActivePrice
+                    ? "Switch"
+                    : "Downgrade"
                 : "Subscribe";
               const Icon = getIconForLabel(buttonLabel);
 
@@ -426,7 +430,9 @@ export default function MembershipCard({
                 ? "Current Plan"
                 : price > highestActivePrice
                   ? "Upgrade"
-                  : "Downgrade";
+                  : price === highestActivePrice
+                    ? "Switch"
+                    : "Downgrade";
               const Icon = getIconForLabel(buttonLabel);
               return (
                 <Button

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { redirect, useLoaderData, Form as RouterForm } from "react-router";
+import { redirect, useLoaderData, Form as RouterForm, useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -15,7 +15,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { Info, ChevronDown, ChevronUp, Download, ArrowLeft } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -324,12 +324,13 @@ export default function MembershipDetails() {
     userRecord,
     existingForm,
   } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [agreementDocumentViewed, setAgreementDocumentViewed] = useState(false);
   const [showNewSignature, setShowNewSignature] = useState(false);
 
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
-    "monthly" | "quarterly" | "6months" | "yearly"
+    "monthly" | "quarterly" | "semiannually" | "yearly"
   >("monthly");
 
   const form = useForm<MembershipAgreementFormValues>({
@@ -428,6 +429,17 @@ export default function MembershipDetails() {
               <h1 className="text-xl font-bold">Membership Details</h1>
             </div>
 
+            <div className="mb-6">
+              <Button
+                variant="outline"
+                onClick={() => navigate("/dashboard/memberships")}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Memberships
+              </Button>
+            </div>
+
             <div className="bg-white rounded-lg shadow-md p-8">
               <h1 className="text-3xl font-bold text-black mb-6 text-center hidden md:block">
                 {actionType} {membershipPlan.title}
@@ -492,6 +504,18 @@ export default function MembershipDetails() {
                   <h2 className="text-xl font-semibold mb-4">
                     Select Billing Cycle
                   </h2>
+
+                  {/* Warning for non-monthly billing cycles when upgrading/downgrading */}
+                  {userActiveMembership && userActiveMembership.billingCycle !== "monthly" && (
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-sm text-gray-700">
+                        <strong>Note:</strong> You currently have a {userActiveMembership.billingCycle} billing cycle.
+                        To change plans, you must select <strong>monthly billing</strong> only.
+                        Other billing cycles are not available for upgrades or downgrades.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
                     {/* Monthly Option */}
                     <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
@@ -506,7 +530,7 @@ export default function MembershipDetails() {
                               e.target.value as
                                 | "monthly"
                                 | "quarterly"
-                                | "6months"
+                                | "semiannually"
                                 | "yearly"
                             )
                           }
@@ -527,7 +551,11 @@ export default function MembershipDetails() {
                     </label>
 
                     {membershipPlan.price3Months && (
-                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}>
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -539,10 +567,11 @@ export default function MembershipDetails() {
                                 e.target.value as
                                   | "monthly"
                                   | "quarterly"
-                                  | "6months"
+                                  | "semiannually"
                                   | "yearly"
                               )
                             }
+                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
@@ -576,27 +605,32 @@ export default function MembershipDetails() {
 
                     {/* 6 Months Option */}
                     {membershipPlan.price6Months && (
-                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}>
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
                             name="billingCycle"
-                            value="6months"
-                            checked={selectedBillingCycle === "6months"}
+                            value="semiannually"
+                            checked={selectedBillingCycle === "semiannually"}
                             onChange={(e) =>
                               setSelectedBillingCycle(
                                 e.target.value as
                                   | "monthly"
                                   | "quarterly"
-                                  | "6months"
+                                  | "semiannually"
                                   | "yearly"
                               )
                             }
+                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
-                              6 Months
+                              Every 6 Months
                             </p>
                             <p className="text-sm text-gray-600">
                               Save{" "}
@@ -625,7 +659,11 @@ export default function MembershipDetails() {
 
                     {/* Yearly Option */}
                     {membershipPlan.priceYearly && (
-                      <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}>
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -637,10 +675,11 @@ export default function MembershipDetails() {
                                 e.target.value as
                                   | "monthly"
                                   | "quarterly"
-                                  | "6months"
+                                  | "semiannually"
                                   | "yearly"
                               )
                             }
+                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>

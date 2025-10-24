@@ -2,7 +2,10 @@ import { db } from "../utils/db.server";
 import cron from "node-cron";
 import Stripe from "stripe";
 import { getAdminSetting } from "./admin.server";
-import { sendMembershipPaymentReminderEmail } from "~/utils/email.server";
+import {
+  sendMembershipEndedNoPaymentMethodEmail,
+  sendMembershipPaymentReminderEmail,
+} from "~/utils/email.server";
 import CryptoJS from "crypto-js";
 import PDFDocument from "pdfkit";
 import { PassThrough } from "stream";
@@ -27,12 +30,12 @@ interface MembershipPlanData {
 
 function addMonthsForCycle(
   date: Date,
-  cycle: "monthly" | "quarterly" | "6months" | "yearly"
+  cycle: "monthly" | "quarterly" | "semiannually" | "yearly"
 ): Date {
   const newDate = new Date(date);
   if (cycle === "yearly") {
     newDate.setFullYear(newDate.getFullYear() + 1);
-  } else if (cycle === "6months") {
+  } else if (cycle === "semiannually") {
     newDate.setMonth(newDate.getMonth() + 6);
   } else if (cycle === "quarterly") {
     newDate.setMonth(newDate.getMonth() + 3);
@@ -40,6 +43,29 @@ function addMonthsForCycle(
     newDate.setMonth(newDate.getMonth() + 1);
   }
   return newDate;
+}
+
+/**
+ * Calculate prorated upgrade amount for monthly→monthly switch.
+ * Uses remaining fraction of current cycle multiplied by price delta.
+ */
+export function calculateProratedUpgradeAmount(
+  now: Date,
+  nextPaymentDate: Date,
+  oldMonthly: number,
+  newMonthly: number
+): number {
+  if (newMonthly <= oldMonthly) return 0;
+  const effectiveStart = new Date(nextPaymentDate);
+  effectiveStart.setMonth(effectiveStart.getMonth() - 1);
+  const totalMs = Math.max(0, nextPaymentDate.getTime() - effectiveStart.getTime());
+  const remainingMs = Math.max(
+    0,
+    Math.min(nextPaymentDate.getTime() - now.getTime(), totalMs)
+  );
+  if (totalMs === 0 || remainingMs === 0) return 0;
+  const delta = newMonthly - oldMonthly;
+  return (remainingMs / totalMs) * delta;
 }
 
 /**
@@ -151,6 +177,7 @@ export async function updateMembershipPlan(
     priceYearly?: number | null;
     // features: string[];
     features: Record<string, string>;
+    needAdminPermission?: boolean;
   }
 ) {
   return await db.membershipPlan.update({
@@ -163,6 +190,7 @@ export async function updateMembershipPlan(
       price6Months: data.price6Months ?? null,
       priceYearly: data.priceYearly ?? null,
       feature: data.features, // Convert features array to JSON
+      needAdminPermission: data.needAdminPermission ?? false,
     },
   });
 }
@@ -196,7 +224,7 @@ export async function registerMembershipSubscription(
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false,
   paymentIntentId?: string,
-  billingCycle: "monthly" | "quarterly" | "6months" | "yearly" = "monthly"
+  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly"
 ) {
   let subscription;
   const now = new Date();
@@ -336,25 +364,32 @@ export async function registerMembershipSubscription(
       throw new Error("Current membership not found");
     }
 
-    // Mark the old membership as ending
+    // Enforce monthly -> monthly for upgrades
+    if (
+      currentMembership.billingCycle !== "monthly" ||
+      billingCycle !== "monthly"
+    ) {
+      throw new Error("Only monthly-to-monthly upgrades are supported");
+    }
+
+    // Mark the old membership as ending immediately; it won't be charged again
     await db.userMembership.update({
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
 
-    // Set the old membership's form to "inactive" since it's ending
+    // Sync the old membership's form to ending
     await updateMembershipFormStatus(
       userId,
       currentMembership.membershipPlanId,
       "ending"
     );
 
-    // Create or update a new membership record for the upgraded plan
-    // so that we only have 1 record in "active"/"ending" for the new plan.
-    const startDate = new Date(currentMembership.nextPaymentDate);
-    const newNextPaymentDate = addMonthsForCycle(startDate, billingCycle);
+    // New upgraded membership becomes active immediately, keeps old nextPaymentDate
+    const startDate = new Date(now);
+    const newNextPaymentDate = new Date(currentMembership.nextPaymentDate);
 
-    // Check if there's an existing record for the new plan in active/ending
+    // Ensure at most one active/ending record for the new plan
     let newMembership = await db.userMembership.findFirst({
       where: {
         userId,
@@ -364,20 +399,18 @@ export async function registerMembershipSubscription(
     });
 
     if (newMembership) {
-      // Update that record
       newMembership = await db.userMembership.update({
         where: { id: newMembership.id },
         data: {
-          date: startDate, // new membership starts when the old membership ends
+          date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          billingCycle,
+          billingCycle: "monthly",
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
       subscription = newMembership;
     } else {
-      // Otherwise, create a fresh record for the new plan
       subscription = await db.userMembership.create({
         data: {
           userId,
@@ -385,7 +418,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
-          billingCycle,
+          billingCycle: "monthly",
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -421,7 +454,7 @@ export async function registerMembershipSubscription(
     console.log("Creating brand‑new subscription record");
     const startDate = new Date(now);
     const nextPaymentDate = new Date(startDate);
-    if (billingCycle === "6months") {
+    if (billingCycle === "semiannually") {
       nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 6);
     } else if (billingCycle === "quarterly") {
       nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
@@ -608,7 +641,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("29 13 * * *", async () => {
+  cron.schedule("0 0 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -648,6 +681,10 @@ export function startMonthlyMembershipCheck() {
         const gstRate = parseFloat(gstPercentage) / 100;
         const chargeAmount = baseAmount * (1 + gstRate);
 
+        const savedPayment = await db.userPaymentInformation.findUnique({
+          where: { userId: membership.userId },
+        });
+
         try {
           await sendMembershipPaymentReminderEmail({
             userEmail: user.email,
@@ -655,6 +692,9 @@ export function startMonthlyMembershipCheck() {
             nextPaymentDate: membership.nextPaymentDate,
             amountDue: chargeAmount,
             gstPercentage: parseFloat(gstPercentage),
+            needsPaymentMethod:
+              !savedPayment?.stripeCustomerId ||
+              !savedPayment?.stripePaymentMethodId,
           });
         } catch (emailErr) {
           console.error(
@@ -704,14 +744,38 @@ export function startMonthlyMembershipCheck() {
             !savedPayment?.stripeCustomerId ||
             !savedPayment?.stripePaymentMethodId
           ) {
-            console.error(
-              `❌ No saved payment info for user ${membership.userId}, skipping`
+            console.warn(
+              `User ${membership.userId} has no saved payment info; membership ${membership.id} set to inactive.`
             );
+
+            await db.userMembership.update({
+              where: { id: membership.id },
+              data: { status: "inactive" },
+            });
+
+            await updateMembershipFormStatus(
+              membership.userId,
+              membership.membershipPlanId,
+              "inactive"
+            );
+
+            try {
+              await sendMembershipEndedNoPaymentMethodEmail({
+                userEmail: user.email,
+                planTitle: membership.membershipPlan.title,
+              });
+            } catch (emailErr) {
+              console.error(
+                `Failed to send missing payment method notice to user ${membership.userId}:`,
+                emailErr
+              );
+            }
+
             continue;
           }
 
           try {
-            // UPDATE THIS PART: Create payment intent with GST-inclusive amount and metadata
+            // Create payment intent with GST-inclusive amount and metadata
             const pi = await stripe.paymentIntents.create({
               amount: Math.round(chargeAmount * 100), // Now includes GST
               currency: "cad", // Changed from "usd" to match your other payments
@@ -720,12 +784,11 @@ export function startMonthlyMembershipCheck() {
               off_session: true,
               confirm: true,
               receipt_email: user.email,
-              description: `${membership.membershipPlan.title} - Monthly Payment (Includes ${gstPercentage}% GST)`, // Add description
+              description: `${membership.membershipPlan.title} - Monthly Payment (Includes ${gstPercentage}% GST)`,
               metadata: {
                 userId: String(membership.userId),
                 membershipId: String(membership.id),
                 planId: String(membership.membershipPlanId),
-                // Add GST breakdown to metadata
                 original_amount: baseAmount.toString(),
                 gst_amount: (chargeAmount - baseAmount).toString(),
                 total_with_gst: chargeAmount.toString(),
@@ -734,15 +797,11 @@ export function startMonthlyMembershipCheck() {
               },
             });
 
-            // Check if payment intent succeeded
             if (pi.status === "succeeded") {
               console.log(
-                `✅ Payment intent succeeded for user ${
-                  membership.userId
-                }, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
+                `✅ Payment intent succeeded for user ${membership.userId}, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
               );
 
-              // Update the next payment date after successful payment
               await db.userMembership.update({
                 where: { id: membership.id },
                 data: {
@@ -751,7 +810,7 @@ export function startMonthlyMembershipCheck() {
                     membership.billingCycle as
                       | "monthly"
                       | "quarterly"
-                      | "6months"
+                      | "semiannually"
                       | "yearly"
                   ),
                   paymentIntentId: pi.id,
@@ -762,7 +821,6 @@ export function startMonthlyMembershipCheck() {
                 `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`
               );
 
-              // Payment intent didn't succeed, log the error
               if (pi.last_payment_error) {
                 console.error(
                   `Payment error: ${JSON.stringify(pi.last_payment_error)}`
@@ -774,7 +832,6 @@ export function startMonthlyMembershipCheck() {
               `❌ Charge failed for user ${membership.userId}:`,
               err.message
             );
-            continue;
           }
         } else if (
           membership.status === "ending" ||

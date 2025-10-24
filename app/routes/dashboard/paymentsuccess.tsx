@@ -20,6 +20,7 @@ import {
   sendWorkshopConfirmationEmail,
   sendEquipmentConfirmationEmail,
   sendMembershipConfirmationEmail,
+  checkPaymentMethodStatus,
 } from "~/utils/email.server";
 import { getUserById } from "~/models/user.server";
 import { getEquipmentById } from "~/models/equipment.server";
@@ -175,7 +176,7 @@ export async function loader({ request }: { request: Request }) {
         (metadata.billingCycle as
           | "monthly"
           | "quarterly"
-          | "6months"
+          | "semiannually"
           | "yearly") || "monthly";
 
       // Register the membership subscription and get the created subscription
@@ -203,7 +204,7 @@ export async function loader({ request }: { request: Request }) {
         if (membershipPlan) {
           // Calculate next billing date (one month from now)
           const nextBillingDate = new Date();
-          if (billingCycle === "6months") {
+          if (billingCycle === "semiannually") {
             nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
           } else if (billingCycle === "quarterly") {
             nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
@@ -213,6 +214,7 @@ export async function loader({ request }: { request: Request }) {
             nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
           }
 
+          const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
           await sendMembershipConfirmationEmail({
             userEmail: user.email,
             planTitle: membershipPlan.title,
@@ -224,12 +226,13 @@ export async function loader({ request }: { request: Request }) {
             planPrice:
               billingCycle === "quarterly"
                 ? membershipPlan.price3Months ?? membershipPlan.price
-                : billingCycle === "6months"
+                : billingCycle === "semiannually"
                 ? membershipPlan.price6Months ?? membershipPlan.price
                 : billingCycle === "yearly"
                 ? membershipPlan.priceYearly ?? membershipPlan.price
                 : membershipPlan.price,
             nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
+            needsPaymentMethod,
           });
         }
       } catch (emailConfirmationFailedError) {

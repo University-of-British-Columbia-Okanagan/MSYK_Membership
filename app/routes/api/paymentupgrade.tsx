@@ -1,18 +1,17 @@
 import { logger } from "~/logging/logger";
 import {
+  registerMembershipSubscription,
   getMembershipPlanById,
   getUserActiveMembership,
-  registerMembershipSubscription,
+  calculateProratedUpgradeAmount,
+  activateMembershipForm,
 } from "../../models/membership.server";
-import { db } from "~/utils/db.server";
-import { sendMembershipDowngradeEmail, checkPaymentMethodStatus } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 
 export async function action({ request }: { request: Request }) {
   try {
     const user = await getUser(request);
     if (!user) {
-      logger.warn(`User Unauthorized`, { url: request.url });
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -34,7 +33,7 @@ export async function action({ request }: { request: Request }) {
 
     if (!currentMembershipId || !newMembershipPlanId || !userId) {
       return new Response(
-        JSON.stringify({ error: "Missing required downgrade data" }),
+        JSON.stringify({ error: "Missing required upgrade data" }),
         {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -42,11 +41,11 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
-    // Fetch current membership and ensure monthly -> monthly only
+    // Verify active membership and monthly→monthly
     const currentActive = await getUserActiveMembership(parseInt(userId));
     if (!currentActive) {
       return new Response(
-        JSON.stringify({ error: "No active membership to downgrade" }),
+        JSON.stringify({ error: "No active membership to upgrade" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -58,59 +57,73 @@ export async function action({ request }: { request: Request }) {
       return new Response(
         JSON.stringify({
           error:
-            "Only monthly-to-monthly downgrades are supported. Please cancel your current term and wait for it to end.",
+            "Only monthly-to-monthly upgrades are supported without payment.",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Process the downgrade directly with no payment needed
-    await registerMembershipSubscription(
+    const newPlan = await getMembershipPlanById(parseInt(newMembershipPlanId));
+    if (!newPlan) {
+      return new Response(
+        JSON.stringify({ error: "New plan not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const fee = calculateProratedUpgradeAmount(
+      new Date(),
+      new Date(currentActive.nextPaymentDate),
+      Number(currentActive.membershipPlan.price),
+      Number(newPlan.price)
+    );
+
+    if (fee > 0) {
+      return new Response(
+        JSON.stringify({
+          error: "Payment required for this upgrade",
+          upgradeFee: fee,
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const subscription = await registerMembershipSubscription(
       parseInt(userId),
       parseInt(newMembershipPlanId),
       parseInt(currentMembershipId),
-      true, // Flag to indicate this is a downgrade
-      false, // Not a resubscription
-      undefined, // No payment intent
-      billingCycle as
-        | "monthly"
-        | "quarterly"
-        | "semiannually"
-        | "yearly"
+      false,
+      false,
+      undefined,
+      "monthly"
     );
 
+    // Activate pending form and link it to new subscription
     try {
-      const newPlan = await getMembershipPlanById(
-        parseInt(newMembershipPlanId)
+      await activateMembershipForm(
+        parseInt(userId),
+        parseInt(newMembershipPlanId),
+        subscription.id
       );
+    } catch {}
 
-      const effectiveDate = currentActive?.nextPaymentDate || new Date();
-      const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
-
-      await sendMembershipDowngradeEmail({
-        userEmail: user.email!,
-        currentPlanTitle:
-          currentActive?.membershipPlan?.title || "Current Plan",
-        newPlanTitle: newPlan?.title || "New Plan",
-        currentMonthlyPrice: currentActive?.membershipPlan?.price,
-        newMonthlyPrice: newPlan?.price,
-        // Effective on the next payment date for the current membership if available
-        effectiveDate,
-        needsPaymentMethod,
-      });
-    } catch (e) {
-      // Non-blocking
-    }
+    try {
+      const plan = await getMembershipPlanById(parseInt(newMembershipPlanId));
+      logger.info(
+        `Membership upgraded without payment for user ${userId} to ${plan?.title}`
+      );
+    } catch {}
 
     return new Response(JSON.stringify({ success: true }), {
-      status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
-    logger.error(`Downgrade action error: ${error}`, { url: request.url });
+    logger.error(`Zero-cost upgrade error: ${error}`, { url: request.url });
     return new Response(JSON.stringify({ error: "Internal server error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
   }
 }
+
+

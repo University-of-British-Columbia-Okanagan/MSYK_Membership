@@ -59,14 +59,14 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       (url.searchParams.get("billingCycle") as
         | "monthly"
         | "quarterly"
-        | "6months"
+        | "semiannually"
         | "yearly"
         | null) || "monthly";
 
     let membershipPrice = membershipPlan.price;
     if (billingCycle === "quarterly" && membershipPlan.price3Months) {
       membershipPrice = membershipPlan.price3Months;
-    } else if (billingCycle === "6months" && membershipPlan.price6Months) {
+    } else if (billingCycle === "semiannually" && membershipPlan.price6Months) {
       membershipPrice = membershipPlan.price6Months;
     } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
       membershipPrice = membershipPlan.priceYearly;
@@ -101,12 +101,18 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     let oldMembershipPrice = null;
     let oldMembershipNextPaymentDate = null;
     let isDowngrade = false;
+    let changeNotAllowed = false;
+    let needsPayment = false;
 
     // Only compute compensation if the user has an active membership
     if (userActiveMembership) {
       const now = new Date();
       const oldPrice = userActiveMembership.membershipPlan.price;
       const newPrice = membershipPrice;
+
+      const isMonthlyToMonthly =
+        (userActiveMembership.billingCycle as string) === "monthly" &&
+        (billingCycle as string) === "monthly";
 
       // Instead of using the original signup date for A, use a date exactly one month before the next payment
       const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
@@ -119,7 +125,9 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       const total = A + B; // This will now be approximately one month
 
       // Check if this is an upgrade or downgrade
-      if (newPrice > oldPrice) {
+      if (!isMonthlyToMonthly) {
+        changeNotAllowed = true;
+      } else if (newPrice > oldPrice) {
         upgradeFee = (B / total) * (newPrice - oldPrice);
       } else if (newPrice < oldPrice) {
         isDowngrade = true;
@@ -156,6 +164,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
+    needsPayment = !userActiveMembership || (upgradeFee > 0 && !isDowngrade && !changeNotAllowed);
+
     return {
       membershipPlan: {
         ...membershipPlan,
@@ -173,6 +183,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
       billingCycle,
+      changeNotAllowed,
+      needsPayment,
     };
   }
 
@@ -646,7 +658,9 @@ export default function Payment() {
     savedPaymentMethod?: any;
     gstPercentage: number;
     selectedVariation?: any;
-    billingCycle?: "monthly" | "quarterly" | "6months" | "yearly";
+    billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+    changeNotAllowed?: boolean;
+    needsPayment?: boolean;
   };
 
   const navigate = useNavigate();
@@ -732,6 +746,32 @@ export default function Payment() {
           const resData = await response.json();
           if (resData.url) {
             window.location.href = resData.url;
+          } else if (resData.success === false && resData.error) {
+            // If server says no payment required, trigger zero-cost upgrade
+            if (
+              resData.error.includes("No payment required") &&
+              data.userActiveMembership &&
+              data.billingCycle === "monthly"
+            ) {
+              const r = await fetch("/dashboard/payment/upgrade", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  currentMembershipId: data.userActiveMembership?.id,
+                  newMembershipPlanId: data.membershipPlan.id,
+                  userId: data.user.id,
+                  billingCycle: data.billingCycle || "monthly",
+                }),
+              });
+              const j = await r.json();
+              if (j.success) {
+                return navigate(
+                  "/dashboard/payment/success?quick_checkout=true&type=membership"
+                );
+              }
+            }
+            console.error("Payment error:", resData.error);
+            setLoading(false);
           } else {
             console.error("Payment error:", resData.error);
             setLoading(false);
@@ -841,7 +881,8 @@ export default function Payment() {
       {data.membershipPlan &&
         data.savedPaymentMethod &&
         !data.isResubscription &&
-        !data.isDowngrade && (
+        !data.isDowngrade &&
+        data.needsPayment && (
           <div className="mb-6">
             <QuickCheckout
               userId={data.user.id}
@@ -857,7 +898,7 @@ export default function Payment() {
                   (data.billingCycle as
                     | "monthly"
                     | "quarterly"
-                    | "6months"
+                    | "semiannually"
                     | "yearly") ||
                   "monthly",
               }}
@@ -916,97 +957,111 @@ export default function Payment() {
             </p>
           )}
 
-          {/*
-            If it's a resubscription, show a special message that no payment is required.
-            If it's a downgrade, show the existing message that no payment is required.
-            If it's an upgrade, show compensation details, etc.
-          */}
-          {data.isResubscription ? (
-            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
+          {data.changeNotAllowed && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
               <p className="text-gray-700">
-                You previously cancelled this membership. Resubscribing now will
-                reactivate it immediately.
-              </p>
-              <p className="font-semibold mt-2">
-                No payment is required for resubscription.
+                Switching between non-monthly plans or to/from non-monthly terms
+                isn't supported. Please cancel your current subscription and wait
+                for it to end before subscribing to a different term.
               </p>
             </div>
-          ) : data.isDowngrade ? (
-            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
-              <p className="text-gray-700">
-                You will continue at your current rate of CA$
-                {data.oldMembershipPrice
-                  ? (
-                      data.oldMembershipPrice *
-                      (1 + data.gstPercentage / 100)
-                    ).toFixed(2)
-                  : "0.00"}
-                /month until your next payment date at{" "}
-                {data.oldMembershipNextPaymentDate
-                  ? new Date(
-                      data.oldMembershipNextPaymentDate
-                    ).toLocaleDateString()
-                  : "N/A"}
-                , then switch to CA$
-                {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
-                /month (incl. GST).
-              </p>
-              <p className="font-semibold mt-2">No payment is required now.</p>
-            </div>
-          ) : data.upgradeFee > 0 ? (
-            <p className="mt-2 text-gray-700">
-              You'll pay a prorated amount of CA$
-              {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
-                2
-              )}{" "}
-              now (incl. GST) to enjoy the benefits of{" "}
-              <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
-              <strong>
-                CA$
-                {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
-                /month
-              </strong>{" "}
-              starting from{" "}
-              {data.oldMembershipNextPaymentDate
-                ? new Date(
-                    data.oldMembershipNextPaymentDate
-                  ).toLocaleDateString()
-                : "N/A"}
-              .
-            </p>
-          ) : data.userActiveMembership ? (
-            <p className="mt-2 text-gray-700">
-              Switching to the same price plan. No additional payment is needed
-              now.
-            </p>
-          ) : null}
+          )}
 
-          {/*
-            If it's not a downgrade or resubscription, show "Total due now" message
-            (in case of upgrade or brand-new membership).
-          */}
-          {!data.isDowngrade && !data.isResubscription && (
-            <div className="mt-2">
-              <p className="text-lg font-semibold">
-                Total due now: CA$
-                {data.userActiveMembership
-                  ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
-                      2
-                    )
-                  : (membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
-                      2
-                    )}
-              </p>
-              <p className="text-sm text-gray-600">
-                (Includes CA$
-                {data.userActiveMembership
-                  ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
-                  : (membershipPrice * (data.gstPercentage / 100)).toFixed(
-                      2
-                    )}{" "}
-                GST)
-              </p>
-            </div>
+          {!data.changeNotAllowed && (
+            <>
+              {/*
+                If it's a resubscription, show a special message that no payment is required.
+                If it's a downgrade, show the existing message that no payment is required.
+                If it's an upgrade, show compensation details, etc.
+              */}
+              {data.isResubscription ? (
+                <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
+                  <p className="text-gray-700">
+                    You previously cancelled this membership. Resubscribing now will
+                    reactivate it immediately.
+                  </p>
+                  <p className="font-semibold mt-2">
+                    No payment is required for resubscription.
+                  </p>
+                </div>
+              ) : data.isDowngrade ? (
+                <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
+                  <p className="text-gray-700">
+                    You will continue at your current rate of CA$
+                    {data.oldMembershipPrice
+                      ? (
+                          data.oldMembershipPrice *
+                          (1 + data.gstPercentage / 100)
+                        ).toFixed(2)
+                      : "0.00"}
+                    /month until your next payment date at{" "}
+                    {data.oldMembershipNextPaymentDate
+                      ? new Date(
+                          data.oldMembershipNextPaymentDate
+                        ).toLocaleDateString()
+                      : "N/A"}
+                    , then switch to CA$
+                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                    /month (incl. GST).
+                  </p>
+                  <p className="font-semibold mt-2">No payment is required now.</p>
+                </div>
+              ) : data.upgradeFee > 0 ? (
+                <p className="mt-2 text-gray-700">
+                  You'll pay a prorated amount of CA$
+                  {(data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                    2
+                  )}{" "}
+                  now (incl. GST) to enjoy the benefits of{" "}
+                  <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
+                  <strong>
+                    CA$
+                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                    /month
+                  </strong>{" "}
+                  starting from{" "}
+                  {data.oldMembershipNextPaymentDate
+                    ? new Date(
+                        data.oldMembershipNextPaymentDate
+                      ).toLocaleDateString()
+                    : "N/A"}
+                  .
+                </p>
+              ) : data.userActiveMembership ? (
+                <p className="mt-2 text-gray-700">
+                  Switching to the same price plan. No additional payment is needed
+                  now.
+                </p>
+              ) : null}
+
+              {/*
+                If it's not a downgrade or resubscription, show "Total due now" message
+                (in case of upgrade or brand-new membership).
+              */}
+              {!data.isDowngrade && !data.isResubscription && (
+                <div className="mt-2">
+                  <p className="text-lg font-semibold">
+                    Total due now: CA$
+                    {data.userActiveMembership
+                      ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
+                          2
+                        )
+                      : (membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
+                          2
+                        )}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    (Includes CA$
+                    {data.userActiveMembership
+                      ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
+                      : (membershipPrice * (data.gstPercentage / 100)).toFixed(
+                          2
+                        )}{" "}
+                    GST)
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </>
       ) : (
@@ -1058,7 +1113,7 @@ export default function Payment() {
 
       <Button
         onClick={handlePayment}
-        disabled={loading}
+        disabled={loading || (data.membershipPlan && data.changeNotAllowed)}
         className="mt-4 bg-blue-500 text-white w-full"
       >
         {loading ? "Processing..." : "Proceed"}
