@@ -505,6 +505,15 @@ export default function MembershipDetails() {
                     Select Billing Cycle
                   </h2>
 
+                  {/* Warning for new subscribers selecting non-monthly billing cycles */}
+                  {!userActiveMembership && selectedBillingCycle !== "monthly" && (
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-sm text-gray-700">
+                        <strong>Important:</strong> If you select a non-monthly billing cycle, you will not be able to upgrade or downgrade your subscription until the billing period ends. You will need to cancel and resubscribe to change plans.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Warning for non-monthly billing cycles when upgrading/downgrading */}
                   {userActiveMembership && userActiveMembership.billingCycle !== "monthly" && (
                     <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
