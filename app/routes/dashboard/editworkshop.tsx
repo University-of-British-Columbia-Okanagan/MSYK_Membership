@@ -5,6 +5,9 @@ import {
   useLoaderData,
   useFetcher,
 } from "react-router";
+import * as fs from "fs";
+import * as path from "path";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -245,6 +248,144 @@ export async function action({
       }
     );
     throw new Response("Not Authorized", { status: 419 });
+  }
+
+  // Handle image upload
+  let imageUrl: string | null = null;
+  const workshopImage = formData.get("workshopImage");
+
+  const removeImage = formData.get("removeImage") === "true";
+
+  // Handle image removal
+  if (removeImage) {
+    // Get the current workshop to check for existing image
+    const currentWorkshop = await getWorkshopById(Number(params.workshopId));
+
+    // Delete old image if it exists in images_custom folder
+    if (
+      currentWorkshop.imageUrl &&
+      currentWorkshop.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const oldImagePath = path.join(
+          process.cwd(),
+          "public",
+          currentWorkshop.imageUrl
+        );
+        // Check if file exists before trying to delete
+        if (fs.existsSync(oldImagePath)) {
+          await fs.promises.unlink(oldImagePath);
+          logger.info(
+            `[User: ${roleUser.userId}] Deleted workshop image: ${currentWorkshop.imageUrl}`,
+            { url: request.url }
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[User: ${roleUser.userId}] Could not delete workshop image: ${error}`,
+          { url: request.url }
+        );
+      }
+    }
+
+    // Set imageUrl to empty string to remove it from database
+    imageUrl = "";
+  }
+
+  if (
+    workshopImage &&
+    workshopImage instanceof File &&
+    workshopImage.size > 0
+  ) {
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(workshopImage.type)) {
+      return {
+        errors: {
+          workshopImage: [
+            "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP.",
+          ],
+        },
+      };
+    }
+
+    if (workshopImage.size > maxSize) {
+      return {
+        errors: {
+          workshopImage: ["File size exceeds 5MB limit."],
+        },
+      };
+    }
+
+    // Get the current workshop to check for existing image
+    const currentWorkshop = await getWorkshopById(Number(params.workshopId));
+
+    // Delete old image if it exists in images_custom folder
+    if (
+      currentWorkshop.imageUrl &&
+      currentWorkshop.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const oldImagePath = path.join(
+          process.cwd(),
+          "public",
+          currentWorkshop.imageUrl
+        );
+        // Check if file exists before trying to delete
+        if (fs.existsSync(oldImagePath)) {
+          await fs.promises.unlink(oldImagePath);
+          logger.info(
+            `[User: ${roleUser.userId}] Deleted old workshop image: ${currentWorkshop.imageUrl}`,
+            { url: request.url }
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[User: ${roleUser.userId}] Could not delete old workshop image: ${error}`,
+          { url: request.url }
+        );
+        // Don't fail the upload if we can't delete the old image
+      }
+    }
+
+    // Save new file to public/images_custom folder
+    try {
+      const buffer = Buffer.from(await workshopImage.arrayBuffer());
+      const filename = `workshop-${Date.now()}-${workshopImage.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const imagesCustomDir = path.join(
+        process.cwd(),
+        "public",
+        "images_custom"
+      );
+      const filepath = path.join(imagesCustomDir, filename);
+
+      // Create the images_custom directory if it doesn't exist
+      await fs.promises.mkdir(imagesCustomDir, { recursive: true });
+      await fs.promises.writeFile(filepath, buffer);
+
+      imageUrl = `/images_custom/${filename}`;
+
+      logger.info(
+        `[User: ${roleUser.userId}] Uploaded new workshop image: ${imageUrl}`,
+        { url: request.url }
+      );
+    } catch (error) {
+      logger.error(`[Edit workshop] Error saving image: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: {
+          workshopImage: ["Failed to upload image. Please try again."],
+        },
+      };
+    }
   }
 
   // Check if this submission is a cancellation request
@@ -514,6 +655,7 @@ export async function action({
       userId, // Pass the user ID
       hasPriceVariations,
       priceVariations,
+      ...(imageUrl !== null && { imageUrl: imageUrl === "" ? null : imageUrl }), // Add the image URL (only updates if a new image was uploaded)
     });
 
     // Process equipment bookings for the NEW occurrences
@@ -939,6 +1081,12 @@ export default function EditWorkshop() {
       ? [...new Set(workshop.equipments.map((e: any) => e.equipmentId))]
       : [...new Set(workshop.equipments || [])]
   );
+
+  const [workshopImageFile, setWorkshopImageFile] = useState<File | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(
+    workshop.imageUrl || null
+  );
+  const [removeImageFlag, setRemoveImageFlag] = useState(false);
 
   const [selectedSlotsMap, setSelectedSlotsMap] = useState<
     Record<number, number[]>
@@ -1393,7 +1541,7 @@ export default function EditWorkshop() {
     return slotStrings;
   }
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submit triggered");
 
@@ -1439,12 +1587,38 @@ export default function EditWorkshop() {
       setFormSubmitting(true);
 
       const formElement = e.currentTarget as HTMLFormElement;
-      formElement.submit();
+
+      // Create FormData from the form element
+      const nativeFormData = new FormData(formElement);
+
+      // Add image file if one was selected
+      if (workshopImageFile) {
+        nativeFormData.append("workshopImage", workshopImageFile);
+      }
+
+      // Submit using fetcher with the form data
+      fetcher.submit(nativeFormData, {
+        method: "post",
+        action: `/dashboard/editworkshop/${workshop.id}`,
+        encType: "multipart/form-data",
+      });
     } catch (error) {
       console.error("Error in form submission:", error);
       // Ensure form submits even if there's an error in our checks
       setFormSubmitting(true);
-      document.forms[0].submit();
+      const formElement = e.currentTarget as HTMLFormElement;
+
+      // Create FormData even in error case
+      const nativeFormData = new FormData(formElement);
+      if (workshopImageFile) {
+        nativeFormData.append("workshopImage", workshopImageFile);
+      }
+
+      fetcher.submit(nativeFormData, {
+        method: "post",
+        action: `/dashboard/editworkshop/${workshop.id}`,
+        encType: "multipart/form-data",
+      });
     }
   };
 
@@ -1573,7 +1747,11 @@ export default function EditWorkshop() {
               )}
 
             <Form {...form}>
-              <form method="post" onSubmit={handleFormSubmit}>
+              <form
+                method="post"
+                onSubmit={handleFormSubmit}
+                encType="multipart/form-data"
+              >
                 {/* Basic Workshop Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <GenericFormField
@@ -1637,6 +1815,73 @@ export default function EditWorkshop() {
                     component={Textarea}
                     className="w-full"
                     rows={5}
+                  />
+                </div>
+
+                {/* Workshop Image Upload */}
+                <div className="mb-6">
+                  <FormItem>
+                    <FormLabel>Workshop Image</FormLabel>
+                    {currentImageUrl && !removeImageFlag && (
+                      <div className="mb-3">
+                        <p className="text-sm text-gray-600 mb-2">
+                          Current Image:
+                        </p>
+                        <div className="relative inline-block">
+                          <img
+                            src={currentImageUrl}
+                            alt="Current workshop"
+                            className="w-48 h-32 object-cover rounded-md border border-gray-300"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setRemoveImageFlag(true);
+                              setCurrentImageUrl(null);
+                            }}
+                            className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <FormControl>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.gif,.webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setWorkshopImageFile(file);
+                            setRemoveImageFlag(false);
+                            // Preview the new image
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setCurrentImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Optional. Upload a new image to replace the current one or
+                      add one if you have not uploaded one. Accepted formats:
+                      JPG, JPEG, PNG, GIF, WEBP (Max 5MB)
+                    </p>
+                    {actionData?.errors?.workshopImage && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {actionData.errors.workshopImage}
+                      </p>
+                    )}
+                  </FormItem>
+                  {/* Hidden input to track image removal */}
+                  <input
+                    type="hidden"
+                    name="removeImage"
+                    value={removeImageFlag ? "true" : "false"}
                   />
                 </div>
 
