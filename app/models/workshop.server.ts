@@ -1010,6 +1010,26 @@ export async function deleteWorkshop(workshopId: number) {
       throw new Error("Workshop not found");
     }
 
+    // Delete the image file if it exists in images_custom folder
+    if (workshop.imageUrl && workshop.imageUrl.startsWith("/images_custom/")) {
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const imagePath = path.join(process.cwd(), "public", workshop.imageUrl);
+
+        // Check if file exists before trying to delete
+        if (fs.existsSync(imagePath)) {
+          await fs.promises.unlink(imagePath);
+          console.log(`Deleted workshop image: ${workshop.imageUrl}`);
+        }
+      } catch (error) {
+        console.warn(
+          `Could not delete workshop image: ${error}. Continuing with workshop deletion.`
+        );
+        // Don't fail the deletion if we can't delete the image file
+      }
+    }
+
     // Delete Google Calendar events for all occurrences
     for (const occurrence of workshop.occurrences) {
       if (occurrence.googleEventId) {
