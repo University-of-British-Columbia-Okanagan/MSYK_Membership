@@ -116,6 +116,43 @@ export async function action({
   // Handle image upload
   let imageUrl: string | null = null;
   const equipmentImage = formData.get("equipmentImage");
+  const removeImage = formData.get("removeImage") === "true";
+
+  // Handle image removal
+  if (removeImage) {
+    // Get the current equipment to check for existing image
+    const currentEquipment = await getEquipmentById(equipmentId);
+
+    // Delete old image if it exists in images_custom folder
+    if (
+      currentEquipment.imageUrl &&
+      currentEquipment.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const oldImagePath = path.join(
+          process.cwd(),
+          "public",
+          currentEquipment.imageUrl
+        );
+        // Check if file exists before trying to delete
+        if (fs.existsSync(oldImagePath)) {
+          await fs.promises.unlink(oldImagePath);
+          logger.info(
+            `[User: ${roleUser.userId}] Deleted equipment image: ${currentEquipment.imageUrl}`,
+            { url: request.url }
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[User: ${roleUser.userId}] Could not delete equipment image: ${error}`,
+          { url: request.url }
+        );
+      }
+    }
+
+    // Set imageUrl to empty string to remove it from database
+    imageUrl = "";
+  }
 
   if (
     equipmentImage &&
@@ -232,7 +269,7 @@ export async function action({
       price: parsed.data.price,
       availability: parsed.data.availability === "true" ? true : false,
       workshopPrerequisites: parsed.data.workshopPrerequisites || [],
-      imageUrl: imageUrl,
+      ...(imageUrl !== null && { imageUrl: imageUrl === "" ? null : imageUrl }),
     });
 
     logger.info(
@@ -263,6 +300,7 @@ export default function EditEquipment() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(
     equipment.imageUrl || null
   );
+  const [removeImageFlag, setRemoveImageFlag] = useState(false);
 
   const navigate = useNavigate();
 
@@ -415,16 +453,28 @@ export default function EditEquipment() {
                 <div className="mb-6">
                   <FormItem>
                     <FormLabel>Equipment Image</FormLabel>
-                    {currentImageUrl && (
+                    {currentImageUrl && !removeImageFlag && (
                       <div className="mb-3">
                         <p className="text-sm text-gray-600 mb-2">
                           Current Image:
                         </p>
-                        <img
-                          src={currentImageUrl}
-                          alt="Current equipment"
-                          className="w-48 h-32 object-cover rounded-md border border-gray-300"
-                        />
+                        <div className="relative inline-block">
+                          <img
+                            src={currentImageUrl}
+                            alt="Current equipment"
+                            className="w-48 h-32 object-cover rounded-md border border-gray-300"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setRemoveImageFlag(true);
+                              setCurrentImageUrl(null);
+                            }}
+                            className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
+                          >
+                            Remove
+                          </Button>
+                        </div>
                       </div>
                     )}
                     <FormControl>
@@ -435,6 +485,7 @@ export default function EditEquipment() {
                           const file = e.target.files?.[0];
                           if (file) {
                             setEquipmentImageFile(file);
+                            setRemoveImageFlag(false);
                             // Preview the new image
                             const reader = new FileReader();
                             reader.onloadend = () => {
@@ -458,6 +509,12 @@ export default function EditEquipment() {
                       </p>
                     )}
                   </FormItem>
+                  {/* Hidden input to track image removal */}
+                  <input
+                    type="hidden"
+                    name="removeImage"
+                    value={removeImageFlag ? "true" : "false"}
+                  />
                 </div>
 
                 {/* Availability */}
