@@ -77,10 +77,14 @@ export async function loader({
       "../../models/equipment.server"
     );
 
-    for (const equip of equipmentWithSlots) {
-      equipmentPrerequisiteMap[equip.id] =
-        await hasUserCompletedEquipmentPrerequisites(user.id, equip.id);
-    }
+    const prerequisitePromises = equipmentWithSlots.map((equip) =>
+      hasUserCompletedEquipmentPrerequisites(user.id, equip.id)
+    );
+    const prerequisiteResults = await Promise.all(prerequisitePromises);
+
+    equipmentWithSlots.forEach((equip, index) => {
+      equipmentPrerequisiteMap[equip.id] = prerequisiteResults[index];
+    });
   }
 
   const visibleDays = await getAdminSetting(
