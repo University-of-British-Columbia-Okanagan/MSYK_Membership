@@ -254,6 +254,44 @@ export async function action({
   let imageUrl: string | null = null;
   const workshopImage = formData.get("workshopImage");
 
+  const removeImage = formData.get("removeImage") === "true";
+
+  // Handle image removal
+  if (removeImage) {
+    // Get the current workshop to check for existing image
+    const currentWorkshop = await getWorkshopById(Number(params.workshopId));
+
+    // Delete old image if it exists in images_custom folder
+    if (
+      currentWorkshop.imageUrl &&
+      currentWorkshop.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const oldImagePath = path.join(
+          process.cwd(),
+          "public",
+          currentWorkshop.imageUrl
+        );
+        // Check if file exists before trying to delete
+        if (fs.existsSync(oldImagePath)) {
+          await fs.promises.unlink(oldImagePath);
+          logger.info(
+            `[User: ${roleUser.userId}] Deleted workshop image: ${currentWorkshop.imageUrl}`,
+            { url: request.url }
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[User: ${roleUser.userId}] Could not delete workshop image: ${error}`,
+          { url: request.url }
+        );
+      }
+    }
+
+    // Set imageUrl to empty string to remove it from database
+    imageUrl = "";
+  }
+
   if (
     workshopImage &&
     workshopImage instanceof File &&
@@ -617,7 +655,7 @@ export async function action({
       userId, // Pass the user ID
       hasPriceVariations,
       priceVariations,
-      imageUrl, // Add the image URL (only updates if a new image was uploaded)
+      ...(imageUrl !== null && { imageUrl: imageUrl === "" ? null : imageUrl }), // Add the image URL (only updates if a new image was uploaded)
     });
 
     // Process equipment bookings for the NEW occurrences
@@ -1048,6 +1086,7 @@ export default function EditWorkshop() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(
     workshop.imageUrl || null
   );
+  const [removeImageFlag, setRemoveImageFlag] = useState(false);
 
   const [selectedSlotsMap, setSelectedSlotsMap] = useState<
     Record<number, number[]>
@@ -1783,16 +1822,28 @@ export default function EditWorkshop() {
                 <div className="mb-6">
                   <FormItem>
                     <FormLabel>Workshop Image</FormLabel>
-                    {currentImageUrl && (
+                    {currentImageUrl && !removeImageFlag && (
                       <div className="mb-3">
                         <p className="text-sm text-gray-600 mb-2">
                           Current Image:
                         </p>
-                        <img
-                          src={currentImageUrl}
-                          alt="Current workshop"
-                          className="w-48 h-32 object-cover rounded-md border border-gray-300"
-                        />
+                        <div className="relative inline-block">
+                          <img
+                            src={currentImageUrl}
+                            alt="Current workshop"
+                            className="w-48 h-32 object-cover rounded-md border border-gray-300"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setRemoveImageFlag(true);
+                              setCurrentImageUrl(null);
+                            }}
+                            className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
+                          >
+                            Remove
+                          </Button>
+                        </div>
                       </div>
                     )}
                     <FormControl>
@@ -1803,6 +1854,7 @@ export default function EditWorkshop() {
                           const file = e.target.files?.[0];
                           if (file) {
                             setWorkshopImageFile(file);
+                            setRemoveImageFlag(false);
                             // Preview the new image
                             const reader = new FileReader();
                             reader.onloadend = () => {
@@ -1825,6 +1877,12 @@ export default function EditWorkshop() {
                       </p>
                     )}
                   </FormItem>
+                  {/* Hidden input to track image removal */}
+                  <input
+                    type="hidden"
+                    name="removeImage"
+                    value={removeImageFlag ? "true" : "false"}
+                  />
                 </div>
 
                 {/* "Multi-day Workshop" Checkbox */}
