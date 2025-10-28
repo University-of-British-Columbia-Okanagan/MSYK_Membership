@@ -1058,7 +1058,10 @@ export default function AddWorkshop() {
       Object.entries(actionData.errors).forEach(([key, value]) => {
         const message = Array.isArray(value) ? value[0] : value;
         if (message) {
-          form.setError(key as any, { type: "server", message: String(message) } as any);
+          form.setError(
+            key as any,
+            { type: "server", message: String(message) } as any
+          );
         }
       });
     }
@@ -1145,7 +1148,12 @@ export default function AddWorkshop() {
               )}
 
             <Form {...form}>
-              <form method="post" onSubmit={handleFormSubmit} noValidate ref={formElementRef}>
+              <form
+                method="post"
+                onSubmit={handleFormSubmit}
+                noValidate
+                ref={formElementRef}
+              >
                 {/* Workshop Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <GenericFormField
@@ -1207,6 +1215,22 @@ export default function AddWorkshop() {
                     className="w-full"
                     rows={5}
                   />
+                </div>
+
+                {/* Type */}
+                <div className="mb-6">
+                  <GenericFormField
+                    control={form.control}
+                    name="type"
+                    label="Workshop Type"
+                    required
+                    error={actionData?.errors?.type}
+                    component="select" // Render native select element
+                    className="w-full border rounded-md p-2"
+                  >
+                    <option value="workshop">Workshop</option>
+                    <option value="orientation">Orientation</option>
+                  </GenericFormField>
                 </div>
 
                 {/* (Multi-day Workshop) Checkbox */}
@@ -1769,7 +1793,7 @@ export default function AddWorkshop() {
                     onRemove={removePrerequisite}
                     error={actionData?.errors?.prerequisites}
                     placeholder="Select prerequisites..."
-                    helperText="Select active workshops of type Orientation that must be completed before enrolling."
+                    helperText="Select active workshops of type orientation that must be completed before enrolling."
                     filterFn={(item) =>
                       item.type.toLowerCase() === "orientation" &&
                       Array.isArray(item.occurrences) &&
@@ -1913,20 +1937,6 @@ export default function AddWorkshop() {
                     </Tabs>
                   </div>
                 )}
-
-                {/* Type */}
-                <GenericFormField
-                  control={form.control}
-                  name="type"
-                  label="Workshop Type"
-                  required
-                  error={actionData?.errors?.type}
-                  component="select" // Render native select element
-                  className="w-full border rounded-md p-2"
-                >
-                  <option value="workshop">Workshop</option>
-                  <option value="orientation">Orientation</option>
-                </GenericFormField>
 
                 {/* Hidden input for occurrences */}
                 <input

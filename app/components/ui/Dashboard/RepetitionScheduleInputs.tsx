@@ -51,14 +51,14 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
     scheduleType === "weekly"
       ? "Repeat every (weeks)"
       : scheduleType === "monthly"
-      ? "Repeat every (months)"
-      : "Repeat every";
+        ? "Repeat every (months)"
+        : "Repeat every";
   const placeholderInterval =
     scheduleType === "weekly"
       ? "Week interval"
       : scheduleType === "monthly"
-      ? "Month interval"
-      : "Interval";
+        ? "Month interval"
+        : "Interval";
 
   // Helper function to update date with time
   const updateDateTime = (
@@ -66,7 +66,7 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
     field: "startDate" | "endDate",
     newTime: string
   ) => {
-    const [datePart] = currentDate.split('T');
+    const [datePart] = currentDate.split("T");
     const newDateTime = `${datePart}T${newTime}`;
 
     if (field === "startDate") {
@@ -85,7 +85,12 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
       alert("Please enter valid interval and repetition numbers");
       return;
     }
-    const newOccurrences: { startDate: Date; endDate: Date; status?: string; userCount?: number }[] = [];
+    const newOccurrences: {
+      startDate: Date;
+      endDate: Date;
+      status?: string;
+      userCount?: number;
+    }[] = [];
     const start = parseDateTimeAsLocal(startDate);
     const end = parseDateTimeAsLocal(endDate);
     const baseOccurrence = {
@@ -116,14 +121,21 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
         // Extend logic for other schedule types (e.g., yearly) here.
       }
       // Prevent duplicate dates.
-      const existingStartDates = occurrences.map(o => o.startDate);
+      const existingStartDates = occurrences.map((o) => o.startDate);
       if (!isDuplicateDate(occurrence.startDate, existingStartDates)) {
-        const computedStatus = occurrence.startDate >= new Date() ? "active" : "past";
-        newOccurrences.push({ ...occurrence, status: computedStatus, userCount: 0 });
+        const computedStatus =
+          occurrence.startDate >= new Date() ? "active" : "past";
+        newOccurrences.push({
+          ...occurrence,
+          status: computedStatus,
+          userCount: 0,
+        });
       }
     }
     const updatedOccurrences = [...occurrences, ...newOccurrences];
-    updatedOccurrences.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+    updatedOccurrences.sort(
+      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    );
     setOccurrences(updatedOccurrences);
     updateFormOccurrences(updatedOccurrences);
     // After appending, revert back to custom view.
@@ -139,17 +151,70 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
           <div className="flex items-center gap-2">
             <Input
               type="date"
-              value={startDate ? startDate.split('T')[0] : ''}
+              value={startDate ? startDate.split("T")[0] : ""}
               onChange={(e) => {
-                const currentTime = startDate ? startDate.split('T')[1] : '00:00';
-                setStartDate(`${e.target.value}T${currentTime}`);
+                const currentTime = startDate
+                  ? startDate.split("T")[1]
+                  : "00:00";
+                const newDateTime = `${e.target.value}T${currentTime}`;
+                setStartDate(newDateTime);
+
+                // AUTO-SET END DATE: Automatically set end date to 2 hours later
+                const startDateObj = parseDateTimeAsLocal(newDateTime);
+                if (!isNaN(startDateObj.getTime())) {
+                  const endDateObj = new Date(
+                    startDateObj.getTime() + 2 * 60 * 60 * 1000
+                  );
+                  const endYear = endDateObj.getFullYear();
+                  const endMonth = String(endDateObj.getMonth() + 1).padStart(
+                    2,
+                    "0"
+                  );
+                  const endDay = String(endDateObj.getDate()).padStart(2, "0");
+                  const endHours = String(endDateObj.getHours()).padStart(
+                    2,
+                    "0"
+                  );
+                  const endMinutes = String(endDateObj.getMinutes()).padStart(
+                    2,
+                    "0"
+                  );
+                  const formattedEndDate = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
+                  setEndDate(formattedEndDate);
+                }
               }}
               className="flex-1"
             />
             <TimeIntervalPicker
               value={startDate}
-              onChange={(value) => setStartDate(value)}
-              date={startDate ? startDate.split('T')[0] : undefined} // Pass the date
+              onChange={(value) => {
+                setStartDate(value);
+
+                // AUTO-SET END DATE: Automatically set end date to 2 hours later
+                const startDateObj = parseDateTimeAsLocal(value);
+                if (!isNaN(startDateObj.getTime())) {
+                  const endDateObj = new Date(
+                    startDateObj.getTime() + 2 * 60 * 60 * 1000
+                  );
+                  const endYear = endDateObj.getFullYear();
+                  const endMonth = String(endDateObj.getMonth() + 1).padStart(
+                    2,
+                    "0"
+                  );
+                  const endDay = String(endDateObj.getDate()).padStart(2, "0");
+                  const endHours = String(endDateObj.getHours()).padStart(
+                    2,
+                    "0"
+                  );
+                  const endMinutes = String(endDateObj.getMinutes()).padStart(
+                    2,
+                    "0"
+                  );
+                  const formattedEndDate = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
+                  setEndDate(formattedEndDate);
+                }
+              }}
+              date={startDate ? startDate.split("T")[0] : undefined}
               className="flex-1"
             />
           </div>
@@ -159,9 +224,9 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
           <div className="flex items-center gap-2">
             <Input
               type="date"
-              value={endDate ? endDate.split('T')[0] : ''}
+              value={endDate ? endDate.split("T")[0] : ""}
               onChange={(e) => {
-                const currentTime = endDate ? endDate.split('T')[1] : '00:00';
+                const currentTime = endDate ? endDate.split("T")[1] : "00:00";
                 setEndDate(`${e.target.value}T${currentTime}`);
               }}
               className="flex-1"
@@ -169,7 +234,7 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
             <TimeIntervalPicker
               value={endDate}
               onChange={(value) => setEndDate(value)}
-              date={endDate ? endDate.split('T')[0] : undefined} // Pass the date
+              date={endDate ? endDate.split("T")[0] : undefined} // Pass the date
               className="flex-1"
             />
           </div>
@@ -206,8 +271,8 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
         {scheduleType === "weekly"
           ? "Append Weekly Dates"
           : scheduleType === "monthly"
-          ? "Append Monthly Dates"
-          : "Append Dates"}
+            ? "Append Monthly Dates"
+            : "Append Dates"}
       </Button>
     </div>
   );
