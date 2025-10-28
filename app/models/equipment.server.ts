@@ -390,6 +390,7 @@ export async function addEquipment(data: {
   price: number;
   availability: boolean;
   workshopPrerequisites?: number[];
+  imageUrl?: string | null;
 }) {
   try {
     // Create Equipment Without Slots
@@ -399,6 +400,7 @@ export async function addEquipment(data: {
         description: data.description,
         price: data.price,
         availability: data.availability, // 24/7 available unless changed by admin
+        imageUrl: data.imageUrl,
       },
     });
 
