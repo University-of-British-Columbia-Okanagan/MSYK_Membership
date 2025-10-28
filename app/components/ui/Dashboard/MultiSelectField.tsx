@@ -22,7 +22,7 @@ export interface MultiSelectOption {
 }
 
 interface MultiSelectFieldProps<
-  T extends MultiSelectOption = MultiSelectOption
+  T extends MultiSelectOption = MultiSelectOption,
 > {
   control: any;
   name: string;

@@ -1,7 +1,11 @@
 import { db } from "../utils/db.server";
 import { getUser } from "~/utils/session.server";
 import { createEquipmentSlotsForOccurrence } from "../models/equipment.server";
-import { createEventForOccurrence, updateEventForOccurrence, deleteEventForOccurrence } from "~/utils/googleCalendar.server";
+import {
+  createEventForOccurrence,
+  updateEventForOccurrence,
+  deleteEventForOccurrence,
+} from "~/utils/googleCalendar.server";
 
 interface WorkshopData {
   name: string;
@@ -27,6 +31,7 @@ interface WorkshopData {
   }[];
   isMultiDayWorkshop?: boolean;
   selectedSlots: Record<number, number[]>;
+  imageUrl?: string | null;
 }
 
 interface OccurrenceData {
@@ -163,6 +168,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         capacity: data.capacity,
         type: data.type,
         hasPriceVariations: data.hasPriceVariations || false,
+        imageUrl: data.imageUrl || null,
       },
     });
 
@@ -738,7 +744,9 @@ export async function updateWorkshopWithOccurrences(
           endDate: updated.endDate,
           startDatePST: updated.startDatePST ?? undefined,
           endDatePST: updated.endDatePST ?? undefined,
-          googleEventId: (existingOccurrences.find((e) => e.id === updated.id) as any)?.googleEventId ?? null,
+          googleEventId:
+            (existingOccurrences.find((e) => e.id === updated.id) as any)
+              ?.googleEventId ?? null,
           connectId: updated.connectId ?? undefined,
         }
       );
@@ -753,7 +761,9 @@ export async function updateWorkshopWithOccurrences(
       where: { id: { in: deleteIds } },
       select: { id: true, googleEventId: true },
     });
-    await db.workshopOccurrence.deleteMany({ where: { id: { in: deleteIds } } });
+    await db.workshopOccurrence.deleteMany({
+      where: { id: { in: deleteIds } },
+    });
     for (const item of toDelete) {
       if (item.googleEventId) {
         try {
@@ -988,10 +998,10 @@ export async function deleteWorkshop(workshopId: number) {
       include: {
         occurrences: {
           where: {
-            googleEventId: { not: null }
-          }
-        }
-      }
+            googleEventId: { not: null },
+          },
+        },
+      },
     });
 
     if (!workshop) {
@@ -1004,7 +1014,10 @@ export async function deleteWorkshop(workshopId: number) {
         try {
           await deleteEventForOccurrence(occurrence.googleEventId);
         } catch (error) {
-          console.error(`Failed to delete Google Calendar event ${occurrence.googleEventId}:`, error);
+          console.error(
+            `Failed to delete Google Calendar event ${occurrence.googleEventId}:`,
+            error
+          );
           // Continue with deletion even if Google Calendar deletion fails
         }
       }
@@ -1377,7 +1390,7 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
   // First, get the occurrence to check if it has a Google Calendar event
   const occurrence = await db.workshopOccurrence.findUnique({
     where: { id: occurrenceId },
-    select: { googleEventId: true }
+    select: { googleEventId: true },
   });
 
   if (!occurrence) {
@@ -1389,7 +1402,10 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     try {
       await deleteEventForOccurrence(occurrence.googleEventId);
     } catch (error) {
-      console.error(`Failed to delete Google Calendar event ${occurrence.googleEventId}:`, error);
+      console.error(
+        `Failed to delete Google Calendar event ${occurrence.googleEventId}:`,
+        error
+      );
       // Continue with cancellation even if Google Calendar deletion fails
     }
   }
@@ -1399,7 +1415,7 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     where: { id: occurrenceId },
     data: {
       status: "cancelled",
-      googleEventId: null // Clear the Google event ID since the event is deleted
+      googleEventId: null, // Clear the Google event ID since the event is deleted
     },
   });
 }
