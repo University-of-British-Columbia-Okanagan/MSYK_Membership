@@ -671,6 +671,7 @@ export async function updateEquipment(
     price?: number;
     availability?: boolean;
     workshopPrerequisites?: number[];
+    imageUrl?: string | null;
   }
 ) {
   try {
@@ -682,6 +683,7 @@ export async function updateEquipment(
         description: data.description,
         price: data.price,
         availability: data.availability,
+        ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
       },
     });
 
