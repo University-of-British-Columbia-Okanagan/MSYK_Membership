@@ -55,6 +55,7 @@ interface UpdateWorkshopData {
   equipments?: number[];
   occurrences: OccurrenceData[];
   isMultiDayWorkshop: boolean;
+  imageUrl?: string | null;
 }
 
 /**
@@ -485,6 +486,7 @@ export async function updateWorkshopWithOccurrences(
       capacity: data.capacity,
       type: data.type,
       hasPriceVariations: data.hasPriceVariations || false,
+      ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
     },
   });
 
