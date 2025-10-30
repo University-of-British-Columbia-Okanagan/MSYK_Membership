@@ -929,7 +929,7 @@ export default function ProfilePage() {
                           the start and end time for your volunteer session. You
                           must add a brief description of what you worked on.
                           Your hours will be reviewed and approved by an
-                          administrator.
+                          administrator
                         </p>
                       </div>
 
@@ -1059,7 +1059,8 @@ export default function ProfilePage() {
                           (pending, approved, denied) or search by date range.
                           Hours show as "pending" until reviewed by an
                           administrator. Use the filters below to find specific
-                          volunteer sessions.
+                          volunteer sessions. The filter to and from inputs is
+                          based off start dates and times
                         </p>
                       </div>
 

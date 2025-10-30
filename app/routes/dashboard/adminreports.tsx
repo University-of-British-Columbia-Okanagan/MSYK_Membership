@@ -41,6 +41,7 @@ import {
 } from "~/components/ui/select";
 import { SelectTrigger } from "@radix-ui/react-select";
 import { logger } from "~/logging/logger";
+import { getAllVolunteerHours } from "~/models/profile.server";
 
 /**
  * Convert workshop occurrence data to CSV string
@@ -128,6 +129,7 @@ export async function loader({ request }: { request: Request }) {
   try {
     const workshops = await getWorkshops();
     const issues = await getIssues();
+    const volunteerHours = await getAllVolunteerHours();
 
     logger.info(`[User: ${roleUser.userId}] Admin dashboard data loaded`, {
       url: request.url,
@@ -139,6 +141,7 @@ export async function loader({ request }: { request: Request }) {
       roleUser,
       workshops,
       issues,
+      volunteerHours,
     };
   } catch (error) {
     logger.error(`Error loading admin dashboard data: ${error}`, {
@@ -240,7 +243,7 @@ const calculateDuration = (startDateString: string, endDateString: string) => {
 };
 
 export default function AdminReports() {
-  const { roleUser, workshops, issues } = useLoaderData<{
+  const { roleUser, workshops, issues, volunteerHours } = useLoaderData<{
     roleUser: { roleId: number; roleName: string };
     workshops: Array<{
       id: number;
@@ -260,6 +263,19 @@ export default function AdminReports() {
       }>;
     }>;
     issues: Issue[];
+    volunteerHours: Array<{
+      id: number;
+      userId: number;
+      startTime: string;
+      endTime: string;
+      description: string;
+      status: string;
+      user: {
+        firstName: string;
+        lastName: string;
+        email: string;
+      };
+    }>;
   }>();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -292,6 +308,23 @@ export default function AdminReports() {
   const filteredWorkshops = workshops.filter((workshop) =>
     workshop.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Volunteer Reports state
+  const [volunteerFirstName, setVolunteerFirstName] = useState("");
+  const [volunteerLastName, setVolunteerLastName] = useState("");
+  const [volunteerStatus, setVolunteerStatus] = useState("all");
+
+  // Date/Time filter state for volunteer reports
+  const [fromDate, setFromDate] = useState("");
+  const [fromTime, setFromTime] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [toTime, setToTime] = useState("");
+
+  // Applied filters (for search button) for volunteer reports
+  const [appliedFromDate, setAppliedFromDate] = useState("");
+  const [appliedFromTime, setAppliedFromTime] = useState("");
+  const [appliedToDate, setAppliedToDate] = useState("");
+  const [appliedToTime, setAppliedToTime] = useState("");
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -379,6 +412,151 @@ export default function AdminReports() {
     form.submit();
   }
 
+  // Helper function to generate time options
+  const generateTimeOptions = () => {
+    const options = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute of [0, 15, 30, 45]) {
+        const formattedHour = hour.toString().padStart(2, "0");
+        const formattedMinute = minute.toString().padStart(2, "0");
+        options.push(`${formattedHour}:${formattedMinute}`);
+      }
+    }
+    return options;
+  };
+
+  // Handle search button click
+  const handleVolunteerSearch = () => {
+    setAppliedFromDate(fromDate);
+    setAppliedFromTime(fromTime);
+    setAppliedToDate(toDate);
+    setAppliedToTime(toTime);
+  };
+
+  // Handle clear filters
+  const handleClearVolunteerFilters = () => {
+    setVolunteerFirstName("");
+    setVolunteerLastName("");
+    setVolunteerStatus("all");
+    setFromDate("");
+    setFromTime("");
+    setToDate("");
+    setToTime("");
+    setAppliedFromDate("");
+    setAppliedFromTime("");
+    setAppliedToDate("");
+    setAppliedToTime("");
+  };
+
+  // Generate CSV for volunteer hours
+  const generateVolunteerCSV = () => {
+    // Get all filtered hours (not just paginated)
+    const filteredHours = volunteerHours.filter((hour) => {
+      const firstNameMatch =
+        volunteerFirstName === "" ||
+        hour.user.firstName
+          .toLowerCase()
+          .includes(volunteerFirstName.toLowerCase());
+      const lastNameMatch =
+        volunteerLastName === "" ||
+        hour.user.lastName
+          .toLowerCase()
+          .includes(volunteerLastName.toLowerCase());
+      const statusMatch =
+        volunteerStatus === "all" || hour.status === volunteerStatus;
+
+      let dateTimeMatch = true;
+      if (
+        appliedFromDate &&
+        appliedFromTime &&
+        appliedToDate &&
+        appliedToTime
+      ) {
+        const entryStartDate = new Date(hour.startTime);
+        const fromDateTime = new Date(`${appliedFromDate}T${appliedFromTime}`);
+        const toDateTime = new Date(`${appliedToDate}T${appliedToTime}`);
+        dateTimeMatch =
+          entryStartDate >= fromDateTime && entryStartDate < toDateTime;
+      }
+
+      return firstNameMatch && lastNameMatch && statusMatch && dateTimeMatch;
+    });
+
+    // CSV Headers
+    const headers = [
+      "User Name",
+      "Email",
+      "Date",
+      "Start Time",
+      "End Time",
+      "Duration (Hours)",
+      "Description",
+      "Status",
+    ];
+
+    // Convert data to CSV rows
+    const rows = filteredHours
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      )
+      .map((hour) => {
+        const start = new Date(hour.startTime);
+        const end = new Date(hour.endTime);
+        const durationMs = end.getTime() - start.getTime();
+        const hoursDec = (durationMs / (1000 * 60 * 60)).toFixed(2);
+
+        return [
+          `${hour.user.firstName} ${hour.user.lastName}`,
+          hour.user.email,
+          start.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          }),
+          start.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          end.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          hoursDec,
+          hour.description || "",
+          hour.status,
+        ];
+      });
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) =>
+        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+      ),
+    ].join("\n");
+
+    return csvContent;
+  };
+
+  // Download CSV file
+  const handleDownloadCSV = () => {
+    const csvContent = generateVolunteerCSV();
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+
+    // Generate filename with current date
+    const today = new Date().toISOString().split("T")[0];
+    link.setAttribute("download", `volunteer-hours-report-${today}.csv`);
+
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <SidebarProvider>
       <div className="absolute inset-0 flex">
@@ -402,6 +580,7 @@ export default function AdminReports() {
                 {/* Additional report tabs can be added here */}
                 <TabsTrigger value="placeholder">Equipment Reports</TabsTrigger>
                 <TabsTrigger value="placeholder2">User Reports</TabsTrigger>
+                <TabsTrigger value="volunteers">Volunteer Reports</TabsTrigger>
                 <TabsTrigger value="issues">Reported Issues</TabsTrigger>
               </TabsList>
 
@@ -714,6 +893,645 @@ export default function AdminReports() {
                     </p>
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              {/* Volunteer Reports Tab */}
+              <TabsContent value="volunteers">
+                {/* Search and Filter Section - Outside Card */}
+                <div className="mb-6 space-y-4">
+                  {/* Name and Status Filters with Download CSV Buttons */}
+                  <div className="flex flex-wrap gap-4 items-center justify-between">
+                    <div className="flex flex-wrap gap-4 items-center">
+                      <div className="flex items-center gap-2">
+                        <FiSearch className="text-gray-500" />
+                        <Input
+                          placeholder="First Name"
+                          value={volunteerFirstName}
+                          onChange={(e) =>
+                            setVolunteerFirstName(e.target.value)
+                          }
+                          className="w-40"
+                        />
+                      </div>
+                      <Input
+                        placeholder="Last Name"
+                        value={volunteerLastName}
+                        onChange={(e) => setVolunteerLastName(e.target.value)}
+                        className="w-40"
+                      />
+                      <select
+                        value={volunteerStatus}
+                        onChange={(e) => setVolunteerStatus(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-md text-sm h-10"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="denied">Denied</option>
+                        <option value="resolved">Resolved</option>
+                      </select>
+                    </div>
+
+                    {/* Download CSV Buttons */}
+                    <div className="flex gap-2">
+                      {/* Download Detailed CSV Button */}
+                      <Button
+                        onClick={() => {
+                          // Filter hours based on current filters
+                          const filteredHours = volunteerHours.filter(
+                            (hour) => {
+                              const firstNameMatch =
+                                volunteerFirstName === "" ||
+                                hour.user.firstName
+                                  .toLowerCase()
+                                  .includes(volunteerFirstName.toLowerCase());
+                              const lastNameMatch =
+                                volunteerLastName === "" ||
+                                hour.user.lastName
+                                  .toLowerCase()
+                                  .includes(volunteerLastName.toLowerCase());
+                              const statusMatch =
+                                volunteerStatus === "all" ||
+                                hour.status === volunteerStatus;
+
+                              let dateTimeMatch = true;
+                              if (
+                                appliedFromDate &&
+                                appliedFromTime &&
+                                appliedToDate &&
+                                appliedToTime
+                              ) {
+                                const entryStartDate = new Date(hour.startTime);
+                                const fromDateTime = new Date(
+                                  `${appliedFromDate}T${appliedFromTime}`
+                                );
+                                const toDateTime = new Date(
+                                  `${appliedToDate}T${appliedToTime}`
+                                );
+                                dateTimeMatch =
+                                  entryStartDate >= fromDateTime &&
+                                  entryStartDate < toDateTime;
+                              }
+
+                              return (
+                                firstNameMatch &&
+                                lastNameMatch &&
+                                statusMatch &&
+                                dateTimeMatch
+                              );
+                            }
+                          );
+
+                          // CSV Headers
+                          const headers = [
+                            "User Name",
+                            "Email",
+                            "Date",
+                            "Start Time",
+                            "End Time",
+                            "Duration (Hours)",
+                            "Status",
+                          ];
+
+                          // Convert data to CSV rows
+                          const rows = filteredHours
+                            .sort(
+                              (a, b) =>
+                                new Date(a.startTime).getTime() -
+                                new Date(b.startTime).getTime()
+                            )
+                            .map((hour) => {
+                              const start = new Date(hour.startTime);
+                              const end = new Date(hour.endTime);
+                              const durationMs =
+                                end.getTime() - start.getTime();
+                              const hoursDec = (
+                                durationMs /
+                                (1000 * 60 * 60)
+                              ).toFixed(2);
+
+                              return [
+                                `${hour.user.firstName} ${hour.user.lastName}`,
+                                hour.user.email,
+                                start.toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }),
+                                start.toLocaleTimeString("en-US", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }),
+                                end.toLocaleTimeString("en-US", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }),
+                                hoursDec,
+                                hour.status,
+                              ];
+                            });
+
+                          // Combine headers and rows
+                          const csvContent = [
+                            headers.join(","),
+                            ...rows.map((row) =>
+                              row
+                                .map(
+                                  (cell) =>
+                                    `"${String(cell).replace(/"/g, '""')}"`
+                                )
+                                .join(",")
+                            ),
+                          ].join("\n");
+
+                          // Download CSV
+                          const blob = new Blob([csvContent], {
+                            type: "text/csv;charset=utf-8;",
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.setAttribute("href", url);
+
+                          // Generate filename with current date
+                          const today = new Date().toISOString().split("T")[0];
+                          link.setAttribute(
+                            "download",
+                            `volunteer-hours-detailed-${today}.csv`
+                          );
+
+                          link.style.visibility = "hidden";
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        variant="outline"
+                        className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                      >
+                        Download CSV
+                      </Button>
+
+                      {/* Download Total Hours CSV Button */}
+                      <Button
+                        onClick={() => {
+                          // Filter hours based on current filters
+                          const filteredHours = volunteerHours.filter(
+                            (hour) => {
+                              const firstNameMatch =
+                                volunteerFirstName === "" ||
+                                hour.user.firstName
+                                  .toLowerCase()
+                                  .includes(volunteerFirstName.toLowerCase());
+                              const lastNameMatch =
+                                volunteerLastName === "" ||
+                                hour.user.lastName
+                                  .toLowerCase()
+                                  .includes(volunteerLastName.toLowerCase());
+                              const statusMatch =
+                                volunteerStatus === "all" ||
+                                hour.status === volunteerStatus;
+
+                              let dateTimeMatch = true;
+                              if (
+                                appliedFromDate &&
+                                appliedFromTime &&
+                                appliedToDate &&
+                                appliedToTime
+                              ) {
+                                const entryStartDate = new Date(hour.startTime);
+                                const fromDateTime = new Date(
+                                  `${appliedFromDate}T${appliedFromTime}`
+                                );
+                                const toDateTime = new Date(
+                                  `${appliedToDate}T${appliedToTime}`
+                                );
+                                dateTimeMatch =
+                                  entryStartDate >= fromDateTime &&
+                                  entryStartDate < toDateTime;
+                              }
+
+                              return (
+                                firstNameMatch &&
+                                lastNameMatch &&
+                                statusMatch &&
+                                dateTimeMatch
+                              );
+                            }
+                          );
+
+                          // Group by user and calculate totals
+                          type UserTotal = {
+                            userName: string;
+                            userEmail: string;
+                            totalHours: number;
+                            earliestDate: Date;
+                            latestDate: Date;
+                          };
+
+                          const userTotalsMap = new Map<number, UserTotal>();
+
+                          filteredHours.forEach((hour) => {
+                            const userId = hour.userId;
+                            const userName = `${hour.user.firstName} ${hour.user.lastName}`;
+                            const userEmail = hour.user.email;
+                            const startTime = new Date(hour.startTime);
+                            const endTime = new Date(hour.endTime);
+                            const durationMs =
+                              endTime.getTime() - startTime.getTime();
+                            const hoursDec = durationMs / (1000 * 60 * 60);
+
+                            const existing = userTotalsMap.get(userId);
+
+                            if (!existing) {
+                              userTotalsMap.set(userId, {
+                                userName,
+                                userEmail,
+                                totalHours: hoursDec,
+                                earliestDate: startTime,
+                                latestDate: endTime,
+                              });
+                            } else {
+                              existing.totalHours += hoursDec;
+
+                              // Update earliest and latest dates
+                              if (startTime < existing.earliestDate) {
+                                existing.earliestDate = startTime;
+                              }
+                              if (endTime > existing.latestDate) {
+                                existing.latestDate = endTime;
+                              }
+                            }
+                          });
+
+                          // CSV Headers
+                          const headers = [
+                            "User Name",
+                            "Email",
+                            "Total Hours",
+                            "Period Start",
+                            "Period End",
+                          ];
+
+                          // Convert data to CSV rows
+                          const rows = Array.from(userTotalsMap.values())
+                            .sort((a, b) =>
+                              a.userName.localeCompare(b.userName)
+                            )
+                            .map((user) => {
+                              return [
+                                user.userName,
+                                user.userEmail,
+                                user.totalHours.toFixed(2),
+                                user.earliestDate.toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }),
+                                user.latestDate.toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                }),
+                              ];
+                            });
+
+                          // Combine headers and rows
+                          const csvContent = [
+                            headers.join(","),
+                            ...rows.map((row) =>
+                              row
+                                .map(
+                                  (cell) =>
+                                    `"${String(cell).replace(/"/g, '""')}"`
+                                )
+                                .join(",")
+                            ),
+                          ].join("\n");
+
+                          // Download CSV
+                          const blob = new Blob([csvContent], {
+                            type: "text/csv;charset=utf-8;",
+                          });
+                          const url = URL.createObjectURL(blob);
+                          const link = document.createElement("a");
+                          link.setAttribute("href", url);
+
+                          // Generate filename with current date
+                          const today = new Date().toISOString().split("T")[0];
+                          link.setAttribute(
+                            "download",
+                            `volunteer-hours-totals-${today}.csv`
+                          );
+
+                          link.style.visibility = "hidden";
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        variant="outline"
+                        className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                      >
+                        Download Total Hours CSV
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Date and Time Filters - Inline Layout */}
+                  <div className="flex flex-wrap gap-4 items-end">
+                    {/* From Date */}
+                    <div className="flex flex-col">
+                      <label className="text-sm text-gray-600 mb-1">
+                        From date:
+                      </label>
+                      <input
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* From Time */}
+                    <div className="flex flex-col">
+                      <label className="text-sm text-gray-600 mb-1">
+                        From time:
+                      </label>
+                      <Select
+                        value={fromTime}
+                        onValueChange={setFromTime}
+                        disabled={!fromDate}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue
+                            placeholder={
+                              !fromDate ? "Select date first" : "Select time"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateTimeOptions().map((time) => (
+                            <SelectItem key={time} value={time}>
+                              {time}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* To Date */}
+                    <div className="flex flex-col">
+                      <label className="text-sm text-gray-600 mb-1">
+                        To date:
+                      </label>
+                      <input
+                        type="date"
+                        value={toDate}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+
+                    {/* To Time */}
+                    <div className="flex flex-col">
+                      <label className="text-sm text-gray-600 mb-1">
+                        To time:
+                      </label>
+                      <Select
+                        value={toTime}
+                        onValueChange={setToTime}
+                        disabled={!toDate}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue
+                            placeholder={
+                              !toDate ? "Select date first" : "Select time"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {generateTimeOptions().map((time) => (
+                            <SelectItem key={time} value={time}>
+                              {time}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Search Button */}
+                    <div className="flex flex-col justify-end">
+                      <button
+                        onClick={handleVolunteerSearch}
+                        disabled={!fromDate || !fromTime || !toDate || !toTime}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        Search
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Clear Filters Link */}
+                  {(volunteerFirstName ||
+                    volunteerLastName ||
+                    volunteerStatus !== "all" ||
+                    appliedFromDate ||
+                    appliedFromTime ||
+                    appliedToDate ||
+                    appliedToTime) && (
+                    <button
+                      onClick={handleClearVolunteerFilters}
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+
+                {/* Volunteer Hours by User */}
+                <div className="space-y-4">
+                  {(() => {
+                    const filteredHours = volunteerHours.filter((hour) => {
+                      const firstNameMatch =
+                        volunteerFirstName === "" ||
+                        hour.user.firstName
+                          .toLowerCase()
+                          .includes(volunteerFirstName.toLowerCase());
+                      const lastNameMatch =
+                        volunteerLastName === "" ||
+                        hour.user.lastName
+                          .toLowerCase()
+                          .includes(volunteerLastName.toLowerCase());
+                      const statusMatch =
+                        volunteerStatus === "all" ||
+                        hour.status === volunteerStatus;
+
+                      let dateTimeMatch = true;
+                      if (
+                        appliedFromDate &&
+                        appliedFromTime &&
+                        appliedToDate &&
+                        appliedToTime
+                      ) {
+                        const entryStartDate = new Date(hour.startTime);
+                        const fromDateTime = new Date(
+                          `${appliedFromDate}T${appliedFromTime}`
+                        );
+                        const toDateTime = new Date(
+                          `${appliedToDate}T${appliedToTime}`
+                        );
+                        dateTimeMatch =
+                          entryStartDate >= fromDateTime &&
+                          entryStartDate < toDateTime;
+                      }
+
+                      return (
+                        firstNameMatch &&
+                        lastNameMatch &&
+                        statusMatch &&
+                        dateTimeMatch
+                      );
+                    });
+
+                    const userGroups = filteredHours.reduce(
+                      (acc, hour) => {
+                        const userId = hour.userId;
+                        if (!acc[userId]) {
+                          acc[userId] = {
+                            user: hour.user,
+                            hours: [],
+                          };
+                        }
+                        acc[userId].hours.push(hour);
+                        return acc;
+                      },
+                      {} as Record<number, { user: any; hours: any[] }>
+                    );
+
+                    const sortedUsers = Object.values(userGroups).sort((a, b) =>
+                      a.user.lastName.localeCompare(b.user.lastName)
+                    );
+
+                    if (sortedUsers.length === 0) {
+                      return (
+                        <div className="text-center py-10 text-gray-500">
+                          No volunteer hours found matching the filters.
+                        </div>
+                      );
+                    }
+
+                    return sortedUsers.map(({ user, hours }) => {
+                      const totalHours = hours.reduce((sum, hour) => {
+                        const start = new Date(hour.startTime);
+                        const end = new Date(hour.endTime);
+                        const durationMs = end.getTime() - start.getTime();
+                        const hoursDec = durationMs / (1000 * 60 * 60);
+                        return sum + hoursDec;
+                      }, 0);
+
+                      return (
+                        <Card key={user.email} className="overflow-hidden">
+                          <CardHeader className="bg-white">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <CardTitle className="text-lg">
+                                  {user.firstName} {user.lastName}
+                                </CardTitle>
+                                <CardDescription className="text-sm mt-1">
+                                  {user.email}
+                                </CardDescription>
+                              </div>
+                              <Badge
+                                variant="outline"
+                                className="bg-indigo-100 border-indigo-300 text-indigo-800"
+                              >
+                                Total: {totalHours.toFixed(2)} hours
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pt-4">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Date & Time</TableHead>
+                                  <TableHead>Hour(s)</TableHead>
+                                  <TableHead>Status</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {hours
+                                  .sort(
+                                    (a, b) =>
+                                      new Date(b.startTime).getTime() -
+                                      new Date(a.startTime).getTime()
+                                  )
+                                  .map((hour) => {
+                                    const start = new Date(hour.startTime);
+                                    const end = new Date(hour.endTime);
+                                    const durationMs =
+                                      end.getTime() - start.getTime();
+                                    const hoursDec = (
+                                      durationMs /
+                                      (1000 * 60 * 60)
+                                    ).toFixed(2);
+
+                                    return (
+                                      <TableRow key={hour.id}>
+                                        <TableCell>
+                                          <div className="text-sm">
+                                            <div className="font-medium">
+                                              {start.toLocaleDateString(
+                                                "en-US",
+                                                {
+                                                  month: "short",
+                                                  day: "numeric",
+                                                  year: "numeric",
+                                                }
+                                              )}
+                                            </div>
+                                            <div className="text-gray-600">
+                                              {start.toLocaleTimeString(
+                                                "en-US",
+                                                {
+                                                  hour: "2-digit",
+                                                  minute: "2-digit",
+                                                }
+                                              )}{" "}
+                                              -{" "}
+                                              {end.toLocaleTimeString("en-US", {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })}
+                                            </div>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell className="font-medium">
+                                          {hoursDec}
+                                        </TableCell>
+                                        <TableCell>
+                                          <Badge
+                                            className={
+                                              hour.status === "approved"
+                                                ? "bg-green-100 text-green-800 border-green-300"
+                                                : hour.status === "denied"
+                                                  ? "bg-red-100 text-red-800 border-red-300"
+                                                  : hour.status === "resolved"
+                                                    ? "bg-purple-100 text-purple-800 border-purple-300"
+                                                    : "bg-indigo-100 text-indigo-800 border-indigo-300"
+                                            }
+                                          >
+                                            {hour.status}
+                                          </Badge>
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
+                              </TableBody>
+                            </Table>
+                          </CardContent>
+                        </Card>
+                      );
+                    });
+                  })()}
+                </div>
               </TabsContent>
 
               <TabsContent value="issues" className="mt-4">
