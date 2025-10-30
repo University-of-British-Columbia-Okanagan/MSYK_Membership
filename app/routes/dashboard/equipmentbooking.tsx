@@ -14,7 +14,7 @@ import {
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
 import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
 import { logger } from "~/logging/logger";
@@ -69,6 +69,24 @@ export async function loader({
     userId ?? undefined,
     true
   );
+
+  // Check prerequisites for all equipment
+  const equipmentPrerequisiteMap: Record<number, boolean> = {};
+  if (user && (roleLevel === 3 || roleLevel === 4)) {
+    const { hasUserCompletedEquipmentPrerequisites } = await import(
+      "../../models/equipment.server"
+    );
+
+    const prerequisitePromises = equipmentWithSlots.map((equip) =>
+      hasUserCompletedEquipmentPrerequisites(user.id, equip.id)
+    );
+    const prerequisiteResults = await Promise.all(prerequisitePromises);
+
+    equipmentWithSlots.forEach((equip, index) => {
+      equipmentPrerequisiteMap[equip.id] = prerequisiteResults[index];
+    });
+  }
+
   const visibleDays = await getAdminSetting(
     "equipment_visible_registrable_days",
     "7"
@@ -109,6 +127,7 @@ export async function loader({
     savedPaymentMethod,
     hasCompletedEquipmentPrerequisites,
     equipmentPrerequisiteMessage,
+    equipmentPrerequisiteMap,
     gstPercentage: parseFloat(gstPercentage),
   });
 }
@@ -157,6 +176,34 @@ export async function action({ request }: { request: Request }) {
       { url: request.url }
     );
     throw new Response("Equipment Not Available", { status: 419 });
+  }
+
+  // Check prerequisites before allowing booking
+  if (user && (roleLevel === 3 || roleLevel === 4)) {
+    const { hasUserCompletedEquipmentPrerequisites } = await import(
+      "../../models/equipment.server"
+    );
+
+    const hasPrereqs = await hasUserCompletedEquipmentPrerequisites(
+      user.id,
+      equipmentId
+    );
+
+    if (!hasPrereqs) {
+      logger.warn(
+        `[User: ${user.id}] Attempted to book equipment ID ${equipmentId} without completing prerequisites`,
+        { url: request.url }
+      );
+      return json(
+        {
+          errors: {
+            message:
+              "You must complete the required orientation before booking this equipment.",
+          },
+        },
+        { status: 403 }
+      );
+    }
   }
 
   // Create Stripe checkout session
@@ -228,6 +275,7 @@ export default function EquipmentBookingForm() {
     savedPaymentMethod,
     hasCompletedEquipmentPrerequisites,
     equipmentPrerequisiteMessage,
+    equipmentPrerequisiteMap,
     gstPercentage,
   } = useLoaderData();
   const actionData = useActionData();
@@ -237,6 +285,18 @@ export default function EquipmentBookingForm() {
     equipmentId
   );
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [currentEquipmentHasPrerequisites, setCurrentEquipmentHasPrerequisites] =
+    useState<boolean>(hasCompletedEquipmentPrerequisites);
+
+  // Initialize prerequisite status when selectedEquipment changes
+  useEffect(() => {
+    if (selectedEquipment !== null && equipmentPrerequisiteMap) {
+      const hasPrereqs = equipmentPrerequisiteMap[selectedEquipment] ?? true;
+      setCurrentEquipmentHasPrerequisites(hasPrereqs);
+    } else {
+      setCurrentEquipmentHasPrerequisites(true);
+    }
+  }, [selectedEquipment, equipmentPrerequisiteMap]);
 
   const selectedEquip = selectedEquipment
     ? equipment.find((equip: { id: number }) => equip.id === selectedEquipment)
@@ -305,8 +365,13 @@ export default function EquipmentBookingForm() {
                 className="w-full p-2 border rounded"
                 value={selectedEquipment ?? ""}
                 onChange={(e) => {
-                  setSelectedEquipment(Number(e.target.value));
+                  const newEquipmentId = Number(e.target.value);
+                  setSelectedEquipment(newEquipmentId);
                   setSelectedSlots([]);
+
+                  // Update prerequisite status for newly selected equipment
+                  const hasPrereqs = equipmentPrerequisiteMap?.[newEquipmentId] ?? true;
+                  setCurrentEquipmentHasPrerequisites(hasPrereqs);
                 }}
                 required
               >
@@ -392,7 +457,7 @@ export default function EquipmentBookingForm() {
                       !roleUser ||
                       ((roleLevel === 1 || roleLevel === 2) &&
                         roleUser.roleId !== 2) ||
-                      (!hasCompletedEquipmentPrerequisites &&
+                      (!currentEquipmentHasPrerequisites &&
                         (roleLevel === 3 || roleLevel === 4))
                     }
                     disabledMessage={
@@ -401,7 +466,10 @@ export default function EquipmentBookingForm() {
                         : (roleLevel === 1 || roleLevel === 2) &&
                             roleUser.roleId !== 2
                           ? "You do not have the required permissions to book equipment."
-                          : equipmentPrerequisiteMessage
+                          : !currentEquipmentHasPrerequisites &&
+                              (roleLevel === 3 || roleLevel === 4)
+                            ? "You must complete the required prerequisite orientations before booking this equipment. Please check the equipment details page to see which orientations are required."
+                            : ""
                     }
                   />
 
