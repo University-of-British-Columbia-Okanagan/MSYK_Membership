@@ -7,6 +7,7 @@ export type UserProfileData = {
   email: string;
   membershipTitle: string;
   membershipType: string;
+  membershipStatus: string | null;
   nextBillingDate: string | null;
   cardLast4: string;
   waiverSignature: string | null;
@@ -65,10 +66,41 @@ export async function getProfileDetails(request: Request) {
     },
   });
 
-  const membership = await db.userMembership.findFirst({
-    where: { userId: parseInt(userId), status: "active" },
+  const now = new Date();
+
+  let membership = await db.userMembership.findFirst({
+    where: {
+      userId: parseInt(userId),
+      status: "active",
+      nextPaymentDate: { gt: now },
+    },
     include: { membershipPlan: true },
+    orderBy: { date: "desc" },
   });
+
+  if (!membership) {
+    membership = await db.userMembership.findFirst({
+      where: {
+        userId: parseInt(userId),
+        status: "ending",
+        nextPaymentDate: { gt: now },
+      },
+      include: { membershipPlan: true },
+      orderBy: { date: "desc" },
+    });
+  }
+
+  if (!membership) {
+    membership = await db.userMembership.findFirst({
+      where: {
+        userId: parseInt(userId),
+        status: "cancelled",
+        nextPaymentDate: { gt: now },
+      },
+      include: { membershipPlan: true },
+      orderBy: { date: "desc" },
+    });
+  }
 
   const payment = await db.userPaymentInformation.findFirst({
     where: { userId: parseInt(userId) },
@@ -83,6 +115,7 @@ export async function getProfileDetails(request: Request) {
     email: user.email,
     membershipTitle: membership?.membershipPlan.title ?? "None",
     membershipType: membership?.membershipPlan.type ?? "N/A",
+    membershipStatus: membership?.status ?? null,
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
