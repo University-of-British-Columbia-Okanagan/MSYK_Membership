@@ -220,7 +220,7 @@ export default function PaymentInformationPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-gray-100">
+      <div className="absolute inset-0 flex bg-gray-100">
         {renderSidebar()}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
