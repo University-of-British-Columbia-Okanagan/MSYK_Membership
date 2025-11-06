@@ -812,6 +812,7 @@ export async function getUserBookedEquipments(userId: number) {
     where: {
       userId,
       status: { not: "cancelled" }, // Filter out cancelled bookings
+      bookedFor: "user",
     },
     include: {
       equipment: {
