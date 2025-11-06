@@ -458,14 +458,6 @@ export default function MembershipDetails() {
                 <p className="text-gray-700 mb-2">
                   <strong>Description:</strong> {membershipPlan.description}
                 </p>
-                {/* <p className="text-gray-700 mb-2">
-                  <strong>Access Hours:</strong>{" "}
-                  {typeof membershipPlan.accessHours === "string"
-                    ? membershipPlan.accessHours
-                    : Object.values(membershipPlan.accessHours || {}).join(
-                        ", "
-                      )}
-                </p> */}
                 <p className="text-gray-700 mb-2">
                   <strong>Features:</strong>
                 </p>
