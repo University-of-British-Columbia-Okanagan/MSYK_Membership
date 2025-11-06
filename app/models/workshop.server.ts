@@ -3081,3 +3081,126 @@ export async function getUserCompletedOrientations(userId: number) {
     },
   });
 }
+
+/**
+ * Updates workshop occurrence statuses based on current time
+ *
+ * This function automatically transitions workshop occurrences from "active" to "past" status
+ * when their start date has passed. It's designed to be called periodically to maintain
+ * accurate status information across all workshop occurrences in the system.
+ *
+ * The function only updates occurrences that are currently marked as "active" and have
+ * a start date that is before the current time. Cancelled occurrences are not affected.
+ *
+ * @returns {Promise<Object>} Object containing the count of updated occurrences
+ * @returns {number} return.updated - Number of workshop occurrences updated from active to past
+ *
+ * @throws {Error} If database update operation fails
+ *
+ * @example
+ * // Manually trigger status update
+ * const result = await updateWorkshopOccurrenceStatuses();
+ * console.log(`Updated ${result.updated} occurrences`);
+ *
+ * @see startWorkshopOccurrenceStatusUpdate - For automated periodic updates
+ */
+export async function updateWorkshopOccurrenceStatuses() {
+  try {
+    // Get all active occurrences with their start dates
+    const activeOccurrences = await db.workshopOccurrence.findMany({
+      where: {
+        status: "active",
+      },
+      select: {
+        id: true,
+        startDate: true,
+      },
+    });
+
+    const now = new Date();
+
+    // Filter occurrences where start date has passed (workshop has started)
+    const idsToUpdate = activeOccurrences
+      .filter((occ) => {
+        // Compare using startDate (local time stored in DB)
+        return occ.startDate < now;
+      })
+      .map((occ) => occ.id);
+
+    // If no occurrences need updating, return early
+    if (idsToUpdate.length === 0) {
+      return { updated: 0 };
+    }
+
+    // Update all occurrences that have passed their start date to "past" status
+    const result = await db.workshopOccurrence.updateMany({
+      where: {
+        id: {
+          in: idsToUpdate,
+        },
+      },
+      data: {
+        status: "past",
+      },
+    });
+
+    // Log the number of updated occurrences
+    if (result.count > 0) {
+      console.log(
+        `Updated ${result.count} workshop occurrences from active to past`
+      );
+    }
+
+    return { updated: result.count };
+  } catch (error: any) {
+    console.error(
+      `Error updating workshop occurrence statuses: ${error.message}`
+    );
+    throw error;
+  }
+}
+
+/**
+ * Starts the automated workshop occurrence status update background job
+ *
+ * This function initializes a recurring task that runs every second to check and update
+ * workshop occurrence statuses. When a workshop's start date passes, the status automatically
+ * transitions from "active" to "past". This ensures the system always displays accurate
+ * workshop status information in real-time.
+ *
+ * The update job:
+ * - Runs immediately upon server startup to fix any stale statuses
+ * - Continues running every second for the lifetime of the server process
+ * - Updates only occurrences with "active" status where the start date has passed
+ * - Does not affect cancelled or already-past occurrences
+ *
+ * This function should be called once during server initialization (e.g., in entry.server.ts)
+ * and will continue running until the server is shut down.
+ *
+ * @returns {void} This function does not return a value
+ *
+ * @example
+ * // In entry.server.ts
+ * import { startWorkshopOccurrenceStatusUpdate } from "./app/models/workshop.server";
+ *
+ * console.log("Starting server...");
+ * startWorkshopOccurrenceStatusUpdate(); // Start background job
+ *
+ * @performance
+ * - Runs every 1 second (1000 milliseconds)
+ * - Database query is efficient, only updates matching records
+ * - Minimal performance impact due to optimized WHERE clause
+ *
+ * @see updateWorkshopOccurrenceStatuses - The function that performs the actual status updates
+ */
+export function startWorkshopOccurrenceStatusUpdate() {
+  // Run immediately on startup to update any stale statuses
+  updateWorkshopOccurrenceStatuses();
+
+  // Then run every second (1000 milliseconds) to keep statuses up-to-date
+  setInterval(() => {
+    updateWorkshopOccurrenceStatuses();
+  }, 1000); // 1 second
+
+  console.log("Started workshop occurrence status update job");
+}
