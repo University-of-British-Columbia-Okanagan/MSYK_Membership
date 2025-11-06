@@ -42,6 +42,8 @@ import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
+import * as fs from "fs";
+import * as path from "path";
 
 export async function loader({
   request,
@@ -111,6 +113,143 @@ export async function action({
     throw new Response("Not Authorized", { status: 401 });
   }
 
+  // Handle image upload
+  let imageUrl: string | null = null;
+  const equipmentImage = formData.get("equipmentImage");
+  const removeImage = formData.get("removeImage") === "true";
+
+  // Handle image removal
+  if (removeImage) {
+    // Get the current equipment to check for existing image
+    const currentEquipment = await getEquipmentById(equipmentId);
+
+    // Delete old image if it exists in images_custom folder
+    if (
+      currentEquipment.imageUrl &&
+      currentEquipment.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const oldImagePath = path.join(
+          process.cwd(),
+          "public",
+          currentEquipment.imageUrl
+        );
+        // Check if file exists before trying to delete
+        if (fs.existsSync(oldImagePath)) {
+          await fs.promises.unlink(oldImagePath);
+          logger.info(
+            `[User: ${roleUser.userId}] Deleted equipment image: ${currentEquipment.imageUrl}`,
+            { url: request.url }
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[User: ${roleUser.userId}] Could not delete equipment image: ${error}`,
+          { url: request.url }
+        );
+      }
+    }
+
+    // Set imageUrl to empty string to remove it from database
+    imageUrl = "";
+  }
+
+  if (
+    equipmentImage &&
+    equipmentImage instanceof File &&
+    equipmentImage.size > 0
+  ) {
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(equipmentImage.type)) {
+      return {
+        errors: {
+          equipmentImage: [
+            "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP.",
+          ],
+        },
+      };
+    }
+
+    if (equipmentImage.size > maxSize) {
+      return {
+        errors: {
+          equipmentImage: ["File size exceeds 5MB limit."],
+        },
+      };
+    }
+
+    // Get the current equipment to check for existing image
+    const currentEquipment = await getEquipmentById(equipmentId);
+
+    // Delete old image if it exists in images_custom folder
+    if (
+      currentEquipment.imageUrl &&
+      currentEquipment.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const oldImagePath = path.join(
+          process.cwd(),
+          "public",
+          currentEquipment.imageUrl
+        );
+        // Check if file exists before trying to delete
+        if (fs.existsSync(oldImagePath)) {
+          await fs.promises.unlink(oldImagePath);
+          logger.info(
+            `[User: ${roleUser.userId}] Deleted old equipment image: ${currentEquipment.imageUrl}`,
+            { url: request.url }
+          );
+        }
+      } catch (error) {
+        logger.warn(
+          `[User: ${roleUser.userId}] Could not delete old equipment image: ${error}`,
+          { url: request.url }
+        );
+        // Don't fail the upload if we can't delete the old image
+      }
+    }
+
+    // Save new file to public/images_custom folder
+    try {
+      const buffer = Buffer.from(await equipmentImage.arrayBuffer());
+      const filename = `equipment-${Date.now()}-${equipmentImage.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const imagesCustomDir = path.join(
+        process.cwd(),
+        "public",
+        "images_custom"
+      );
+      const filepath = path.join(imagesCustomDir, filename);
+
+      // Create the images_custom directory if it doesn't exist
+      await fs.promises.mkdir(imagesCustomDir, { recursive: true });
+      await fs.promises.writeFile(filepath, buffer);
+
+      imageUrl = `/images_custom/${filename}`;
+
+      logger.info(
+        `[User: ${roleUser.userId}] Uploaded new equipment image: ${imageUrl}`,
+        { url: request.url }
+      );
+    } catch (error) {
+      logger.error(`[Edit equipment] Error saving image: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: {
+          equipmentImage: ["Failed to upload image. Please try again."],
+        },
+      };
+    }
+  }
+
   // Check if equipment name already exists (excluding current equipment)
   const existingEquipment = await getEquipmentByName(parsed.data.name);
   if (existingEquipment && existingEquipment.id !== equipmentId) {
@@ -130,6 +269,7 @@ export async function action({
       price: parsed.data.price,
       availability: parsed.data.availability === "true" ? true : false,
       workshopPrerequisites: parsed.data.workshopPrerequisites || [],
+      ...(imageUrl !== null && { imageUrl: imageUrl === "" ? null : imageUrl }),
     });
 
     logger.info(
@@ -154,6 +294,13 @@ export default function EditEquipment() {
   const { workshops, roleUser, equipment } = useLoaderData<typeof loader>();
   const [selectedWorkshopPrerequisites, setSelectedWorkshopPrerequisites] =
     useState<number[]>(equipment.prerequisites || []);
+  const [equipmentImageFile, setEquipmentImageFile] = useState<File | null>(
+    null
+  );
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(
+    equipment.imageUrl || null
+  );
+  const [removeImageFlag, setRemoveImageFlag] = useState(false);
 
   const navigate = useNavigate();
 
@@ -227,7 +374,11 @@ export default function EditEquipment() {
               )}
 
             <Form {...form}>
-              <form method="post" className="space-y-6">
+              <form
+                method="post"
+                encType="multipart/form-data"
+                className="space-y-6"
+              >
                 {/* Name & Price */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
@@ -297,6 +448,74 @@ export default function EditEquipment() {
                     </FormItem>
                   )}
                 />
+
+                {/* Equipment Image Upload */}
+                <div className="mb-6">
+                  <FormItem>
+                    <FormLabel>Equipment Image</FormLabel>
+                    {currentImageUrl && !removeImageFlag && (
+                      <div className="mb-3">
+                        <p className="text-sm text-gray-600 mb-2">
+                          Current Image:
+                        </p>
+                        <div className="relative inline-block">
+                          <img
+                            src={currentImageUrl}
+                            alt="Current equipment"
+                            className="w-48 h-32 object-cover rounded-md border border-gray-300"
+                          />
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setRemoveImageFlag(true);
+                              setCurrentImageUrl(null);
+                            }}
+                            className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <FormControl>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.gif,.webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setEquipmentImageFile(file);
+                            setRemoveImageFlag(false);
+                            // Preview the new image
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setCurrentImageUrl(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        name="equipmentImage"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Optional. Upload a new image to replace the current one or
+                      add one if you have not uploaded one. Accepted formats:
+                      JPG, JPEG, PNG, GIF, WEBP (Max 5MB)
+                    </p>
+                    {actionData?.errors?.equipmentImage && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {actionData.errors.equipmentImage}
+                      </p>
+                    )}
+                  </FormItem>
+                  {/* Hidden input to track image removal */}
+                  <input
+                    type="hidden"
+                    name="removeImage"
+                    value={removeImageFlag ? "true" : "false"}
+                  />
+                </div>
 
                 {/* Availability */}
                 <FormField

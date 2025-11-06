@@ -38,6 +38,8 @@ import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
+import * as fs from "fs";
+import * as path from "path";
 
 export async function loader({ request }: { request: Request }) {
   const workshops = await getWorkshops();
@@ -88,6 +90,70 @@ export async function action({ request }: { request: Request }) {
     });
   }
 
+  // Handle image upload
+  let imageUrl: string | null = null;
+  const equipmentImage = formData.get("equipmentImage");
+
+  if (
+    equipmentImage &&
+    equipmentImage instanceof File &&
+    equipmentImage.size > 0
+  ) {
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(equipmentImage.type)) {
+      return {
+        errors: {
+          equipmentImage: [
+            "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP.",
+          ],
+        },
+      };
+    }
+
+    if (equipmentImage.size > maxSize) {
+      return {
+        errors: {
+          equipmentImage: ["File size exceeds 5MB limit."],
+        },
+      };
+    }
+
+    // Save file to public/images_custom folder
+    try {
+      const buffer = Buffer.from(await equipmentImage.arrayBuffer());
+      const filename = `equipment-${Date.now()}-${equipmentImage.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const imagesCustomDir = path.join(
+        process.cwd(),
+        "public",
+        "images_custom"
+      );
+      const filepath = path.join(imagesCustomDir, filename);
+
+      // Create the images_custom directory if it doesn't exist
+      await fs.promises.mkdir(imagesCustomDir, { recursive: true });
+      await fs.promises.writeFile(filepath, buffer);
+
+      imageUrl = `/images_custom/${filename}`;
+    } catch (error) {
+      logger.error(`[Add equipment] Error saving image: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: {
+          equipmentImage: ["Failed to upload image. Please try again."],
+        },
+      };
+    }
+  }
+
   try {
     // Send only required fields to addEquipment
     await addEquipment({
@@ -96,6 +162,7 @@ export async function action({ request }: { request: Request }) {
       price: parsed.data.price,
       availability: parsed.data.availability === "true" ? true : false,
       workshopPrerequisites: parsed.data.workshopPrerequisites || [],
+      imageUrl: imageUrl,
     });
 
     logger.info(
@@ -120,6 +187,9 @@ export default function AddEquipment() {
   const { workshops, roleUser } = useLoaderData<typeof loader>();
   const [selectedWorkshopPrerequisites, setSelectedWorkshopPrerequisites] =
     useState<number[]>([]);
+  const [equipmentImageFile, setEquipmentImageFile] = useState<File | null>(
+    null
+  );
 
   const navigate = useNavigate();
 
@@ -193,7 +263,11 @@ export default function AddEquipment() {
               )}
 
             <Form {...form}>
-              <form method="post" className="space-y-6">
+              <form
+                method="post"
+                encType="multipart/form-data"
+                className="space-y-6"
+              >
                 {/* Name & Price */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <FormField
@@ -263,6 +337,36 @@ export default function AddEquipment() {
                     </FormItem>
                   )}
                 />
+
+                {/* Equipment Image Upload */}
+                <div className="mb-6">
+                  <FormItem>
+                    <FormLabel>Equipment Image</FormLabel>
+                    <FormControl>
+                      <input
+                        type="file"
+                        name="equipmentImage"
+                        accept=".jpg,.jpeg,.png,.gif,.webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setEquipmentImageFile(file);
+                          }
+                        }}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Optional. Upload an image for this equipment. Accepted
+                      formats: JPG, JPEG, PNG, GIF, WEBP (Max 5MB)
+                    </p>
+                    {actionData?.errors?.equipmentImage && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {actionData.errors.equipmentImage}
+                      </p>
+                    )}
+                  </FormItem>
+                </div>
 
                 {/* Availability */}
                 <FormField

@@ -7,8 +7,10 @@ import {
 } from "react-router-dom";
 import type { ActionFunction, LoaderFunction } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import Sidebar from "../../components/ui/Dashboard/sidebar";
-import { getUserId } from "~/utils/session.server";
+import AppSidebar from "../../components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "../../components/ui/Dashboard/adminsidebar";
+import GuestAppSidebar from "../../components/ui/Dashboard/guestsidebar";
+import { getUserId, getRoleUser } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
 import { getSavedPaymentMethod } from "~/models/user.server";
 import {
@@ -32,10 +34,11 @@ export const loader: LoaderFunction = async ({ request }) => {
     return { error: "Unauthorized" };
   }
 
+  const roleUser = await getRoleUser(request);
   const user = await getProfileDetails(request);
   const savedPaymentMethod = await getSavedPaymentMethod(parseInt(userId));
 
-  return { user, savedPaymentMethod };
+  return { user, savedPaymentMethod, roleUser };
 };
 
 // Action - Handle form submission and card deletion
@@ -143,6 +146,11 @@ export default function PaymentInformationPage() {
   const loaderData = useLoaderData<{
     user: any;
     savedPaymentMethod: any;
+    roleUser: {
+      roleId: number;
+      roleName: string;
+      userId: number;
+    } | null;
     error?: string;
   }>();
   const actionData = useActionData<{
@@ -153,7 +161,24 @@ export default function PaymentInformationPage() {
   }>();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const { user, savedPaymentMethod } = loaderData;
+  const { user, savedPaymentMethod, roleUser } = loaderData;
+
+  // Determine which sidebar to show based on role
+  const isAdmin =
+    roleUser &&
+    roleUser.roleId === 2 &&
+    roleUser.roleName.toLowerCase() === "admin";
+  const isGuest = !roleUser || !roleUser.userId;
+
+  const renderSidebar = () => {
+    if (isAdmin) {
+      return <AdminAppSidebar />;
+    } else if (isGuest) {
+      return <GuestAppSidebar />;
+    } else {
+      return <AppSidebar />;
+    }
+  };
 
   // Handle success state
   useEffect(() => {
@@ -195,8 +220,8 @@ export default function PaymentInformationPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-gray-100">
-        <Sidebar />
+      <div className="absolute inset-0 flex bg-gray-100">
+        {renderSidebar()}
         <main className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             {/* Mobile Header with Sidebar Trigger */}

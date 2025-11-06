@@ -53,22 +53,22 @@ model User {
   workshopCancellations  WorkshopCancelledRegistration[]
   equipmentCancellations EquipmentCancelledBooking[]
   accessCards            AccessCard[]
-  accessLogs  AccessLog[]
+  accessLogs             AccessLog[]
 }
 
 model AccessCard {
-  id             String       @id
-  userId         Int?
-  permissions    Int[]
+  id          String @id
+  userId      Int?
+  permissions Int[]
 
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  accessLogs AccessLog[]
 
-  accessLogs            AccessLog[]
+  @@index([userId])
 }
 
 model Volunteer {
@@ -212,7 +212,7 @@ model EquipmentSlot {
 
   // Link to Workshops
   workshopOccurrenceId Int?
-  workshopOccurrence   WorkshopOccurrence? @relation(fields: [workshopOccurrenceId], references: [id], onDelete: SetNull)
+  workshopOccurrence   WorkshopOccurrence? @relation(fields: [workshopOccurrenceId], references: [id], onDelete: Cascade)
 
   bookings EquipmentBooking[] @relation("EquipmentSlotToBooking")
 }
@@ -230,7 +230,7 @@ model EquipmentBooking {
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   equipment Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   slot      EquipmentSlot @relation(fields: [slotId], references: [id], onDelete: Cascade, name: "EquipmentSlotToBooking")
-  workshop  Workshop?     @relation(fields: [workshopId], references: [id], onDelete: SetNull)
+  workshop  Workshop?     @relation(fields: [workshopId], references: [id], onDelete: Cascade)
 
   // Removed unique constraint to allow cancelled bookings + new bookings for same slot
   // @@unique([slotId]) // Prevents double booking of slots
@@ -342,9 +342,6 @@ model MembershipPlan {
   priceYearly         Float? // Price for yearly subscription
   needAdminPermission Boolean @default(false)
   feature             Json
-  accessHours         Json // Example: {"start": "09:00", "end": "18:00"}
-
-  type String // "monthly", "one-time", "limited", "24/7"
 
   userMemberships     UserMembership[]
   userMembershipForms UserMembershipForm[]
@@ -358,7 +355,7 @@ model UserMembership {
   nextPaymentDate  DateTime
   status           String   @default("active") // "active", "cancelled"
   paymentIntentId  String? // Stripe Payment Intent ID
-  billingCycle     String   @default("monthly") // "monthly", "quarterly", "6months", "yearly"
+  billingCycle     String   @default("monthly") // "monthly", "quarterly", "semiannually", "yearly"
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)
@@ -445,16 +442,16 @@ model IssueScreenshot {
 
 model AccessLog {
   id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())   // Timestamp of the log
+  createdAt DateTime @default(now()) // Timestamp of the log
 
   userId Int?
   user   User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  accessCardId     String              // Store access card UID
-  accessCard        AccessCard @relation(fields: [accessCardId], references: [id], onDelete: Cascade)
+  accessCardId String // Store access card UID
+  accessCard   AccessCard @relation(fields: [accessCardId], references: [id], onDelete: Cascade)
 
-  equipment       String      // Equipment name or door
-  state           String      // enter or exit
+  equipment String // Equipment name or door
+  state     String // enter or exit
 
   @@index([userId])
   @@index([createdAt])

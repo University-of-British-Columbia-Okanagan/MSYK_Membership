@@ -10,6 +10,7 @@ A comprehensive membership management platform built with React Router, TypeScri
 - [System Architecture & Database Schema](#system-architecture--database-schema)
 - [Components Architecture](#components-architecture)
 - [Backend Models & Data Layer](#backend-models--data-layer)
+- [Functional Overview & Test Plan](./docs/msyk-overview.md)
 
 ## Local Development Setup
 

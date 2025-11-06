@@ -555,9 +555,13 @@ export default function ProfilePage() {
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">Status</span>
                         <span className="font-medium text-gray-900">
-                          {user.membershipTitle !== "None"
+                          {user.membershipStatus === "active"
                             ? "Active"
-                            : "Inactive"}
+                            : user.membershipStatus === "ending"
+                              ? "Ending"
+                              : user.membershipStatus === "cancelled"
+                                ? "Cancelled"
+                                : "Inactive"}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -567,9 +571,9 @@ export default function ProfilePage() {
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Type</span>
+                        <span className="text-gray-600">Billing Cycle</span>
                         <span className="font-medium text-gray-900">
-                          {user.membershipType}
+                          {user.billingCycle ?? "N/A"}
                         </span>
                       </div>
                     </div>
@@ -929,7 +933,7 @@ export default function ProfilePage() {
                           the start and end time for your volunteer session. You
                           must add a brief description of what you worked on.
                           Your hours will be reviewed and approved by an
-                          administrator.
+                          administrator
                         </p>
                       </div>
 
@@ -945,68 +949,202 @@ export default function ProfilePage() {
                         </div>
                       )}
 
-                      <Form
-                        method="post"
-                        className="grid grid-cols-1 md:grid-cols-4 gap-4"
-                      >
+                      <Form method="post">
                         <input type="hidden" name="_action" value="logHours" />
+                        <input
+                          type="hidden"
+                          name="startTime"
+                          value={startTime}
+                        />
+                        <input type="hidden" name="endTime" value={endTime} />
                         <input
                           type="hidden"
                           name="isResubmission"
                           value={isResubmission ? "true" : "false"}
                         />
 
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Start Time <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="datetime-local"
-                            name="startTime"
-                            value={startTime}
-                            onChange={(e) => setStartTime(e.target.value)}
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                        <div className="space-y-4">
+                          {/* Start Time and End Time Row */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Start Time */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Start Time{" "}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <div className="space-y-2">
+                                <input
+                                  type="date"
+                                  value={
+                                    startTime ? startTime.split("T")[0] : ""
+                                  }
+                                  onChange={(e) => {
+                                    const currentTime = startTime
+                                      ? startTime.split("T")[1]
+                                      : "10:00";
+                                    setStartTime(
+                                      `${e.target.value}T${currentTime}`
+                                    );
+                                  }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <Select
+                                  value={
+                                    startTime
+                                      ? startTime.split("T")[1]?.substring(0, 5)
+                                      : ""
+                                  }
+                                  onValueChange={(newTime) => {
+                                    const date = startTime
+                                      ? startTime.split("T")[0]
+                                      : "";
+                                    if (date) {
+                                      setStartTime(`${date}T${newTime}`);
+                                    }
+                                  }}
+                                  disabled={
+                                    !startTime || !startTime.includes("T")
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue
+                                      placeholder={
+                                        !startTime || !startTime.includes("T")
+                                          ? "Select date first"
+                                          : "Select time"
+                                      }
+                                    >
+                                      {startTime && startTime.includes("T")
+                                        ? startTime
+                                            .split("T")[1]
+                                            ?.substring(0, 5)
+                                        : ""}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-64 overflow-y-auto">
+                                    {Array.from({ length: 145 }, (_, i) => {
+                                      const totalMinutes = 10 * 60 + i * 5;
+                                      if (totalMinutes >= 22 * 60) return null;
+                                      const hour = Math.floor(
+                                        totalMinutes / 60
+                                      );
+                                      const minute = totalMinutes % 60;
+                                      const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+                                      return (
+                                        <SelectItem
+                                          key={timeString}
+                                          value={timeString}
+                                          className="data-[state=checked]:bg-white"
+                                        >
+                                          {timeString}
+                                        </SelectItem>
+                                      );
+                                    }).filter(Boolean)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            End Time <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="datetime-local"
-                            name="endTime"
-                            value={endTime}
-                            onChange={(e) => setEndTime(e.target.value)}
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                            {/* End Time */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                End Time <span className="text-red-500">*</span>
+                              </label>
+                              <div className="space-y-2">
+                                <input
+                                  type="date"
+                                  value={endTime ? endTime.split("T")[0] : ""}
+                                  onChange={(e) => {
+                                    const currentTime = endTime
+                                      ? endTime.split("T")[1]
+                                      : "10:00";
+                                    setEndTime(
+                                      `${e.target.value}T${currentTime}`
+                                    );
+                                  }}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                />
+                                <Select
+                                  value={
+                                    endTime
+                                      ? endTime.split("T")[1]?.substring(0, 5)
+                                      : ""
+                                  }
+                                  onValueChange={(newTime) => {
+                                    const date = endTime
+                                      ? endTime.split("T")[0]
+                                      : "";
+                                    if (date) {
+                                      setEndTime(`${date}T${newTime}`);
+                                    }
+                                  }}
+                                  disabled={!endTime || !endTime.includes("T")}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue
+                                      placeholder={
+                                        !endTime || !endTime.includes("T")
+                                          ? "Select date first"
+                                          : "Select time"
+                                      }
+                                    >
+                                      {endTime && endTime.includes("T")
+                                        ? endTime.split("T")[1]?.substring(0, 5)
+                                        : ""}
+                                    </SelectValue>
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-64 overflow-y-auto">
+                                    {Array.from({ length: 145 }, (_, i) => {
+                                      const totalMinutes = 10 * 60 + i * 5;
+                                      if (totalMinutes >= 22 * 60) return null;
+                                      const hour = Math.floor(
+                                        totalMinutes / 60
+                                      );
+                                      const minute = totalMinutes % 60;
+                                      const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+                                      return (
+                                        <SelectItem
+                                          key={timeString}
+                                          value={timeString}
+                                          className="data-[state=checked]:bg-white"
+                                        >
+                                          {timeString}
+                                        </SelectItem>
+                                      );
+                                    }).filter(Boolean)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            name="description"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="What did you work on?"
-                            required
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
+                          {/* Description */}
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Description{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              name="description"
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              placeholder="What did you work on?"
+                              required
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
 
-                        <div className="flex items-end">
-                          <button
-                            type="submit"
-                            className="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center justify-center gap-2"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Log Hours
-                          </button>
+                          {/* Submit Button */}
+                          <div className="flex justify-end">
+                            <button
+                              type="submit"
+                              className="bg-blue-500 text-white px-6 py-2 rounded-md hover:bg-blue-600 flex items-center justify-center gap-2"
+                            >
+                              <Plus className="h-4 w-4" />
+                              Log Hours
+                            </button>
+                          </div>
                         </div>
                       </Form>
 
@@ -1059,7 +1197,8 @@ export default function ProfilePage() {
                           (pending, approved, denied) or search by date range.
                           Hours show as "pending" until reviewed by an
                           administrator. Use the filters below to find specific
-                          volunteer sessions.
+                          volunteer sessions. The filter to and from inputs is
+                          based off start dates and times
                         </p>
                       </div>
 

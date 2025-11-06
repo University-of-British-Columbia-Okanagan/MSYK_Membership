@@ -1,5 +1,7 @@
 import React, { useRef, useState } from "react";
 import { redirect, useActionData, useLoaderData } from "react-router";
+import * as fs from "fs";
+import * as path from "path";
 import { Button } from "@/components/ui/button";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,6 +65,7 @@ import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
+import { Input } from "~/components/ui/input";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -380,6 +383,70 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const rawValues = Object.fromEntries(formData.entries());
 
+  // Handle image upload
+  let imageUrl: string | null = null;
+  const workshopImage = formData.get("workshopImage");
+
+  if (
+    workshopImage &&
+    workshopImage instanceof File &&
+    workshopImage.size > 0
+  ) {
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(workshopImage.type)) {
+      return {
+        errors: {
+          workshopImage: [
+            "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP.",
+          ],
+        },
+      };
+    }
+
+    if (workshopImage.size > maxSize) {
+      return {
+        errors: {
+          workshopImage: ["File size exceeds 5MB limit."],
+        },
+      };
+    }
+
+    // Save file to public/images_custom folder
+    try {
+      const buffer = Buffer.from(await workshopImage.arrayBuffer());
+      const filename = `workshop-${Date.now()}-${workshopImage.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+      const imagesCustomDir = path.join(
+        process.cwd(),
+        "public",
+        "images_custom"
+      );
+      const filepath = path.join(imagesCustomDir, filename);
+
+      // Create the images_custom directory if it doesn't exist
+      await fs.promises.mkdir(imagesCustomDir, { recursive: true });
+      await fs.promises.writeFile(filepath, buffer);
+
+      imageUrl = `/images_custom/${filename}`;
+    } catch (error) {
+      logger.error(`[Add workshop] Error saving image: ${error}`, {
+        url: request.url,
+      });
+      return {
+        errors: {
+          workshopImage: ["Failed to upload image. Please try again."],
+        },
+      };
+    }
+  }
+
   let selectedSlots: Record<number, number[]> = {};
   try {
     selectedSlots = JSON.parse(rawValues.selectedSlots as string);
@@ -636,6 +703,7 @@ export async function action({ request }: { request: Request }) {
         hasPriceVariations: parsed.data.hasPriceVariations,
         priceVariations: parsed.data.priceVariations,
         selectedSlots,
+        imageUrl,
       },
       request
     );
@@ -775,6 +843,9 @@ export default function AddWorkshop() {
   );
 
   const [selectedEquipments, setSelectedEquipments] = useState<number[]>([]);
+  const [workshopImageFile, setWorkshopImageFile] = React.useState<File | null>(
+    null
+  );
   const { selectedSlotsMap: initialSelectedSlotsMap } = useLoaderData() as {
     workshops: { id: number; name: string; type: string }[];
     equipments: {
@@ -927,8 +998,32 @@ export default function AddWorkshop() {
         JSON.stringify(form.getValues())
       );
     } catch {}
+
     setFormSubmitting(true);
-    formElementRef.current?.submit();
+
+    // Handle file upload if present
+    if (workshopImageFile) {
+      const formData = new FormData(formElementRef.current!);
+      formData.append("workshopImage", workshopImageFile);
+
+      // Submit with fetch to handle file upload
+      try {
+        const response = await fetch("/dashboard/addworkshop", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (response.redirected) {
+          window.location.href = response.url;
+        }
+      } catch (error) {
+        console.error("Error uploading workshop:", error);
+        setFormSubmitting(false);
+      }
+    } else {
+      // Normal form submission without file
+      formElementRef.current?.submit();
+    }
   };
 
   {
@@ -1058,7 +1153,10 @@ export default function AddWorkshop() {
       Object.entries(actionData.errors).forEach(([key, value]) => {
         const message = Array.isArray(value) ? value[0] : value;
         if (message) {
-          form.setError(key as any, { type: "server", message: String(message) } as any);
+          form.setError(
+            key as any,
+            { type: "server", message: String(message) } as any
+          );
         }
       });
     }
@@ -1145,7 +1243,13 @@ export default function AddWorkshop() {
               )}
 
             <Form {...form}>
-              <form method="post" onSubmit={handleFormSubmit} noValidate ref={formElementRef}>
+              <form
+                method="post"
+                onSubmit={handleFormSubmit}
+                noValidate
+                ref={formElementRef}
+                encType="multipart/form-data"
+              >
                 {/* Workshop Fields */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <GenericFormField
@@ -1207,6 +1311,51 @@ export default function AddWorkshop() {
                     className="w-full"
                     rows={5}
                   />
+                </div>
+
+                {/* Type */}
+                <div className="mb-6">
+                  <GenericFormField
+                    control={form.control}
+                    name="type"
+                    label="Workshop Type"
+                    required
+                    error={actionData?.errors?.type}
+                    component="select" // Render native select element
+                    className="w-full border rounded-md p-2"
+                  >
+                    <option value="workshop">Workshop</option>
+                    <option value="orientation">Orientation</option>
+                  </GenericFormField>
+                </div>
+
+                {/* Workshop Image Upload */}
+                <div className="mb-6">
+                  <FormItem>
+                    <FormLabel>Workshop Image</FormLabel>
+                    <FormControl>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.gif,.webp"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setWorkshopImageFile(file);
+                          }
+                        }}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </FormControl>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Optional. Accepted formats: JPG, JPEG, PNG, GIF, WEBP (Max
+                      5MB)
+                    </p>
+                    {actionData?.errors?.workshopImage && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {actionData.errors.workshopImage}
+                      </p>
+                    )}
+                  </FormItem>
                 </div>
 
                 {/* (Multi-day Workshop) Checkbox */}
@@ -1769,7 +1918,7 @@ export default function AddWorkshop() {
                     onRemove={removePrerequisite}
                     error={actionData?.errors?.prerequisites}
                     placeholder="Select prerequisites..."
-                    helperText="Select active workshops of type Orientation that must be completed before enrolling."
+                    helperText="Select active workshops of type orientation that must be completed before enrolling."
                     filterFn={(item) =>
                       item.type.toLowerCase() === "orientation" &&
                       Array.isArray(item.occurrences) &&
@@ -1913,20 +2062,6 @@ export default function AddWorkshop() {
                     </Tabs>
                   </div>
                 )}
-
-                {/* Type */}
-                <GenericFormField
-                  control={form.control}
-                  name="type"
-                  label="Workshop Type"
-                  required
-                  error={actionData?.errors?.type}
-                  component="select" // Render native select element
-                  className="w-full border rounded-md p-2"
-                >
-                  <option value="workshop">Workshop</option>
-                  <option value="orientation">Orientation</option>
-                </GenericFormField>
 
                 {/* Hidden input for occurrences */}
                 <input

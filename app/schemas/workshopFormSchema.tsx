@@ -8,6 +8,7 @@ export const workshopFormSchema = z
     location: z.string().min(1, "Location is required"),
     capacity: z.coerce.number().int().min(1, "Capacity must be at least 1"),
     type: z.enum(["workshop", "orientation"]),
+    workshopImage: z.any().optional(),
 
     hasPriceVariations: z.boolean().optional().default(false),
     priceVariations: z
@@ -16,8 +17,8 @@ export const workshopFormSchema = z
           name: z.string().min(1, "Variation name is required"),
           price: z.coerce.number().min(0, "Price must be a positive number"),
           description: z.string().min(1, "Description is required"),
-          capacity: z
-            .coerce.number()
+          capacity: z.coerce
+            .number()
             .min(1, "Capacity is required and must be at least 1"),
         })
       )

@@ -31,7 +31,7 @@ export const membershipPlanFormSchema = z.object({
   features: z
     .array(z.string().min(1, "Feature cannot be empty"))
     .min(1, "At least one feature is required"),
-  // needAdminPermission: z.boolean().optional().default(false),
+  needAdminPermission: z.boolean().optional().default(false),
 });
 
 export type MembershipPlanFormValues = z.infer<typeof membershipPlanFormSchema>;

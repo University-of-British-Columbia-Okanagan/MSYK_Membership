@@ -390,6 +390,7 @@ export async function addEquipment(data: {
   price: number;
   availability: boolean;
   workshopPrerequisites?: number[];
+  imageUrl?: string | null;
 }) {
   try {
     // Create Equipment Without Slots
@@ -399,6 +400,7 @@ export async function addEquipment(data: {
         description: data.description,
         price: data.price,
         availability: data.availability, // 24/7 available unless changed by admin
+        imageUrl: data.imageUrl,
       },
     });
 
@@ -669,6 +671,7 @@ export async function updateEquipment(
     price?: number;
     availability?: boolean;
     workshopPrerequisites?: number[];
+    imageUrl?: string | null;
   }
 ) {
   try {
@@ -680,6 +683,7 @@ export async function updateEquipment(
         description: data.description,
         price: data.price,
         availability: data.availability,
+        ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
       },
     });
 
@@ -722,6 +726,33 @@ export async function deleteEquipment(equipmentId: number) {
 
     if (!existingEquipment) {
       throw new Error("Equipment not found.");
+    }
+
+    // Delete the image file if it exists in images_custom folder
+    if (
+      existingEquipment.imageUrl &&
+      existingEquipment.imageUrl.startsWith("/images_custom/")
+    ) {
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const imagePath = path.join(
+          process.cwd(),
+          "public",
+          existingEquipment.imageUrl
+        );
+
+        // Check if file exists before trying to delete
+        if (fs.existsSync(imagePath)) {
+          await fs.promises.unlink(imagePath);
+          console.log(`Deleted equipment image: ${existingEquipment.imageUrl}`);
+        }
+      } catch (error) {
+        console.warn(
+          `Could not delete equipment image: ${error}. Continuing with equipment deletion.`
+        );
+        // Don't fail the deletion if we can't delete the image file
+      }
     }
 
     // Delete associated slots first (to prevent foreign key constraint issues)
@@ -781,6 +812,7 @@ export async function getUserBookedEquipments(userId: number) {
     where: {
       userId,
       status: { not: "cancelled" }, // Filter out cancelled bookings
+      bookedFor: "user",
     },
     include: {
       equipment: {

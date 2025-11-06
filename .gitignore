@@ -11,3 +11,6 @@ Dockerfile
 
 /logs/*
 !/logs/__dir__
+
+# Custom images
+public/images_custom

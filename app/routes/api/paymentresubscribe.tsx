@@ -3,7 +3,7 @@ import {
   registerMembershipSubscription,
   getMembershipPlanById,
 } from "../../models/membership.server";
-import { sendMembershipResubscribeEmail } from "~/utils/email.server";
+import { sendMembershipResubscribeEmail, checkPaymentMethodStatus } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
 import { db } from "~/utils/db.server";
 
@@ -21,7 +21,7 @@ export async function action({ request }: { request: Request }) {
     const { currentMembershipId, membershipPlanId, userId } = body;
 
     try {
-      let billingCycle: "monthly" | "quarterly" | "6months" | "yearly" =
+      let billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" =
         "monthly";
 
       if (currentMembershipId) {
@@ -34,7 +34,7 @@ export async function action({ request }: { request: Request }) {
           billingCycle = cancelledMembership.billingCycle as
             | "monthly"
             | "quarterly"
-            | "6months"
+            | "semiannually"
             | "yearly";
         }
       }
@@ -58,6 +58,7 @@ export async function action({ request }: { request: Request }) {
         const plan = await getMembershipPlanById(membershipPlanId);
         const nextBillingDate = new Date();
         nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
         await sendMembershipResubscribeEmail({
           userEmail: user.email!,
           planTitle: plan?.title || "Membership",
@@ -66,12 +67,13 @@ export async function action({ request }: { request: Request }) {
           planPrice:
             billingCycle === "quarterly"
               ? plan?.price3Months ?? plan?.price
-              : billingCycle === "6months"
+              : billingCycle === "semiannually"
               ? plan?.price6Months ?? plan?.price
               : billingCycle === "yearly"
               ? plan?.priceYearly ?? plan?.price
               : plan?.price,
           nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
+          needsPaymentMethod,
         });
       } catch {
         // non-blocking

@@ -134,11 +134,14 @@ const DigitalSignaturePad: React.FC<{
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
@@ -148,16 +151,19 @@ const DigitalSignaturePad: React.FC<{
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
+    if (!isDrawing || disabled) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
     const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
     const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
 
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
 
     const ctx = canvas.getContext("2d");
     if (ctx) {
@@ -198,27 +204,44 @@ const DigitalSignaturePad: React.FC<{
         ctx.strokeStyle = "#000";
         ctx.lineWidth = 2;
         ctx.lineCap = "round";
+        ctx.lineJoin = "round";
       }
     }
   }, []);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+    startDrawing(e);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    draw(e);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault();
+    stopDrawing();
+  };
 
   return (
     <div className="border border-gray-300 rounded-lg p-4">
       <canvas
         ref={canvasRef}
-        width={300}
-        height={150}
-        className={`border border-gray-200 rounded w-full ${disabled ? "cursor-not-allowed bg-gray-100" : "cursor-crosshair"}`}
+        width={400}
+        height={200}
+        className={`border border-gray-200 rounded w-full ${disabled ? "cursor-not-allowed bg-gray-100" : "cursor-crosshair"} touch-none`}
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}
         onMouseLeave={stopDrawing}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={stopDrawing}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         title={
           disabled ? "Please download and view the waiver document first" : ""
         }
+        style={{ maxWidth: "100%" }}
       />
       <div className="flex justify-between items-center mt-2">
         <Button

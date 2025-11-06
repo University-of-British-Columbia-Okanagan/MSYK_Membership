@@ -1,7 +1,11 @@
 import { db } from "../utils/db.server";
 import { getUser } from "~/utils/session.server";
 import { createEquipmentSlotsForOccurrence } from "../models/equipment.server";
-import { createEventForOccurrence, updateEventForOccurrence, deleteEventForOccurrence } from "~/utils/googleCalendar.server";
+import {
+  createEventForOccurrence,
+  updateEventForOccurrence,
+  deleteEventForOccurrence,
+} from "~/utils/googleCalendar.server";
 
 interface WorkshopData {
   name: string;
@@ -27,6 +31,7 @@ interface WorkshopData {
   }[];
   isMultiDayWorkshop?: boolean;
   selectedSlots: Record<number, number[]>;
+  imageUrl?: string | null;
 }
 
 interface OccurrenceData {
@@ -50,6 +55,7 @@ interface UpdateWorkshopData {
   equipments?: number[];
   occurrences: OccurrenceData[];
   isMultiDayWorkshop: boolean;
+  imageUrl?: string | null;
 }
 
 /**
@@ -163,6 +169,7 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         capacity: data.capacity,
         type: data.type,
         hasPriceVariations: data.hasPriceVariations || false,
+        imageUrl: data.imageUrl || null,
       },
     });
 
@@ -479,6 +486,7 @@ export async function updateWorkshopWithOccurrences(
       capacity: data.capacity,
       type: data.type,
       hasPriceVariations: data.hasPriceVariations || false,
+      ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
     },
   });
 
@@ -738,7 +746,9 @@ export async function updateWorkshopWithOccurrences(
           endDate: updated.endDate,
           startDatePST: updated.startDatePST ?? undefined,
           endDatePST: updated.endDatePST ?? undefined,
-          googleEventId: (existingOccurrences.find((e) => e.id === updated.id) as any)?.googleEventId ?? null,
+          googleEventId:
+            (existingOccurrences.find((e) => e.id === updated.id) as any)
+              ?.googleEventId ?? null,
           connectId: updated.connectId ?? undefined,
         }
       );
@@ -753,7 +763,9 @@ export async function updateWorkshopWithOccurrences(
       where: { id: { in: deleteIds } },
       select: { id: true, googleEventId: true },
     });
-    await db.workshopOccurrence.deleteMany({ where: { id: { in: deleteIds } } });
+    await db.workshopOccurrence.deleteMany({
+      where: { id: { in: deleteIds } },
+    });
     for (const item of toDelete) {
       if (item.googleEventId) {
         try {
@@ -988,14 +1000,34 @@ export async function deleteWorkshop(workshopId: number) {
       include: {
         occurrences: {
           where: {
-            googleEventId: { not: null }
-          }
-        }
-      }
+            googleEventId: { not: null },
+          },
+        },
+      },
     });
 
     if (!workshop) {
       throw new Error("Workshop not found");
+    }
+
+    // Delete the image file if it exists in images_custom folder
+    if (workshop.imageUrl && workshop.imageUrl.startsWith("/images_custom/")) {
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const imagePath = path.join(process.cwd(), "public", workshop.imageUrl);
+
+        // Check if file exists before trying to delete
+        if (fs.existsSync(imagePath)) {
+          await fs.promises.unlink(imagePath);
+          console.log(`Deleted workshop image: ${workshop.imageUrl}`);
+        }
+      } catch (error) {
+        console.warn(
+          `Could not delete workshop image: ${error}. Continuing with workshop deletion.`
+        );
+        // Don't fail the deletion if we can't delete the image file
+      }
     }
 
     // Delete Google Calendar events for all occurrences
@@ -1004,7 +1036,10 @@ export async function deleteWorkshop(workshopId: number) {
         try {
           await deleteEventForOccurrence(occurrence.googleEventId);
         } catch (error) {
-          console.error(`Failed to delete Google Calendar event ${occurrence.googleEventId}:`, error);
+          console.error(
+            `Failed to delete Google Calendar event ${occurrence.googleEventId}:`,
+            error
+          );
           // Continue with deletion even if Google Calendar deletion fails
         }
       }
@@ -1377,7 +1412,7 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
   // First, get the occurrence to check if it has a Google Calendar event
   const occurrence = await db.workshopOccurrence.findUnique({
     where: { id: occurrenceId },
-    select: { googleEventId: true }
+    select: { googleEventId: true },
   });
 
   if (!occurrence) {
@@ -1389,7 +1424,10 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     try {
       await deleteEventForOccurrence(occurrence.googleEventId);
     } catch (error) {
-      console.error(`Failed to delete Google Calendar event ${occurrence.googleEventId}:`, error);
+      console.error(
+        `Failed to delete Google Calendar event ${occurrence.googleEventId}:`,
+        error
+      );
       // Continue with cancellation even if Google Calendar deletion fails
     }
   }
@@ -1399,7 +1437,7 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     where: { id: occurrenceId },
     data: {
       status: "cancelled",
-      googleEventId: null // Clear the Google event ID since the event is deleted
+      googleEventId: null, // Clear the Google event ID since the event is deleted
     },
   });
 }
@@ -3042,4 +3080,127 @@ export async function getUserCompletedOrientations(userId: number) {
       date: "desc", // Most recent first
     },
   });
+}
+
+/**
+ * Updates workshop occurrence statuses based on current time
+ *
+ * This function automatically transitions workshop occurrences from "active" to "past" status
+ * when their start date has passed. It's designed to be called periodically to maintain
+ * accurate status information across all workshop occurrences in the system.
+ *
+ * The function only updates occurrences that are currently marked as "active" and have
+ * a start date that is before the current time. Cancelled occurrences are not affected.
+ *
+ * @returns {Promise<Object>} Object containing the count of updated occurrences
+ * @returns {number} return.updated - Number of workshop occurrences updated from active to past
+ *
+ * @throws {Error} If database update operation fails
+ *
+ * @example
+ * // Manually trigger status update
+ * const result = await updateWorkshopOccurrenceStatuses();
+ * console.log(`Updated ${result.updated} occurrences`);
+ *
+ * @see startWorkshopOccurrenceStatusUpdate - For automated periodic updates
+ */
+export async function updateWorkshopOccurrenceStatuses() {
+  try {
+    // Get all active occurrences with their start dates
+    const activeOccurrences = await db.workshopOccurrence.findMany({
+      where: {
+        status: "active",
+      },
+      select: {
+        id: true,
+        startDate: true,
+      },
+    });
+
+    const now = new Date();
+
+    // Filter occurrences where start date has passed (workshop has started)
+    const idsToUpdate = activeOccurrences
+      .filter((occ) => {
+        // Compare using startDate (local time stored in DB)
+        return occ.startDate < now;
+      })
+      .map((occ) => occ.id);
+
+    // If no occurrences need updating, return early
+    if (idsToUpdate.length === 0) {
+      return { updated: 0 };
+    }
+
+    // Update all occurrences that have passed their start date to "past" status
+    const result = await db.workshopOccurrence.updateMany({
+      where: {
+        id: {
+          in: idsToUpdate,
+        },
+      },
+      data: {
+        status: "past",
+      },
+    });
+
+    // Log the number of updated occurrences
+    if (result.count > 0) {
+      console.log(
+        `Updated ${result.count} workshop occurrences from active to past`
+      );
+    }
+
+    return { updated: result.count };
+  } catch (error: any) {
+    console.error(
+      `Error updating workshop occurrence statuses: ${error.message}`
+    );
+    throw error;
+  }
+}
+
+/**
+ * Starts the automated workshop occurrence status update background job
+ *
+ * This function initializes a recurring task that runs every second to check and update
+ * workshop occurrence statuses. When a workshop's start date passes, the status automatically
+ * transitions from "active" to "past". This ensures the system always displays accurate
+ * workshop status information in real-time.
+ *
+ * The update job:
+ * - Runs immediately upon server startup to fix any stale statuses
+ * - Continues running every second for the lifetime of the server process
+ * - Updates only occurrences with "active" status where the start date has passed
+ * - Does not affect cancelled or already-past occurrences
+ *
+ * This function should be called once during server initialization (e.g., in entry.server.ts)
+ * and will continue running until the server is shut down.
+ *
+ * @returns {void} This function does not return a value
+ *
+ * @example
+ * // In entry.server.ts
+ * import { startWorkshopOccurrenceStatusUpdate } from "./app/models/workshop.server";
+ *
+ * console.log("Starting server...");
+ * startWorkshopOccurrenceStatusUpdate(); // Start background job
+ *
+ * @performance
+ * - Runs every 1 second (1000 milliseconds)
+ * - Database query is efficient, only updates matching records
+ * - Minimal performance impact due to optimized WHERE clause
+ *
+ * @see updateWorkshopOccurrenceStatuses - The function that performs the actual status updates
+ */
+export function startWorkshopOccurrenceStatusUpdate() {
+  // Run immediately on startup to update any stale statuses
+  updateWorkshopOccurrenceStatuses();
+
+  // Then run every second (1000 milliseconds) to keep statuses up-to-date
+  setInterval(() => {
+    updateWorkshopOccurrenceStatuses();
+  }, 1000); // 1 second
+
+  console.log("Started workshop occurrence status update job");
 }
