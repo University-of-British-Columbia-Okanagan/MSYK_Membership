@@ -109,14 +109,15 @@ export async function getProfileDetails(request: Request) {
 
   if (!user) return null;
 
-  const billingCycleLabel = membership?.billingCycle
-    ? membership.billingCycle === "quarterly"
-      ? "Quarterly"
-      : membership.billingCycle === "semiannually"
-      ? "Every 6 months"
-      : membership.billingCycle === "yearly"
-      ? "Yearly"
-      : "Monthly"
+  const billingCycleMap: Record<string, string> = {
+    quarterly: "Quarterly",
+    semiannually: "Every 6 months",
+    yearly: "Yearly",
+    monthly: "Monthly",
+  };
+
+  const billingCycleLabel = membership
+    ? billingCycleMap[membership.billingCycle] ?? null
     : null;
 
   return {
