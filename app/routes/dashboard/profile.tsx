@@ -571,9 +571,9 @@ export default function ProfilePage() {
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Type</span>
+                        <span className="text-gray-600">Billing Cycle</span>
                         <span className="font-medium text-gray-900">
-                          {user.membershipType}
+                          {user.billingCycle ?? "N/A"}
                         </span>
                       </div>
                     </div>

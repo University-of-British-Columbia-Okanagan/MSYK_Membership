@@ -342,9 +342,6 @@ model MembershipPlan {
   priceYearly         Float? // Price for yearly subscription
   needAdminPermission Boolean @default(false)
   feature             Json
-  accessHours         Json // Example: {"start": "09:00", "end": "18:00"}
-
-  type String // "monthly", "one-time", "limited", "24/7"
 
   userMemberships     UserMembership[]
   userMembershipForms UserMembershipForm[]

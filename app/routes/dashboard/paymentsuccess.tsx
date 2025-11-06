@@ -221,7 +221,7 @@ export async function loader({ request }: { request: Request }) {
             planDescription: membershipPlan.description,
             monthlyPrice: membershipPlan.price,
             features: membershipPlan.feature as Record<string, string>,
-            accessHours: membershipPlan.accessHours as string,
+            needAdminPermission: membershipPlan.needAdminPermission,
             billingCycle,
             planPrice:
               billingCycle === "quarterly"

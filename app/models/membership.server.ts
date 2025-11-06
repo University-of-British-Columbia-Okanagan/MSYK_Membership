@@ -46,6 +46,15 @@ function addMonthsForCycle(
 }
 
 /**
+ * Get access hours string based on needAdminPermission
+ * @param needAdminPermission Boolean indicating if admin permission is required
+ * @returns "24/7" if needAdminPermission is true, "Open Hours" if false
+ */
+export function getAccessHours(needAdminPermission: boolean): string {
+  return needAdminPermission ? "24/7" : "Open Hours";
+}
+
+/**
  * Calculate prorated upgrade amount for monthly→monthly switch.
  * Uses remaining fraction of current cycle multiplied by price delta.
  */
@@ -111,8 +120,6 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         priceYearly: data.priceYearly,
         needAdminPermission: data.needAdminPermission ?? false,
         feature: featuresJson,
-        accessHours: "24/7", // or any appropriate value
-        type: "standard", // or any appropriate value
       },
     });
     return newPlan;

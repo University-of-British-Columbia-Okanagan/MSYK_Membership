@@ -103,11 +103,6 @@ async function main() {
           Feature9: "60 minutes of laser/CNC cut time per month ($1/min after)",
           Feature10: "Additional Hackspace and Shop orientations required",
         },
-        accessHours: {
-          start: "00:00", // 24/7 Access
-          end: "23:59",
-        },
-        type: "monthly",
       },
       {
         title: "Drop-In 10 Pass",
@@ -120,11 +115,6 @@ async function main() {
           Feature2: "**Shop Orientation required for Wood Shop",
           Feature3: "**Training may be required for Hackspace equipment",
         },
-        accessHours: {
-          start: "10:00", // Example: 10 AM start
-          end: "16:00", // Example: 4 PM end
-        },
-        type: "monthly",
         needAdminPermission: true,
       },
     ],
