@@ -483,43 +483,14 @@ export async function sendMembershipConfirmationEmail(params: {
   planDescription: string;
   monthlyPrice: number;
   features: Record<string, string>;
-  accessHours?: string | Record<string, unknown>;
+  needAdminPermission?: boolean;
   gstPercentage?: number;
   nextBillingDate?: Date;
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, planDescription, monthlyPrice, features, accessHours, gstPercentage, nextBillingDate, billingCycle, planPrice, needsPaymentMethod } = params;
-
-  function formatAccessHours(value: unknown): string | null {
-    if (!value) return null;
-    if (typeof value === "string") return value;
-    if (typeof value === "object") {
-      const obj = value as Record<string, unknown>;
-      const hasStartEnd = typeof obj.start === "string" || typeof obj.end === "string";
-      if (hasStartEnd) {
-        const start = typeof obj.start === "string" ? obj.start : "";
-        const end = typeof obj.end === "string" ? obj.end : "";
-        const joined = [start, end].filter(Boolean).join(" - ");
-        return joined.length > 0 ? joined : null;
-      }
-      const entries = Object.entries(obj).map(([key, val]) => {
-        if (val && typeof val === "object") {
-          const nested = val as Record<string, unknown>;
-          if (typeof nested.start === "string" || typeof nested.end === "string") {
-            const s = typeof nested.start === "string" ? nested.start : "";
-            const e = typeof nested.end === "string" ? nested.end : "";
-            const range = [s, e].filter(Boolean).join(" - ");
-            return `${key}: ${range}`;
-          }
-        }
-        return `${key}: ${String(val)}`;
-      });
-      return entries.length > 0 ? entries.join("\n") : null;
-    }
-    return String(value);
-  }
+  const { userEmail, planTitle, planDescription, monthlyPrice, features, needAdminPermission, gstPercentage, nextBillingDate, billingCycle, planPrice, needsPaymentMethod } = params;
 
   const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
   const showNextLine = billingCycle === "monthly" && nextBillingDate;
@@ -535,8 +506,8 @@ export async function sendMembershipConfirmationEmail(params: {
     .map(feature => `• ${feature}`)
     .join("\n");
 
-  const accessFormatted = formatAccessHours(accessHours ?? null);
-  const accessInfo = accessFormatted ? `\nAccess Hours:\n${accessFormatted}` : "";
+  const accessHours = needAdminPermission ? "24/7" : "Open Hours";
+  const accessInfo = `\nAccess Hours:\n${accessHours}`;
 
   const parts = [
     `Welcome to your new membership: "${planTitle}"!`,
