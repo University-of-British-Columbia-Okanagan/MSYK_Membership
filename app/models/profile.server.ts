@@ -6,7 +6,7 @@ export type UserProfileData = {
   avatarUrl: string | null;
   email: string;
   membershipTitle: string;
-  membershipType: string;
+  billingCycle: string | null;
   membershipStatus: string | null;
   nextBillingDate: string | null;
   cardLast4: string;
@@ -109,12 +109,22 @@ export async function getProfileDetails(request: Request) {
 
   if (!user) return null;
 
+  const billingCycleLabel = membership?.billingCycle
+    ? membership.billingCycle === "quarterly"
+      ? "Quarterly"
+      : membership.billingCycle === "semiannually"
+      ? "Every 6 months"
+      : membership.billingCycle === "yearly"
+      ? "Yearly"
+      : "Monthly"
+    : null;
+
   return {
     name: `${user.firstName} ${user.lastName}`,
     avatarUrl: user.avatarUrl,
     email: user.email,
     membershipTitle: membership?.membershipPlan.title ?? "None",
-    membershipType: membership?.membershipPlan.type ?? "N/A",
+    billingCycle: billingCycleLabel,
     membershipStatus: membership?.status ?? null,
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
