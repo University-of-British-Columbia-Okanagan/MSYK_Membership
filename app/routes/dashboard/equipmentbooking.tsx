@@ -148,6 +148,21 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
+  /**
+   * Get base URL without port and trailing slash
+   * @returns Base URL like "http://localhost" or "https://my.makerspaceyk.com"
+   */
+  function getBaseUrlWithoutPort(): string {
+    const baseUrl = process.env.BASE_URL || "http://localhost:5173";
+    try {
+      const url = new URL(baseUrl);
+      // Return protocol + hostname (no port, no path)
+      return `${url.protocol}//${url.hostname}`;
+    } catch {
+      return "http://localhost";
+    }
+  }
+
   const equipmentId = Number(formData.get("equipmentId"));
   const slotCount = Number(formData.get("slotCount"));
   const slotsDataKey = formData.get("slotsData");
@@ -216,7 +231,7 @@ export async function action({ request }: { request: Request }) {
       { url: request.url }
     );
 
-    const fakeRequest = new Request("http://localhost", {
+    const fakeRequest = new Request(getBaseUrlWithoutPort(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -285,8 +300,10 @@ export default function EquipmentBookingForm() {
     equipmentId
   );
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
-  const [currentEquipmentHasPrerequisites, setCurrentEquipmentHasPrerequisites] =
-    useState<boolean>(hasCompletedEquipmentPrerequisites);
+  const [
+    currentEquipmentHasPrerequisites,
+    setCurrentEquipmentHasPrerequisites,
+  ] = useState<boolean>(hasCompletedEquipmentPrerequisites);
 
   // Initialize prerequisite status when selectedEquipment changes
   useEffect(() => {
@@ -370,7 +387,8 @@ export default function EquipmentBookingForm() {
                   setSelectedSlots([]);
 
                   // Update prerequisite status for newly selected equipment
-                  const hasPrereqs = equipmentPrerequisiteMap?.[newEquipmentId] ?? true;
+                  const hasPrereqs =
+                    equipmentPrerequisiteMap?.[newEquipmentId] ?? true;
                   setCurrentEquipmentHasPrerequisites(hasPrereqs);
                 }}
                 required

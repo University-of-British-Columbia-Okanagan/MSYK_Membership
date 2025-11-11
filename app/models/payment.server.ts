@@ -198,7 +198,10 @@ export async function quickCheckout(
 
           if (!current) throw new Error("Current membership not found");
 
-          if (current.billingCycle !== "monthly" || billingCycle !== "monthly") {
+          if (
+            current.billingCycle !== "monthly" ||
+            billingCycle !== "monthly"
+          ) {
             throw new Error(
               "Only monthly-to-monthly upgrades can be paid; cancel non-monthly instead"
             );
@@ -223,7 +226,8 @@ export async function quickCheckout(
           }
 
           price = fee;
-          metadata.currentMembershipId = checkoutData.currentMembershipId.toString();
+          metadata.currentMembershipId =
+            checkoutData.currentMembershipId.toString();
         }
       }
       break;
@@ -382,11 +386,7 @@ export async function quickCheckout(
             false, // Not a downgrade
             false, // Not a resubscription
             paymentIntent.id,
-            billingCycle as
-              | "monthly"
-              | "quarterly"
-              | "semiannually"
-              | "yearly"
+            billingCycle as "monthly" | "quarterly" | "semiannually" | "yearly"
           );
 
           // Activate the pending membership form and link it to the subscription
@@ -398,9 +398,10 @@ export async function quickCheckout(
 
           // Send confirmation email for membership
           try {
-            const { sendMembershipConfirmationEmail, checkPaymentMethodStatus } = await import(
-              "../utils/email.server"
-            );
+            const {
+              sendMembershipConfirmationEmail,
+              checkPaymentMethodStatus,
+            } = await import("../utils/email.server");
             const membershipPlan = await getMembershipPlanById(
               checkoutData.membershipPlanId!
             );
@@ -429,13 +430,14 @@ export async function quickCheckout(
                 billingCycle,
                 planPrice:
                   billingCycle === "quarterly"
-                    ? membershipPlan.price3Months ?? membershipPlan.price
+                    ? (membershipPlan.price3Months ?? membershipPlan.price)
                     : billingCycle === "semiannually"
-                    ? membershipPlan.price6Months ?? membershipPlan.price
-                    : billingCycle === "yearly"
-                    ? membershipPlan.priceYearly ?? membershipPlan.price
-                    : membershipPlan.price,
-                nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
+                      ? (membershipPlan.price6Months ?? membershipPlan.price)
+                      : billingCycle === "yearly"
+                        ? (membershipPlan.priceYearly ?? membershipPlan.price)
+                        : membershipPlan.price,
+                nextBillingDate:
+                  billingCycle === "monthly" ? nextBillingDate : undefined,
                 needsPaymentMethod,
               });
             }
@@ -705,7 +707,9 @@ export async function createCheckoutSession(request: Request) {
       throw new Error("Missing required membership payment data");
     }
 
-    const membershipPlan = await getMembershipPlanById(Number(membershipPlanId));
+    const membershipPlan = await getMembershipPlanById(
+      Number(membershipPlanId)
+    );
     if (!membershipPlan) {
       throw new Error("Membership Plan not found");
     }
@@ -739,7 +743,10 @@ export async function createCheckoutSession(request: Request) {
 
       if (fee <= 0) {
         return new Response(
-          JSON.stringify({ success: false, error: "No payment required for this switch." }),
+          JSON.stringify({
+            success: false,
+            error: "No payment required for this switch.",
+          }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
       }
@@ -770,13 +777,15 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5173/dashboard/memberships`,
+      success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.BASE_URL}dashboard/memberships`,
       metadata: {
         membershipPlanId: membershipPlanId.toString(),
         userId: userId.toString(),
         originalPrice: membershipPlan.price.toString(),
-        currentMembershipId: currentMembershipId ? String(currentMembershipId) : null,
+        currentMembershipId: currentMembershipId
+          ? String(currentMembershipId)
+          : null,
         billingCycle: billingCycle,
       },
     });
@@ -832,8 +841,8 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5173/dashboard/workshops`,
+      success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
       metadata: {
         workshopId: workshopId.toString(),
         occurrenceId: occurrenceId.toString(),
@@ -902,8 +911,8 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5173/dashboard/workshops`,
+      success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
       metadata: {
         workshopId: workshopId.toString(),
         connectId: connectId.toString(),
@@ -950,8 +959,8 @@ export async function createCheckoutSession(request: Request) {
           quantity: 1,
         },
       ],
-      success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `http://localhost:5173/dashboard/equipment`,
+      success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.BASE_URL}dashboard/equipment`,
       metadata: {
         equipmentId: equipmentId.toString(),
         userId: userId.toString(),
