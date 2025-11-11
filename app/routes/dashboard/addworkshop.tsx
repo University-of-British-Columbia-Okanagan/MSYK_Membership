@@ -989,8 +989,20 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
+    // Validate all fields
     const isValid = await form.trigger();
-    if (!isValid) return;
+    // If validation failed, check if it's ONLY the price field failing
+    if (!isValid) {
+      const errors = form.formState.errors;
+      // If we have price variations enabled and the ONLY error is the price field, ignore it
+      if (hasPriceVariations && Object.keys(errors).length === 1 && errors.price) {
+        // Clear the price error and continue
+        form.clearErrors("price");
+      } else {
+        // There are other validation errors, stop submission
+        return;
+      }
+    }
 
     try {
       sessionStorage.setItem(
@@ -2188,7 +2200,7 @@ export default function AddWorkshop() {
                     type="submit"
                     className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                     onClick={() => {
-                      console.log("Final Form Data:", form.getValues());
+                      // console.log("Final Form Data:", form.getValues());
                     }}
                     disabled={formSubmitting}
                   >
