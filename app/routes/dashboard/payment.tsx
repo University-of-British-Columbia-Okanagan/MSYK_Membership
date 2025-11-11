@@ -164,7 +164,9 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
-    needsPayment = !userActiveMembership || (upgradeFee > 0 && !isDowngrade && !changeNotAllowed);
+    needsPayment =
+      !userActiveMembership ||
+      (upgradeFee > 0 && !isDowngrade && !changeNotAllowed);
 
     return {
       membershipPlan: {
@@ -469,8 +471,8 @@ export async function action({ request }: { request: Request }) {
             quantity: 1,
           },
         ],
-        success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `http://localhost:5173/dashboard/memberships`,
+        success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.BASE_URL}dashboard/memberships`,
         metadata: {
           membershipPlanId: membershipPlanId.toString(),
           userId: userId.toString(),
@@ -541,8 +543,8 @@ export async function action({ request }: { request: Request }) {
             quantity: 1,
           },
         ],
-        success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `http://localhost:5173/dashboard/workshops`,
+        success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
         metadata: {
           workshopId: workshopId.toString(),
           occurrenceId: occurrenceId.toString(),
@@ -609,8 +611,8 @@ export async function action({ request }: { request: Request }) {
             quantity: 1,
           },
         ],
-        success_url: `http://localhost:5173/dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `http://localhost:5173/dashboard/workshops`,
+        success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
         metadata: {
           workshopId: workshopId.toString(),
           connectId: connectId.toString(),
@@ -899,8 +901,7 @@ export default function Payment() {
                     | "monthly"
                     | "quarterly"
                     | "semiannually"
-                    | "yearly") ||
-                  "monthly",
+                    | "yearly") || "monthly",
               }}
               itemName={data.membershipPlan.title}
               itemPrice={
@@ -961,8 +962,8 @@ export default function Payment() {
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
               <p className="text-gray-700">
                 Switching between non-monthly plans or to/from non-monthly terms
-                isn't supported. Please cancel your current subscription and wait
-                for it to end before subscribing to a different term.
+                isn't supported. Please cancel your current subscription and
+                wait for it to end before subscribing to a different term.
               </p>
             </div>
           )}
@@ -977,8 +978,8 @@ export default function Payment() {
               {data.isResubscription ? (
                 <div className="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded">
                   <p className="text-gray-700">
-                    You previously cancelled this membership. Resubscribing now will
-                    reactivate it immediately.
+                    You previously cancelled this membership. Resubscribing now
+                    will reactivate it immediately.
                   </p>
                   <p className="font-semibold mt-2">
                     No payment is required for resubscription.
@@ -1001,10 +1002,14 @@ export default function Payment() {
                         ).toLocaleDateString()
                       : "N/A"}
                     , then switch to CA$
-                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
+                      2
+                    )}
                     /month (incl. GST).
                   </p>
-                  <p className="font-semibold mt-2">No payment is required now.</p>
+                  <p className="font-semibold mt-2">
+                    No payment is required now.
+                  </p>
                 </div>
               ) : data.upgradeFee > 0 ? (
                 <p className="mt-2 text-gray-700">
@@ -1013,10 +1018,13 @@ export default function Payment() {
                     2
                   )}{" "}
                   now (incl. GST) to enjoy the benefits of{" "}
-                  <strong>{data.membershipPlan.title}</strong>. Then, you will pay{" "}
+                  <strong>{data.membershipPlan.title}</strong>. Then, you will
+                  pay{" "}
                   <strong>
                     CA$
-                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                    {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
+                      2
+                    )}
                     /month
                   </strong>{" "}
                   starting from{" "}
@@ -1029,8 +1037,8 @@ export default function Payment() {
                 </p>
               ) : data.userActiveMembership ? (
                 <p className="mt-2 text-gray-700">
-                  Switching to the same price plan. No additional payment is needed
-                  now.
+                  Switching to the same price plan. No additional payment is
+                  needed now.
                 </p>
               ) : null}
 
@@ -1043,17 +1051,21 @@ export default function Payment() {
                   <p className="text-lg font-semibold">
                     Total due now: CA$
                     {data.userActiveMembership
-                      ? (data.upgradeFee * (1 + data.gstPercentage / 100)).toFixed(
-                          2
-                        )
-                      : (membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
-                          2
-                        )}
+                      ? (
+                          data.upgradeFee *
+                          (1 + data.gstPercentage / 100)
+                        ).toFixed(2)
+                      : (
+                          membershipPrice *
+                          (1 + data.gstPercentage / 100)
+                        ).toFixed(2)}
                   </p>
                   <p className="text-sm text-gray-600">
                     (Includes CA$
                     {data.userActiveMembership
-                      ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(2)
+                      ? (data.upgradeFee * (data.gstPercentage / 100)).toFixed(
+                          2
+                        )
                       : (membershipPrice * (data.gstPercentage / 100)).toFixed(
                           2
                         )}{" "}
