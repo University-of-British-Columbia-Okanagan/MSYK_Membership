@@ -15,6 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useFetcher } from "react-router";
 import { FiMoreVertical } from "react-icons/fi";
+import { useState } from "react";
 
 interface WorkshopProps {
   id: number;
@@ -49,6 +50,7 @@ export default function WorkshopCard({
 }: WorkshopProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Placeholder image
   const placeholderImage = "/images/gallerysectionimg3.avif";
@@ -126,10 +128,42 @@ export default function WorkshopCard({
           )}
         </div>
 
+        {/* Description Section
+        <div className="mt-1">
+          <CardDescription className="text-blue-700">
+            {isExpanded || description.length <= 299
+              ? description
+              : `${description.slice(0, 299)}...`}
+          </CardDescription>
+          {description.length > 299 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium mt-1"
+            >
+              {isExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div> */}
+
         {/* Description Section */}
-        <CardDescription className="text-blue-700 mt-1">
-          {description}
-        </CardDescription>
+        <div className="mt-1">
+          <CardDescription className="text-blue-700">
+            {description.length <= 299
+              ? description
+              : `${description.slice(0, 299)}...`}
+          </CardDescription>
+          {description.length > 299 && (
+            <button
+              onClick={() => navigate(`/dashboard/workshops/${id}`)}
+              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium mt-1 hover:underline"
+            >
+              Show more
+            </button>
+          )}
+        </div>
 
         {/* Price Box or Registration Time */}
         {isMyWorkshops && registrationStartDate && registrationEndDate ? (
