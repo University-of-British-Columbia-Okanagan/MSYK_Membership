@@ -810,7 +810,7 @@ export default function ProfilePage() {
                               {workshopGroup.length > 1 ? (
                                 <div className="text-sm text-gray-600">
                                   <p className="font-medium">
-                                    Multi-day training/orientation:
+                                    {/* Multi-day training/orientation: */}
                                   </p>
                                   {workshopGroup
                                     .sort(

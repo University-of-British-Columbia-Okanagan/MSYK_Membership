@@ -80,7 +80,7 @@ async function sendPasswordResetEmail(
   await sendMail({
     to: userEmail,
     subject: "Password Reset Request",
-    text: `Please use the following link to reset your password. The following link is valid for next 1 hour.\n${resetLink}`,
+    text: `Please use the following link to reset your password. The following link is valid for the next 1 hour.\n${resetLink}`,
   });
 }
 
