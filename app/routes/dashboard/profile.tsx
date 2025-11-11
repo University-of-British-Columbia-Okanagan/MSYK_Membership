@@ -981,7 +981,7 @@ export default function ProfilePage() {
                                   onChange={(e) => {
                                     const currentTime = startTime
                                       ? startTime.split("T")[1]
-                                      : "10:00";
+                                      : "09:00";
                                     setStartTime(
                                       `${e.target.value}T${currentTime}`
                                     );
@@ -1022,9 +1022,10 @@ export default function ProfilePage() {
                                     </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent className="max-h-64 overflow-y-auto">
-                                    {Array.from({ length: 145 }, (_, i) => {
-                                      const totalMinutes = 10 * 60 + i * 5;
-                                      if (totalMinutes >= 22 * 60) return null;
+                                    {Array.from({ length: 60 }, (_, i) => {
+                                      const totalMinutes = 9 * 60 + i * 15;
+                                      if (totalMinutes > 23 * 60 + 45)
+                                        return null;
                                       const hour = Math.floor(
                                         totalMinutes / 60
                                       );
@@ -1057,7 +1058,7 @@ export default function ProfilePage() {
                                   onChange={(e) => {
                                     const currentTime = endTime
                                       ? endTime.split("T")[1]
-                                      : "10:00";
+                                      : "09:00";
                                     setEndTime(
                                       `${e.target.value}T${currentTime}`
                                     );
@@ -1094,9 +1095,10 @@ export default function ProfilePage() {
                                     </SelectValue>
                                   </SelectTrigger>
                                   <SelectContent className="max-h-64 overflow-y-auto">
-                                    {Array.from({ length: 145 }, (_, i) => {
-                                      const totalMinutes = 10 * 60 + i * 5;
-                                      if (totalMinutes >= 22 * 60) return null;
+                                    {Array.from({ length: 60 }, (_, i) => {
+                                      const totalMinutes = 9 * 60 + i * 15;
+                                      if (totalMinutes > 23 * 60 + 45)
+                                        return null;
                                       const hour = Math.floor(
                                         totalMinutes / 60
                                       );
