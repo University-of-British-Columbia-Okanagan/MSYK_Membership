@@ -685,6 +685,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC3 | **Session** Invalidation | Login as user; change password externally (via admin or database); attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC4 | Tampered **Session** Cookie | Login as user; modify session cookie in browser dev tools; attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC5 | **Register** Valid Registration | Navigate to `/register`; fill all required fields with valid data; provide all required consents; submit form | User record created; registration confirmation email received; redirect to login page | `N/A` | `11/09/2025`
+| --- | **Register** Age Input | Navigate to `/register` and input age | If less than 18 years old, then register should not complete | `N/A` | `11/09/2025`
+| --- | **Register** Agreements | Navigate to `/register` and have to check the boxes to agree and read agreements | If unchecked, then register should not complete | `N/A` | `11/09/2025`
 | AC6 | **Register** Waiver Signature | During registration, provide digital waiver signature; complete registration | Waiver PDF can be downloaded (admin view); waiver contains user name, signature, and date; waiver is encrypted in database | `N/A` | `11/09/2025`
 | AC7 | **Register** Duplicate Email | Attempt registration with existing email | Validation error displayed; no duplicate user record created; error message shows on form | `N/A` | `11/09/2025`
 | AC8 | **Register** Missing Required Fields | Attempt registration with missing required fields | Field-specific error messages displayed; no user record created; form highlights missing fields | `N/A` | `11/09/2025`
@@ -696,7 +698,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | Add Payment Information in **Profile** | Add payment method | Shows payment information of card if added | `N/A` | `11/09/2025`
 | ---- | Payment Method Validation in **Profile** | Validate all fields when inputting the payment method | If all fields validated, add the payment method | `N/A` | `11/09/2025`
 | ---- | Update Payment Method in **Profile** | Update payment method by pressing update payment button and by removing the current one and adding one | Able to remove current payment method and add a new one if you want | `N/A` | `11/09/2025`
-| ---- | Orientation History in **Profile** | Register for an orientation and pass | Should show all orientations a person has registered for and passes | `N/A` | `11/09/2025`
+| ---- | Orientation History in **Profile** | Register for an orientation and pass | Should show all orientations a person has registered for and passes with the price variation and workshop type? | `N/A` | `TODO`
 | ---- | **Volunteer:** Log Hours | Log volunteer hours | Logs hours successfully if end time after start time, volunteer hours not for future dates, volunteer hours does not end in the future, volunteer session not longer than 24 hours, time period does not overlap with existing volunteer hours | `N/A` | `11/09/2025`
 | ---- | **Volunteer:** Log Hours Field Validation | Input fields required for volunteer validation | Should log successfully if all required fields filled | `N/A` | `11/09/2025`
 | ---- | **Volunteer:** Recent Hours and Filter | Look at recent hours after logging and the filters | Should show all successfully logged hours with proper filtering| `N/A` | `TODO`
@@ -736,12 +738,18 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ---
 
-### Manual Testing and Testing Overview
+### Findings and Bugs
+'Last Updated: 11/09/2025
 
 - **Findings**:
-  - Last Updated: 11/09/2025
   - In add payment method, the country is not all countries
   - Recent Activity in Profile does nothing
+  - In a multi day orientation, you still have to pass individual times even though it is multi day
+  - Orientation History confusing on if workshop is single occurrence or multi day
+  - When we create a workshop that is not a price variation, do we want to be able to edit the workshop to add price variations and vise versa? 
+
+- **Open Bugs**:
+  - Add Workshop with Price Variation not working **[Resolved]**
 
 ---
 
