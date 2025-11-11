@@ -172,9 +172,21 @@ export default function EquipmentCard({
 
       <CardHeader className="p-4 flex-grow">
         <CardTitle className="text-lg font-semibold">{name}</CardTitle>
-        <CardDescription className="line-clamp-2 text-sm">
-          {description}
-        </CardDescription>
+        <div>
+          <CardDescription className="text-sm">
+            {description.length <= 299
+              ? description
+              : `${description.slice(0, 299)}...`}
+          </CardDescription>
+          {description.length > 299 && (
+            <button
+              onClick={() => navigate(`/dashboard/equipments/${id}`)}
+              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium mt-1 hover:underline"
+            >
+              Show more
+            </button>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="p-4 flex flex-col gap-4 mt-auto">
