@@ -64,14 +64,14 @@ async function generateSignedWaiver(
     // Embed font
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    const baseX = 75; // X position (left/right)
+    const baseX = 57.5; // X position (left/right)
 
     // Add name using calculated position
     const fullName = `${firstName} ${lastName}`;
     secondPage.drawText(fullName, {
       x: baseX,
       y: 200,
-      size: 10, // Slightly smaller font
+      size: 8, // Slightly smaller font
       font: font,
       color: rgb(0, 0, 0),
     });
@@ -308,7 +308,7 @@ export async function login(rawValues: Record<string, any>) {
   const isPasswordValid = await bcrypt.compare(data.password, user.password);
   if (!isPasswordValid) {
     // Return an error if the password is incorrect
-    return { errors: { password: ["Incorrect password."] } };
+    return { errors: { password: ["Incorrect password"] } };
   }
 
   return {
