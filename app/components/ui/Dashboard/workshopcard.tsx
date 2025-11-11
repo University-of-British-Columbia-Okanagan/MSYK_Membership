@@ -127,9 +127,21 @@ export default function WorkshopCard({
         </div>
 
         {/* Description Section */}
-        <CardDescription className="text-blue-700 mt-1">
-          {description}
-        </CardDescription>
+        <div className="mt-1">
+          <CardDescription className="text-blue-700">
+            {description.length <= 299
+              ? description
+              : `${description.slice(0, 299)}...`}
+          </CardDescription>
+          {description.length > 299 && (
+            <button
+              onClick={() => navigate(`/dashboard/workshops/${id}`)}
+              className="text-indigo-600 hover:text-indigo-800 text-sm font-medium mt-1 hover:underline"
+            >
+              Show more
+            </button>
+          )}
+        </div>
 
         {/* Price Box or Registration Time */}
         {isMyWorkshops && registrationStartDate && registrationEndDate ? (
