@@ -1103,6 +1103,82 @@ export async function updateMembershipFormStatus(
 }
 
 /**
+ * Revoke all active memberships for a user (admin action, no refund)
+ * Immediately sets all active/ending/cancelled memberships to inactive
+ * and recalculates user role level based on orientation completion
+ * @param userId The ID of the user whose memberships to revoke
+ * @returns Object with affectedPlans count
+ */
+export async function revokeUserMembershipByAdmin(userId: number) {
+  return await db.$transaction(async (tx) => {
+    // Find all non-inactive memberships for this user
+    const membershipsToRevoke = await tx.userMembership.findMany({
+      where: {
+        userId,
+        status: { in: ["active", "ending", "cancelled"] },
+      },
+      select: {
+        id: true,
+        membershipPlanId: true,
+      },
+    });
+
+    if (membershipsToRevoke.length === 0) {
+      return { affectedPlans: 0 };
+    }
+
+    // Get unique plan IDs
+    const affectedPlanIds = [
+      ...new Set(membershipsToRevoke.map((m) => m.membershipPlanId)),
+    ];
+
+    // Set all memberships to inactive
+    const now = new Date();
+    await tx.userMembership.updateMany({
+      where: {
+        userId,
+        status: { in: ["active", "ending", "cancelled"] },
+      },
+      data: {
+        status: "inactive",
+        nextPaymentDate: now,
+      },
+    });
+
+    // Update all membership forms to inactive for affected plans
+    for (const planId of affectedPlanIds) {
+      await tx.userMembershipForm.updateMany({
+        where: {
+          userId,
+          membershipPlanId: planId,
+          status: { in: ["pending", "active", "cancelled", "ending"] },
+        },
+        data: {
+          status: "inactive",
+        },
+      });
+    }
+
+    // Recalculate user role level based on orientation completion
+    const passedOrientationCount = await tx.userWorkshop.count({
+      where: {
+        userId,
+        result: { equals: "passed", mode: "insensitive" },
+        workshop: { type: { equals: "orientation", mode: "insensitive" } },
+      },
+    });
+
+    const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
+    await tx.user.update({
+      where: { id: userId },
+      data: { roleLevel: newRoleLevel },
+    });
+
+    return { affectedPlans: affectedPlanIds.length };
+  });
+}
+
+/**
  * Invalidate existing membership forms before creating a new one
  * @param userId The ID of the user
  * @param membershipPlanId The ID of the membership plan

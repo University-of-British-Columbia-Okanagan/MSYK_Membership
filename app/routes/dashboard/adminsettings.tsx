@@ -67,6 +67,7 @@ import {
   makeUserAdmin,
   removeUserAdmin,
 } from "~/models/user.server";
+import { revokeUserMembershipByAdmin } from "~/models/membership.server";
 import {
   ShadTable,
   type ColumnDefinition,
@@ -578,6 +579,37 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "revokeMembership") {
+    const userId = formData.get("userId");
+    try {
+      const result = await revokeUserMembershipByAdmin(Number(userId));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Revoked membership for user ${userId} (affected plans: ${result.affectedPlans})`,
+        {
+          url: request.url,
+          targetUserId: userId,
+          affectedPlans: result.affectedPlans,
+        }
+      );
+
+      return {
+        success: true,
+        message: `Membership revoked successfully. ${result.affectedPlans} plan(s) affected.`,
+      };
+    } catch (error) {
+      logger.error(`Error revoking membership: ${error}`, {
+        userId: roleUser.userId,
+        targetUserId: userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to revoke membership",
+      };
+    }
+  }
+
   if (actionType === "updateVolunteerHourStatus") {
     const hourId = formData.get("hourId");
     const newStatus = formData.get("newStatus");
@@ -846,6 +878,48 @@ function AdminControl({
           buttonClassName="bg-green-500 hover:bg-green-600 text-white"
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * MembershipControl component:
+ * - Shows "Revoke Membership" button for all users.
+ * - Immediately revokes all active memberships with no refund.
+ * Uses ConfirmButton with POST to revokeMembership.
+ */
+function MembershipControl({
+  user,
+}: {
+  user: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    hasRevocableMembership: boolean;
+  };
+}) {
+  const submit = useSubmit();
+
+  const revokeMembership = () => {
+    const formData = new FormData();
+    formData.append("actionType", "revokeMembership");
+    formData.append("userId", user.id.toString());
+    submit(formData, { method: "post" });
+  };
+
+  if (!user.hasRevocableMembership) {
+    return <span className="text-sm text-gray-500">No membership</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <ConfirmButton
+        confirmTitle="Confirm Revoke Membership"
+        confirmDescription={`Revoke membership for ${user.firstName} ${user.lastName}? This is immediate and non-refundable.`}
+        onConfirm={revokeMembership}
+        buttonLabel="Revoke Membership"
+        buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+      />
     </div>
   );
 }
@@ -1493,6 +1567,7 @@ export default function AdminSettings() {
         volunteerStart: Date;
         volunteerEnd: Date | null;
       }>;
+      hasRevocableMembership: boolean;
     }>;
     volunteerHours: Array<{
       id: number;
@@ -2154,6 +2229,10 @@ export default function AdminSettings() {
     },
     { header: "Role Level", render: (user) => <RoleControl user={user} /> },
     { header: "Admin Status", render: (user) => <AdminControl user={user} /> },
+    {
+      header: "Membership",
+      render: (user) => <MembershipControl user={user} />,
+    },
   ];
 
   // Helper function to convert time units to minutes
@@ -2473,7 +2552,7 @@ export default function AdminSettings() {
               <h1 className="text-xl font-bold">Admin Settings</h1>
             </div>
 
-            <div className="flex items-center gap-2 mb-6 hidden md:flex">
+            <div className="hidden md:flex items-center gap-2 mb-6">
               <Settings className="h-6 w-6 text-indigo-500" />
               <h1 className="text-2xl font-bold">Admin Settings</h1>
             </div>
@@ -5752,7 +5831,7 @@ export default function AdminSettings() {
                                     )
                                 }
                               >
-                                {actionData.accessCardExists ? "Update" : "Register"} 
+                                {actionData.accessCardExists ? "Update" : "Register"}
                               </Button>
                             </div>
                           </div>
