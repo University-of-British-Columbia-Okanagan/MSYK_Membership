@@ -1133,6 +1133,7 @@ export async function revokeUserMembershipByAdmin(userId: number) {
     ];
 
     // Set all memberships to inactive
+    const now = new Date();
     await tx.userMembership.updateMany({
       where: {
         userId,
@@ -1140,6 +1141,7 @@ export async function revokeUserMembershipByAdmin(userId: number) {
       },
       data: {
         status: "inactive",
+        nextPaymentDate: now,
       },
     });
 
