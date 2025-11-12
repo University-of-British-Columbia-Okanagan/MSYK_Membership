@@ -525,6 +525,11 @@ export async function getAllUsersWithVolunteerStatus() {
           volunteerStart: "desc",
         },
       },
+      userMemberships: {
+        select: {
+          status: true,
+        },
+      },
     },
     orderBy: {
       id: "asc",
@@ -533,14 +538,21 @@ export async function getAllUsersWithVolunteerStatus() {
 
   // Transform the data to include computed volunteer status
   return users.map((user) => {
-    const activeVolunteer = user.volunteers.find(
+    const { volunteers, userMemberships, ...userWithoutRelations } = user;
+    const activeVolunteer = volunteers.find(
       (v) => v.volunteerEnd === null
     );
+    const hasRevocableMembership = userMemberships.some(({ status }) => {
+      const normalized = status.toLowerCase();
+      return normalized === "active" || normalized === "ending" || normalized === "cancelled";
+    });
     return {
-      ...user,
+      ...userWithoutRelations,
+      volunteers,
       isVolunteer: !!activeVolunteer,
       volunteerSince: activeVolunteer?.volunteerStart || null,
-      volunteerHistory: user.volunteers,
+      volunteerHistory: volunteers,
+      hasRevocableMembership,
     };
   });
 }
