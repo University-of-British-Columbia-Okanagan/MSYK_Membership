@@ -241,8 +241,6 @@ export async function registerMembershipSubscription(
   });
   if (!plan) throw new Error("Plan not found");
 
-  // Handle resubscription - if a membership is cancelled and the user resubscribes,
-  // Simply update the cancelled membership's status to "active" without any payment.
   if (isResubscription) {
     console.log("Entering resubscription branch");
     let cancelledMembership;
@@ -258,11 +256,10 @@ export async function registerMembershipSubscription(
     if (!cancelledMembership) {
       throw new Error("No cancelled membership found for resubscription");
     }
-    // Update the cancelled record to active and set new next payment date
     const now = new Date();
     const newNextPaymentDate = addMonthsForCycle(now, billingCycle);
 
-    const subscription = await db.userMembership.update({
+    subscription = await db.userMembership.update({
       where: { id: cancelledMembership.id },
       data: {
         status: "active",
@@ -270,18 +267,13 @@ export async function registerMembershipSubscription(
       },
     });
 
-    // Reactivate the UserMembershipForm as well
     await updateMembershipFormStatus(
       userId,
       membershipPlanId,
       "active",
       subscription.id
     );
-
-    return subscription;
-  }
-
-  if (isDowngrade && currentMembershipId) {
+  } else if (isDowngrade && currentMembershipId) {
     console.log("hello world2");
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
@@ -356,11 +348,7 @@ export async function registerMembershipSubscription(
       subscription.id
     );
 
-    return subscription;
-  }
-
-  // Continue with upgrade/change logic
-  else if (currentMembershipId) {
+  } else if (currentMembershipId) {
     console.log("hello world3");
     const currentMembership = await db.userMembership.findUnique({
       where: { id: currentMembershipId },
@@ -455,7 +443,6 @@ export async function registerMembershipSubscription(
       }
     }
 
-    return subscription;
   } else {
     // Standard new subscription or simple update logic
     console.log("Creating brand‑new subscription record");
@@ -485,6 +472,10 @@ export async function registerMembershipSubscription(
   }
 
   // Fetch the current user to determine their role - keeping your existing role logic
+  if (!subscription) {
+    throw new Error("Failed to register membership subscription");
+  }
+
   const user = await db.user.findUnique({
     where: { id: userId },
   });
@@ -720,6 +711,40 @@ export function startMonthlyMembershipCheck() {
           continue;
         }
 
+    const syncUserRole = async () => {
+      const activeMembership = await db.userMembership.findFirst({
+        where: {
+          userId: membership.userId,
+          status: { not: "inactive" },
+        },
+        include: {
+          membershipPlan: true,
+        },
+      });
+
+      if (activeMembership) {
+        if (
+          activeMembership.membershipPlan.needAdminPermission &&
+          user.allowLevel4 === true
+        ) {
+          await db.user.update({
+            where: { id: user.id },
+            data: { roleLevel: 4 },
+          });
+        } else {
+          await db.user.update({
+            where: { id: user.id },
+            data: { roleLevel: 3 },
+          });
+        }
+      } else {
+        await db.user.update({
+          where: { id: user.id },
+          data: { roleLevel: 2 },
+        });
+      }
+    };
+
         if (membership.status === "active") {
           // Non-monthly subscriptions are not auto-renewed; expire when due
           if (membership.billingCycle !== "monthly") {
@@ -732,6 +757,7 @@ export function startMonthlyMembershipCheck() {
               membership.membershipPlanId,
               "inactive"
             );
+        await syncUserRole();
             continue;
           }
           // Calculate charge amount with GST
@@ -765,6 +791,7 @@ export function startMonthlyMembershipCheck() {
               membership.membershipPlanId,
               "inactive"
             );
+          await syncUserRole();
 
             try {
               await sendMembershipEndedNoPaymentMethodEmail({
@@ -862,45 +889,7 @@ export function startMonthlyMembershipCheck() {
           );
         }
 
-        // Update the user's roleLevel based on their current membership status.
-        if (user) {
-          // Check if the user has any subscription that is not inactive.
-          const activeMembership = await db.userMembership.findFirst({
-            where: {
-              userId: membership.userId,
-              status: { not: "inactive" },
-            },
-            include: {
-              membershipPlan: true,
-            },
-          });
-
-          if (activeMembership) {
-            // If there is an active membership:
-            // If the active membership is for plan 2 and the user has admin permission (allowLevel4 true),
-            // set roleLevel to 4; otherwise, set roleLevel to 3.
-            if (
-              activeMembership.membershipPlan.needAdminPermission &&
-              user.allowLevel4 === true
-            ) {
-              await db.user.update({
-                where: { id: user.id },
-                data: { roleLevel: 4 },
-              });
-            } else {
-              await db.user.update({
-                where: { id: user.id },
-                data: { roleLevel: 3 },
-              });
-            }
-          } else {
-            // No active membership found; downgrade to level 2.
-            await db.user.update({
-              where: { id: user.id },
-              data: { roleLevel: 2 },
-            });
-          }
-        }
+        await syncUserRole();
       }
     } catch (error) {
       console.error("Error in monthly membership check:", error);
