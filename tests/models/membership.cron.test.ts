@@ -356,16 +356,15 @@ describe("membership.server - cron", () => {
         ([args]) => args
       );
     expect(reminderCalls).toHaveLength(2);
-    expect(reminderCalls.map((call) => call.needsPaymentMethod)).toEqual(
-      expect.arrayContaining([false, true])
-    );
+    expect(
+      reminderCalls.map((call) => call.needsPaymentMethod).sort()
+    ).toEqual([false, true]);
     reminderCalls.forEach((call) => {
       expect(call.planTitle).toBe(plan.title);
       expect(call.gstPercentage).toBe(5);
       expect(call.amountDue).toBeCloseTo(78.75);
       expect(typeof call.userEmail).toBe("string");
       expect(call.nextPaymentDate).toEqual(addDays(baseNow, 1));
-    });
-  });
+    });  });
 });
 
