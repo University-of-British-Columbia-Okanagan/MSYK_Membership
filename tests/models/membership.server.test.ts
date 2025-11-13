@@ -192,8 +192,8 @@ describe("membership.server - memberships", () => {
         160
       );
 
-      expect(amount).toBeGreaterThan(0);
-      expect(amount).toBeLessThan(60);
+      const expectedProration = (160 - 100) * (12 / 31);
+      expect(amount).toBeCloseTo(expectedProration, 2);
     });
   });
 
