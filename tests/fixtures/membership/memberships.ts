@@ -1,10 +1,14 @@
-type MembershipStatus =
+export type MembershipStatus =
   | "active"
   | "ending"
   | "cancelled"
   | "inactive";
 
-type BillingCycle = "monthly" | "quarterly" | "semiannually" | "yearly";
+export type BillingCycle =
+  | "monthly"
+  | "quarterly"
+  | "semiannually"
+  | "yearly";
 
 const defaultDate = new Date("2025-05-06T00:00:00Z");
 
