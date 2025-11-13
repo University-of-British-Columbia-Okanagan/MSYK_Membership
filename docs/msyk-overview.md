@@ -614,6 +614,14 @@ The acceptance criteria are organized into three categories:
 
 | AC Number | Test Case | Description | Test File |
 |-----------|-----------|-------------|-----------|
+| AC13 | New Monthly Membership | Payment processed with GST; membership created with status "active"; `nextPaymentDate` set to 1 month from now; user role level updated; membership form created | `tests/models/membership.server.test.ts` |
+| AC14 | Membership Upgrade (Monthly→Monthly) | Proration calculated; payment processed; old membership status "ending"; new membership "active"; `nextPaymentDate` preserved; role level updated | `tests/models/membership.server.test.ts` |
+| AC15 | Membership Downgrade | Old membership "ending"; new membership "active"; new membership's `date` = old membership's `nextPaymentDate`; no payment required | `tests/models/membership.server.test.ts` |
+| AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
+| AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
+| AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
+| AC19 | Automated Monthly Billing (Cron) | Finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders | `tests/models/membership.cron.test.ts` |
+| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder | `tests/models/membership.cron.test.ts` |
 | AC21 | Workshop Prerequisites | System checks user completed required workshops; registration blocked if prerequisites not met | `tests/models/workshop.registration.test.ts` |
 | AC22 | Workshop Capacity | System checks available spots; registration blocked if capacity exceeded | `tests/models/workshop.capacity.test.ts` |
 | AC23 | Single Occurrence Registration | User registers for single workshop occurrence; registration created in `UserWorkshop` | `tests/models/workshop.registration.test.ts` |
@@ -647,14 +655,6 @@ The acceptance criteria are organized into three categories:
 | AC10 | Password Reset Token Validation | Token validated (expiration, signature); password reset form displayed; user can enter new password | `tests/routes/authentication/passwordReset.test.ts` |
 | AC11 | Expired Reset Token | Token validation fails; error message displayed; user redirected to password reset request page | `tests/routes/authentication/passwordReset.test.ts` |
 | AC12 | Invalid Reset Token | Token validation fails; error message displayed; user redirected to password reset request page | `tests/routes/authentication/passwordReset.test.ts` |
-| AC13 | New Monthly Membership | Payment processed with GST; membership created with status "active"; `nextPaymentDate` set to 1 month from now; user role level updated; membership form created; confirmation email sent | `tests/models/membership.server.test.ts` |
-| AC14 | Membership Upgrade (Monthly→Monthly) | Proration calculated; payment processed; old membership status "ending"; new membership "active"; `nextPaymentDate` preserved; role level updated | `tests/models/membership.server.test.ts` |
-| AC15 | Membership Downgrade | Old membership "ending"; new membership "active"; new membership's `date` = old membership's `nextPaymentDate`; no payment required; downgrade confirmation email sent | `tests/models/membership.server.test.ts` |
-| AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
-| AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
-| AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
-| AC19 | Automated Monthly Billing (Cron) | Finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders | `tests/models/membership.server.test.ts` |
-| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder | `tests/models/membership.server.test.ts` |
 | AC25 | Workshop Price Variation | Selected variation price applied to payment; variation name and description included in confirmation email | `tests/models/workshop.server.test.ts` or `tests/models/payment.server.test.ts` |
 | AC26 | Workshop Refund | System finds registration(s) with payment intent ID; Stripe refund processed; registration record(s) deleted; cancellation confirmation email sent | `tests/models/payment.server.test.ts` |
 | AC27 | Equipment Role Level Restriction | Equipment requires Level 3+ access; user with Level 2 attempts booking; booking blocked; error message displayed | `tests/models/equipment.server.test.ts` |
