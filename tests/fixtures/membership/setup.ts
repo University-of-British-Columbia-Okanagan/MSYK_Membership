@@ -100,6 +100,26 @@ jest.mock("node-cron", () => ({
   },
 }));
 
+const resetScheduledJobs = () => {
+  scheduledJobs.length = 0;
+  cronScheduleMock.mockClear();
+};
+
+const resetStripeMocks = () => {
+  stripeConstructorMock.mockClear();
+  stripePaymentIntentsCreateMock.mockClear();
+};
+
+const resetEmailMocks = () => {
+  mockSendMembershipEndedNoPaymentMethodEmail.mockClear();
+  mockSendMembershipPaymentReminderEmail.mockClear();
+};
+
+const resetAdminSettingMock = () => {
+  mockGetAdminSetting.mockClear();
+  mockGetAdminSetting.mockResolvedValue("5");
+};
+
 export { db } from "~/utils/db.server";
 
 export const getMembershipMocks = () => {
@@ -123,33 +143,17 @@ export const getMembershipMocks = () => {
     scheduledJobs,
     stripeConstructorMock: Stripe as jest.Mock,
     stripePaymentIntentsCreateMock,
-    resetScheduledJobs: () => {
-      scheduledJobs.splice(0, scheduledJobs.length);
-      cronScheduleMock.mockClear();
-    },
-    resetStripeMocks: () => {
-      stripeConstructorMock.mockClear();
-      stripePaymentIntentsCreateMock.mockClear();
-    },
-    resetEmailMocks: () => {
-      mockSendMembershipEndedNoPaymentMethodEmail.mockClear();
-      mockSendMembershipPaymentReminderEmail.mockClear();
-    },
-    resetAdminSettingMock: () => {
-      mockGetAdminSetting.mockClear();
-      mockGetAdminSetting.mockResolvedValue("5");
-    },
+    resetScheduledJobs,
+    resetStripeMocks,
+    resetEmailMocks,
+    resetAdminSettingMock,
   };
 };
 
 export const resetMembershipMocks = () => {
-  stripeConstructorMock.mockClear();
-  stripePaymentIntentsCreateMock.mockClear();
-  mockGetAdminSetting.mockClear();
-  mockGetAdminSetting.mockResolvedValue("5");
-  mockSendMembershipEndedNoPaymentMethodEmail.mockClear();
-  mockSendMembershipPaymentReminderEmail.mockClear();
-  scheduledJobs.splice(0, scheduledJobs.length);
-  cronScheduleMock.mockClear();
+  resetStripeMocks();
+  resetAdminSettingMock();
+  resetEmailMocks();
+  resetScheduledJobs();
 };
 
