@@ -728,14 +728,16 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Workshop Details:** Single Occurrence Cancelled Dates | Go to workshop details | All dates that are cancelled and should not be registerable, even when putting in the URL | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Multi-day Occurrence Cancelled Dates | Go to workshop details | When multi-day workshop is cancelled, users cannot register for the workshop, even when putting in the URL | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Cancel Single Occurrence | Go to edit workshop | If users registered > 0 in that occurrence, then that occurrence can only be cancelled and moved to cancelled tab and status set to cancelled in database | `NA` | `11/17/2025`
-| ---- | **Workshop:** Admin Edit Workshop Delete Single Occurrence Occurrence | Go to workshop details | If no user registered in that occurrence, then that occurrence can only be deleted | `NA` | `11/17/2025`
+| ---- | **Workshop:** Admin Edit Workshop Delete Single Occurrence Occurrence | Go to edit workshop | If no user registered in that occurrence, then that occurrence can only be deleted | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Cancel Multi-day Occurrence | Go to edit workshop | If users registered > 0 in the multi-day workshop, then all the occurrences can only be cancelled and moved to cancelled tab and status set to cancelled in database and you may not add new dates for multi-day workshop | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Delete Multi-day Occurrence | Go to edit workshop | If no users registered in the multi-day workshop, then all the occurrences can only be deleted and you may add new dates to change the dates for multi-day workshop | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Add Workshop Dates Multi-day | Go to edit workshop | If no users registered in the multi-day workshop, then you can add occurrences to the multi-day workshop. If users registered, then you cannot add dates anymore in multi-day workshop | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Add Workshop Dates Single Occurrence | Go to edit workshop | If no users registered or has users registered in the single occurrence workshop, then you can add occurrences to the regular workshop | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Edit Workshop Date Multi-day | Go to edit workshop | If users registered in the multi-day workshop, then you cannot edit any of the occurrences | `NA` | `11/17/2025`
 | ---- | **Workshop:** Admin Edit Workshop Edit Workshop Date Single Occurrence | Go to edit workshop | If users registered in single occurrence workshop (regular workshop), then you cannot edit that occurrence in which has a user registered | `NA` | `11/17/2025`
-| ---- | **Workshop:** Admin Edit Workshop to 0 Occurrences for both Multi-day and Single Occurrence | Go to workshop details | If a admin deletes all workshop dates (and there are none in the past or cancelled tabs), then that workshop should not be able to update until a proper date is added | `NA` | `TODO/TOFIX`
+| ---- | **Workshop:** Admin Edit Workshop to 0 Occurrences for both Multi-day and Single Occurrence | Go to edit workshop| If a admin deletes all workshop dates (and there are none in the past or cancelled tabs), then that workshop should not be able to update until a proper date is added | `NA` | `TODO/TOFIX`
+| ---- | **Workshop:** Admin Add Workshop Required Fields | Go to add workshop | When admin wants to create a workshop, everything that is necessary should be required and fail to create a workshop if those fields not provided (name, price, location, capacity, description, at least one occurrence) | `NA` | `11/17/2025`
+| ---- | **Workshop:** Admin Add Workshop Price field | Go to add workshop | If not price variation not selected, price cannot be less than 0. If price variation selected, price input is -1 but price determined off variation price | `NA` | `11/17/2025`
 | AC21 | **Workshop** Prerequisites | Create workshop with prerequisites; attempt registration without completing prerequisites; complete prerequisite workshop; attempt registration again | Registration blocked initially; error message displayed; registration allowed after completing prerequisites |
 | AC22 | **Workshop** Capacity | Create workshop with capacity limit (e.g., 10 spots); register 10 users; attempt registration as 11th user | Registration blocked; capacity error message displayed |
 | AC23 | **Workshop** Single Occurrence Registration | Browse workshops in `/dashboard/workshops`; select workshop with single occurrence; complete registration and payment | Registration created in `UserWorkshop`; confirmation email received with workshop details, date/time, ICS attachment, Google Calendar link; redirect to `/dashboard/myworkshops` |
@@ -765,7 +767,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 ---
 
 ### Findings and Bugs
-'Last Updated: 11/09/2025
+'Last Updated: 11/17/2025
 
 - **Findings**:
   - In add payment method, the country is not all countries
