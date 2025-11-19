@@ -109,10 +109,22 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Level 2: Cancelled membership but completed orientation(s)
 - Level 1: No membership and no orientation
 
+**Membership Revocation (Admin Action):**
+- Admin can revoke a user's membership access globally (ban status)
+- Revocation sets all active/ending/cancelled memberships to "revoked" status
+- Admin provides custom message when revoking
+- Revoked users cannot subscribe to any new memberships
+- Revoked users' role level recalculated based on orientation completion
+- Email notification sent to user with revocation reason and timestamp
+- User can only re-subscribe after admin explicitly unrevokes them
+- Unrevocation clears ban status but does not reactivate past memberships
+- Historical memberships remain marked as "revoked"
+
 **Key Files:**
-- `app/models/membership.server.ts` - Subscription lifecycle, billing, role management
+- `app/models/membership.server.ts` - Subscription lifecycle, billing, role management, revocation
 - `app/models/payment.server.ts` - Payment processing, proration calculation
 - `app/routes/dashboard/memberships.tsx` - Membership management UI
+- `app/routes/dashboard/adminsettings.tsx` - Admin revocation controls
 
 ### 5. Workshop Management
 
@@ -394,6 +406,37 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 
 **Note:** No payment required if resubscribing to same plan. Payment required if different plan (treated as new subscription).
 
+### Workflow 7B: Membership Revocation (Admin)
+
+1. Admin navigates to user management in admin settings
+2. Admin selects user and clicks "Revoke Membership"
+3. Revocation dialog opens with required custom message field
+4. Admin enters revocation reason/message (required)
+5. Admin confirms revocation
+6. System sets user's `membershipStatus` to "revoked"
+7. System records `membershipRevokedAt` timestamp and `membershipRevokedReason` message
+8. All active/ending/cancelled memberships for user set to "revoked" status
+9. All membership forms updated to "inactive"
+10. User role level recalculated (Level 2 if orientation completed, else Level 1)
+11. Membership revocation email sent to user with reason and timestamp
+12. User is blocked from subscribing to new memberships (ban check on subscription flows)
+
+**Note:** Revocation is permanent until admin explicitly unrevokes. Historical memberships remain "revoked".
+
+### Workflow 7C: Membership Unrevocation (Admin)
+
+1. Admin navigates to user management
+2. Admin selects revoked user and clicks "Unrevoke Membership"
+3. Admin confirms unrevocation
+4. System clears user's `membershipStatus` (set to null/"active")
+5. System clears `membershipRevokedAt` and `membershipRevokedReason` fields
+6. Historical "revoked" memberships remain unchanged (not retroactively reactivated)
+7. User role level remains at current level (Level 1 or 2)
+8. Membership unrevocation email sent to user
+9. User can now subscribe to new memberships
+
+**Note:** Unrevocation removes ban but does not reactivate past memberships.
+
 ### Workflow 8: Workshop Registration (Single Occurrence)
 
 1. User browses workshops in `/dashboard/workshops`
@@ -614,6 +657,9 @@ The acceptance criteria are organized into three categories:
 
 | AC Number | Test Case | Description | Test File |
 |-----------|-----------|-------------|-----------|
+| AC46 | Membership Revocation | Admin revokes user membership; all active/ending/cancelled memberships set to "revoked"; membership forms set to "inactive"; user's `membershipStatus` set to "revoked"; role level recalculated; email sent | `tests/models/membership.server.test.ts` |
+| AC47 | Membership Unrevocation | Admin unrevokes user; `membershipStatus` cleared; `membershipRevokedAt` and `membershipRevokedReason` cleared; historical memberships remain "revoked"; email sent | `tests/models/membership.server.test.ts` |
+| AC48 | Revoked User Subscription Guard | Revoked user attempts to subscribe to new membership; registration blocked with `MEMBERSHIP_REVOKED_ERROR`; no membership created | `tests/models/membership.server.test.ts` |
 | AC13 | New Monthly Membership | Payment processed with GST; membership created with status "active"; `nextPaymentDate` set to 1 month from now; user role level updated; membership form created | `tests/models/membership.server.test.ts` |
 | AC14 | Membership Upgrade (Monthly→Monthly) | Proration calculated; payment processed; old membership status "ending"; new membership "active"; `nextPaymentDate` preserved; role level updated | `tests/models/membership.server.test.ts` |
 | AC15 | Membership Downgrade | Old membership "ending"; new membership "active"; new membership's `date` = old membership's `nextPaymentDate`; no payment required | `tests/models/membership.server.test.ts` |
@@ -735,6 +781,9 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC43 | Workshop Visibility Days | Login as admin; set workshop visibility days (e.g., 30 days); create workshop with occurrence beyond visibility window; login as user; create workshop with occurrence within visibility window | Workshop not visible if beyond window; workshop visible if within window |
 | AC44 | Equipment Visibility Days | Login as admin; set equipment visibility days (e.g., 14 days); create equipment slots beyond visibility window; login as user; create equipment slots within visibility window | Slots not visible in booking grid if beyond window; slots visible if within window |
 | AC45 | Google Calendar Connection | Login as admin; navigate to Google Calendar settings; click "Connect Google Calendar"; complete OAuth flow; select target calendar; create/update/delete workshop occurrence | Event created in Google Calendar; event updated in Google Calendar; event deleted from Google Calendar |
+| AC46 | Membership Revocation (Admin) | Login as admin; navigate to user management; select user and click "Revoke Membership"; enter custom revocation message; confirm revocation | Revocation alert shown on user's memberships page; user receives revocation email with reason and timestamp; all user memberships show "revoked" status; revocation reason and date visible in admin user list |
+| AC47 | Revoked User Subscription Block | Login as revoked user; navigate to memberships page | Prominent alert displayed at top explaining membership access revoked; subscribe buttons on all membership cards disabled with tooltip; redirect to memberships page if attempting to access membership details or payment |
+| AC48 | Membership Unrevocation (Admin) | Login as admin; navigate to user management; select revoked user and click "Unrevoke Membership"; confirm unrevocation | Unrevocation alert shown; user receives unrevocation email; user can now subscribe to new memberships; no historical memberships are retroactively reactivated |
 
 ---
 
