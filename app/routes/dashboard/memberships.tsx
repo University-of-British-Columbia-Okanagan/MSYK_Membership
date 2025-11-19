@@ -126,8 +126,9 @@ export async function loader({ request }: { request: Request }) {
     highestCanceledPrice,
     isMembershipRevoked,
     membershipRevokedReason: userRecord?.membershipRevokedReason ?? null,
-    membershipRevokedAt: userRecord?.membershipRevokedAt ?? null,
-  };
+    membershipRevokedAt: userRecord?.membershipRevokedAt
+      ? new Date(userRecord.membershipRevokedAt)
+      : null,  };
 }
 
 export async function action({ request }: { request: Request }) {
