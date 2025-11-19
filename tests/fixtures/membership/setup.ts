@@ -49,11 +49,15 @@ jest.mock("~/models/admin.server", () => ({
 
 const mockSendMembershipEndedNoPaymentMethodEmail = jest.fn();
 const mockSendMembershipPaymentReminderEmail = jest.fn();
+const mockSendMembershipRevokedEmail = jest.fn();
+const mockSendMembershipUnrevokedEmail = jest.fn();
 
 jest.mock("~/utils/email.server", () => ({
   sendMembershipEndedNoPaymentMethodEmail:
     mockSendMembershipEndedNoPaymentMethodEmail,
   sendMembershipPaymentReminderEmail: mockSendMembershipPaymentReminderEmail,
+  sendMembershipRevokedEmail: mockSendMembershipRevokedEmail,
+  sendMembershipUnrevokedEmail: mockSendMembershipUnrevokedEmail,
 }));
 
 export const stripePaymentIntentsCreateMock = jest
@@ -113,6 +117,8 @@ const resetStripeMocks = () => {
 const resetEmailMocks = () => {
   mockSendMembershipEndedNoPaymentMethodEmail.mockClear();
   mockSendMembershipPaymentReminderEmail.mockClear();
+  mockSendMembershipRevokedEmail.mockClear();
+  mockSendMembershipUnrevokedEmail.mockClear();
 };
 
 const resetAdminSettingMock = () => {
@@ -139,6 +145,8 @@ export const getMembershipMocks = () => {
       sendMembershipEndedNoPaymentMethodEmail as jest.Mock,
     mockSendMembershipPaymentReminderEmail:
       sendMembershipPaymentReminderEmail as jest.Mock,
+    mockSendMembershipRevokedEmail: mockSendMembershipRevokedEmail,
+    mockSendMembershipUnrevokedEmail: mockSendMembershipUnrevokedEmail,
     mockCronSchedule: cronScheduleMock,
     scheduledJobs,
     stripeConstructorMock: Stripe as jest.Mock,
