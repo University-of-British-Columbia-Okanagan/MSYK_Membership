@@ -758,6 +758,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Workshop:** Admin Add Workshop Main Price Field | Go to add workshop and add/disable price variation | When checking Add Workshop Price Variations, the main price field should be -1 in the frontend and backend and non-zero if unchecked | `NA` | `11/18/2025`
 | ---- | **Workshop:** Admin Add Workshop Price Variation Sum of All Pricing Option Capacities | Go to add workshop and add/disable price variation | When checking Add Workshop Price Variations and adding price variations: sum of all pricing option capacities cannot exceed the total workshop capacity | `NA` | `11/18/2025`
 | ---- | **Workshop:** Workshop Price Variation Standard Selection | Go to add/edit workshop | When adding price variations, the first variation added should be the standard selection in the workshop details | `NA` | `11/18/2025`
+| ---- | **Workshop:** Admin Edit Workshop Edit Required Fields | Go to edit workshop | When editing the workshop, editing required fields will change the workshop fields properly. Deleting any required fields and not filling in required information should throw an error | `NA` | `11/18/2025`
 | AC21 | **Workshop** Prerequisites | Create workshop with prerequisites; attempt registration without completing prerequisites; complete prerequisite workshop; attempt registration again | Registration blocked initially; error message displayed; registration allowed after completing prerequisites |
 | ---- | **Workshop**: Admin Add Workshop Active Prerequisites | Go to add workshop | Workshops can only have prerequisites that are ACTIVE workshops of type orientation | `NA` | `11/17/2025`
 | AC22 | **Workshop** Capacity | Create workshop with capacity limit (e.g., 10 spots); register 10 users; attempt registration as 11th user | Registration blocked; capacity error message displayed |
@@ -805,6 +806,7 @@ The following acceptance criteria should be manually tested by QA in the applica
    - When uploading anything above 5 MB as workshop image, adding the workshop in it will just be stuck on loading rather than giving an error message
    - When creating a price variation and it has errors of All pricing option prices must be unique and The sum of all pricing option capacities cannot exceed the total workshop capacity, in the price variation card, it shows as "All pricing option prices must be unique., The sum of all pricing option capacities cannot exceed the total workshop capacity". Fix the ".,"
    - You can create duplicate workshop dates in the same workshop (is this what we want?)
+   - When editing the workshop, deleting any required fields (name, location, capacity, description, occurrences) and not filling in required information should throw an error but right now, it is stuck on loading
 
 
 - **Open Bugs**:
