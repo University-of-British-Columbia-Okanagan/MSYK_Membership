@@ -5,6 +5,7 @@ import {
   getUserActiveMembership,
   calculateProratedUpgradeAmount,
   activateMembershipForm,
+  MEMBERSHIP_REVOKED_ERROR,
 } from "../../models/membership.server";
 import { getUser } from "~/utils/session.server";
 
@@ -88,15 +89,32 @@ export async function action({ request }: { request: Request }) {
       );
     }
 
-    const subscription = await registerMembershipSubscription(
-      parseInt(userId),
-      parseInt(newMembershipPlanId),
-      parseInt(currentMembershipId),
-      false,
-      false,
-      undefined,
-      "monthly"
-    );
+    let subscription;
+    try {
+      subscription = await registerMembershipSubscription(
+        parseInt(userId),
+        parseInt(newMembershipPlanId),
+        parseInt(currentMembershipId),
+        false,
+        false,
+        undefined,
+        "monthly"
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === MEMBERSHIP_REVOKED_ERROR
+      ) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "User membership access is revoked. Upgrades cannot be processed.",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw error;
+    }
 
     // Activate pending form and link it to new subscription
     try {
