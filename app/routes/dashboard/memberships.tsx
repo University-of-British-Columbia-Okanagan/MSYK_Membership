@@ -14,7 +14,8 @@ import { sendMembershipCancellationEmail, checkPaymentMethodStatus } from "~/uti
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Ban } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { logger } from "~/logging/logger";
 import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 
@@ -88,6 +89,8 @@ export async function loader({ request }: { request: Request }) {
     (m) => m.status === "active"
   );
 
+  const isMembershipRevoked = userRecord?.membershipStatus === "revoked";
+
   let highestActivePrice = 0;
   if (userMemberships.length > 0) {
     const activeMemberships = userMemberships.filter(
@@ -121,6 +124,9 @@ export async function loader({ request }: { request: Request }) {
     hasActiveSubscription,
     highestActivePrice,
     highestCanceledPrice,
+    isMembershipRevoked,
+    membershipRevokedReason: userRecord?.membershipRevokedReason ?? null,
+    membershipRevokedAt: userRecord?.membershipRevokedAt ?? null,
   };
 }
 
@@ -202,6 +208,9 @@ export default function MembershipPage() {
     hasCancelledSubscription,
     hasActiveSubscription,
     highestActivePrice,
+    isMembershipRevoked,
+    membershipRevokedReason,
+    membershipRevokedAt,
   } = useLoaderData<{
     roleUser: any;
     membershipPlans: any[];
@@ -210,11 +219,17 @@ export default function MembershipPage() {
       id: number;
       roleLevel: number;
       allowLevel4: boolean;
+      membershipStatus?: "active" | "revoked";
+      membershipRevokedReason?: string | null;
+      membershipRevokedAt?: string | null;
     } | null;
     hasCancelledSubscription: boolean;
     hasActiveSubscription: boolean;
     highestActivePrice: number;
     highestCanceledPrice: number;
+    isMembershipRevoked: boolean;
+    membershipRevokedReason: string | null;
+    membershipRevokedAt: Date | null;
   }>();
 
   const isAdmin =
@@ -255,6 +270,58 @@ export default function MembershipPage() {
             Choose your Membership Plan
           </h2>
 
+          {isMembershipRevoked && (
+            <Alert
+              variant="destructive"
+              className="max-w-4xl mx-auto mb-8 bg-red-50 border-red-200"
+            >
+              <Ban className="h-5 w-5" />
+              <AlertTitle className="text-red-900 font-semibold text-lg">
+                Membership Access Revoked
+              </AlertTitle>
+              <AlertDescription className="text-red-800 mt-2">
+                <p className="mb-4 text-base">
+                  Your membership access has been revoked by an administrator.
+                  You cannot subscribe to new memberships until this restriction
+                  is lifted.
+                </p>
+
+                {(membershipRevokedReason || membershipRevokedAt) && (
+                  <div className="bg-white/60 rounded-md p-4 border border-red-100 text-sm space-y-3 shadow-sm">
+                    {membershipRevokedReason && (
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                        <span className="font-bold text-red-900 uppercase tracking-wide text-xs mt-0.5 min-w-[60px]">
+                          Reason
+                        </span>
+                        <span className="text-red-950 font-medium">
+                          {membershipRevokedReason}
+                        </span>
+                      </div>
+                    )}
+                    {membershipRevokedAt && (
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">
+                        <span className="font-bold text-red-900 uppercase tracking-wide text-xs mt-0.5 min-w-[60px]">
+                          Date
+                        </span>
+                        <span className="text-red-950">
+                          {membershipRevokedAt.toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="mt-4 text-sm font-medium text-red-700">
+                  If you have questions, please contact Makerspace staff for
+                  assistance.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex flex-wrap gap-6 justify-center items-stretch">
             {membershipPlans.map((plan) => {
               // Find the most recent membership for this plan, prioritizing active status
@@ -293,6 +360,9 @@ export default function MembershipPage() {
                   membershipRecordId={membership?.id}
                   roleUser={roleUser}
                   isCurrentlyActivePlan={membershipStatus === "active"}
+                  isMembershipRevoked={isMembershipRevoked}
+                  membershipRevokedReason={membershipRevokedReason}
+                  membershipRevokedAt={membershipRevokedAt}
                 />
               );
             })}
