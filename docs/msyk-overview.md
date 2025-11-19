@@ -794,9 +794,9 @@ The following acceptance criteria should be manually tested by QA in the applica
 - **Findings**:
   - In add payment method, the country is not all countries
   - Recent Activity in Profile does nothing
-  - In a multi day orientation, you still have to pass individual times even though it is multi day
-  - Orientation History confusing on if workshop is single occurrence or multi day
-  - When we create a workshop that is not a price variation, do we want to be able to edit the workshop to add price variations and vise versa? 
+  - In a multi day orientation, you still have to pass individual times even though it is multi day [ARIQ WILL DO THIS]
+  - Orientation History confusing on if workshop is single occurrence or multi day [ARIQ WILL DO THIS]
+  - When we create a workshop that is not a price variation, do we want to be able to edit the workshop to add price variations and vise versa? [ARIQ WILL DO THIS]
   - When inputing start date and time and end date and time, it should be inclusive by start date and time
     - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
   - Non-admins can access add a workshop route by going into the route /addworkshop :skull-emoji:
