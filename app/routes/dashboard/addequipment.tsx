@@ -42,8 +42,17 @@ import * as fs from "fs";
 import * as path from "path";
 
 export async function loader({ request }: { request: Request }) {
-  const workshops = await getWorkshops();
   const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to add equipment page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    return redirect("/dashboard/user");
+  }
+
+  const workshops = await getWorkshops();
 
   return { workshops, roleUser };
 }

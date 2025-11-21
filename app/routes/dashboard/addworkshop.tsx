@@ -71,10 +71,19 @@ import { Input } from "~/components/ui/input";
  * Loader to fetch available workshops for prerequisites.
  */
 export async function loader({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to add workshop page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    return redirect("/dashboard/user");
+  }
+
   const workshops = await getWorkshops();
   const user = await getUser(request);
   const userId = user?.id || undefined;
-  const roleUser = await getRoleUser(request);
 
   const equipmentsRaw = await getEquipmentSlotsWithStatus(userId, true);
   const equipmentVisibilityDays = await getEquipmentVisibilityDays();

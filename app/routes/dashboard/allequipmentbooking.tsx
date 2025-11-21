@@ -12,7 +12,17 @@ import { format } from "date-fns";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 
-export async function loader() {
+export async function loader({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to all equipment bookings page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    throw new Response("Not Authorized", { status: 403 });
+  }
+
   try {
     const equipment = await getAllEquipmentWithBookings();
 
