@@ -898,7 +898,7 @@ Last Updated: 11/19/2025
    - People whos price variation got cancelled should go into Workshop Cancelled Events to process refunds
    - When editing a workshop with a total capacity of 10 and then price variation with capacity 2 and capacity 1 (3 capacity taken by the variation). Now, when you change the capacity 2 to capacity 10, it will be obviously 11 > 10 and when you press update workshop, it will be stuck on "Updating..."
    - When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly)
-   - When using quick checkout, when it is redirecting, disable the Proceed button for regular checkout
+   - ~~When using quick checkout, when it is redirecting, disable the Proceed button for regular checkout~~
    - Should users who cancelled within 48 hours of their registration should be fully refunded or is it if they refund 48 hours or more before the workshop start date? [TODISCUSS]; I think right now, it is if hey refund 48 hours or more before the workshop start date
    - People could technically spam register, cancel register, register, cancel register, etc. [TODISCUSS]
    - In Workshops of type Workshop, we should probably remove the pass all button (because some users can be status cancelled)
