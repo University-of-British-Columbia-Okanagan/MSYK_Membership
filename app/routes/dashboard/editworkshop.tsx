@@ -1093,6 +1093,9 @@ export default function EditWorkshop() {
   );
 
   const [workshopImageFile, setWorkshopImageFile] = useState<File | null>(null);
+  const [workshopImageError, setWorkshopImageError] = useState<string | null>(
+    null
+  );
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(
     workshop.imageUrl || null
   );
@@ -1555,6 +1558,11 @@ export default function EditWorkshop() {
     e.preventDefault();
     console.log("Form submit triggered");
 
+    // Check for client-side file validation errors
+    if (workshopImageError) {
+      return; // Stop submission if there's a file validation error
+    }
+
     try {
       // Check for equipment overlaps first
       const overlaps = checkForEquipmentOverlaps(
@@ -1863,6 +1871,39 @@ export default function EditWorkshop() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            const maxSize = 5 * 1024 * 1024; // 5MB
+                            const allowedTypes = [
+                              "image/jpeg",
+                              "image/jpg",
+                              "image/png",
+                              "image/gif",
+                              "image/webp",
+                            ];
+
+                            // Clear previous errors
+                            setWorkshopImageError(null);
+
+                            // Validate file type
+                            if (!allowedTypes.includes(file.type)) {
+                              setWorkshopImageError(
+                                "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP."
+                              );
+                              e.target.value = ""; // Clear the input
+                              setWorkshopImageFile(null);
+                              return;
+                            }
+
+                            // Validate file size
+                            if (file.size > maxSize) {
+                              setWorkshopImageError(
+                                "File size exceeds 5MB limit."
+                              );
+                              e.target.value = ""; // Clear the input
+                              setWorkshopImageFile(null);
+                              return;
+                            }
+
+                            // File is valid
                             setWorkshopImageFile(file);
                             setRemoveImageFlag(false);
                             // Preview the new image
@@ -1871,6 +1912,9 @@ export default function EditWorkshop() {
                               setCurrentImageUrl(reader.result as string);
                             };
                             reader.readAsDataURL(file);
+                          } else {
+                            setWorkshopImageFile(null);
+                            setWorkshopImageError(null);
                           }
                         }}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1881,9 +1925,15 @@ export default function EditWorkshop() {
                       add one if you have not uploaded one. Accepted formats:
                       JPG, JPEG, PNG, GIF, WEBP (Max 5MB)
                     </p>
-                    {actionData?.errors?.workshopImage && (
+                    {(workshopImageError ||
+                      actionData?.errors?.workshopImage) && (
                       <p className="text-sm text-red-500 mt-1">
-                        {actionData.errors.workshopImage}
+                        {workshopImageError ||
+                          (actionData?.errors?.workshopImage
+                            ? Array.isArray(actionData.errors.workshopImage)
+                              ? actionData.errors.workshopImage[0]
+                              : actionData.errors.workshopImage
+                            : null)}
                       </p>
                     )}
                   </FormItem>

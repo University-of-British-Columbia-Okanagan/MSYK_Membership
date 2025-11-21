@@ -855,6 +855,9 @@ export default function AddWorkshop() {
   const [workshopImageFile, setWorkshopImageFile] = React.useState<File | null>(
     null
   );
+  const [workshopImageError, setWorkshopImageError] = React.useState<
+    string | null
+  >(null);
   const { selectedSlotsMap: initialSelectedSlotsMap } = useLoaderData() as {
     workshops: { id: number; name: string; type: string }[];
     equipments: {
@@ -998,6 +1001,11 @@ export default function AddWorkshop() {
       setProceedDespiteOverlaps(false);
     }
 
+    // Check for client-side file validation errors
+    if (workshopImageError) {
+      return; // Stop submission if there's a file validation error
+    }
+
     // Validate all fields
     const isValid = await form.trigger();
     // If validation failed, check if it's ONLY the price field failing
@@ -1036,6 +1044,28 @@ export default function AddWorkshop() {
 
         if (response.redirected) {
           window.location.href = response.url;
+        } else {
+          // Handle error responses
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const data = await response.json();
+            if (data.errors) {
+              // Display server-side validation errors
+              if (data.errors.workshopImage) {
+                const errorMessage = Array.isArray(data.errors.workshopImage)
+                  ? data.errors.workshopImage[0]
+                  : data.errors.workshopImage;
+                setWorkshopImageError(errorMessage);
+              }
+              setFormSubmitting(false);
+            } else {
+              // Unexpected response format
+              setFormSubmitting(false);
+            }
+          } else {
+            // Not a JSON response, might be HTML error page
+            setFormSubmitting(false);
+          }
         }
       } catch (error) {
         console.error("Error uploading workshop:", error);
@@ -1361,7 +1391,43 @@ export default function AddWorkshop() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            const maxSize = 5 * 1024 * 1024; // 5MB
+                            const allowedTypes = [
+                              "image/jpeg",
+                              "image/jpg",
+                              "image/png",
+                              "image/gif",
+                              "image/webp",
+                            ];
+
+                            // Clear previous errors
+                            setWorkshopImageError(null);
+
+                            // Validate file type
+                            if (!allowedTypes.includes(file.type)) {
+                              setWorkshopImageError(
+                                "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP."
+                              );
+                              e.target.value = ""; // Clear the input
+                              setWorkshopImageFile(null);
+                              return;
+                            }
+
+                            // Validate file size
+                            if (file.size > maxSize) {
+                              setWorkshopImageError(
+                                "File size exceeds 5MB limit."
+                              );
+                              e.target.value = ""; // Clear the input
+                              setWorkshopImageFile(null);
+                              return;
+                            }
+
+                            // File is valid
                             setWorkshopImageFile(file);
+                          } else {
+                            setWorkshopImageFile(null);
+                            setWorkshopImageError(null);
                           }
                         }}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1371,9 +1437,15 @@ export default function AddWorkshop() {
                       Optional. Accepted formats: JPG, JPEG, PNG, GIF, WEBP (Max
                       5MB)
                     </p>
-                    {actionData?.errors?.workshopImage && (
+                    {(workshopImageError ||
+                      actionData?.errors?.workshopImage) && (
                       <p className="text-sm text-red-500 mt-1">
-                        {actionData.errors.workshopImage}
+                        {workshopImageError ||
+                          (actionData?.errors?.workshopImage
+                            ? Array.isArray(actionData.errors.workshopImage)
+                              ? actionData.errors.workshopImage[0]
+                              : actionData.errors.workshopImage
+                            : null)}
                       </p>
                     )}
                   </FormItem>

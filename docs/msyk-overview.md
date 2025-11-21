@@ -889,7 +889,7 @@ Last Updated: 11/19/2025
  - ~~Non-admins can access edit a workshop route by going into the route /editworkshop/workshopId :skull-emoji:~~
   - Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops
    - When a admin deletes all workshop dates (and there are none in the past or cancelled tabs), then admin should not be able to update workshop until a date is added, but right now, it is able to do that and is stuck on "Updating..." when pressing Update Workshop. This is for single occurrence and multi-day workshops
-   - When uploading anything above 5 MB as workshop image, adding the workshop in it will just be stuck on loading rather than giving an error message
+   - ~~When uploading anything above 5 MB as workshop image, adding the workshop in it will just be stuck on loading rather than giving an error message~~
    - When creating a price variation and it has errors of All pricing option prices must be unique and The sum of all pricing option capacities cannot exceed the total workshop capacity, in the price variation card, it shows as "All pricing option prices must be unique., The sum of all pricing option capacities cannot exceed the total workshop capacity". Fix the ".,"
    - You can create duplicate workshop dates in the same workshop (is this what we want?)
    - When editing the workshop, deleting any required fields (name, location, capacity, description, occurrences) and not filling in required information should throw an error but right now, it is stuck on loading
