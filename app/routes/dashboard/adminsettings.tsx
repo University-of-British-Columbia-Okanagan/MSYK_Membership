@@ -67,7 +67,10 @@ import {
   makeUserAdmin,
   removeUserAdmin,
 } from "~/models/user.server";
-import { revokeUserMembershipByAdmin } from "~/models/membership.server";
+import {
+  revokeUserMembershipByAdmin,
+  unrevokeUserMembershipByAdmin,
+} from "~/models/membership.server";
 import {
   ShadTable,
   type ColumnDefinition,
@@ -83,6 +86,15 @@ import {
   AlertDialogTitle,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { logger } from "~/logging/logger";
 import {
   listCalendars,
@@ -105,6 +117,8 @@ import {
   updateAccessCard,
 } from "~/models/access_card.server";
 import { json } from "@remix-run/node";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -581,21 +595,38 @@ export async function action({ request }: { request: Request }) {
 
   if (actionType === "revokeMembership") {
     const userId = formData.get("userId");
+    const customMessage = String(formData.get("customMessage") ?? "").trim();
+    if (!customMessage) {
+      return {
+        success: false,
+        message: "A custom message is required to revoke membership.",
+      };
+    }
     try {
-      const result = await revokeUserMembershipByAdmin(Number(userId));
+      const result = await revokeUserMembershipByAdmin(
+        Number(userId),
+        customMessage
+      );
 
       logger.info(
-        `[User: ${roleUser.userId}] Revoked membership for user ${userId} (affected plans: ${result.affectedPlans})`,
+        `[User: ${roleUser.userId}] Revoked membership for user ${userId} (affected memberships: ${result.affectedMemberships})`,
         {
           url: request.url,
           targetUserId: userId,
-          affectedPlans: result.affectedPlans,
+          affectedMemberships: result.affectedMemberships,
+          planTitles: result.planTitles,
         }
       );
 
       return {
         success: true,
-        message: `Membership revoked successfully. ${result.affectedPlans} plan(s) affected.`,
+        message: result.alreadyRevoked
+          ? "User was already revoked."
+          : `Membership revoked successfully.${
+              result.affectedMemberships > 0
+                ? ` ${result.affectedMemberships} subscription(s) closed.`
+                : ""
+            }`,
       };
     } catch (error) {
       logger.error(`Error revoking membership: ${error}`, {
@@ -606,6 +637,38 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: "Failed to revoke membership",
+      };
+    }
+  }
+
+  if (actionType === "unrevokeMembership") {
+    const userId = formData.get("userId");
+    try {
+      const result = await unrevokeUserMembershipByAdmin(Number(userId));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Unrevoked membership access for user ${userId}`,
+        {
+          url: request.url,
+          targetUserId: userId,
+        }
+      );
+
+      return {
+        success: result.restored,
+        message: result.restored
+          ? "Membership access restored. The user can subscribe again."
+          : "User membership access was not revoked.",
+      };
+    } catch (error) {
+      logger.error(`Error unrevoking membership: ${error}`, {
+        userId: roleUser.userId,
+        targetUserId: userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: "Failed to restore membership access",
       };
     }
   }
@@ -896,30 +959,145 @@ function MembershipControl({
     firstName: string;
     lastName: string;
     hasRevocableMembership: boolean;
+    membershipStatus: "active" | "revoked";
+    membershipRevokedAt: Date | null;
+    membershipRevokedReason: string | null;
   };
 }) {
   const submit = useSubmit();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [customMessage, setCustomMessage] = useState("");
+  const [messageError, setMessageError] = useState("");
 
-  const revokeMembership = () => {
+  const handleDialogOpenChange = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open) {
+      setCustomMessage("");
+      setMessageError("");
+    }
+  };
+
+  const handleRevoke = () => {
+    if (!customMessage.trim()) {
+      setMessageError("Please provide a message for the member.");
+      return;
+    }
     const formData = new FormData();
     formData.append("actionType", "revokeMembership");
+    formData.append("userId", user.id.toString());
+    formData.append("customMessage", customMessage.trim());
+    submit(formData, { method: "post" });
+    setCustomMessage("");
+    setMessageError("");
+    setDialogOpen(false);
+  };
+
+  const handleUnrevoke = () => {
+    const formData = new FormData();
+    formData.append("actionType", "unrevokeMembership");
     formData.append("userId", user.id.toString());
     submit(formData, { method: "post" });
   };
 
-  if (!user.hasRevocableMembership) {
-    return <span className="text-sm text-gray-500">No membership</span>;
-  }
-
   return (
-    <div className="flex items-center gap-2">
-      <ConfirmButton
-        confirmTitle="Confirm Revoke Membership"
-        confirmDescription={`Revoke membership for ${user.firstName} ${user.lastName}? This is immediate and non-refundable.`}
-        onConfirm={revokeMembership}
-        buttonLabel="Revoke Membership"
-        buttonClassName="bg-red-500 hover:bg-red-600 text-white"
-      />
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Badge
+          variant={
+            user.membershipStatus === "revoked" ? "destructive" : "secondary"
+          }
+        >
+          {user.membershipStatus === "revoked" ? "Revoked" : "Allowed"}
+        </Badge>
+        <span className="text-xs text-gray-500">
+          {user.hasRevocableMembership ? "Active membership on file" : "No active membership"}
+        </span>
+      </div>
+      {user.membershipStatus === "revoked" && (
+        <div className="text-xs text-gray-600 space-y-1">
+          {user.membershipRevokedReason && (
+            <p>
+              Reason:{" "}
+              <span className="font-medium">
+                {user.membershipRevokedReason}
+              </span>
+            </p>
+          )}
+          {user.membershipRevokedAt && (
+            <p>
+              Since:{" "}
+              {new Date(user.membershipRevokedAt).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </p>
+          )}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {user.membershipStatus === "revoked" ? (
+          <ConfirmButton
+            confirmTitle="Restore Membership Access"
+            confirmDescription={`Allow ${user.firstName} ${user.lastName} to subscribe to memberships again?`}
+            onConfirm={handleUnrevoke}
+            buttonLabel="Unrevoke"
+            buttonClassName="bg-green-500 hover:bg-green-600 text-white"
+          />
+        ) : (
+          <Dialog open={dialogOpen} onOpenChange={handleDialogOpenChange}>
+            <DialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                Revoke Membership
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  Revoke membership for {user.firstName} {user.lastName}
+                </DialogTitle>
+                <DialogDescription>
+                  Provide a message that will be emailed to the member. Explain
+                  why access is being revoked. No refunds will be issued.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label htmlFor={`revoke-message-${user.id}`}>
+                  Custom message
+                </Label>
+                <Textarea
+                  id={`revoke-message-${user.id}`}
+                  rows={4}
+                  value={customMessage}
+                  onChange={(event) => {
+                    setCustomMessage(event.target.value);
+                    if (messageError) {
+                      setMessageError("");
+                    }
+                  }}
+                  placeholder="Describe why membership access is being revoked..."
+                />
+                {messageError && (
+                  <p className="text-sm text-red-500">{messageError}</p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setDialogOpen(false);
+                    setMessageError("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleRevoke}>
+                  Revoke Membership
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+      </div>
     </div>
   );
 }
@@ -1568,6 +1746,9 @@ export default function AdminSettings() {
         volunteerEnd: Date | null;
       }>;
       hasRevocableMembership: boolean;
+      membershipStatus: "active" | "revoked";
+      membershipRevokedAt: Date | null;
+      membershipRevokedReason: string | null;
     }>;
     volunteerHours: Array<{
       id: number;

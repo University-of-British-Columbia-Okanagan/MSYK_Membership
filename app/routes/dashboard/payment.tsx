@@ -35,6 +35,8 @@ export const loader: LoaderFunction = async ({ params, request }) => {
   const roleUser = await getRoleUser(request);
   const isAdmin = roleUser?.roleName === "Admin";
 
+  const userRecord = await getUserById(user.id);
+
   // Determine redirect path based on user role
   const getRedirectPath = () => {
     if (!user) return "/dashboard";
@@ -46,6 +48,10 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
   // Membership branch
   if (params.membershipPlanId) {
+    if (userRecord?.membershipStatus === "revoked") {
+      throw redirect("/dashboard/memberships?revoked=1");
+    }
+
     const membershipPlanId = Number(params.membershipPlanId);
     if (isNaN(membershipPlanId))
       throw new Response("Invalid membership plan ID", { status: 400 });
@@ -77,7 +83,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     // Enforce server-side gating for plans requiring admin permission
     if (membershipPlan.needAdminPermission) {
-      const userRecord = await getUserById(user.id);
       const hasActiveSubscription = !!userActiveMembership;
       const meetsLevelRequirement = (userRecord?.roleLevel ?? 0) >= 3;
       const hasAdminPermission = userRecord?.allowLevel4 === true;
@@ -421,7 +426,20 @@ export async function action({ request }: { request: Request }) {
         headers: { "Content-Type": "application/json" },
       });
 
+    const userRecord = await getUserById(user.id);
+
     if (body.membershipPlanId) {
+      if (userRecord?.membershipStatus === "revoked") {
+        return new Response(
+          JSON.stringify({
+            error: "Your membership access has been revoked by an administrator.",
+          }),
+          {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
       const { membershipPlanId, price, userId, upgradeFee } = body;
       if (!membershipPlanId || price === undefined || !userId) {
         return new Response(

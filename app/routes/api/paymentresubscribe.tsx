@@ -2,6 +2,7 @@ import { logger } from "~/logging/logger";
 import {
   registerMembershipSubscription,
   getMembershipPlanById,
+  MEMBERSHIP_REVOKED_ERROR,
 } from "../../models/membership.server";
 import { sendMembershipResubscribeEmail, checkPaymentMethodStatus } from "~/utils/email.server";
 import { getUser } from "~/utils/session.server";
@@ -40,15 +41,31 @@ export async function action({ request }: { request: Request }) {
       }
 
       console.log("Retrieved billingCycle from DB:", billingCycle);
-      await registerMembershipSubscription(
-        userId,
-        membershipPlanId,
-        currentMembershipId,
-        false, // Not a downgrade
-        true, // Flag this as a resubscription
-        undefined,
-        billingCycle
-      );
+      try {
+        await registerMembershipSubscription(
+          userId,
+          membershipPlanId,
+          currentMembershipId,
+          false, // Not a downgrade
+          true, // Flag this as a resubscription
+          undefined,
+          billingCycle
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === MEMBERSHIP_REVOKED_ERROR
+        ) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "User membership access is revoked. Resubscription is not allowed.",
+            }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        throw error;
+      }
       logger.info(
         `Membership Subscription Registered successfully for user ${userId}`,
         { url: request.url }

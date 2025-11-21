@@ -156,14 +156,19 @@ export async function action({ request }: { request: Request }) {
 
   try {
     // Send only required fields to addEquipment
-    await addEquipment({
+    const equipmentData: Parameters<typeof addEquipment>[0] = {
       name: parsed.data.name,
       description: parsed.data.description,
       price: parsed.data.price,
-      availability: parsed.data.availability === "true" ? true : false,
+      availability: parsed.data.availability === "true",
       workshopPrerequisites: parsed.data.workshopPrerequisites || [],
-      imageUrl: imageUrl,
-    });
+    };
+
+    if (imageUrl) {
+      equipmentData.imageUrl = imageUrl;
+    }
+
+    await addEquipment(equipmentData);
 
     logger.info(
       `[User: ${roleUser?.userId}] New Equipment ${parsed.data.name} added successfully`,

@@ -3,6 +3,7 @@ import {
   getMembershipPlanById,
   getUserActiveMembership,
   registerMembershipSubscription,
+  MEMBERSHIP_REVOKED_ERROR,
 } from "../../models/membership.server";
 import { db } from "~/utils/db.server";
 import { sendMembershipDowngradeEmail, checkPaymentMethodStatus } from "~/utils/email.server";
@@ -65,19 +66,35 @@ export async function action({ request }: { request: Request }) {
     }
 
     // Process the downgrade directly with no payment needed
-    await registerMembershipSubscription(
-      parseInt(userId),
-      parseInt(newMembershipPlanId),
-      parseInt(currentMembershipId),
-      true, // Flag to indicate this is a downgrade
-      false, // Not a resubscription
-      undefined, // No payment intent
-      billingCycle as
-        | "monthly"
-        | "quarterly"
-        | "semiannually"
-        | "yearly"
-    );
+    try {
+      await registerMembershipSubscription(
+        parseInt(userId),
+        parseInt(newMembershipPlanId),
+        parseInt(currentMembershipId),
+        true, // Flag to indicate this is a downgrade
+        false, // Not a resubscription
+        undefined, // No payment intent
+        billingCycle as
+          | "monthly"
+          | "quarterly"
+          | "semiannually"
+          | "yearly"
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === MEMBERSHIP_REVOKED_ERROR
+      ) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "User membership access is revoked. Downgrades cannot be processed.",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw error;
+    }
 
     try {
       const newPlan = await getMembershipPlanById(
