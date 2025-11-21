@@ -885,8 +885,8 @@ Last Updated: 11/19/2025
     - The case where a user registered for a workshop with price variaitons and then we decide to remove it later causes bugs (same reasoning why we made it so that multi-day cannot be changed because of the fact that users can register and cause problems)
   - When inputing start date and time and end date and time, it should be inclusive by start date and time
     - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
-  - Non-admins can access add a workshop route by going into the route /addworkshop :skull-emoji:
-  - Non-admins can access edit a workshop route by going into the route /editworkshop/workshopId :skull-emoji:
+ - ~~Non-admins can access add a workshop route by going into the route /addworkshop :skull-emoji:~~
+ - ~~Non-admins can access edit a workshop route by going into the route /editworkshop/workshopId :skull-emoji:~~
   - Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops
    - When a admin deletes all workshop dates (and there are none in the past or cancelled tabs), then admin should not be able to update workshop until a date is added, but right now, it is able to do that and is stuck on "Updating..." when pressing Update Workshop. This is for single occurrence and multi-day workshops
    - When uploading anything above 5 MB as workshop image, adding the workshop in it will just be stuck on loading rather than giving an error message
