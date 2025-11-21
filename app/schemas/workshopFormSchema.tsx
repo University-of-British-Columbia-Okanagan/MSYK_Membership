@@ -8,7 +8,28 @@ export const workshopFormSchema = z
     location: z.string().min(1, "Location is required"),
     capacity: z.coerce.number().int().min(1, "Capacity must be at least 1"),
     type: z.enum(["workshop", "orientation"]),
-    workshopImage: z.any().optional(),
+    workshopImage: z
+      .instanceof(File)
+      .optional()
+      .refine(
+        (file) => !file || file.size <= 5 * 1024 * 1024,
+        { message: "File size exceeds 5MB limit." }
+      )
+      .refine(
+        (file) =>
+          !file ||
+          [
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/gif",
+            "image/webp",
+          ].includes(file.type),
+        {
+          message:
+            "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP.",
+        }
+      ),
 
     hasPriceVariations: z.boolean().optional().default(false),
     priceVariations: z

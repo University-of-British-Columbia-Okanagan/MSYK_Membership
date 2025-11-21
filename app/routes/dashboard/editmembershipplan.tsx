@@ -26,6 +26,14 @@ import MembershipPlanForm from "~/components/ui/Dashboard/MembershipPlanForm";
 
 export async function loader({ params, request }: { params: { planId: string }; request: Request }) {
   const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to edit membership plan page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    return redirect("/dashboard/user");
+  }
   const membershipPlan = await getMembershipPlan(Number(params.planId));
   if (!membershipPlan) {
     throw new Response("Not Found", { status: 404 });
