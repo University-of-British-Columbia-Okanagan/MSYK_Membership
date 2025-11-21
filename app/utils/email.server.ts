@@ -650,6 +650,59 @@ export async function sendMembershipEndedNoPaymentMethodEmail(params: {
   });
 }
 
+export async function sendMembershipRevokedEmail(params: {
+  userEmail: string;
+  customMessage: string;
+  planTitles?: string[];
+  supportEmail?: string;
+}): Promise<void> {
+  const { userEmail, customMessage, planTitles = [], supportEmail } = params;
+  const planLine =
+    planTitles.length > 0
+      ? `Affected plan${planTitles.length > 1 ? "s" : ""}: ${planTitles.join(
+          ", "
+        )}.`
+      : undefined;
+  const supportLine = supportEmail
+    ? `If you believe this decision was made in error, please contact ${supportEmail}.`
+    : `If you have questions, please reach out to our support team.`;
+
+  const parts = [
+    `Your Makerspace YK membership access has been revoked by an administrator.`,
+    `This ban blocks you from subscribing to any memberships, and previously paid fees are non-refundable.`,
+    planLine,
+    `Reason provided by admin:\n${customMessage.trim()}`,
+    supportLine,
+  ].filter(Boolean) as string[];
+
+  await sendMail({
+    to: userEmail,
+    subject: "Membership access revoked",
+    text: parts.join("\n\n"),
+  });
+}
+
+export async function sendMembershipUnrevokedEmail(params: {
+  userEmail: string;
+  supportEmail?: string;
+}): Promise<void> {
+  const { userEmail, supportEmail } = params;
+  const supportLine = supportEmail
+    ? `If you have any questions, please contact ${supportEmail}.`
+    : undefined;
+  const parts = [
+    `Good news: your membership ban at Makerspace YK has been lifted.`,
+    `You can now subscribe to memberships again. Previously revoked memberships remain inactive, so please sign up for a new plan if you would like access.`,
+    supportLine,
+  ].filter(Boolean) as string[];
+
+  await sendMail({
+    to: userEmail,
+    subject: "Membership access restored",
+    text: parts.join("\n\n"),
+  });
+}
+
 export async function sendRegistrationConfirmationEmail(params: {
   userEmail: string;
   firstName?: string;

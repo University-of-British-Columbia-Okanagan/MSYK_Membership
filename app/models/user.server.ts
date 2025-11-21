@@ -510,6 +510,9 @@ export async function getAllUsersWithVolunteerStatus() {
       roleLevel: true,
       allowLevel4: true,
       roleUserId: true,
+      membershipStatus: true,
+      membershipRevokedAt: true,
+      membershipRevokedReason: true,
       roleUser: {
         select: {
           name: true,

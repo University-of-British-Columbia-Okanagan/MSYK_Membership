@@ -14,6 +14,7 @@ import {
   getMembershipPlanById,
   registerMembershipSubscription,
   activateMembershipForm,
+  MEMBERSHIP_REVOKED_ERROR,
 } from "../../models/membership.server";
 import { useState, useEffect } from "react";
 import {
@@ -180,15 +181,34 @@ export async function loader({ request }: { request: Request }) {
           | "yearly") || "monthly";
 
       // Register the membership subscription and get the created subscription
-      const subscription = await registerMembershipSubscription(
-        parseInt(userId),
-        parseInt(membershipPlanId),
-        currentMembershipId,
-        false, // Not a downgrade
-        false, // Not a resubscriptionq
-        paymentIntentId,
-        billingCycle
-      );
+      let subscription;
+      try {
+        subscription = await registerMembershipSubscription(
+          parseInt(userId),
+          parseInt(membershipPlanId),
+          currentMembershipId,
+          false, // Not a downgrade
+          false, // Not a resubscription
+          paymentIntentId,
+          billingCycle
+        );
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === MEMBERSHIP_REVOKED_ERROR
+        ) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              isMembership: true,
+              message:
+                "Payment succeeded but this account's membership access is revoked. Please contact support.",
+            }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        throw error;
+      }
 
       // Activate the pending membership form and link it to the subscription
       await activateMembershipForm(
