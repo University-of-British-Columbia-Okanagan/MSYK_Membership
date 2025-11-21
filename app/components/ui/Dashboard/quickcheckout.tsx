@@ -67,8 +67,7 @@ export default function QuickCheckout({
     } else {
       onRedirecting?.(false);
     }
-  }, [status, onRedirecting]);
-
+  }, [status]);
   const handleQuickCheckout = async () => {
     setIsProcessing(true);
     setStatus("idle");
