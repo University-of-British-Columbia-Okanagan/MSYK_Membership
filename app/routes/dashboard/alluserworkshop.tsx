@@ -4,7 +4,8 @@ import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { getRoleUser } from "~/utils/session.server";
-import { useLoaderData } from "react-router";
+import { useLoaderData, redirect } from "react-router";
+import { logger } from "~/logging/logger";
 import { FiSearch } from "react-icons/fi";
 import { Input } from "@/components/ui/input";
 import {
@@ -39,6 +40,15 @@ interface LoaderData {
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to all user workshop page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    return redirect("/dashboard/user");
+  }
+
   const registrations = await getAllRegistrations();
   return { roleUser, registrations };
 }

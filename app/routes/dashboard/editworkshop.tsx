@@ -104,6 +104,17 @@ export async function loader({
   params: { workshopId: string };
   request: Request;
 }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(
+      `[User: ${roleUser?.userId ?? "unknown"}] Not authorized to access edit workshop page`,
+      {
+        url: request.url,
+      }
+    );
+    throw new Response("Not Authorized", { status: 403 });
+  }
+
   const workshopId = Number(params.workshopId);
   const workshop = await getWorkshopWithPriceVariations(workshopId);
   if (!workshop) {
@@ -173,7 +184,6 @@ export async function loader({
 
   // Get user ID from session if available (for equipment booking UI)
   const user = await getUser(request);
-  const roleUser = await getRoleUser(request);
   const userId = user?.id || undefined;
 
   // Get equipment slots and visibility days
