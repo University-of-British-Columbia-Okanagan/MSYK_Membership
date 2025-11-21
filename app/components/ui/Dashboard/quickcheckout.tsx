@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CreditCard,
   CheckCircle,
@@ -43,6 +43,7 @@ interface QuickCheckoutProps {
   };
   onSuccess?: () => void;
   onError?: (error: string) => void;
+  onRedirecting?: (isRedirecting: boolean) => void;
 }
 
 export default function QuickCheckout({
@@ -54,10 +55,19 @@ export default function QuickCheckout({
   savedCard,
   onSuccess,
   onError,
+  onRedirecting,
 }: QuickCheckoutProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    if (status === "success") {
+      onRedirecting?.(true);
+    } else {
+      onRedirecting?.(false);
+    }
+  }, [status, onRedirecting]);
 
   const handleQuickCheckout = async () => {
     setIsProcessing(true);

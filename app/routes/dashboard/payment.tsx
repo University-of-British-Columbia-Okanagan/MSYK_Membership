@@ -685,6 +685,7 @@ export default function Payment() {
 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [isQuickCheckoutRedirecting, setIsQuickCheckoutRedirecting] = useState(false);
 
   const getMembershipPrice = () => {
     if (data.membershipPlan) {
@@ -886,6 +887,7 @@ export default function Payment() {
             onError={(error) => {
               console.error("Workshop payment failed:", error);
             }}
+            onRedirecting={setIsQuickCheckoutRedirecting}
           />
 
           {/* Divider */}
@@ -936,6 +938,7 @@ export default function Payment() {
               onError={(error) => {
                 console.error("Membership payment failed:", error);
               }}
+              onRedirecting={setIsQuickCheckoutRedirecting}
             />
 
             {/* Divider */}
@@ -1143,7 +1146,7 @@ export default function Payment() {
 
       <Button
         onClick={handlePayment}
-        disabled={loading || (data.membershipPlan && data.changeNotAllowed)}
+        disabled={loading || (data.membershipPlan && data.changeNotAllowed) || isQuickCheckoutRedirecting}
         className="mt-4 bg-blue-500 text-white w-full"
       >
         {loading ? "Processing..." : "Proceed"}
