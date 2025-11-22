@@ -304,6 +304,7 @@ export default function EquipmentBookingForm() {
     currentEquipmentHasPrerequisites,
     setCurrentEquipmentHasPrerequisites,
   ] = useState<boolean>(hasCompletedEquipmentPrerequisites);
+  const [isQuickCheckoutRedirecting, setIsQuickCheckoutRedirecting] = useState(false);
 
   // Initialize prerequisite status when selectedEquipment changes
   useEffect(() => {
@@ -563,6 +564,7 @@ export default function EquipmentBookingForm() {
                       onError={(error) => {
                         console.error("Equipment payment failed:", error);
                       }}
+                      onRedirecting={setIsQuickCheckoutRedirecting}
                     />
 
                     {/* Divider */}
@@ -580,7 +582,8 @@ export default function EquipmentBookingForm() {
                   className="bg-indigo-500 text-white px-8 py-3 rounded-md shadow hover:bg-indigo-600 transition min-w-[200px]"
                   disabled={
                     navigation.state === "submitting" ||
-                    selectedSlots.length === 0
+                    selectedSlots.length === 0 ||
+                    isQuickCheckoutRedirecting
                   }
                 >
                   {navigation.state === "submitting" ? "Booking..." : "Proceed"}
