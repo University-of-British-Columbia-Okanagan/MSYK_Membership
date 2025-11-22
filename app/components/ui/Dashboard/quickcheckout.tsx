@@ -62,12 +62,10 @@ export default function QuickCheckout({
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    if (status === "success") {
-      onRedirecting?.(true);
-    } else {
-      onRedirecting?.(false);
-    }
-  }, [status]);
+    const shouldDisable = isProcessing || status === "success";
+    onRedirecting?.(shouldDisable);
+  }, [isProcessing, status, onRedirecting]);
+
   const handleQuickCheckout = async () => {
     setIsProcessing(true);
     setStatus("idle");
