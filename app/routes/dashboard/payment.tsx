@@ -886,6 +886,7 @@ export default function Payment() {
             }}
             onError={(error) => {
               console.error("Workshop payment failed:", error);
+              setIsQuickCheckoutRedirecting(false);
             }}
             onRedirecting={setIsQuickCheckoutRedirecting}
           />
@@ -937,6 +938,7 @@ export default function Payment() {
               }}
               onError={(error) => {
                 console.error("Membership payment failed:", error);
+                setIsQuickCheckoutRedirecting(false);
               }}
               onRedirecting={setIsQuickCheckoutRedirecting}
             />
