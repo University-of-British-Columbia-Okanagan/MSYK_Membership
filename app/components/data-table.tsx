@@ -200,20 +200,20 @@ export function DataTable<TData>({
     if (!statusColumn) return [] as string[];
     const values = Array.from(statusColumn.getFacetedUniqueValues().keys()) as string[];
     return values.sort();
-  }, [enableStatusFilter, statusColumnId, table.getColumn(statusColumnId)?.getFacetedUniqueValues()]);
+  }, [enableStatusFilter, statusColumnId, table, data, columnFilters]);
 
   const statusCounts = useMemo(() => {
     if (!enableStatusFilter) return new Map<string, number>();
     const statusColumn = table.getColumn(statusColumnId);
     if (!statusColumn) return new Map<string, number>();
     return statusColumn.getFacetedUniqueValues();
-  }, [enableStatusFilter, statusColumnId, table.getColumn(statusColumnId)?.getFacetedUniqueValues()]);
+  }, [enableStatusFilter, statusColumnId, table, data, columnFilters]);
 
   const selectedStatuses = useMemo(() => {
     if (!enableStatusFilter) return [] as string[];
     const filterValue = table.getColumn(statusColumnId)?.getFilterValue() as string[] | undefined;
     return filterValue ?? [];
-  }, [enableStatusFilter, statusColumnId, table.getColumn(statusColumnId)?.getFilterValue()]);
+  }, [enableStatusFilter, statusColumnId, table, columnFilters]);
 
   const handleStatusChange = (checked: boolean, value: string) => {
     if (!enableStatusFilter) return;
@@ -550,21 +550,22 @@ export function DataTable<TData>({
             className="text-sm whitespace-nowrap text-muted-foreground"
             aria-live="polite"
           >
-            <span className="text-foreground">
-              {table.getState().pagination.pageIndex *
-                table.getState().pagination.pageSize +
-                1}
-              -
-              {Math.min(
-                Math.max(
+            {table.getRowCount() === 0 ? (
+              <span className="text-foreground">0</span>
+            ) : (
+              <span className="text-foreground">
+                {table.getState().pagination.pageIndex *
+                  table.getState().pagination.pageSize +
+                  1}
+                -
+                {Math.min(
                   table.getState().pagination.pageIndex *
                     table.getState().pagination.pageSize +
                     table.getState().pagination.pageSize,
-                  0
-                ),
-                table.getRowCount()
-              )}
-            </span>{" "}
+                  table.getRowCount()
+                )}
+              </span>
+            )}{" "}
             of{" "}
             <span className="text-foreground">
               {table.getRowCount().toString()}
