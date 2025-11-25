@@ -119,6 +119,8 @@ import {
 import { json } from "@remix-run/node";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { syncUserDoorAccess } from "~/services/access-control-sync.server";
+import { RefreshCw } from "lucide-react";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -673,6 +675,43 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "retryBrivoSync") {
+    const userId = formData.get("userId");
+    if (!userId) {
+      return {
+        success: false,
+        message: "User ID is required",
+      };
+    }
+
+    try {
+      await syncUserDoorAccess(Number(userId));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Retried Brivo sync for user ${userId}`,
+        {
+          url: request.url,
+          targetUserId: userId,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Brivo sync retried successfully. The page will refresh to show updated status.",
+      };
+    } catch (error) {
+      logger.error(`Error retrying Brivo sync: ${error}`, {
+        userId: roleUser.userId,
+        targetUserId: userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: `Failed to retry sync: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
   if (actionType === "updateVolunteerHourStatus") {
     const hourId = formData.get("hourId");
     const newStatus = formData.get("newStatus");
@@ -942,6 +981,142 @@ function AdminControl({
         />
       )}
     </div>
+  );
+}
+
+function DoorAccessStatus({
+  user,
+}: {
+  user: {
+    id: number;
+    roleLevel: number;
+    membershipStatus: string;
+    brivoPersonId?: string | null;
+    brivoLastSyncedAt?: string | Date | null;
+    brivoSyncError?: string | null;
+  };
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const submit = useSubmit();
+
+  const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+  let badgeVariant: "secondary" | "outline" | "destructive" = "outline";
+  let badgeLabel = "Disabled";
+
+  if (user.brivoSyncError) {
+    badgeVariant = "destructive";
+    badgeLabel = "Sync Error";
+  } else if (!eligible) {
+    badgeVariant = "outline";
+    badgeLabel = "Disabled";
+  } else if (user.brivoPersonId) {
+    badgeVariant = "secondary";
+    badgeLabel = "Provisioned";
+  } else {
+    badgeVariant = "outline";
+    badgeLabel = "Pending Sync";
+  }
+
+  const lastSynced =
+    user.brivoLastSyncedAt && !Number.isNaN(new Date(user.brivoLastSyncedAt).getTime())
+      ? new Date(user.brivoLastSyncedAt).toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : null;
+
+  const handleRetry = () => {
+    setIsRetrying(true);
+    const formData = new FormData();
+    formData.append("actionType", "retryBrivoSync");
+    formData.append("userId", user.id.toString());
+    submit(formData, { method: "post" });
+    setDialogOpen(false);
+    setTimeout(() => setIsRetrying(false), 2000);
+  };
+
+  const badge = user.brivoSyncError ? (
+    <button
+      onClick={() => setDialogOpen(true)}
+      className="cursor-pointer hover:opacity-80 transition-opacity"
+      type="button"
+    >
+      <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+    </button>
+  ) : (
+    <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+  );
+
+  return (
+    <>
+      <div className="space-y-1">
+        {badge}
+        {user.brivoSyncError ? (
+          <p className="text-xs text-destructive">Click badge for details</p>
+        ) : (
+          <p className="text-xs text-gray-500">
+            {eligible
+              ? user.brivoPersonId
+                ? "24/7 access active"
+                : "Eligible – syncing shortly"
+              : "Not eligible (role < 4 or membership revoked)"}
+          </p>
+        )}
+        {lastSynced && !user.brivoSyncError && (
+          <p className="text-xs text-gray-500">Last sync: {lastSynced}</p>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Brivo Sync Error</DialogTitle>
+            <DialogDescription>
+              There was an error syncing this user's door access with Brivo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label className="text-sm font-semibold">Error Details:</Label>
+              <div className="mt-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                <p className="text-sm text-destructive font-mono break-words">
+                  {user.brivoSyncError}
+                </p>
+              </div>
+            </div>
+            {lastSynced && (
+              <div>
+                <Label className="text-sm font-semibold">Last Successful Sync:</Label>
+                <p className="text-sm text-gray-600 mt-1">{lastSynced}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={isRetrying}
+            >
+              Close
+            </Button>
+            <Button onClick={handleRetry} disabled={isRetrying}>
+              {isRetrying ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry Sync
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -2413,6 +2588,10 @@ export default function AdminSettings() {
     {
       header: "Membership",
       render: (user) => <MembershipControl user={user} />,
+    },
+    {
+      header: "Door Access",
+      render: (user) => <DoorAccessStatus user={user} />,
     },
   ];
 
