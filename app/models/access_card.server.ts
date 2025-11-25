@@ -1,4 +1,5 @@
 import { db } from "../utils/db.server";
+import { DOOR_PERMISSION_ID } from "~/config/access-control";
 
 export type AccessCard = {
   id: string;
@@ -9,6 +10,8 @@ export type AccessCard = {
   registeredAt: Date | null;
   updatedAt: Date;
   permissions: number[];
+  brivoCredentialId: string | null;
+  brivoMobilePassId: string | null;
 };
 
 export async function getAccessCardByUUID(id: string): Promise<AccessCard | null> {
@@ -36,13 +39,51 @@ export async function getAccessCardByUUID(id: string): Promise<AccessCard | null
     registeredAt: accessCard.created_at,
     updatedAt: accessCard.updated_at,
     permissions: accessCard.permissions,
+    brivoCredentialId: accessCard.brivoCredentialId,
+    brivoMobilePassId: accessCard.brivoMobilePassId,
   };
 }
- 
+
+export async function getAccessCardByBrivoCredentialId(
+  credentialId: string,
+): Promise<AccessCard | null> {
+  const accessCard = await db.accessCard.findFirst({
+    where: { brivoCredentialId: credentialId },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!accessCard) return null;
+
+  return {
+    id: accessCard.id,
+    userId: accessCard.userId,
+    userFirstName: accessCard.user?.firstName ?? null,
+    userLastName: accessCard.user?.lastName ?? null,
+    userEmail: accessCard.user?.email ?? null,
+    registeredAt: accessCard.created_at,
+    updatedAt: accessCard.updated_at,
+    permissions: accessCard.permissions,
+    brivoCredentialId: accessCard.brivoCredentialId,
+    brivoMobilePassId: accessCard.brivoMobilePassId,
+  };
+}
+
 export async function updateAccessCard(
   id: string,
   userEmail: string | null,
-  permissions: number[]
+  permissions: number[],
+  extras?: {
+    brivoCredentialId?: string | null;
+    brivoMobilePassId?: string | null;
+  },
 ) {
   let userId: number | null = null;
   let finalPermissions = permissions;
@@ -70,6 +111,7 @@ export async function updateAccessCard(
       userId,
       permissions: finalPermissions,
       updated_at: new Date(),
+      ...(extras ?? {}),
     },
     create: {
       id,
@@ -77,6 +119,8 @@ export async function updateAccessCard(
       permissions: finalPermissions,
       created_at: new Date(),
       updated_at: new Date(),
+      brivoCredentialId: extras?.brivoCredentialId ?? null,
+      brivoMobilePassId: extras?.brivoMobilePassId ?? null,
     },
   });
 }
@@ -109,8 +153,8 @@ export async function hasPermissionForType(accessCardId: string, type: string): 
   const { permissions } = card;
 
   if (type.toLowerCase() === "door") {
-    // Special case for Door (id 0)
-    return permissions.includes(0);
+    // Special case for Door
+    return permissions.includes(DOOR_PERMISSION_ID);
   }
 
   // Look up equipment by name
