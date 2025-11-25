@@ -304,6 +304,7 @@ class BrivoClient {
   }
 
   async assignGroups(personId: string, groupIds: string[]): Promise<void> {
+    // WARNING: This performs a full sync - user will be removed from groups NOT in groupIds
     if (!this.isEnabled()) return;
 
     const desired = new Set(groupIds);
@@ -331,7 +332,6 @@ class BrivoClient {
       });
     }
   }
-
   async revokeFromGroups(personId: string, groupIds: string[]): Promise<void> {
     if (!this.isEnabled() || groupIds.length === 0) return;
 
