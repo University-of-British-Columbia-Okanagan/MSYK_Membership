@@ -44,6 +44,10 @@ model User {
   membershipRevokedAt     DateTime?
   membershipRevokedReason String?
 
+  brivoPersonId    String?  @unique
+  brivoLastSyncedAt DateTime?
+  brivoSyncError   String?
+
   // Relationships
   userWorkshops          UserWorkshop[]
   equipmentbookings      EquipmentBooking[]
@@ -63,6 +67,9 @@ model AccessCard {
   id          String @id
   userId      Int?
   permissions Int[]
+
+  brivoCredentialId String? @unique
+  brivoMobilePassId String? @unique
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
