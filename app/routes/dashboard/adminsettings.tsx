@@ -75,6 +75,8 @@ import {
   ShadTable,
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
+import { DataTable } from "~/components/data-table";
+import { ColumnDef } from "@tanstack/react-table";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   AlertDialog,
@@ -1924,6 +1926,9 @@ export default function AdminSettings() {
       membershipStatus: "active" | "revoked";
       membershipRevokedAt: Date | null;
       membershipRevokedReason: string | null;
+      brivoPersonId?: string | null;
+      brivoLastSyncedAt?: Date | string | null;
+      brivoSyncError?: string | null;
     }>;
     volunteerHours: Array<{
       id: number;
@@ -2108,9 +2113,6 @@ export default function AdminSettings() {
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
 
-  const [searchName, setSearchName] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage] = useState(10);
 
   // Volunteer hours management state
   const [volunteerSearchName, setVolunteerSearchName] = useState("");
@@ -2234,7 +2236,12 @@ export default function AdminSettings() {
   // Status filters for recent actions
   const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
 
-  // Filter users by first and last name
+  // Volunteer management state (for volunteers tab)
+  const [searchName, setSearchName] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage] = useState(10);
+
+  // Filter and sort users for volunteers tab
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
       const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
@@ -2242,10 +2249,16 @@ export default function AdminSettings() {
     });
   }, [users, searchName]);
 
-  // Sort filtered users by user.id in ascending order
   const sortedFilteredUsers = useMemo(() => {
-    return filteredUsers.slice().sort((a, b) => a.id - b.id);
+    return filteredUsers.slice().sort((a, b) => {
+      return a.lastName.localeCompare(b.lastName);
+    });
   }, [filteredUsers]);
+
+  const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const paginatedUsers = sortedFilteredUsers.slice(startIndex, endIndex);
 
   // Helper function to generate time options
   const generateVolunteerTimeOptions = () => {
@@ -2523,16 +2536,6 @@ export default function AdminSettings() {
     return calculateTotalHours(filteredRecentActions);
   }, [filteredRecentActions]);
 
-  // PAGINATION LOGIC
-  const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
-  const startIndex = (currentPage - 1) * usersPerPage;
-  const endIndex = startIndex + usersPerPage;
-  const paginatedUsers = sortedFilteredUsers.slice(startIndex, endIndex);
-
-  // Reset to page 1 when search changes
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchName]);
 
   const [plannedClosures, setPlannedClosures] = useState(
     settings.plannedClosures.map((closure) => ({
@@ -2572,26 +2575,70 @@ export default function AdminSettings() {
   const [weeklyFormBeingEdited, setWeeklyFormBeingEdited] =
     useState<boolean>(false);
 
-  // Define columns for the ShadTable
+  // Define columns for the DataTable
   type UserRow = (typeof users)[number];
-  const columns: ColumnDefinition<UserRow>[] = [
-    { header: "First Name", render: (user) => user.firstName },
-    { header: "Last Name", render: (user) => user.lastName },
-    { header: "Email", render: (user) => user.email },
-    { header: "Phone Number", render: (user) => user.phone },
+  const userColumns: ColumnDef<UserRow>[] = [
     {
-      header: "Training Card User Number",
-      render: (user) => user.trainingCardUserNumber,
+      header: "First Name",
+      accessorKey: "firstName",
+      cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
+        <div className="font-medium">{row.getValue("firstName")}</div>
+      ),
+      size: 120,
     },
-    { header: "Role Level", render: (user) => <RoleControl user={user} /> },
-    { header: "Admin Status", render: (user) => <AdminControl user={user} /> },
+    {
+      header: "Last Name",
+      accessorKey: "lastName",
+      cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
+        <div className="font-medium">{row.getValue("lastName")}</div>
+      ),
+      size: 120,
+    },
+    {
+      header:"Training Card User Number",
+    accessorKey: "trainingCardUserNumber",
+    cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
+      <div className="font-medium">{row.getValue("trainingCardUserNumber")}</div>
+    ),
+    size: 120,
+  },
+    {
+      header: "Email",
+      accessorKey: "email",
+      size: 220,
+    },
+    {
+      header: "Phone Number",
+      accessorKey: "phone",
+      size: 140,
+    },
+    {
+      header: "Role Level",
+      id: "roleLevel",
+      cell: ({ row }: { row: { original: UserRow } }) => <RoleControl user={row.original} />,
+      size: 200,
+      enableSorting: false,
+    },
+    {
+      header: "Admin Status",
+      id: "adminStatus",
+      cell: ({ row }: { row: { original: UserRow } }) => <AdminControl user={row.original} />,
+      size: 150,
+      enableSorting: false,
+    },
     {
       header: "Membership",
-      render: (user) => <MembershipControl user={user} />,
+      id: "membership",
+      cell: ({ row }: { row: { original: UserRow } }) => <MembershipControl user={row.original} />,
+      size: 200,
+      enableSorting: false,
     },
     {
       header: "Door Access",
-      render: (user) => <DoorAccessStatus user={user} />,
+      id: "doorAccess",
+      cell: ({ row }: { row: { original: UserRow } }) => <DoorAccessStatus user={row.original} />,
+      size: 180,
+      enableSorting: false,
     },
   ];
 
@@ -2905,7 +2952,7 @@ export default function AdminSettings() {
       <div className="absolute inset-0 flex">
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
-          <div className="max-w-4xl mx-auto">
+          <div className="w-full">
             {/* Mobile Header with Sidebar Trigger */}
             <div className="flex items-center gap-4 mb-6 md:hidden">
               <SidebarTrigger />
@@ -3440,32 +3487,21 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-2">
-                        <FiSearch className="text-gray-500" />
-                        <Input
-                          placeholder="Search by first or last name"
-                          value={searchName}
-                          onChange={(e) => setSearchName(e.target.value)}
-                          className="w-full md:w-64"
-                        />
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Showing {startIndex + 1}-
-                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
-                        {sortedFilteredUsers.length} users
-                      </div>
-                    </div>
-                    <ShadTable
-                      columns={columns}
-                      data={paginatedUsers}
+                    <DataTable
+                      columns={userColumns}
+                      data={users}
+                      enableGlobalFilter={true}
+                      globalFilterPlaceholder="Search by first or last name..."
+                      globalFilterAccessor={(user) => `${user.firstName} ${user.lastName} ${user.email}`}
+                      enableColumnVisibility={true}
                       emptyMessage="No users found"
-                    />
-                    <Pagination
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      onPageChange={setCurrentPage}
-                      maxVisiblePages={50}
+                      initialSorting={[
+                        {
+                          id: "id",
+                          desc: false,
+                        },
+                      ]}
+                      initialPageSize={10}
                     />
                   </CardContent>
                 </Card>
