@@ -122,7 +122,9 @@ import { json } from "@remix-run/node";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, FilterIcon } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -2236,6 +2238,11 @@ export default function AdminSettings() {
   // Status filters for recent actions
   const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
 
+  // User table filters
+  const [adminStatusFilter, setAdminStatusFilter] = useState<string[]>([]);
+  const [membershipFilter, setMembershipFilter] = useState<string[]>([]);
+  const [doorAccessFilter, setDoorAccessFilter] = useState<string[]>([]);
+
   // Volunteer management state (for volunteers tab)
   const [searchName, setSearchName] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -2575,6 +2582,82 @@ export default function AdminSettings() {
   const [weeklyFormBeingEdited, setWeeklyFormBeingEdited] =
     useState<boolean>(false);
 
+  // Filter users based on filter states
+  const filteredUsersForTable = useMemo(() => {
+    return users.filter((user) => {
+      // Admin Status filter
+      if (adminStatusFilter.length > 0) {
+        const userAdminStatus = user.roleUser.name === "Admin" ? "Admin" : "Not Admin";
+        if (!adminStatusFilter.includes(userAdminStatus)) return false;
+      }
+
+      // Membership filter
+      if (membershipFilter.length > 0) {
+        const userMembershipStatus = user.membershipStatus === "revoked" ? "Revoked" : "Active";
+        if (!membershipFilter.includes(userMembershipStatus)) return false;
+      }
+
+      // Door Access filter
+      if (doorAccessFilter.length > 0) {
+        const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+        let doorAccessStatus: string;
+        if (user.brivoSyncError) {
+          doorAccessStatus = "Sync Error";
+        } else if (!eligible) {
+          doorAccessStatus = "Disabled";
+        } else if (user.brivoPersonId) {
+          doorAccessStatus = "Provisioned";
+        } else {
+          doorAccessStatus = "Pending Sync";
+        }
+        if (!doorAccessFilter.includes(doorAccessStatus)) return false;
+      }
+
+      return true;
+    });
+  }, [users, adminStatusFilter, membershipFilter, doorAccessFilter]);
+
+  // Get unique values for filter options
+  const adminStatusOptions = useMemo(() => {
+    const admins = users.filter((u) => u.roleUser.name === "Admin").length;
+    const notAdmins = users.length - admins;
+    return [
+      { value: "Admin", count: admins },
+      { value: "Not Admin", count: notAdmins },
+    ];
+  }, [users]);
+
+  const membershipOptions = useMemo(() => {
+    const revoked = users.filter((u) => u.membershipStatus === "revoked").length;
+    const active = users.length - revoked;
+    return [
+      { value: "Revoked", count: revoked },
+      { value: "Active", count: active },
+    ];
+  }, [users]);
+
+  const doorAccessOptions = useMemo(() => {
+    const counts = {
+      "Sync Error": 0,
+      "Disabled": 0,
+      "Provisioned": 0,
+      "Pending Sync": 0,
+    };
+    users.forEach((user) => {
+      const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+      if (user.brivoSyncError) {
+        counts["Sync Error"]++;
+      } else if (!eligible) {
+        counts["Disabled"]++;
+      } else if (user.brivoPersonId) {
+        counts["Provisioned"]++;
+      } else {
+        counts["Pending Sync"]++;
+      }
+    });
+    return Object.entries(counts).map(([value, count]) => ({ value, count }));
+  }, [users]);
+
   // Define columns for the DataTable
   type UserRow = (typeof users)[number];
   const userColumns: ColumnDef<UserRow>[] = [
@@ -2622,23 +2705,54 @@ export default function AdminSettings() {
     {
       header: "Admin Status",
       id: "adminStatus",
+      accessorFn: (row) => row.roleUser.name === "Admin" ? "Admin" : "Not Admin",
       cell: ({ row }: { row: { original: UserRow } }) => <AdminControl user={row.original} />,
       size: 150,
       enableSorting: false,
+      filterFn: (row, id, value) => {
+        const status = row.original.roleUser.name === "Admin" ? "Admin" : "Not Admin";
+        return value.includes(status);
+      },
     },
     {
       header: "Membership",
       id: "membership",
+      accessorFn: (row) => row.membershipStatus === "revoked" ? "Revoked" : "Active",
       cell: ({ row }: { row: { original: UserRow } }) => <MembershipControl user={row.original} />,
       size: 200,
       enableSorting: false,
+      filterFn: (row, id, value) => {
+        const status = row.original.membershipStatus === "revoked" ? "Revoked" : "Active";
+        return value.includes(status);
+      },
     },
     {
       header: "Door Access",
       id: "doorAccess",
+      accessorFn: (row) => {
+        const eligible = row.roleLevel >= 4 && row.membershipStatus !== "revoked";
+        if (row.brivoSyncError) return "Sync Error";
+        if (!eligible) return "Disabled";
+        if (row.brivoPersonId) return "Provisioned";
+        return "Pending Sync";
+      },
       cell: ({ row }: { row: { original: UserRow } }) => <DoorAccessStatus user={row.original} />,
       size: 180,
       enableSorting: false,
+      filterFn: (row, id, value) => {
+        const eligible = row.original.roleLevel >= 4 && row.original.membershipStatus !== "revoked";
+        let status: string;
+        if (row.original.brivoSyncError) {
+          status = "Sync Error";
+        } else if (!eligible) {
+          status = "Disabled";
+        } else if (row.original.brivoPersonId) {
+          status = "Provisioned";
+        } else {
+          status = "Pending Sync";
+        }
+        return value.includes(status);
+      },
     },
   ];
 
@@ -3487,9 +3601,204 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
+                    {/* Filter Controls */}
+                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                      {/* Admin Status Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Admin Status
+                            {adminStatusFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {adminStatusFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Admin Status
+                            </div>
+                            <div className="space-y-3">
+                              {adminStatusOptions.map((option) => (
+                                <div key={option.value} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`admin-status-${option.value}`}
+                                    checked={adminStatusFilter.includes(option.value)}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setAdminStatusFilter([...adminStatusFilter, option.value]);
+                                      } else {
+                                        setAdminStatusFilter(
+                                          adminStatusFilter.filter((f) => f !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`admin-status-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {adminStatusFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setAdminStatusFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      {/* Membership Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Membership
+                            {membershipFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {membershipFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Membership
+                            </div>
+                            <div className="space-y-3">
+                              {membershipOptions.map((option) => (
+                                <div key={option.value} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`membership-${option.value}`}
+                                    checked={membershipFilter.includes(option.value)}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setMembershipFilter([...membershipFilter, option.value]);
+                                      } else {
+                                        setMembershipFilter(
+                                          membershipFilter.filter((f) => f !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`membership-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {membershipFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setMembershipFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      {/* Door Access Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Door Access
+                            {doorAccessFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {doorAccessFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Door Access
+                            </div>
+                            <div className="space-y-3">
+                              {doorAccessOptions.map((option) => (
+                                <div key={option.value} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`door-access-${option.value}`}
+                                    checked={doorAccessFilter.includes(option.value)}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setDoorAccessFilter([...doorAccessFilter, option.value]);
+                                      } else {
+                                        setDoorAccessFilter(
+                                          doorAccessFilter.filter((f) => f !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`door-access-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {doorAccessFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDoorAccessFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
                     <DataTable
                       columns={userColumns}
-                      data={users}
+                      data={filteredUsersForTable}
                       enableGlobalFilter={true}
                       globalFilterPlaceholder="Search by first or last name..."
                       globalFilterAccessor={(user) => `${user.firstName} ${user.lastName} ${user.email}`}
