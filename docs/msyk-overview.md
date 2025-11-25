@@ -858,7 +858,13 @@ Connect ID: # where # a number and Multi-Day Workshop links you to the workshop 
 | ---- | **Equipments:** Route UI Showcase for Admins | Can access equipment button and can access dashboard/addequipments route. Has edit or delete equipment buttons on each equipment card. Has unavaliable equipments UI but can still go to the equpment details route by press on the View Equipment (Admin) button. Can see default equipment picture unless otherwise has an image |
 | ---- | **Equipments:** Equipment Details and Equipment Booking Routing for Unavaliable Equipment | If equipment unavaliable, users and guests should not be able to access dashboard/equipmentbooking/:id or dashboard/equipments/:id (even by typing URL) |  `NA` | `TODO/TOFIX`
 | ---- | **Equipments:** Add Equipment Required Fields | When trying to create equipments, all required fields need to be filled within its proper domain (Has name, has price >= 0, has description, has an avaliability). Otherwise, show form errrors |  `NA` | `TODO/TOFIX`
-| ---- | **Equipments:** Add Equipment Equipment Image | When trying to upload an image > 5 MB, it should throw an error that the file is too big and throw in error |  `NA` | `TODO/TOFIX`
+| ---- | **Equipments:** Add/Edit Equipment Equipment Image | When trying to upload an image > 5 MB, it should throw an error that the file is too big and throw in error |  `NA` | `TODO/TOFIX`
+| ---- | **Equipments:** Add Equipment Workshop Prerequisites | You are only able to add ACTIVE orientations as a prereq for booking the equipment |  `NA` | `111/25/2025`
+| ---- | **Equipment Details:** Equipment Workshop Prerequisites | If the user has not completed the workshop prereqs, they should not be able to book that equipment |  `NA` | `11/25/2025`
+
+| ---- | **Equipments:** Edit Equipment Required Fields | When trying to edit the required fields of an equipment, editing it into a changed value will update the equipment. If a required field is edited into empty, update equipment should not work |  `NA` | `TODO/TOFIX`
+| ---- | **Equipments:** Edit Equipment Equipment Image | You are able to add/edit/remove images in Equipments |  `NA` | `11/25/2025`
+| ---- | **Equipments:** Edit Equipment Equipment Workshop Prerequisities | You should not be able to modify the ACTIVE orientations that are already in place in the equipment from Add Equipment |  `NA` | `TODO/TOFIX`
 | AC34 | GST Calculation | Make payment for workshop, equipment, or membership; check Stripe dashboard | GST percentage retrieved from admin settings; GST amount calculated correctly; total amount includes GST; GST metadata stored in Stripe payment intent |
 | AC35 | **Quick Checkout** (Saved Card) | Have saved payment method; select "Use Saved Card" option during checkout; complete quick checkout | Payment processed automatically; no redirect to Stripe Checkout; payment successful |
 | AC36 | **Stripe Checkout Session** | Do not have saved payment method (or choose new payment); initiate checkout; complete payment on Stripe | Redirect to Stripe Checkout; redirect to success page; payment successful; session metadata correct |
@@ -916,7 +922,9 @@ Last Updated: 11/19/2025
    -  Sometimes when you edit a equipment that has a equipment image with a new image, it will redirect back to the equipments route and the new image is not shown until you refresh the page. This mostly happens when you edit the auto generated equipments from seed.ts (such as Laser Cutter) and then edit it to add an image
    - Have the ability to have Equipments that cost 0 dollars and register for them
    - No form errors shown in add equipment when required fields not filled and also when it is filled, (lets say we set price to -1), it does not show an error that says price should be >= 0
-   - In add equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
+   - In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
+   - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Fix this
+   - You should not be able to edit the workshop prereqs of an equipment in edit equipment. The workshop prereqs you add after adding an equipment should be final
 
 - **Open Bugs**:
   - Add Workshop with Price Variation not working **[Resolved]**
