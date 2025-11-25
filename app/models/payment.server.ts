@@ -1287,8 +1287,15 @@ export async function refundMembershipSubscription(
           where: { id: userId },
           data: { roleLevel: newRoleLevel },
         });
-        await syncUserDoorAccess(userId);
-      }
+        try {
+          await syncUserDoorAccess(userId);
+        } catch (syncError) {
+          console.error(
+            "Failed to sync door access after membership cancellation:",
+            syncError
+          );
+          // TODO: Add alerting/monitoring here for critical security events
+        }      }
     }
 
     return {
