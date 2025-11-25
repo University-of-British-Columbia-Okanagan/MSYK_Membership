@@ -61,10 +61,15 @@ function verifySignature(rawBody: string, signature: string, secret: string) {
     .createHmac("sha256", secret)
     .update(rawBody, "utf8")
     .digest("hex");
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected),
-  );
+
+  const signatureBuffer = Buffer.from(signature, "hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+
+  if (signatureBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
 }
 
 function resolveState(
@@ -121,7 +126,13 @@ export async function action({ request }: ActionFunctionArgs) {
   const signatureHeader = request.headers.get("x-brivo-signature");
   const webhookSecret = process.env.BRIVO_WEBHOOK_SECRET;
 
-  if (webhookSecret && signatureHeader) {
+  if (webhookSecret) {
+    if (!signatureHeader) {
+      logger.warn("Received Brivo webhook without signature header", {
+        path: request.url,
+      });
+      return Response.json({ status: "missing_signature" }, { status: 401 });
+    }
     const valid = verifySignature(rawBody, signatureHeader, webhookSecret);
     if (!valid) {
       logger.warn("Received Brivo webhook with invalid signature", {
@@ -130,7 +141,6 @@ export async function action({ request }: ActionFunctionArgs) {
       return Response.json({ status: "invalid_signature" }, { status: 401 });
     }
   }
-
   let event: BrivoEvent;
   try {
     event = JSON.parse(rawBody);
