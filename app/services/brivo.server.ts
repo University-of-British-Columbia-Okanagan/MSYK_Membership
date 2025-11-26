@@ -437,6 +437,15 @@ class BrivoClient {
       method: "DELETE",
     });
   }
+
+  async listGroups(): Promise<BrivoGroup[]> {
+    if (!this.isEnabled()) return [];
+
+    const result = await this.request<{ data: BrivoGroup[] }>("/groups", {
+      method: "GET",
+    });
+    return result?.data ?? [];
+  }
 }
 
 type DigitalInvitation = {
@@ -461,6 +470,11 @@ export type EventSubscription = {
     criteriaOperationType: string;
     criteriaValue: number;
   }>;
+};
+
+export type BrivoGroup = {
+  id: number;
+  name: string;
 };
 
 export const brivoClient = new BrivoClient();
