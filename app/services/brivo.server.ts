@@ -404,6 +404,39 @@ class BrivoClient {
       });
     }
   }
+
+  async listEventSubscriptions(): Promise<EventSubscription[]> {
+    if (!this.isEnabled()) return [];
+
+    const result = await this.request<{ data: EventSubscription[] }>(
+      "/event-subscriptions",
+      { method: "GET" },
+    );
+    return result?.data ?? [];
+  }
+
+  async createEventSubscription(
+    name: string,
+    url: string,
+    errorEmail: string,
+  ): Promise<EventSubscription> {
+    if (!this.isEnabled()) {
+      throw new Error("Brivo is not configured");
+    }
+
+    return this.request<EventSubscription>("/event-subscriptions", {
+      method: "POST",
+      body: JSON.stringify({ name, url, errorEmail, criteria: [] }),
+    });
+  }
+
+  async deleteEventSubscription(subscriptionId: number): Promise<void> {
+    if (!this.isEnabled()) return;
+
+    await this.request(`/event-subscriptions/${subscriptionId}`, {
+      method: "DELETE",
+    });
+  }
 }
 
 type DigitalInvitation = {
@@ -415,6 +448,19 @@ type DigitalInvitation = {
   expiration: string;
   status: "PENDING" | "REDEEMED" | "EXPIRED" | "CANCELLED";
   nfcEnabled: boolean;
+};
+
+export type EventSubscription = {
+  id: number;
+  name: string;
+  url: string;
+  errorEmail: string;
+  criteria: Array<{
+    id: number;
+    criteriaType: string;
+    criteriaOperationType: string;
+    criteriaValue: number;
+  }>;
 };
 
 export const brivoClient = new BrivoClient();

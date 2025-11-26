@@ -122,6 +122,7 @@ import { json } from "@remix-run/node";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
+import { brivoClient } from "~/services/brivo.server";
 import { RefreshCw, FilterIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -238,6 +239,23 @@ export async function loader({ request }: { request: Request }) {
     }
   );
 
+  // Brivo integration status
+  const brivoEnabled = brivoClient.isEnabled();
+  let brivoSubscriptions: Array<{
+    id: number;
+    name: string;
+    url: string;
+    errorEmail: string;
+  }> = [];
+  if (brivoEnabled) {
+    try {
+      const subs = await brivoClient.listEventSubscriptions();
+      brivoSubscriptions = subs;
+    } catch (e) {
+      logger.error(`Failed to list Brivo event subscriptions: ${String(e)}`);
+    }
+  }
+
   // Return settings to the component
   return {
     roleUser,
@@ -263,6 +281,10 @@ export async function loader({ request }: { request: Request }) {
       selectedCalendarId: googleCalendarId,
       timezone: googleTimezone,
       calendars: googleCalendars,
+    },
+    brivo: {
+      enabled: brivoEnabled,
+      subscriptions: brivoSubscriptions,
     },
     allEquipments,
   };
@@ -818,6 +840,62 @@ export async function action({ request }: { request: Request }) {
       token,
       message: "Access token generated successfully",
     };
+  }
+
+  if (actionType === "brivoCreateSubscription") {
+    const name = formData.get("brivoSubName") as string;
+    const url = formData.get("brivoSubUrl") as string;
+    const errorEmail = formData.get("brivoSubErrorEmail") as string;
+
+    if (!name || !url || !errorEmail) {
+      return {
+        success: false,
+        message: "Please fill in all fields for the webhook subscription.",
+      };
+    }
+
+    try {
+      await brivoClient.createEventSubscription(name, url, errorEmail);
+      logger.info(`[User: ${roleUser.userId}] Created Brivo event subscription`, {
+        name,
+        url,
+      });
+      return {
+        success: true,
+        message: "Brivo webhook subscription created successfully.",
+      };
+    } catch (error) {
+      logger.error(`Error creating Brivo subscription: ${error}`, {
+        userId: roleUser.userId,
+      });
+      return {
+        success: false,
+        message: `Failed to create subscription: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  if (actionType === "brivoDeleteSubscription") {
+    const subscriptionId = Number(formData.get("brivoSubId"));
+
+    try {
+      await brivoClient.deleteEventSubscription(subscriptionId);
+      logger.info(`[User: ${roleUser.userId}] Deleted Brivo event subscription`, {
+        subscriptionId,
+      });
+      return {
+        success: true,
+        message: "Brivo webhook subscription deleted successfully.",
+      };
+    } catch (error) {
+      logger.error(`Error deleting Brivo subscription: ${error}`, {
+        userId: roleUser.userId,
+      });
+      return {
+        success: false,
+        message: `Failed to delete subscription: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
   }
 
   if (actionType === "getAccessCardInfo") {
@@ -6377,6 +6455,159 @@ export default function AdminSettings() {
                               </div>
                             </Form>
                           )}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                  <CardHeader>
+                    <CardTitle>Brivo Access Control</CardTitle>
+                    <CardDescription>
+                      Manage Brivo webhook subscriptions to receive door access
+                      events. When users badge in or use their mobile pass,
+                      events are logged to your Access Logs.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {(() => {
+                      const { brivo } = (useLoaderData() as any) || {
+                        brivo: {},
+                      };
+
+                      if (!brivo?.enabled) {
+                        return (
+                          <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+                            <p className="text-yellow-800 text-sm">
+                              Brivo integration is not configured. Set the
+                              following environment variables:
+                            </p>
+                            <ul className="text-yellow-700 text-xs mt-2 list-disc list-inside">
+                              <li>BRIVO_CLIENT_ID</li>
+                              <li>BRIVO_CLIENT_SECRET</li>
+                              <li>BRIVO_USERNAME</li>
+                              <li>BRIVO_PASSWORD</li>
+                              <li>BRIVO_API_KEY</li>
+                              <li>BRIVO_ACCESS_GROUP_LEVEL4</li>
+                            </ul>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-6">
+                          <div className="bg-green-50 p-4 rounded-md border border-green-200">
+                            <p className="text-green-800 text-sm font-medium">
+                              ✓ Brivo API Connected
+                            </p>
+                          </div>
+
+                          <div>
+                            <h4 className="font-medium mb-3">
+                              Webhook Subscriptions
+                            </h4>
+                            {brivo.subscriptions?.length > 0 ? (
+                              <div className="space-y-2">
+                                {brivo.subscriptions.map((sub: any) => (
+                                  <div
+                                    key={sub.id}
+                                    className="flex items-center justify-between p-3 bg-gray-50 rounded-md border"
+                                  >
+                                    <div>
+                                      <p className="font-medium text-sm">
+                                        {sub.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500 truncate max-w-md">
+                                        {sub.url}
+                                      </p>
+                                    </div>
+                                    <Form method="post">
+                                      <input
+                                        type="hidden"
+                                        name="actionType"
+                                        value="brivoDeleteSubscription"
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name="brivoSubId"
+                                        value={sub.id}
+                                      />
+                                      <Button
+                                        type="submit"
+                                        variant="destructive"
+                                        size="sm"
+                                      >
+                                        Delete
+                                      </Button>
+                                    </Form>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-500">
+                                No webhook subscriptions configured. Create one
+                                below to start receiving access events.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="border-t pt-4">
+                            <h4 className="font-medium mb-3">
+                              Create Webhook Subscription
+                            </h4>
+                            <Form method="post" className="space-y-4">
+                              <input
+                                type="hidden"
+                                name="actionType"
+                                value="brivoCreateSubscription"
+                              />
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="brivoSubName">
+                                    Subscription Name
+                                  </Label>
+                                  <Input
+                                    id="brivoSubName"
+                                    name="brivoSubName"
+                                    placeholder="MSYK Access Events"
+                                    className="bg-white"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="brivoSubErrorEmail">
+                                    Error Notification Email
+                                  </Label>
+                                  <Input
+                                    id="brivoSubErrorEmail"
+                                    name="brivoSubErrorEmail"
+                                    type="email"
+                                    placeholder="admin@example.com"
+                                    className="bg-white"
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="brivoSubUrl">Webhook URL</Label>
+                                <Input
+                                  id="brivoSubUrl"
+                                  name="brivoSubUrl"
+                                  placeholder="https://yourdomain.com/brivo/callback"
+                                  className="bg-white"
+                                />
+                                <p className="text-xs text-gray-500">
+                                  This should be your production domain followed
+                                  by /brivo/callback
+                                </p>
+                              </div>
+                              <Button
+                                type="submit"
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                              >
+                                Create Subscription
+                              </Button>
+                            </Form>
+                          </div>
                         </div>
                       );
                     })()}
