@@ -67,7 +67,7 @@ async function syncAccessCards(userId: number, shouldHaveDoor: boolean) {
   );
 }
 
-function getAllConfiguredGroups(): string[] {
+async function getAllConfiguredGroups(): Promise<string[]> {
   return getBrivoGroupsForRole(4);
 }
 
@@ -125,8 +125,8 @@ export async function syncUserDoorAccess(userId: number, options?: SyncOptions) 
   }
 
   const groups = shouldHaveDoor
-    ? getBrivoGroupsForRole(user.roleLevel)
-    : getAllConfiguredGroups();
+    ? await getBrivoGroupsForRole(user.roleLevel)
+    : await getAllConfiguredGroups();
 
   if (shouldHaveDoor && groups.length === 0) {
     logger.warn(

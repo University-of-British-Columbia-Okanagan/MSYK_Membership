@@ -1,44 +1,34 @@
 import { logger } from "~/logging/logger";
+import { getAdminSetting } from "~/models/admin.server";
 
 export const DOOR_PERMISSION_ID = 0;
-
-type RoleDoorRule = {
-  minRoleLevel: number;
-  brivoGroupEnv: string | undefined;
-};
-
-const roleRules: RoleDoorRule[] = [
-  {
-    minRoleLevel: 4,
-    brivoGroupEnv: process.env.BRIVO_ACCESS_GROUP_LEVEL4,
-  },
-];
 
 export function requiresDoorPermission(roleLevel: number): boolean {
   return roleLevel >= 4;
 }
 
-export function getBrivoGroupsForRole(roleLevel: number): string[] {
-  const groups: string[] = [];
-
-  for (const rule of roleRules) {
-    if (roleLevel >= rule.minRoleLevel && rule.brivoGroupEnv) {
-      groups.push(
-        ...rule.brivoGroupEnv
-          .split(",")
-          .map((id) => id.trim())
-          .filter(Boolean),
-      );
-    }
+export async function getBrivoGroupsForRole(roleLevel: number): Promise<string[]> {
+  if (roleLevel < 4) {
+    return [];
   }
 
-  if (roleLevel >= 4 && groups.length === 0) {
+  const groupSetting = await getAdminSetting(
+    "brivo_access_group_level4",
+    process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? "",
+  );
+
+  const groups = groupSetting
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (groups.length === 0) {
     logger.warn(
-      "Level 4 users qualify for 24/7 access but BRIVO_ACCESS_GROUP_LEVEL4 is not configured.",
+      "Level 4 users qualify for 24/7 access but brivo_access_group_level4 is not configured.",
     );
   }
 
-  return Array.from(new Set(groups));
+  return groups;
 }
 
 
