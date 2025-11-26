@@ -349,7 +349,73 @@ class BrivoClient {
       }
     }
   }
+
+  async ensureMobilePass(personId: string, email: string): Promise<string> {
+    if (!this.isEnabled()) {
+      throw new Error("Brivo is not configured");
+    }
+
+    const listRes = await this.request<{ data: DigitalInvitation[] }>(
+      `/users/${personId}/credentials/digital-invitations?filter=status__eq:pending`,
+      { method: "GET" },
+    );
+
+    const pending = listRes?.data?.find((inv) => inv.status === "PENDING");
+    if (pending) {
+      return String(pending.credentialId);
+    }
+
+    const redeemedRes = await this.request<{ data: DigitalInvitation[] }>(
+      `/users/${personId}/credentials/digital-invitations?filter=status__eq:redeemed`,
+      { method: "GET" },
+    );
+    const redeemed = redeemedRes?.data?.find((inv) => inv.status === "REDEEMED");
+    if (redeemed) {
+      return String(redeemed.credentialId);
+    }
+
+    const created = await this.request<DigitalInvitation>(
+      `/users/${personId}/credentials/digital-invitations?sendInvitationEmail=true&language=en`,
+      {
+        method: "POST",
+        body: JSON.stringify({ referenceId: email }),
+      },
+    );
+
+    if (!created?.credentialId) {
+      throw new BrivoError("Brivo did not return a credentialId for mobile pass", 500);
+    }
+
+    return String(created.credentialId);
+  }
+
+  async revokeMobilePass(personId: string): Promise<void> {
+    if (!this.isEnabled()) return;
+
+    try {
+      await this.request(
+        `/users/${personId}/credentials/digital-invitations`,
+        { method: "DELETE" },
+      );
+    } catch (error) {
+      logger.warn("Failed to cancel Brivo mobile pass invitation", {
+        personId,
+        error,
+      });
+    }
+  }
 }
+
+type DigitalInvitation = {
+  id: number;
+  referenceId: string;
+  credentialId: number;
+  accessCode: string;
+  created: string;
+  expiration: string;
+  status: "PENDING" | "REDEEMED" | "EXPIRED" | "CANCELLED";
+  nfcEnabled: boolean;
+};
 
 export const brivoClient = new BrivoClient();
 
