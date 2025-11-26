@@ -140,6 +140,24 @@ export async function syncUserDoorAccess(userId: number, options?: SyncOptions) 
     if (shouldHaveDoor) {
       const person = await brivoClient.ensurePerson(user as UserForSync);
       await brivoClient.assignGroups(person.id, groups);
+
+      const mobilePassCredentialId = await brivoClient.ensureMobilePass(
+        person.id,
+        user.email,
+      );
+
+      const primaryCard = await db.accessCard.findFirst({
+        where: { userId: user.id },
+        select: { id: true, brivoMobilePassId: true },
+      });
+
+      if (primaryCard && primaryCard.brivoMobilePassId !== mobilePassCredentialId) {
+        await db.accessCard.update({
+          where: { id: primaryCard.id },
+          data: { brivoMobilePassId: mobilePassCredentialId },
+        });
+      }
+
       await db.user.update({
         where: { id: user.id },
         data: {
@@ -150,6 +168,13 @@ export async function syncUserDoorAccess(userId: number, options?: SyncOptions) 
       });
     } else if (user.brivoPersonId) {
       await brivoClient.revokeFromGroups(user.brivoPersonId, groups);
+      await brivoClient.revokeMobilePass(user.brivoPersonId);
+
+      await db.accessCard.updateMany({
+        where: { userId: user.id, brivoMobilePassId: { not: null } },
+        data: { brivoMobilePassId: null },
+      });
+
       await db.user.update({
         where: { id: user.id },
         data: { brivoLastSyncedAt: new Date(), brivoSyncError: null },

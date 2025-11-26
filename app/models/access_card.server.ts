@@ -48,7 +48,12 @@ export async function getAccessCardByBrivoCredentialId(
   credentialId: string,
 ): Promise<AccessCard | null> {
   const accessCard = await db.accessCard.findFirst({
-    where: { brivoCredentialId: credentialId },
+    where: {
+      OR: [
+        { brivoCredentialId: credentialId },
+        { brivoMobilePassId: credentialId },
+      ],
+    },
     include: {
       user: {
         select: {
