@@ -141,4 +141,5 @@ export default [
   ),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
+  route("/brivo/callback", "routes/brivo.callback.tsx"),
 ] satisfies RouteConfig;
