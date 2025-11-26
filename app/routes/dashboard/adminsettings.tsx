@@ -247,12 +247,22 @@ export async function loader({ request }: { request: Request }) {
     url: string;
     errorEmail: string;
   }> = [];
+  let brivoGroups: Array<{ id: number; name: string }> = [];
+  const brivoAccessGroupLevel4 = await getAdminSetting(
+    "brivo_access_group_level4",
+    process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? "",
+  );
   if (brivoEnabled) {
     try {
       const subs = await brivoClient.listEventSubscriptions();
       brivoSubscriptions = subs;
     } catch (e) {
       logger.error(`Failed to list Brivo event subscriptions: ${String(e)}`);
+    }
+    try {
+      brivoGroups = await brivoClient.listGroups();
+    } catch (e) {
+      logger.error(`Failed to list Brivo groups: ${String(e)}`);
     }
   }
 
@@ -285,6 +295,8 @@ export async function loader({ request }: { request: Request }) {
     brivo: {
       enabled: brivoEnabled,
       subscriptions: brivoSubscriptions,
+      groups: brivoGroups,
+      accessGroupLevel4: brivoAccessGroupLevel4,
     },
     allEquipments,
   };
@@ -894,6 +906,33 @@ export async function action({ request }: { request: Request }) {
       return {
         success: false,
         message: `Failed to delete subscription: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  if (actionType === "brivoSaveAccessGroup") {
+    const groupId = formData.get("brivoAccessGroupLevel4") as string;
+
+    try {
+      await updateAdminSetting(
+        "brivo_access_group_level4",
+        groupId?.trim() ?? "",
+        "Brivo access group ID for Level 4 (24/7) members",
+      );
+      logger.info(`[User: ${roleUser.userId}] Updated Brivo access group`, {
+        groupId,
+      });
+      return {
+        success: true,
+        message: "Brivo access group saved successfully.",
+      };
+    } catch (error) {
+      logger.error(`Error saving Brivo access group: ${error}`, {
+        userId: roleUser.userId,
+      });
+      return {
+        success: false,
+        message: `Failed to save access group: ${error instanceof Error ? error.message : "Unknown error"}`,
       };
     }
   }
@@ -6501,6 +6540,52 @@ export default function AdminSettings() {
                             <p className="text-green-800 text-sm font-medium">
                               ✓ Brivo API Connected
                             </p>
+                          </div>
+
+                          <div className="border-b pb-4">
+                            <h4 className="font-medium mb-3">
+                              Access Group for Level 4 Members
+                            </h4>
+                            <p className="text-sm text-gray-500 mb-3">
+                              Select the Brivo group that Level 4 (24/7 access)
+                              members should be assigned to.
+                            </p>
+                            <Form method="post" className="flex items-end gap-3">
+                              <input
+                                type="hidden"
+                                name="actionType"
+                                value="brivoSaveAccessGroup"
+                              />
+                              <div className="flex-1 max-w-md space-y-2">
+                                <Label htmlFor="brivoAccessGroupLevel4">
+                                  Access Group
+                                </Label>
+                                <select
+                                  id="brivoAccessGroupLevel4"
+                                  name="brivoAccessGroupLevel4"
+                                  defaultValue={brivo.accessGroupLevel4 || ""}
+                                  className="border rounded px-3 py-2 w-full bg-white"
+                                >
+                                  <option value="">-- Select a group --</option>
+                                  {brivo.groups?.map((g: any) => (
+                                    <option key={g.id} value={String(g.id)}>
+                                      {g.name} (ID: {g.id})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <Button
+                                type="submit"
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                              >
+                                Save
+                              </Button>
+                            </Form>
+                            {brivo.accessGroupLevel4 && (
+                              <p className="text-xs text-gray-500 mt-2">
+                                Current: {brivo.accessGroupLevel4}
+                              </p>
+                            )}
                           </div>
 
                           <div>
