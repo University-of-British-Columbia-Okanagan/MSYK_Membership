@@ -5,6 +5,8 @@ import { getAdminSetting } from "./admin.server";
 import {
   sendMembershipEndedNoPaymentMethodEmail,
   sendMembershipPaymentReminderEmail,
+  sendMembershipRevokedEmail,
+  sendMembershipUnrevokedEmail,
 } from "~/utils/email.server";
 import CryptoJS from "crypto-js";
 import PDFDocument from "pdfkit";
@@ -16,6 +18,8 @@ import * as path from "path";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
+
+export const MEMBERSHIP_REVOKED_ERROR = "USER_MEMBERSHIP_REVOKED";
 
 interface MembershipPlanData {
   title: string;
@@ -233,6 +237,18 @@ export async function registerMembershipSubscription(
   paymentIntentId?: string,
   billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly"
 ) {
+  const userDetails = await db.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!userDetails) {
+    throw new Error("User not found");
+  }
+
+  if (userDetails.membershipStatus === "revoked") {
+    throw new Error(MEMBERSHIP_REVOKED_ERROR);
+  }
+
   let subscription;
   const now = new Date();
 
@@ -476,9 +492,7 @@ export async function registerMembershipSubscription(
     throw new Error("Failed to register membership subscription");
   }
 
-  const user = await db.user.findUnique({
-    where: { id: userId },
-  });
+  const user = userDetails;
 
   if (user) {
     if (plan.needAdminPermission) {
@@ -1091,55 +1105,92 @@ export async function updateMembershipFormStatus(
   });
 }
 
+type RevokeMembershipResult = {
+  affectedMemberships: number;
+  planTitles: string[];
+  alreadyRevoked: boolean;
+  userEmail: string;
+  reason: string;
+};
+
+type UnrevokeMembershipResult = {
+  restored: boolean;
+  userEmail?: string;
+};
+
+const REVOCABLE_STATUSES: string[] = ["active", "ending", "cancelled"];
+
 /**
  * Revoke all active memberships for a user (admin action, no refund)
- * Immediately sets all active/ending/cancelled memberships to inactive
- * and recalculates user role level based on orientation completion
- * @param userId The ID of the user whose memberships to revoke
- * @returns Object with affectedPlans count
+ * Sets memberships to "revoked", updates forms, and marks user banned from memberships.
  */
-export async function revokeUserMembershipByAdmin(userId: number) {
-  return await db.$transaction(async (tx) => {
-    // Find all non-inactive memberships for this user
-    const membershipsToRevoke = await tx.userMembership.findMany({
-      where: {
-        userId,
-        status: { in: ["active", "ending", "cancelled"] },
-      },
+export async function revokeUserMembershipByAdmin(
+  userId: number,
+  reason: string
+): Promise<RevokeMembershipResult> {
+  const normalizedReason = reason?.trim();
+  if (!normalizedReason) {
+    throw new Error("Revocation reason is required");
+  }
+
+  const result = await db.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
       select: {
         id: true,
-        membershipPlanId: true,
+        email: true,
+        membershipStatus: true,
       },
     });
 
-    if (membershipsToRevoke.length === 0) {
-      return { affectedPlans: 0 };
+    if (!user) {
+      throw new Error("User not found");
     }
 
-    // Get unique plan IDs
+    const alreadyRevoked = user.membershipStatus === "revoked";
+
+    const membershipsToRevoke = await tx.userMembership.findMany({
+      where: {
+        userId,
+        status: { in: REVOCABLE_STATUSES },
+      },
+      include: {
+        membershipPlan: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    });
+
     const affectedPlanIds = [
       ...new Set(membershipsToRevoke.map((m) => m.membershipPlanId)),
     ];
 
-    // Set all memberships to inactive
-    const now = new Date();
-    await tx.userMembership.updateMany({
-      where: {
-        userId,
-        status: { in: ["active", "ending", "cancelled"] },
-      },
-      data: {
-        status: "inactive",
-        nextPaymentDate: now,
-      },
-    });
+    const planTitles = [
+      ...new Set(
+        membershipsToRevoke
+          .map((membership) => membership.membershipPlan?.title)
+          .filter((title): title is string => Boolean(title))
+      ),
+    ];
 
-    // Update all membership forms to inactive for affected plans
-    for (const planId of affectedPlanIds) {
+    if (membershipsToRevoke.length > 0) {
+      await tx.userMembership.updateMany({
+        where: {
+          userId,
+          status: { in: REVOCABLE_STATUSES },
+        },
+        data: {
+          status: "revoked",
+          nextPaymentDate: new Date(),
+        },
+      });
+
       await tx.userMembershipForm.updateMany({
         where: {
           userId,
-          membershipPlanId: planId,
+          membershipPlanId: { in: affectedPlanIds },
           status: { in: ["pending", "active", "cancelled", "ending"] },
         },
         data: {
@@ -1148,7 +1199,6 @@ export async function revokeUserMembershipByAdmin(userId: number) {
       });
     }
 
-    // Recalculate user role level based on orientation completion
     const passedOrientationCount = await tx.userWorkshop.count({
       where: {
         userId,
@@ -1157,14 +1207,106 @@ export async function revokeUserMembershipByAdmin(userId: number) {
       },
     });
 
-    const newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
+    const roleLevel = passedOrientationCount > 0 ? 2 : 1;
+
     await tx.user.update({
       where: { id: userId },
-      data: { roleLevel: newRoleLevel },
+      data: {
+        roleLevel,
+        membershipStatus: "revoked",
+        membershipRevokedAt: new Date(),
+        membershipRevokedReason: normalizedReason,
+      },
     });
 
-    return { affectedPlans: affectedPlanIds.length };
+    return {
+      affectedMemberships: membershipsToRevoke.length,
+      planTitles,
+      alreadyRevoked,
+      userEmail: user.email,
+      reason: normalizedReason,
+    };
   });
+
+  if (!result.alreadyRevoked) {
+    try {
+      await sendMembershipRevokedEmail({
+        userEmail: result.userEmail,
+        customMessage: result.reason,
+        planTitles: result.planTitles,
+      });
+    } catch (error) {
+      console.error(
+        `Failed to send membership revocation email to user ${userId}:`,
+        error
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Remove a user's membership ban while keeping historical memberships revoked.
+ */
+export async function unrevokeUserMembershipByAdmin(
+  userId: number
+): Promise<UnrevokeMembershipResult> {
+  const result = await db.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        membershipStatus: true,
+      },
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (user.membershipStatus !== "revoked") {
+      return { restored: false };
+    }
+
+    const passedOrientationCount = await tx.userWorkshop.count({
+      where: {
+        userId,
+        result: { equals: "passed", mode: "insensitive" },
+        workshop: { type: { equals: "orientation", mode: "insensitive" } },
+      },
+    });
+
+    const roleLevel = passedOrientationCount > 0 ? 2 : 1;
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        membershipStatus: "active",
+        membershipRevokedAt: null,
+        membershipRevokedReason: null,
+        roleLevel,
+      },
+    });
+
+    return { restored: true, userEmail: user.email };
+  });
+
+  if (result.restored && result.userEmail) {
+    try {
+      await sendMembershipUnrevokedEmail({
+        userEmail: result.userEmail,
+      });
+    } catch (error) {
+      console.error(
+        `Failed to send membership unrevoked email to user ${userId}:`,
+        error
+      );
+    }
+  }
+
+  return result;
 }
 
 /**

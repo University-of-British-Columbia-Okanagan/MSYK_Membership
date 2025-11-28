@@ -51,6 +51,9 @@ interface MembershipCardProps {
     userId: number;
   } | null;
   isCurrentlyActivePlan?: boolean;
+  isMembershipRevoked?: boolean;
+  membershipRevokedReason?: string | null;
+  membershipRevokedAt?: Date | null;
 }
 
 export default function MembershipCard({
@@ -73,6 +76,9 @@ export default function MembershipCard({
   needAdminPermission,
   roleUser,
   isCurrentlyActivePlan = false,
+  isMembershipRevoked = false,
+  membershipRevokedReason,
+  membershipRevokedAt,
 }: MembershipCardProps) {
   const navigate = useNavigate();
   const fetcher = useFetcher();
@@ -133,6 +139,12 @@ export default function MembershipCard({
   let canSelect = true; // We will override this if the user doesn't meet plan-specific requirements
   let reason = ""; // Store the reason the button is disabled
 
+  if (isMembershipRevoked) {
+    canSelect = false;
+    reason =
+      "Your membership access has been revoked. Please contact Makerspace staff for assistance.";
+  }
+
   // Guest user authentication
   const isGuest = !roleUser || !roleUser.userId;
   if (isGuest) {
@@ -186,7 +198,7 @@ export default function MembershipCard({
         </div>
       )}
 
-      {membershipStatus === "cancelled" && (
+      {!isMembershipRevoked && membershipStatus === "cancelled" && (
         <div className="mt-2 mb-4 flex justify-center">
           <Button
             onClick={() => {
@@ -286,7 +298,7 @@ export default function MembershipCard({
           2) active -> "You are already subscribed" + Cancel button
           3) otherwise -> the "subscribe" or "upgrade/downgrade" button
       */}
-      {membershipStatus === "cancelled" ? (
+      {!isMembershipRevoked && membershipStatus === "cancelled" ? (
         <div className="mt-4">
           <div className="bg-amber-50 text-amber-800 px-4 py-2 rounded-lg border border-amber-300 mb-3">
             <p className="font-medium text-center">

@@ -5,8 +5,20 @@ import { Link, useLoaderData } from "react-router-dom";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { useState } from "react";
+import { getRoleUser } from "~/utils/session.server";
+import { logger } from "~/logging/logger";
+import { redirect } from "react-router-dom";
 
 export async function loader({ request }: LoaderFunctionArgs) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to access logs page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    return redirect("/dashboard/user");
+  }
   const url = new URL(request.url);
 
   const page = Number(url.searchParams.get("page") ?? "1");

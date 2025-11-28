@@ -18,18 +18,27 @@ import {
   registerMembershipSubscription,
   cancelMembership,
   calculateProratedUpgradeAmount,
+  revokeUserMembershipByAdmin,
+  unrevokeUserMembershipByAdmin,
+  MEMBERSHIP_REVOKED_ERROR,
 } from "~/models/membership.server";
 
 describe("membership.server - memberships", () => {
   const baseNow = new Date("2025-01-10T10:00:00Z");
   let db: MembershipDbMock;
+  let mockSendMembershipRevokedEmail: jest.Mock;
+  let mockSendMembershipUnrevokedEmail: jest.Mock;
 
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(baseNow);
     clearAllMocks();
     resetMembershipMocks();
-    ({ db } = getMembershipMocks());
+    ({
+      db,
+      mockSendMembershipRevokedEmail: mockSendMembershipRevokedEmail,
+      mockSendMembershipUnrevokedEmail: mockSendMembershipUnrevokedEmail,
+    } = getMembershipMocks());
   });
 
   afterEach(() => {
@@ -412,6 +421,122 @@ describe("membership.server - memberships", () => {
         where: { id: user.id },
         data: { roleLevel: 3 },
       });
+    });
+  });
+
+  describe("membership revocation workflows", () => {
+    beforeEach(() => {
+      db.$transaction.mockImplementation(async (callback: any) =>
+        callback(db)
+      );
+    });
+
+    it("revokes memberships, updates forms, and emails the member", async () => {
+      const memberships = [
+        {
+          id: 1,
+          membershipPlanId: 10,
+          status: "active",
+          membershipPlan: { title: "Maker" },
+        },
+        {
+          id: 2,
+          membershipPlanId: 20,
+          status: "cancelled",
+          membershipPlan: { title: "Pro" },
+        },
+      ];
+
+      db.user.findUnique.mockResolvedValue({
+        id: 1,
+        email: "member@example.com",
+        membershipStatus: "active",
+      });
+      db.userMembership.findMany.mockResolvedValue(memberships);
+      db.userMembership.updateMany.mockResolvedValue({ count: memberships.length });
+      db.userMembershipForm.updateMany.mockResolvedValue({ count: 2 });
+      db.userWorkshop.count.mockResolvedValue(0);
+      db.user.update.mockResolvedValue({});
+
+      const result = await revokeUserMembershipByAdmin(
+        1,
+        "Violation of house rules"
+      );
+
+      expect(db.userMembership.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 1,
+          status: { in: ["active", "ending", "cancelled"] },
+        },
+        data: expect.objectContaining({
+          status: "revoked",
+          nextPaymentDate: expect.any(Date),
+        }),
+      });
+      expect(db.userMembershipForm.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 1,
+          membershipPlanId: { in: [10, 20] },
+          status: { in: ["pending", "active", "cancelled", "ending"] },
+        },
+        data: { status: "inactive" },
+      });
+      expect(db.user.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: expect.objectContaining({
+          membershipStatus: "revoked",
+          membershipRevokedReason: "Violation of house rules",
+        }),
+      });
+      expect(mockSendMembershipRevokedEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userEmail: "member@example.com",
+          customMessage: "Violation of house rules",
+          planTitles: ["Maker", "Pro"],
+        })
+      );
+      expect(result.planTitles).toEqual(["Maker", "Pro"]);
+      expect(result.affectedMemberships).toBe(2);
+    });
+
+    it("unrevokes membership access and emails the member", async () => {
+      db.user.findUnique.mockResolvedValue({
+        id: 1,
+        email: "member@example.com",
+        membershipStatus: "revoked",
+      });
+      db.userWorkshop.count.mockResolvedValue(1);
+      db.user.update.mockResolvedValue({});
+
+      const result = await unrevokeUserMembershipByAdmin(1);
+
+      expect(db.user.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: expect.objectContaining({
+          membershipStatus: "active",
+          membershipRevokedAt: null,
+          membershipRevokedReason: null,
+        }),
+      });
+      expect(mockSendMembershipUnrevokedEmail).toHaveBeenCalledWith({
+        userEmail: "member@example.com",
+      });
+      expect(result.restored).toBe(true);
+    });
+  });
+
+  describe("registration guard for revoked users", () => {
+    it("throws MEMBERSHIP_REVOKED_ERROR before touching plan data", async () => {
+      db.user.findUnique.mockResolvedValue({
+        id: 1,
+        membershipStatus: "revoked",
+      });
+
+      await expect(
+        registerMembershipSubscription(1, 99)
+      ).rejects.toThrow(MEMBERSHIP_REVOKED_ERROR);
+
+      expect(db.membershipPlan.findUnique).not.toHaveBeenCalled();
     });
   });
 });

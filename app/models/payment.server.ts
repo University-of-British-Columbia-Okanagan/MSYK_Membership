@@ -98,7 +98,7 @@ export async function quickCheckout(
 ) {
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { email: true },
+    select: { email: true, membershipStatus: true },
   });
 
   if (!user) throw new Error("User not found");
@@ -108,6 +108,17 @@ export async function quickCheckout(
   let metadata: Record<string, string> = {
     userId: userId.toString(),
   };
+
+  if (
+    checkoutData.type === "membership" &&
+    user.membershipStatus === "revoked"
+  ) {
+    return {
+      success: false,
+      error: "Your membership access has been revoked.",
+      type: "membership",
+    };
+  }
 
   switch (checkoutData.type) {
     case "workshop":
@@ -367,27 +378,48 @@ export async function quickCheckout(
               );
             }
           }
-        } else if (checkoutData.type === "membership") {
+      } else if (checkoutData.type === "membership") {
           // Handle membership subscription
           const {
             registerMembershipSubscription,
             getMembershipPlanById,
             activateMembershipForm,
+          MEMBERSHIP_REVOKED_ERROR,
           } = await import("./membership.server");
 
           const currentMembershipId = checkoutData.currentMembershipId || null;
           const billingCycle = checkoutData.billingCycle || "monthly";
 
           // Register the subscription and get the subscription object
-          const subscription = await registerMembershipSubscription(
-            userId,
-            checkoutData.membershipPlanId!,
-            currentMembershipId,
-            false, // Not a downgrade
-            false, // Not a resubscription
-            paymentIntent.id,
-            billingCycle as "monthly" | "quarterly" | "semiannually" | "yearly"
-          );
+          let subscription;
+          try {
+            subscription = await registerMembershipSubscription(
+              userId,
+              checkoutData.membershipPlanId!,
+              currentMembershipId,
+              false, // Not a downgrade
+              false, // Not a resubscription
+              paymentIntent.id,
+              billingCycle as
+                | "monthly"
+                | "quarterly"
+                | "semiannually"
+                | "yearly"
+            );
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message === MEMBERSHIP_REVOKED_ERROR
+            ) {
+              return {
+                success: false,
+                error:
+                  "Membership access revoked. Payment succeeded but no subscription was created.",
+                type: "membership",
+              };
+            }
+            throw error;
+          }
 
           // Activate the pending membership form and link it to the subscription
           await activateMembershipForm(
@@ -712,6 +744,21 @@ export async function createCheckoutSession(request: Request) {
     );
     if (!membershipPlan) {
       throw new Error("Membership Plan not found");
+    }
+
+    const membershipUser = await db.user.findUnique({
+      where: { id: Number(userId) },
+      select: { membershipStatus: true },
+    });
+
+    if (membershipUser?.membershipStatus === "revoked") {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Your membership access has been revoked.",
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // Compute server-side proration when upgrading from an existing monthly plan

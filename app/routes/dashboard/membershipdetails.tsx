@@ -14,7 +14,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getUser, getRoleUser } from "~/utils/session.server";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, ChevronDown, ChevronUp, Download, ArrowLeft } from "lucide-react";
 import {
   Collapsible,
@@ -72,6 +72,9 @@ export async function loader({
     userActiveMembership,
     userRecord,
     existingForm,
+    isMembershipRevoked: userRecord?.membershipStatus === "revoked",
+    membershipRevokedReason: userRecord?.membershipRevokedReason ?? null,
+    membershipRevokedAt: userRecord?.membershipRevokedAt ?? null,
   };
 }
 
@@ -84,6 +87,11 @@ export async function action({
 }) {
   const user = await getUser(request);
   if (!user) throw redirect("/login");
+
+  const userRecord = await getUserById(user.id);
+  if (userRecord?.membershipStatus === "revoked") {
+    throw new Response("Membership access revoked", { status: 403 });
+  }
 
   const membershipId = Number(params.membershipId);
   const formData = await request.formData();
@@ -323,6 +331,9 @@ export default function MembershipDetails() {
     userActiveMembership,
     userRecord,
     existingForm,
+    isMembershipRevoked,
+    membershipRevokedReason,
+    membershipRevokedAt,
   } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -715,7 +726,38 @@ export default function MembershipDetails() {
                 </div>
               )}
 
-              {existingForm && !showNewSignature ? (
+              {isMembershipRevoked ? (
+                <Alert
+                  variant="destructive"
+                  className="border-red-300 bg-red-50 text-red-900"
+                >
+                  <AlertTitle>Membership access revoked</AlertTitle>
+                  <AlertDescription>
+                    <p className="mb-2">
+                      You cannot complete this agreement because your
+                      membership access has been revoked by an administrator.
+                    </p>
+                    {membershipRevokedReason && (
+                      <p className="mb-2">
+                        <span className="font-semibold">Reason:</span>{" "}
+                        {membershipRevokedReason}
+                      </p>
+                    )}
+                    {membershipRevokedAt && (
+                      <p className="text-sm">
+                        Since{" "}
+                        {membershipRevokedAt.toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </p>
+                    )}
+                    <p className="mt-2 text-sm">
+                      Contact Makerspace staff if you believe this is an error.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              ) : existingForm && !showNewSignature ? (
                 <div className="mb-6">
                   <Alert className="mb-4">
                     <Info className="h-4 w-4" />

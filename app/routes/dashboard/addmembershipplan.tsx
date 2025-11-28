@@ -21,6 +21,14 @@ import MembershipPlanForm from "~/components/ui/Dashboard/MembershipPlanForm";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(`Unauthorized access attempt to add membership plan page`, {
+      userId: roleUser?.userId ?? "unknown",
+      role: roleUser?.roleName ?? "none",
+      url: request.url,
+    });
+    return redirect("/dashboard/user");
+  }
   return { roleUser };
 }
 
