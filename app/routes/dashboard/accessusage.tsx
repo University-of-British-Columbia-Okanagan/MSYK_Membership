@@ -1,26 +1,61 @@
-import type { LoaderFunctionArgs } from "react-router-dom";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { getAccessLogs } from "~/models/accessLog.server";
 import { Link, useLoaderData } from "react-router-dom";
+import { getAccessLogs } from "~/models/accessLog.server";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { useState } from "react";
 
+function computeUsageSessions(logs: any[]) {
+  const sessions: any[] = [];
+  const stacks: Record<string, Date[]> = {};
+  console.log("Computing usage sessions from logs:", logs);
+
+  for (let i = logs.length - 1; i >= 0; i--) {
+    const log = logs[i];
+    const user = log.user?.email ?? "N/A";
+    const key = `${user}__${log.equipment}`;
+
+    if (!stacks[key]) stacks[key] = [];
+
+    if (log.state === "enter") {
+      stacks[key].push(new Date(log.createdAt));
+    } else if (log.state === "exit") {
+      if (stacks[key].length > 0) {
+        const enterTime = stacks[key].pop()!;
+        const exitTime = new Date(log.createdAt);
+
+        const totalTime =
+          (exitTime.getTime() - enterTime.getTime()) / 1000 / 60; // minutes
+
+        sessions.push({
+          user,
+          equipment: log.equipment,
+          inTime: enterTime,
+          outTime: exitTime,
+          totalTime,
+        });
+      }
+    }
+  }
+
+  return sessions;
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-
-  const page = Number(url.searchParams.get("page") ?? "1");
-  const limit = 20;
 
   const equipment = url.searchParams.get("equipment") || null;
   const accessCardId = url.searchParams.get("accessCardId") || null;
   const email = url.searchParams.get("email") || null;
   const startDate = url.searchParams.get("startDate") || null;
   const endDate = url.searchParams.get("endDate") || null;
+  const minMinutesParam = url.searchParams.get("minMinutes");
+  const minMinutes = minMinutesParam ? Number(minMinutesParam) : null;
 
-  const { logs, total } = await getAccessLogs({
-    page,
-    limit,
+  const { logs } = await getAccessLogs({
+    page: 1,
+    limit: 5000,
     equipment,
     accessCardId,
     email,
@@ -28,38 +63,45 @@ export async function loader({ request }: LoaderFunctionArgs) {
     endDate,
   });
 
+  const summary = computeUsageSessions(logs);
+
+  const filteredSummary =
+    minMinutes != null && !Number.isNaN(minMinutes)
+      ? summary.filter((s) => s.totalTime >= minMinutes)
+      : summary;
+
   return json({
-    logs,
-    total,
-    page,
-    limit,
-    filters: { equipment, accessCardId, email, startDate, endDate },
+    summary: filteredSummary,
+    filters: {
+      equipment,
+      accessCardId,
+      email,
+      startDate,
+      endDate,
+      minMinutes: minMinutesParam ?? "",
+    },
   });
 }
 
-type Filters = {
-  equipment: string | null;
-  accessCardId: string | null;
-  email: string | null;
-  startDate: string | null;
-  endDate: string | null;
-};
+export default function AccessUsagePage() {
+  const { summary, filters } = useLoaderData<typeof loader>() as {
+    summary: any[];
+    filters: {
+      equipment: string | null;
+      accessCardId: string | null;
+      email: string | null;
+      startDate: string | null;
+      endDate: string | null;
+      minMinutes: string | null;
+    };
+  };
 
-export default function AccessLogPage() {
-  const { logs, total, page, limit, filters } = useLoaderData<{
-    logs: any[];
-    total: number;
-    page: number;
-    limit: number;
-    filters: Filters;
-  }>();
-
-  const totalPages = Math.ceil(total / limit);
   const [equipment, setEquipment] = useState(filters.equipment || "");
   const [accessCardId, setAccessCardId] = useState(filters.accessCardId || "");
   const [email, setEmail] = useState(filters.email || "");
   const [startDate, setStartDate] = useState(filters.startDate || "");
   const [endDate, setEndDate] = useState(filters.endDate || "");
+  const [minMinutes, setMinMinutes] = useState(filters.minMinutes || "");
 
   return (
     <SidebarProvider>
@@ -67,22 +109,21 @@ export default function AccessLogPage() {
         <AdminAppSidebar />
         <div className="p-6 w-full">
           <div className="flex items-center justify-between mb-4">
-  <h1 className="text-2xl font-bold">Access Logs</h1>
+            <h1 className="text-2xl font-bold">Usage Summary</h1>
 
-  <Link
-    to="/dashboard/accessusage"
-    className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition"
-  >
-    View Usage Summary
-  </Link>
-</div>
+            <Link
+              to="/dashboard/accesslogs"
+              className="bg-indigo-500 text-white px-4 py-2 rounded-md shadow hover:bg-indigo-600 transition"
+            >
+              Back to Access Logs
+            </Link>
+          </div>
 
-
+          {/* Filters */}
           <form
             method="get"
             className="mb-6 p-6 bg-white rounded-xl shadow border border-gray-200 space-y-6"
           >
-            {/* FIRST ROW */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex flex-col">
                 <label className="text-sm font-medium text-gray-700 mb-1">
@@ -127,8 +168,8 @@ export default function AccessLogPage() {
               </div>
             </div>
 
-            {/* SECOND ROW (DATE RANGE) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="flex flex-col">
                 <label className="text-sm font-medium text-gray-700 mb-1">
                   Start Date
@@ -154,9 +195,23 @@ export default function AccessLogPage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
+
+              <div className="flex flex-col">
+                <label className="text-sm font-medium text-gray-700 mb-1">
+                  Minimum Usage (minutes)
+                </label>
+                <input
+                  type="number"
+                  name="minMinutes"
+                  min={0}
+                  placeholder="e.g. 30"
+                  value={minMinutes}
+                  onChange={(e) => setMinMinutes(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+              </div>
             </div>
 
-            {/* BUTTONS */}
             <div className="flex flex-col md:flex-row gap-4">
               <button
                 type="submit"
@@ -173,6 +228,8 @@ export default function AccessLogPage() {
                   setEmail("");
                   setStartDate("");
                   setEndDate("");
+                  setMinMinutes("");
+
                   window.location.href = "?";
                 }}
                 className="bg-gray-100 text-gray-800 px-6 py-2 rounded-md text-sm font-medium hover:bg-gray-200 transition shadow"
@@ -181,92 +238,48 @@ export default function AccessLogPage() {
               </button>
             </div>
           </form>
+          {/* Session Table */}
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                    User
+                  </th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                    Equipment
+                  </th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                    In Time
+                  </th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                    Out Time
+                  </th>
+                  <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                    Total Time (min)
+                  </th>
+                </tr>
+              </thead>
 
-          {/* TABLE */}
-          {logs.length === 0 ? (
-            <p className="text-gray-500">No logs found.</p>
-          ) : (
-            <>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                        Log ID
-                      </th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                        Equipment
-                      </th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                        State
-                      </th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                        User Email
-                      </th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                        Access Card ID
-                      </th>
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                        Timestamp
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {logs.map((log: any) => (
-                      <tr key={log.id}>
-                        <td className="px-4 py-2">{log.id}</td>
-                        <td className="px-4 py-2">{log.equipment}</td>
-                        <td className="px-4 py-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              log.state === "enter" || log.state === "exit"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {log.state}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2">
-                          {log.user?.email ?? "N/A"}
-                        </td>
-                        <td className="px-4 py-2">{log.accessCardId}</td>
-                        <td className="px-4 py-2 text-gray-600">
-                          {new Date(log.createdAt).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* PAGINATION */}
-              <div className="flex justify-between items-center mt-4">
-                <a
-                  href={`?page=${page - 1}`}
-                  className={`px-4 py-2 rounded bg-gray-200 text-gray-700 ${
-                    page <= 1 ? "opacity-50 pointer-events-none" : ""
-                  }`}
-                >
-                  Previous
-                </a>
-
-                <span className="text-sm text-gray-600">
-                  Page {page} of {totalPages}
-                </span>
-
-                <a
-                  href={`?page=${page + 1}`}
-                  className={`px-4 py-2 rounded bg-gray-200 text-gray-700 ${
-                    page >= totalPages ? "opacity-50 pointer-events-none" : ""
-                  }`}
-                >
-                  Next
-                </a>
-              </div>
-            </>
-          )}
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {summary.map((row: any, i: number) => (
+                  <tr key={i}>
+                    <td className="px-4 py-2">{row.user}</td>
+                    <td className="px-4 py-2">{row.equipment}</td>
+                    <td className="px-4 py-2 text-gray-600">
+                      {row.inTime ? new Date(row.inTime).toLocaleString() : "—"}
+                    </td>
+                    <td className="px-4 py-2 text-gray-600">
+                      {row.outTime
+                        ? new Date(row.outTime).toLocaleString()
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-2">{row.totalTime?.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </SidebarProvider>
