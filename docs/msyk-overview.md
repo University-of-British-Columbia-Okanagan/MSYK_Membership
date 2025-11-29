@@ -922,14 +922,14 @@ The following acceptance criteria should be manually tested by QA in the applica
 Last Updated: 11/19/2025
 
 - **Findings**:
-  - In add payment method, the country is not all countries
+  - In add payment method, the country is not all countries **[HIGH PRIORITY]**
   - Recent Activity in Profile does nothing
   - In a multi day orientation, you still have to pass individual times even though it is multi day [ARIQ WILL DO THIS]
   - Orientation History confusing on if workshop is single occurrence or multi day [ARIQ WILL DO THIS]
   - When we create a workshop that is not a price variation, do we want to be able to edit the workshop to add price variations and vise versa? [ARIQ WILL DO THIS]
     - STILL NEED TO DO TESTING AFTER THE OUTCOME OF THIS (EDIT WORKSHOP PRICE VARIATIONS); related to the cases of what happens if I uncheck Add Workshop Price Variation after creating a workshop that has it with or without users registered
     - The case where a user registered for a workshop with price variaitons and then we decide to remove it later causes bugs (same reasoning why we made it so that multi-day cannot be changed because of the fact that users can register and cause problems)
-  - When inputing start date and time and end date and time, it should be inclusive by start date and time
+  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it should be inclusive by start date and time
     - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
   - ~~Non-admins can access add a workshop route by going into the route /addworkshop :skull-emoji:~~
   - ~~Non-admins can access edit a workshop route by going into the route /editworkshop/workshopId :skull-emoji:~~
@@ -961,16 +961,16 @@ Last Updated: 11/19/2025
    - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Fix this
    - You should not be able to edit the workshop prereqs of an equipment in edit equipment. The workshop prereqs you add after adding an equipment should be final
    - In payment information page to add a payment method, it says "Automatic payment methods filling is disabled..." when putting in inputs. Remove this
-   - There is no validation to determine if the payment method they added is a valid payment method. Need to add this
+   - There is no validation to determine if the payment method they added is a valid payment method. Need to add this **[HIGH PRIORITY]**
    - In the multiple billing options, it is possible to have a negative Save %, if the save percentage is negative, do not even show it
    - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
    - When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options
    - When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty
    - In edit membership, they should not be able to edit the monthly price, any prices set in the multiple billing options and unchecking it, and they also cannot uncheck the require admin permission if already checked
-   - When it is time to charge the user for membership billing, monthly works, quartely billing option does not work (it turns it from active to inactive even when I have a payment method), semi-annually billing option does not work (it turns it from active to inactive even when I have a payment method), yearly billing option does not work (it turns it from active to inactive even when I have a payment method)
+   - When it is time to charge the user for membership billing, monthly works, quartely billing option does not work (it turns it from active to inactive even when I have a payment method), semi-annually billing option does not work (it turns it from active to inactive even when I have a payment method), yearly billing option does not work (it turns it from active to inactive even when I have a payment method) **[HIGH PRIORITY]**
    - In the payment reminder email, it says something for example "Your membership plan "Test" will be charged on 11/28/2025, 5:36:37 PM." but we do not actually charge it at that time, in this case, it would be charged the next day at 11/29/2025 12 AM
-   - When it is time to pay, users with memberships without Payment Method and Membership Inactive Email should just turn the membership inactive since they do not have a payment method from the crom and send them an email that their membership is inactive. Monthly: Works for setting inactive and email. Quarterly: Does set it as inactive but does not send inactive email. Semi-annually: Does set it as inactive but does not send inactive email. Yearly: Does set it as inactive but does not send inactive email 
-   -  When it is time to pay, users should get an email if do not have a payment method. It sends an email regarding the amount due and when it will be charged. The email should be sent 24 hrs before their membership ends. Monthly: Works. Quarterly: Does not work. Semi-annually: Does not work. Yearly: Does not work
+   - When it is time to pay, users with memberships without Payment Method and Membership Inactive Email should just turn the membership inactive since they do not have a payment method from the crom and send them an email that their membership is inactive. Monthly: Works for setting inactive and email. Quarterly: Does set it as inactive but does not send inactive email. Semi-annually: Does set it as inactive but does not send inactive email. Yearly: Does set it as inactive but does not send inactive email  **[HIGH PRIORITY]**
+   -  When it is time to pay, users should get an email if do not have a payment method. It sends an email regarding the amount due and when it will be charged. The email should be sent 24 hrs before their membership ends. Monthly: Works. Quarterly: Does not work. Semi-annually: Does not work. Yearly: Does not work **[HIGH PRIORITY]**
    - When you subscribe to a membership and then cancel, lets say that membership you cancelled was 50 dollars. If there is another membership that is 50 dollars, the button for the other membership would say resubscribe. Fix this
    - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options
    - Currently no email sent if it is the payment date for their membership but they will be charged
