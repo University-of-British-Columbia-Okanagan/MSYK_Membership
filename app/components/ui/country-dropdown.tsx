@@ -120,10 +120,10 @@ export function CountryDropdown({
   const [internalValue, setInternalValue] = useState(defaultValue ?? "");
 
   useEffect(() => {
-    if (defaultValue && !value) {
-      setInternalValue(defaultValue);
+    if (value !== undefined) {
+      setInternalValue(value);
     }
-  }, [defaultValue, value]);
+  }, [value]);
 
   const selectedValue = value ?? internalValue;
 
