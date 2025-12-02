@@ -42,6 +42,62 @@ export const loader: LoaderFunction = async ({ request }) => {
   return { user, savedPaymentMethod, roleUser };
 };
 
+const sanitizeDigits = (value: string) => value.replace(/\D/g, "");
+
+const isValidCardNumber = (value: string | null) => {
+  if (!value) return false;
+  const digits = sanitizeDigits(value);
+  if (digits.length < 13 || digits.length > 19) return false;
+  if (/^0+$/.test(digits)) return false;
+
+  let sum = 0;
+  let shouldDouble = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let digit = parseInt(digits.charAt(i), 10);
+    if (Number.isNaN(digit)) return false;
+
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+
+  return sum % 10 === 0;
+};
+
+const normalizeYear = (year: number) => {
+  if (year < 100) {
+    return 2000 + year;
+  }
+  return year;
+};
+
+const isExpiryInFuture = (monthStr: string | null, yearStr: string | null) => {
+  if (!monthStr || !yearStr) return false;
+  const month = parseInt(monthStr, 10);
+  let year = parseInt(yearStr, 10);
+  if (Number.isNaN(month) || Number.isNaN(year)) return false;
+  if (month < 1 || month > 12) return false;
+  year = normalizeYear(year);
+
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+
+  if (year > currentYear) return true;
+  if (year < currentYear) return false;
+  return month >= currentMonth;
+};
+
+const isValidCvc = (value: string | null) => {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return /^\d{3,4}$/.test(trimmed);
+};
+
 // Action - Handle form submission and card deletion
 export const action: ActionFunction = async ({ request }) => {
   const userId = await getUserId(request);
@@ -93,11 +149,21 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (!cardholderName) errors.cardholderName = "Cardholder name is required";
-  if (!cardNumber || cardNumber.replace(/\s/g, "").length !== 16)
-    errors.cardNumber = "Valid card number is required";
-  if (!expiryMonth || !expiryYear) errors.expiry = "Expiry date is required";
-  if (!cvc || cvc.length < 3 || cvc.length > 4)
-    errors.cvc = "Valid CVC is required";
+  if (!cardNumber) {
+    errors.cardNumber = "Card number is required";
+  } else if (!isValidCardNumber(cardNumber)) {
+    errors.cardNumber = "Enter a valid card number";
+  }
+  if (!expiryMonth || !expiryYear) {
+    errors.expiry = "Expiry date is required";
+  } else if (!isExpiryInFuture(expiryMonth, expiryYear)) {
+    errors.expiry = "Card has expired";
+  }
+  if (!cvc) {
+    errors.cvc = "CVC is required";
+  } else if (!isValidCvc(cvc)) {
+    errors.cvc = "CVC must be 3 or 4 digits";
+  }
   if (!billingAddressLine1)
     errors.billingAddressLine1 = "Billing address is required";
   if (!billingCity) errors.billingCity = "City is required";
