@@ -10,6 +10,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "../../components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "../../components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "../../components/ui/Dashboard/guestsidebar";
+import { CountryDropdown } from "@/components/ui/country-dropdown";
 import { getUserId, getRoleUser } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
 import { getSavedPaymentMethod } from "~/models/user.server";
@@ -159,9 +160,17 @@ export default function PaymentInformationPage() {
     success?: boolean;
     deleted?: boolean;
   }>();
+  const { user, savedPaymentMethod, roleUser } = loaderData;
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const { user, savedPaymentMethod, roleUser } = loaderData;
+  const computedBillingCountry =
+    actionData?.values?.billingCountry ||
+    savedPaymentMethod?.billingCountry ||
+    "";
+  const [billingCountry, setBillingCountry] = useState(computedBillingCountry);
+  useEffect(() => {
+    setBillingCountry(computedBillingCountry);
+  }, [computedBillingCountry]);
 
   // Determine which sidebar to show based on role
   const isAdmin =
@@ -797,33 +806,19 @@ export default function PaymentInformationPage() {
                               >
                                 Country
                               </label>
-                              <select
+                              <CountryDropdown
+                                value={billingCountry}
+                                onChange={(code) => setBillingCountry(code)}
+                                placeholder="Select country"
+                                error={actionData?.errors?.billingCountry}
+                                disabled={isEditMode}
+                              />
+                              <input
+                                type="hidden"
                                 id="billingCountry"
                                 name="billingCountry"
-                                className={`w-full px-3 py-2 border rounded-md ${
-                                  actionData?.errors?.billingCountry
-                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                                }`}
-                                defaultValue={
-                                  actionData?.values?.billingCountry ||
-                                  savedPaymentMethod?.billingCountry ||
-                                  ""
-                                }
-                              >
-                                <option value="">Select Country</option>
-                                <option value="US">United States</option>
-                                <option value="CA">Canada</option>
-                                <option value="MX">Mexico</option>
-                                <option value="UK">United Kingdom</option>
-                                <option value="AU">Australia</option>
-                                <option value="NZ">New Zealand</option>
-                                <option value="JP">Japan</option>
-                                <option value="FR">France</option>
-                                <option value="DE">Germany</option>
-                                <option value="IT">Italy</option>
-                                {/* Add more countries later as needed */}
-                              </select>
+                                value={billingCountry || ""}
+                              />
                               {actionData?.errors?.billingCountry && (
                                 <p className="mt-1 text-sm text-red-600">
                                   {actionData.errors.billingCountry}
