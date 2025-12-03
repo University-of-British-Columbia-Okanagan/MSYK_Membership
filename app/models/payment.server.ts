@@ -12,6 +12,7 @@ import { calculateProratedUpgradeAmount } from "./membership.server";
 import { getSavedPaymentMethod } from "./user.server";
 import { db } from "../utils/db.server";
 import { getAdminSetting } from "./admin.server";
+import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -1286,7 +1287,15 @@ export async function refundMembershipSubscription(
           where: { id: userId },
           data: { roleLevel: newRoleLevel },
         });
-      }
+        try {
+          await syncUserDoorAccess(userId);
+        } catch (syncError) {
+          console.error(
+            "Failed to sync door access after membership cancellation:",
+            syncError
+          );
+          // TODO: Add alerting/monitoring here for critical security events
+        }      }
     }
 
     return {

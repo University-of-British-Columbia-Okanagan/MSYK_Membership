@@ -28,6 +28,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
   - Stripe (payment processing)
   - Mailgun (email notifications)
   - Google Calendar API (optional, for workshop events)
+  - Brivo API (access control system for door access)
 - **Testing**: Jest with Testing Library
 
 ---
@@ -243,6 +244,13 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Equipment visibility days (booking window)
 - Google Calendar ID and timezone (for event creation)
 - Google OAuth refresh token (encrypted storage)
+- Brivo access group for Level 4 members (`brivo_access_group_level4`)
+
+**Brivo Configuration:**
+- Brivo access group for Level 4 members (`brivo_access_group_level4`) - Comma-separated list of group IDs
+- Webhook subscription management (create/delete event subscriptions)
+- User sync status display and retry functionality
+- Integration status indicator (shows if Brivo credentials are configured)
 
 **Admin Functions:**
 - User management (role assignment, `allowLevel4` flag)
@@ -267,6 +275,47 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - `app/models/access_card.server.ts` - Card management
 - `app/models/accessLog.server.ts` - Log tracking
 - `app/routes/brivo.callback.tsx` - Access system webhook
+
+### 11. Brivo Access Control Integration
+
+**Features:**
+- Automatic door access provisioning for Level 4 members (roleLevel >= 4)
+- Requires active membership and non-revoked status
+- Brivo person record creation/updates
+- Access group assignment based on role level
+- Mobile pass credential generation
+- Automatic access revocation on membership cancellation/revocation
+- Webhook-based access event logging (enter/exit/denied)
+
+**Access Requirements:**
+- Active membership subscription
+- Membership status not "revoked"
+- Role level 4 (requiresDoorPermission)
+- Configured Brivo access groups (admin setting: `brivo_access_group_level4`)
+
+**Integration Points:**
+The `syncUserDoorAccess()` function is automatically called when:
+- New membership subscription is registered (`registerMembershipSubscription()`)
+- Membership is cancelled (`cancelMembership()`)
+- User role level is updated (`updateUserRole()`)
+- User `allowLevel4` flag is updated (`updateUserAllowLevel()`)
+- Admin revokes membership (`revokeUserMembershipByAdmin()`)
+- Admin unrevokes membership (`unrevokeUserMembershipByAdmin()`)
+- Automated billing cron updates role levels (`startMonthlyMembershipCheck()`)
+- Membership refund is processed (`refundMembershipSubscription()`)
+
+**Error Handling:**
+- Sync errors stored in `brivoSyncError` field on User table
+- Admin can retry sync from admin settings UI
+- Graceful degradation when Brivo not configured (warnings logged, no errors thrown)
+- Webhook signature verification failures return 401 status
+
+**Key Files:**
+- `app/services/brivo.server.ts` - Brivo API client (OAuth, person management, groups, mobile passes)
+- `app/services/access-control-sync.server.ts` - Door access synchronization logic
+- `app/config/access-control.ts` - Door permission configuration
+- `app/routes/brivo.callback.tsx` - Webhook endpoint for access events
+- `app/models/access_card.server.ts` - Access card management with Brivo credential IDs
 
 ---
 
@@ -607,6 +656,58 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - `app/utils/googleCalendar.server.ts` - OAuth, event CRUD
 - `app/models/admin.server.ts` - Settings storage
 
+### Workflow 16: Brivo Door Access Provisioning
+
+1. User subscribes to membership plan with `needAdminPermission` flag
+2. User has `allowLevel4` flag set to true
+3. User role level updated to 4
+4. `syncUserDoorAccess()` called automatically
+5. System checks: active membership + roleLevel >= 4 + not revoked
+6. Brivo person record created/updated (firstName, lastName, email, phone)
+7. User assigned to Brivo access groups (from `brivo_access_group_level4` setting)
+8. Mobile pass credential created and invitation sent to user email
+9. `brivoPersonId` and `brivoMobilePassId` stored in database
+10. Access card permissions updated to include door permission (ID: 0)
+11. Sync timestamp and status recorded
+
+**Validation Points:**
+- Active membership must exist
+- User must not have revoked membership status
+- Role level must be 4 or higher
+- Brivo access groups must be configured in admin settings
+
+### Workflow 17: Brivo Door Access Revocation
+
+1. User cancels membership OR admin revokes membership
+2. Membership status changes or role level drops below 4
+3. `syncUserDoorAccess()` called automatically
+4. System determines user no longer qualifies for door access
+5. User removed from all Brivo access groups
+6. Mobile pass revoked in Brivo
+7. Access card door permission removed (permission ID 0)
+8. `brivoMobilePassId` cleared from access cards
+9. Sync timestamp updated
+
+**Note:** Access revocation occurs immediately when user no longer meets requirements, regardless of membership cancellation timing.
+
+### Workflow 18: Brivo Access Event Webhook
+
+1. User uses Brivo credential (mobile pass or physical card) at door/equipment
+2. Brivo system sends webhook POST to `/brivo/callback`
+3. Webhook signature verified (HMAC SHA256) if `BRIVO_WEBHOOK_SECRET` configured
+4. Event payload parsed (securityAction, credentials, eventData)
+5. Access card identified by `brivoCredentialId` or `brivoMobilePassId`
+6. Event state resolved: "enter", "exit", or "denied"
+7. Equipment/door name extracted from event
+8. Access event logged to `AccessLog` table
+9. Response sent to Brivo
+
+**Webhook Security:**
+- Signature verification using HMAC SHA256
+- Returns 401 if signature missing or invalid
+- Returns 400 if payload cannot be parsed
+- Unknown credentials are logged and ignored (returns 200)
+
 ---
 
 ## Test Plan
@@ -717,6 +818,10 @@ The acceptance criteria are organized into three categories:
 | AC43 | Workshop Visibility Days | Setting stored in `AdminSettings`; workshops only visible if within visibility window; past workshops hidden | `tests/models/admin.server.test.ts` |
 | AC44 | Equipment Visibility Days | Setting stored in `AdminSettings`; equipment slots only visible if within visibility window | `tests/models/admin.server.test.ts` |
 | AC45 | Google Calendar Connection | OAuth flow completed; refresh token encrypted with AES; encrypted token stored; calendar ID stored; system can create/update/delete events | `tests/utils/googleCalendar.server.test.ts` |
+| AC49 | Brivo Door Access Provisioning | User with Level 4 role and active membership gets Brivo person created, assigned to groups, mobile pass generated | `tests/services/access-control-sync.server.test.ts` |
+| AC50 | Brivo Door Access Revocation | User loses Level 4 access; Brivo groups revoked, mobile pass cancelled, door permission removed | `tests/services/access-control-sync.server.test.ts` |
+| AC51 | Brivo Webhook Signature Verification | Webhook with valid/invalid signature handled correctly | `tests/routes/brivo.callback.test.ts` |
+| AC52 | Brivo Access Event Logging | Access events (enter/exit/denied) logged correctly with card ID and user ID | `tests/routes/brivo.callback.test.ts` |
 
 ---
 
@@ -894,6 +999,17 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC41 | **Membership** Payment Reminder Email | Set membership due for charge within 24 hours; trigger cron job or wait for scheduled run | Payment reminder email received; email contains plan title, next payment date, amount due (with GST), payment method reminder (if needed) | `NA` | `11/25/2025`
 | AC42 | **GST** Percentage Setting | Login as admin; navigate to admin settings; update GST percentage; save settings; make a payment | New GST percentage applied; GST metadata in Stripe payment intent |
 | AC43 | **Workshop** Visibility Days | Login as admin; set workshop visibility days (e.g., 30 days); create workshop with occurrence beyond visibility window; login as user; create workshop with occurrence within visibility window | Workshop not visible if beyond window; workshop visible if within window |
+| AC44 | Equipment Visibility Days | Login as admin; set equipment visibility days (e.g., 14 days); create equipment slots beyond visibility window; login as user; create equipment slots within visibility window | Slots not visible in booking grid if beyond window; slots visible if within window |
+| AC45 | Google Calendar Connection | Login as admin; navigate to Google Calendar settings; click "Connect Google Calendar"; complete OAuth flow; select target calendar; create/update/delete workshop occurrence | Event created in Google Calendar; event updated in Google Calendar; event deleted from Google Calendar |
+| AC46 | Membership Revocation (Admin) | Login as admin; navigate to user management; select user and click "Revoke Membership"; enter custom revocation message; confirm revocation | Revocation alert shown on user's memberships page; user receives revocation email with reason and timestamp; all user memberships show "revoked" status; revocation reason and date visible in admin user list |
+| AC47 | Revoked User Subscription Block | Login as revoked user; navigate to memberships page | Prominent alert displayed at top explaining membership access revoked; subscribe buttons on all membership cards disabled with tooltip; redirect to memberships page if attempting to access membership details or payment |
+| AC48 | Membership Unrevocation (Admin) | Login as admin; navigate to user management; select revoked user and click "Unrevoke Membership"; confirm unrevocation | Unrevocation alert shown; user receives unrevocation email; user can now subscribe to new memberships; no historical memberships are retroactively reactivated |
+| AC49 | **Brivo** Door Access Provisioning (Level 4 member) | Login as admin; ensure user has active membership with `needAdminPermission` plan; set user's `allowLevel4` flag to true; verify user role level is 4; check Brivo integration is configured; navigate to admin settings and verify user's Brivo sync status | User's `brivoPersonId` populated in database; user assigned to Brivo access groups (check Brivo dashboard); mobile pass invitation sent to user email; `brivoMobilePassId` stored in access card; door permission (ID: 0) added to access card permissions; `brivoLastSyncedAt` timestamp recorded; sync status shows "Provisioned" in admin settings | `N/A` | `11/29/2025` |
+| AC50 | **Brivo** Door Access Revocation (membership cancellation) | Have Level 4 user with active membership and Brivo access provisioned; cancel user's membership; check admin settings for user's Brivo sync status; verify in Brivo dashboard | User removed from Brivo access groups (check Brivo dashboard); mobile pass revoked in Brivo; door permission (ID: 0) removed from access card permissions; `brivoMobilePassId` cleared from access cards; `brivoLastSyncedAt` timestamp updated; sync status updated in admin settings | `N/A` | `11/29/2025` |
+| AC51 | **Brivo** Webhook Event Processing | Configure Brivo webhook subscription pointing to `/brivo/callback`; set `BRIVO_WEBHOOK_SECRET` environment variable; use Brivo credential (mobile pass or card) at door/equipment; check application logs; query `AccessLog` table | Webhook request received and signature verified; access event logged in `AccessLog` table with correct card ID, user ID, equipment name, and state (enter/exit/denied); response sent to Brivo with status "ok"; no errors in application logs | `N/A` | `N/A` |
+| AC52 | **Brivo** Admin Configuration | Login as admin; navigate to admin settings; scroll to "Brivo Access Control" section; verify integration status; select Brivo access group from dropdown; save settings; create/delete webhook subscription | Integration status shows "✓ Brivo API Connected" if credentials configured; access group dropdown populated with available Brivo groups; selected group ID saved to `brivo_access_group_level4` setting; webhook subscription created/deleted successfully; webhook URL shows `/brivo/callback` | `N/A` | `11/29/2025` |
+| AC53 | **Brivo** Sync Error Handling | Configure Brivo with invalid credentials or simulate API failure; attempt to provision user with Level 4 access; check admin settings for user's sync status; click "Retry Sync" button | Sync error message stored in `brivoSyncError` field; error badge displayed in admin user list; error details shown in sync status dialog; retry button triggers new sync attempt; if retry succeeds, error cleared and status updated | `N/A` | `11/29/2025` |
+| AC54 | **Brivo** Access Event Logging | Use Brivo credential at door; check access logs in admin settings or database; verify event details | Access event appears in `AccessLog` table with: correct `accessCardId`, `userId` (if card linked), `equipment` name (door or equipment name), `state` (enter/exit/denied), `createdAt` timestamp; event visible in access logs UI if implemented | `N/A` | `N/A` |
 | AC44 | **Equipment** Bookings Visibility Days | Login as admin; set equipment visibility days (e.g., 14 days); create equipment slots beyond visibility window; login as user; create equipment slots within visibility window | Slots not visible in booking grid if beyond window; slots visible if within window | `NA` | `11/25/2025`
 | AC45 | **Google Calendar** Connection | Login as admin; navigate to Google Calendar settings; click "Connect Google Calendar"; complete OAuth flow; select target calendar; create/update/delete workshop occurrence | Event created in Google Calendar; event updated in Google Calendar; event deleted from Google Calendar |
 | AC46 | **Membership** Revocation (Admin) | Login as admin; navigate to user management; select user and click "Revoke Membership"; enter custom revocation message; confirm revocation | Revocation alert shown on user's memberships page; user receives revocation email with reason and timestamp; all user memberships show "revoked" status; revocation reason and date visible in admin user list | `NA` | `11/25/2025`
@@ -997,11 +1113,18 @@ Last Updated: 11/19/2025
 - `app/models/profile.server.ts` - Profile data, volunteer tracking
 - `app/models/admin.server.ts` - Admin settings management
 
+**Services:**
+- `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes)
+- `app/services/access-control-sync.server.ts` - Door access synchronization
+
 **Utilities:**
 - `app/utils/session.server.ts` - Authentication, session management, waiver generation
 - `app/utils/email.server.ts` - Email composition and sending
 - `app/utils/db.server.ts` - Database singleton instance
 - `app/utils/googleCalendar.server.ts` - Google Calendar OAuth and event management
+
+**Configuration:**
+- `app/config/access-control.ts` - Access control configuration (door permissions, Brivo groups)
 
 **Database:**
 - `prisma/schema.prisma` - Database schema and model definitions
@@ -1010,6 +1133,7 @@ Last Updated: 11/19/2025
 - `app/routes/authentication/*` - Login, registration, password reset
 - `app/routes/dashboard/*` - Protected user and admin interfaces
 - `app/routes/api/*` - API endpoints for payments, webhooks, etc.
+- `app/routes/brivo.callback.tsx` - Brivo webhook handler for access events
 
 **Schemas (Validation):**
 - `app/schemas/*.tsx` - Zod validation schemas for forms
@@ -1071,6 +1195,12 @@ npx prisma studio
 - Mock Google Calendar API calls with MSW
 - Test event creation, updates, and deletion
 
+**Brivo:**
+- Use test Brivo API credentials
+- Mock Brivo API calls with MSW
+- Test person creation, group assignment, mobile pass generation
+- Test webhook signature verification and event processing
+
 ---
 
 ## Appendix
@@ -1098,6 +1228,17 @@ npx prisma studio
 - `GOOGLE_CLIENT_SECRET` - Google OAuth client secret
 - `GOOGLE_OAUTH_REDIRECT_URI` - OAuth redirect URI
 - `GOOGLE_OAUTH_ENCRYPTION_KEY` - AES encryption key for refresh token (min 32 chars)
+
+**Brivo Access Control (Optional):**
+- `BRIVO_CLIENT_ID` - Brivo OAuth client ID
+- `BRIVO_CLIENT_SECRET` - Brivo OAuth client secret
+- `BRIVO_USERNAME` - Brivo API username
+- `BRIVO_PASSWORD` - Brivo API password
+- `BRIVO_API_KEY` - Brivo API key
+- `BRIVO_BASE_URL` - Brivo API base URL (optional, defaults to https://api.brivo.com/v1/api)
+- `BRIVO_AUTH_BASE_URL` - Brivo OAuth base URL (optional, defaults to https://auth.brivo.com)
+- `BRIVO_ACCESS_GROUP_LEVEL4` - Comma-separated list of Brivo group IDs for Level 4 access
+- `BRIVO_WEBHOOK_SECRET` - Secret for webhook signature verification (optional, but recommended for production)
 
 ### Error Handling Conventions
 
