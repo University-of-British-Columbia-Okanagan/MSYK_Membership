@@ -51,6 +51,7 @@ export default [
   ),
   route("/dashboard/register/:id", "routes/api/register.tsx"),
   route("/dashboard/accesslogs", "routes/dashboard/accesslogs.tsx"),
+  route("/dashboard/accessusage", "routes/dashboard/accessusage.tsx"),
   route("/access", "routes/api/access.tsx"),
   route(
     "/dashboard/workshops/offer/:id",
@@ -141,4 +142,5 @@ export default [
   ),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
+  route("/brivo/callback", "routes/brivo.callback.tsx"),
 ] satisfies RouteConfig;

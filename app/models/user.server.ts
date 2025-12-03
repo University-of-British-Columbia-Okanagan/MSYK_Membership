@@ -1,5 +1,6 @@
 import { db } from "../utils/db.server";
 import Stripe from "stripe";
+import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -35,10 +36,12 @@ export async function getAllUsers() {
  * @returns Promise<User> - The updated user record
  */
 export async function updateUserRole(userId: number, newRoleId: string) {
-  return db.user.update({
+  const updated = await db.user.update({
     where: { id: userId },
     data: { roleLevel: Number(newRoleId) },
   });
+  await syncUserDoorAccess(userId);
+  return updated;
 }
 
 /**
@@ -54,10 +57,12 @@ export async function updateUserRole(userId: number, newRoleId: string) {
  * @description If allow is true, set roleLevel to 4. If allow is false, check if the user has any passed orientations - if yes, set roleLevel to 2, otherwise set roleLevel to 1.
  */
 export async function updateUserAllowLevel(userId: number, allow: boolean) {
-  return db.user.update({
+  const updated = await db.user.update({
     where: { id: userId },
     data: { allowLevel4: allow },
   });
+  await syncUserDoorAccess(userId);
+  return updated;
 }
 
 /**
@@ -513,6 +518,9 @@ export async function getAllUsersWithVolunteerStatus() {
       membershipStatus: true,
       membershipRevokedAt: true,
       membershipRevokedReason: true,
+      brivoPersonId: true,
+      brivoLastSyncedAt: true,
+      brivoSyncError: true,
       roleUser: {
         select: {
           name: true,

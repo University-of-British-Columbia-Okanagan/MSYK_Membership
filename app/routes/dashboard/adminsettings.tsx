@@ -75,6 +75,8 @@ import {
   ShadTable,
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
+import { DataTable } from "~/components/data-table";
+import { ColumnDef } from "@tanstack/react-table";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import {
   AlertDialog,
@@ -119,6 +121,11 @@ import {
 import { json } from "@remix-run/node";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { syncUserDoorAccess } from "~/services/access-control-sync.server";
+import { brivoClient } from "~/services/brivo.server";
+import { RefreshCw, FilterIcon } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export async function loader({ request }: { request: Request }) {
   // Check if user is admin
@@ -232,6 +239,33 @@ export async function loader({ request }: { request: Request }) {
     }
   );
 
+  // Brivo integration status
+  const brivoEnabled = brivoClient.isEnabled();
+  let brivoSubscriptions: Array<{
+    id: number;
+    name: string;
+    url: string;
+    errorEmail: string;
+  }> = [];
+  let brivoGroups: Array<{ id: number; name: string }> = [];
+  const brivoAccessGroupLevel4 = await getAdminSetting(
+    "brivo_access_group_level4",
+    process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? "",
+  );
+  if (brivoEnabled) {
+    try {
+      const subs = await brivoClient.listEventSubscriptions();
+      brivoSubscriptions = subs;
+    } catch (e) {
+      logger.error(`Failed to list Brivo event subscriptions: ${String(e)}`);
+    }
+    try {
+      brivoGroups = await brivoClient.listGroups();
+    } catch (e) {
+      logger.error(`Failed to list Brivo groups: ${String(e)}`);
+    }
+  }
+
   // Return settings to the component
   return {
     roleUser,
@@ -257,6 +291,12 @@ export async function loader({ request }: { request: Request }) {
       selectedCalendarId: googleCalendarId,
       timezone: googleTimezone,
       calendars: googleCalendars,
+    },
+    brivo: {
+      enabled: brivoEnabled,
+      subscriptions: brivoSubscriptions,
+      groups: brivoGroups,
+      accessGroupLevel4: brivoAccessGroupLevel4,
     },
     allEquipments,
   };
@@ -673,6 +713,43 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (actionType === "retryBrivoSync") {
+    const userId = formData.get("userId");
+    if (!userId) {
+      return {
+        success: false,
+        message: "User ID is required",
+      };
+    }
+
+    try {
+      await syncUserDoorAccess(Number(userId));
+
+      logger.info(
+        `[User: ${roleUser.userId}] Retried Brivo sync for user ${userId}`,
+        {
+          url: request.url,
+          targetUserId: userId,
+        }
+      );
+
+      return {
+        success: true,
+        message: "Brivo sync retried successfully. The page will refresh to show updated status.",
+      };
+    } catch (error) {
+      logger.error(`Error retrying Brivo sync: ${error}`, {
+        userId: roleUser.userId,
+        targetUserId: userId,
+        url: request.url,
+      });
+      return {
+        success: false,
+        message: `Failed to retry sync: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
   if (actionType === "updateVolunteerHourStatus") {
     const hourId = formData.get("hourId");
     const newStatus = formData.get("newStatus");
@@ -775,6 +852,89 @@ export async function action({ request }: { request: Request }) {
       token,
       message: "Access token generated successfully",
     };
+  }
+
+  if (actionType === "brivoCreateSubscription") {
+    const name = formData.get("brivoSubName") as string;
+    const url = formData.get("brivoSubUrl") as string;
+    const errorEmail = formData.get("brivoSubErrorEmail") as string;
+
+    if (!name || !url || !errorEmail) {
+      return {
+        success: false,
+        message: "Please fill in all fields for the webhook subscription.",
+      };
+    }
+
+    try {
+      await brivoClient.createEventSubscription(name, url, errorEmail);
+      logger.info(`[User: ${roleUser.userId}] Created Brivo event subscription`, {
+        name,
+        url,
+      });
+      return {
+        success: true,
+        message: "Brivo webhook subscription created successfully.",
+      };
+    } catch (error) {
+      logger.error(`Error creating Brivo subscription: ${error}`, {
+        userId: roleUser.userId,
+      });
+      return {
+        success: false,
+        message: `Failed to create subscription: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  if (actionType === "brivoDeleteSubscription") {
+    const subscriptionId = Number(formData.get("brivoSubId"));
+
+    try {
+      await brivoClient.deleteEventSubscription(subscriptionId);
+      logger.info(`[User: ${roleUser.userId}] Deleted Brivo event subscription`, {
+        subscriptionId,
+      });
+      return {
+        success: true,
+        message: "Brivo webhook subscription deleted successfully.",
+      };
+    } catch (error) {
+      logger.error(`Error deleting Brivo subscription: ${error}`, {
+        userId: roleUser.userId,
+      });
+      return {
+        success: false,
+        message: `Failed to delete subscription: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  }
+
+  if (actionType === "brivoSaveAccessGroup") {
+    const groupId = formData.get("brivoAccessGroupLevel4") as string;
+
+    try {
+      await updateAdminSetting(
+        "brivo_access_group_level4",
+        groupId?.trim() ?? "",
+        "Brivo access group ID for Level 4 (24/7) members",
+      );
+      logger.info(`[User: ${roleUser.userId}] Updated Brivo access group`, {
+        groupId,
+      });
+      return {
+        success: true,
+        message: "Brivo access group saved successfully.",
+      };
+    } catch (error) {
+      logger.error(`Error saving Brivo access group: ${error}`, {
+        userId: roleUser.userId,
+      });
+      return {
+        success: false,
+        message: `Failed to save access group: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
   }
 
   if (actionType === "getAccessCardInfo") {
@@ -942,6 +1102,142 @@ function AdminControl({
         />
       )}
     </div>
+  );
+}
+
+function DoorAccessStatus({
+  user,
+}: {
+  user: {
+    id: number;
+    roleLevel: number;
+    membershipStatus: string;
+    brivoPersonId?: string | null;
+    brivoLastSyncedAt?: string | Date | null;
+    brivoSyncError?: string | null;
+  };
+}) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const submit = useSubmit();
+
+  const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+  let badgeVariant: "secondary" | "outline" | "destructive" = "outline";
+  let badgeLabel = "Disabled";
+
+  if (user.brivoSyncError) {
+    badgeVariant = "destructive";
+    badgeLabel = "Sync Error";
+  } else if (!eligible) {
+    badgeVariant = "outline";
+    badgeLabel = "Disabled";
+  } else if (user.brivoPersonId) {
+    badgeVariant = "secondary";
+    badgeLabel = "Provisioned";
+  } else {
+    badgeVariant = "outline";
+    badgeLabel = "Pending Sync";
+  }
+
+  const lastSynced =
+    user.brivoLastSyncedAt && !Number.isNaN(new Date(user.brivoLastSyncedAt).getTime())
+      ? new Date(user.brivoLastSyncedAt).toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : null;
+
+  const handleRetry = () => {
+    setIsRetrying(true);
+    const formData = new FormData();
+    formData.append("actionType", "retryBrivoSync");
+    formData.append("userId", user.id.toString());
+    submit(formData, { method: "post" });
+    setDialogOpen(false);
+    setTimeout(() => setIsRetrying(false), 2000);
+  };
+
+  const badge = user.brivoSyncError ? (
+    <button
+      onClick={() => setDialogOpen(true)}
+      className="cursor-pointer hover:opacity-80 transition-opacity"
+      type="button"
+    >
+      <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+    </button>
+  ) : (
+    <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+  );
+
+  return (
+    <>
+      <div className="space-y-1">
+        {badge}
+        {user.brivoSyncError ? (
+          <p className="text-xs text-destructive">Click badge for details</p>
+        ) : (
+          <p className="text-xs text-gray-500">
+            {eligible
+              ? user.brivoPersonId
+                ? "24/7 access active"
+                : "Eligible – syncing shortly"
+              : "Not eligible (role < 4 or membership revoked)"}
+          </p>
+        )}
+        {lastSynced && !user.brivoSyncError && (
+          <p className="text-xs text-gray-500">Last sync: {lastSynced}</p>
+        )}
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Brivo Sync Error</DialogTitle>
+            <DialogDescription>
+              There was an error syncing this user's door access with Brivo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label className="text-sm font-semibold">Error Details:</Label>
+              <div className="mt-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                <p className="text-sm text-destructive font-mono break-words">
+                  {user.brivoSyncError}
+                </p>
+              </div>
+            </div>
+            {lastSynced && (
+              <div>
+                <Label className="text-sm font-semibold">Last Successful Sync:</Label>
+                <p className="text-sm text-gray-600 mt-1">{lastSynced}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
+              disabled={isRetrying}
+            >
+              Close
+            </Button>
+            <Button onClick={handleRetry} disabled={isRetrying}>
+              {isRetrying ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry Sync
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1749,6 +2045,9 @@ export default function AdminSettings() {
       membershipStatus: "active" | "revoked";
       membershipRevokedAt: Date | null;
       membershipRevokedReason: string | null;
+      brivoPersonId?: string | null;
+      brivoLastSyncedAt?: Date | string | null;
+      brivoSyncError?: string | null;
     }>;
     volunteerHours: Array<{
       id: number;
@@ -1933,9 +2232,6 @@ export default function AdminSettings() {
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
 
-  const [searchName, setSearchName] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage] = useState(10);
 
   // Volunteer hours management state
   const [volunteerSearchName, setVolunteerSearchName] = useState("");
@@ -2059,7 +2355,17 @@ export default function AdminSettings() {
   // Status filters for recent actions
   const [actionsStatusFilter, setActionsStatusFilter] = useState<string>("all");
 
-  // Filter users by first and last name
+  // User table filters
+  const [adminStatusFilter, setAdminStatusFilter] = useState<string[]>([]);
+  const [membershipFilter, setMembershipFilter] = useState<string[]>([]);
+  const [doorAccessFilter, setDoorAccessFilter] = useState<string[]>([]);
+
+  // Volunteer management state (for volunteers tab)
+  const [searchName, setSearchName] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage] = useState(10);
+
+  // Filter and sort users for volunteers tab
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
       const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
@@ -2067,10 +2373,16 @@ export default function AdminSettings() {
     });
   }, [users, searchName]);
 
-  // Sort filtered users by user.id in ascending order
   const sortedFilteredUsers = useMemo(() => {
-    return filteredUsers.slice().sort((a, b) => a.id - b.id);
+    return filteredUsers.slice().sort((a, b) => {
+      return a.lastName.localeCompare(b.lastName);
+    });
   }, [filteredUsers]);
+
+  const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const paginatedUsers = sortedFilteredUsers.slice(startIndex, endIndex);
 
   // Helper function to generate time options
   const generateVolunteerTimeOptions = () => {
@@ -2348,16 +2660,6 @@ export default function AdminSettings() {
     return calculateTotalHours(filteredRecentActions);
   }, [filteredRecentActions]);
 
-  // PAGINATION LOGIC
-  const totalPages = Math.ceil(sortedFilteredUsers.length / usersPerPage);
-  const startIndex = (currentPage - 1) * usersPerPage;
-  const endIndex = startIndex + usersPerPage;
-  const paginatedUsers = sortedFilteredUsers.slice(startIndex, endIndex);
-
-  // Reset to page 1 when search changes
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchName]);
 
   const [plannedClosures, setPlannedClosures] = useState(
     settings.plannedClosures.map((closure) => ({
@@ -2397,22 +2699,177 @@ export default function AdminSettings() {
   const [weeklyFormBeingEdited, setWeeklyFormBeingEdited] =
     useState<boolean>(false);
 
-  // Define columns for the ShadTable
+  // Filter users based on filter states
+  const filteredUsersForTable = useMemo(() => {
+    return users.filter((user) => {
+      // Admin Status filter
+      if (adminStatusFilter.length > 0) {
+        const userAdminStatus = user.roleUser.name === "Admin" ? "Admin" : "Not Admin";
+        if (!adminStatusFilter.includes(userAdminStatus)) return false;
+      }
+
+      // Membership filter
+      if (membershipFilter.length > 0) {
+        const userMembershipStatus = user.membershipStatus === "revoked" ? "Revoked" : "Active";
+        if (!membershipFilter.includes(userMembershipStatus)) return false;
+      }
+
+      // Door Access filter
+      if (doorAccessFilter.length > 0) {
+        const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+        let doorAccessStatus: string;
+        if (user.brivoSyncError) {
+          doorAccessStatus = "Sync Error";
+        } else if (!eligible) {
+          doorAccessStatus = "Disabled";
+        } else if (user.brivoPersonId) {
+          doorAccessStatus = "Provisioned";
+        } else {
+          doorAccessStatus = "Pending Sync";
+        }
+        if (!doorAccessFilter.includes(doorAccessStatus)) return false;
+      }
+
+      return true;
+    });
+  }, [users, adminStatusFilter, membershipFilter, doorAccessFilter]);
+
+  // Get unique values for filter options
+  const adminStatusOptions = useMemo(() => {
+    const admins = users.filter((u) => u.roleUser.name === "Admin").length;
+    const notAdmins = users.length - admins;
+    return [
+      { value: "Admin", count: admins },
+      { value: "Not Admin", count: notAdmins },
+    ];
+  }, [users]);
+
+  const membershipOptions = useMemo(() => {
+    const revoked = users.filter((u) => u.membershipStatus === "revoked").length;
+    const active = users.length - revoked;
+    return [
+      { value: "Revoked", count: revoked },
+      { value: "Active", count: active },
+    ];
+  }, [users]);
+
+  const doorAccessOptions = useMemo(() => {
+    const counts = {
+      "Sync Error": 0,
+      "Disabled": 0,
+      "Provisioned": 0,
+      "Pending Sync": 0,
+    };
+    users.forEach((user) => {
+      const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+      if (user.brivoSyncError) {
+        counts["Sync Error"]++;
+      } else if (!eligible) {
+        counts["Disabled"]++;
+      } else if (user.brivoPersonId) {
+        counts["Provisioned"]++;
+      } else {
+        counts["Pending Sync"]++;
+      }
+    });
+    return Object.entries(counts).map(([value, count]) => ({ value, count }));
+  }, [users]);
+
+  // Define columns for the DataTable
   type UserRow = (typeof users)[number];
-  const columns: ColumnDefinition<UserRow>[] = [
-    { header: "First Name", render: (user) => user.firstName },
-    { header: "Last Name", render: (user) => user.lastName },
-    { header: "Email", render: (user) => user.email },
-    { header: "Phone Number", render: (user) => user.phone },
+  const userColumns: ColumnDef<UserRow>[] = [
     {
-      header: "Training Card User Number",
-      render: (user) => user.trainingCardUserNumber,
+      header: "First Name",
+      accessorKey: "firstName",
+      cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
+        <div className="font-medium">{row.getValue("firstName")}</div>
+      ),
+      size: 120,
     },
-    { header: "Role Level", render: (user) => <RoleControl user={user} /> },
-    { header: "Admin Status", render: (user) => <AdminControl user={user} /> },
+    {
+      header: "Last Name",
+      accessorKey: "lastName",
+      cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
+        <div className="font-medium">{row.getValue("lastName")}</div>
+      ),
+      size: 120,
+    },
+    {
+      header:"Training Card User Number",
+    accessorKey: "trainingCardUserNumber",
+    cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
+      <div className="font-medium">{row.getValue("trainingCardUserNumber")}</div>
+    ),
+    size: 120,
+  },
+    {
+      header: "Email",
+      accessorKey: "email",
+      size: 220,
+    },
+    {
+      header: "Phone Number",
+      accessorKey: "phone",
+      size: 140,
+    },
+    {
+      header: "Role Level",
+      id: "roleLevel",
+      cell: ({ row }: { row: { original: UserRow } }) => <RoleControl user={row.original} />,
+      size: 200,
+      enableSorting: false,
+    },
+    {
+      header: "Admin Status",
+      id: "adminStatus",
+      accessorFn: (row) => row.roleUser.name === "Admin" ? "Admin" : "Not Admin",
+      cell: ({ row }: { row: { original: UserRow } }) => <AdminControl user={row.original} />,
+      size: 150,
+      enableSorting: false,
+      filterFn: (row, id, value) => {
+        const status = row.original.roleUser.name === "Admin" ? "Admin" : "Not Admin";
+        return value.includes(status);
+      },
+    },
     {
       header: "Membership",
-      render: (user) => <MembershipControl user={user} />,
+      id: "membership",
+      accessorFn: (row) => row.membershipStatus === "revoked" ? "Revoked" : "Active",
+      cell: ({ row }: { row: { original: UserRow } }) => <MembershipControl user={row.original} />,
+      size: 200,
+      enableSorting: false,
+      filterFn: (row, id, value) => {
+        const status = row.original.membershipStatus === "revoked" ? "Revoked" : "Active";
+        return value.includes(status);
+      },
+    },
+    {
+      header: "Door Access",
+      id: "doorAccess",
+      accessorFn: (row) => {
+        const eligible = row.roleLevel >= 4 && row.membershipStatus !== "revoked";
+        if (row.brivoSyncError) return "Sync Error";
+        if (!eligible) return "Disabled";
+        if (row.brivoPersonId) return "Provisioned";
+        return "Pending Sync";
+      },
+      cell: ({ row }: { row: { original: UserRow } }) => <DoorAccessStatus user={row.original} />,
+      size: 180,
+      enableSorting: false,
+      filterFn: (row, id, value) => {
+        const eligible = row.original.roleLevel >= 4 && row.original.membershipStatus !== "revoked";
+        let status: string;
+        if (row.original.brivoSyncError) {
+          status = "Sync Error";
+        } else if (!eligible) {
+          status = "Disabled";
+        } else if (row.original.brivoPersonId) {
+          status = "Provisioned";
+        } else {
+          status = "Pending Sync";
+        }
+        return value.includes(status);
+      },
     },
   ];
 
@@ -2726,7 +3183,7 @@ export default function AdminSettings() {
       <div className="absolute inset-0 flex">
         <AdminAppSidebar />
         <main className="flex-grow p-6 overflow-auto">
-          <div className="max-w-4xl mx-auto">
+          <div className="w-full">
             {/* Mobile Header with Sidebar Trigger */}
             <div className="flex items-center gap-4 mb-6 md:hidden">
               <SidebarTrigger />
@@ -3261,32 +3718,216 @@ export default function AdminSettings() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-2">
-                        <FiSearch className="text-gray-500" />
-                        <Input
-                          placeholder="Search by first or last name"
-                          value={searchName}
-                          onChange={(e) => setSearchName(e.target.value)}
-                          className="w-full md:w-64"
-                        />
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Showing {startIndex + 1}-
-                        {Math.min(endIndex, sortedFilteredUsers.length)} of{" "}
-                        {sortedFilteredUsers.length} users
-                      </div>
+                    {/* Filter Controls */}
+                    <div className="flex flex-wrap items-center gap-3 mb-4">
+                      {/* Admin Status Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Admin Status
+                            {adminStatusFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {adminStatusFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Admin Status
+                            </div>
+                            <div className="space-y-3">
+                              {adminStatusOptions.map((option) => (
+                                <div key={option.value} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`admin-status-${option.value}`}
+                                    checked={adminStatusFilter.includes(option.value)}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setAdminStatusFilter([...adminStatusFilter, option.value]);
+                                      } else {
+                                        setAdminStatusFilter(
+                                          adminStatusFilter.filter((f) => f !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`admin-status-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {adminStatusFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setAdminStatusFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      {/* Membership Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Membership
+                            {membershipFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {membershipFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Membership
+                            </div>
+                            <div className="space-y-3">
+                              {membershipOptions.map((option) => (
+                                <div key={option.value} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`membership-${option.value}`}
+                                    checked={membershipFilter.includes(option.value)}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setMembershipFilter([...membershipFilter, option.value]);
+                                      } else {
+                                        setMembershipFilter(
+                                          membershipFilter.filter((f) => f !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`membership-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {membershipFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setMembershipFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      {/* Door Access Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Door Access
+                            {doorAccessFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {doorAccessFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Door Access
+                            </div>
+                            <div className="space-y-3">
+                              {doorAccessOptions.map((option) => (
+                                <div key={option.value} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`door-access-${option.value}`}
+                                    checked={doorAccessFilter.includes(option.value)}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setDoorAccessFilter([...doorAccessFilter, option.value]);
+                                      } else {
+                                        setDoorAccessFilter(
+                                          doorAccessFilter.filter((f) => f !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`door-access-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {doorAccessFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDoorAccessFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                    <ShadTable
-                      columns={columns}
-                      data={paginatedUsers}
+
+                    <DataTable
+                      columns={userColumns}
+                      data={filteredUsersForTable}
+                      enableGlobalFilter={true}
+                      globalFilterPlaceholder="Search by first or last name..."
+                      globalFilterAccessor={(user) => `${user.firstName} ${user.lastName} ${user.email}`}
+                      enableColumnVisibility={true}
                       emptyMessage="No users found"
-                    />
-                    <Pagination
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      onPageChange={setCurrentPage}
-                      maxVisiblePages={50}
+                      initialSorting={[
+                        {
+                          id: "id",
+                          desc: false,
+                        },
+                      ]}
+                      initialPageSize={10}
                     />
                   </CardContent>
                 </Card>
@@ -5853,6 +6494,205 @@ export default function AdminSettings() {
                               </div>
                             </Form>
                           )}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                  <CardHeader>
+                    <CardTitle>Brivo Access Control</CardTitle>
+                    <CardDescription>
+                      Manage Brivo webhook subscriptions to receive door access
+                      events. When users badge in or use their mobile pass,
+                      events are logged to your Access Logs.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {(() => {
+                      const { brivo } = (useLoaderData() as any) || {
+                        brivo: {},
+                      };
+
+                      if (!brivo?.enabled) {
+                        return (
+                          <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
+                            <p className="text-yellow-800 text-sm">
+                              Brivo integration is not configured. Set the
+                              following environment variables:
+                            </p>
+                            <ul className="text-yellow-700 text-xs mt-2 list-disc list-inside">
+                              <li>BRIVO_CLIENT_ID</li>
+                              <li>BRIVO_CLIENT_SECRET</li>
+                              <li>BRIVO_USERNAME</li>
+                              <li>BRIVO_PASSWORD</li>
+                              <li>BRIVO_API_KEY</li>
+                              <li>BRIVO_ACCESS_GROUP_LEVEL4</li>
+                            </ul>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-6">
+                          <div className="bg-green-50 p-4 rounded-md border border-green-200">
+                            <p className="text-green-800 text-sm font-medium">
+                              ✓ Brivo API Connected
+                            </p>
+                          </div>
+
+                          <div className="border-b pb-4">
+                            <h4 className="font-medium mb-3">
+                              Access Group for Level 4 Members
+                            </h4>
+                            <p className="text-sm text-gray-500 mb-3">
+                              Select the Brivo group that Level 4 (24/7 access)
+                              members should be assigned to.
+                            </p>
+                            <Form method="post" className="flex items-end gap-3">
+                              <input
+                                type="hidden"
+                                name="actionType"
+                                value="brivoSaveAccessGroup"
+                              />
+                              <div className="flex-1 max-w-md space-y-2">
+                                <Label htmlFor="brivoAccessGroupLevel4">
+                                  Access Group
+                                </Label>
+                                <select
+                                  id="brivoAccessGroupLevel4"
+                                  name="brivoAccessGroupLevel4"
+                                  defaultValue={brivo.accessGroupLevel4 || ""}
+                                  className="border rounded px-3 py-2 w-full bg-white"
+                                >
+                                  <option value="">-- Select a group --</option>
+                                  {brivo.groups?.map((g: any) => (
+                                    <option key={g.id} value={String(g.id)}>
+                                      {g.name} (ID: {g.id})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <Button
+                                type="submit"
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                              >
+                                Save
+                              </Button>
+                            </Form>
+                            {brivo.accessGroupLevel4 && (
+                              <p className="text-xs text-gray-500 mt-2">
+                                Current: {brivo.accessGroupLevel4}
+                              </p>
+                            )}
+                          </div>
+
+                          <div>
+                            <h4 className="font-medium mb-3">
+                              Webhook Subscriptions
+                            </h4>
+                            {brivo.subscriptions?.length > 0 ? (
+                              <div className="space-y-2">
+                                {brivo.subscriptions.map((sub: any) => (
+                                  <div
+                                    key={sub.id}
+                                    className="flex items-center justify-between p-3 bg-gray-50 rounded-md border"
+                                  >
+                                    <div>
+                                      <p className="font-medium text-sm">
+                                        {sub.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500 truncate max-w-md">
+                                        {sub.url}
+                                      </p>
+                                    </div>
+                                    <Form method="post">
+                                      <input
+                                        type="hidden"
+                                        name="actionType"
+                                        value="brivoDeleteSubscription"
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name="brivoSubId"
+                                        value={sub.id}
+                                      />
+                                      <Button
+                                        type="submit"
+                                        variant="destructive"
+                                        size="sm"
+                                      >
+                                        Delete
+                                      </Button>
+                                    </Form>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-500">
+                                No webhook subscriptions configured. Create one
+                                below to start receiving access events.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="border-t pt-4">
+                            <h4 className="font-medium mb-3">
+                              Create Webhook Subscription
+                            </h4>
+                            <Form method="post" className="space-y-4">
+                              <input
+                                type="hidden"
+                                name="actionType"
+                                value="brivoCreateSubscription"
+                              />
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="brivoSubName">
+                                    Subscription Name
+                                  </Label>
+                                  <Input
+                                    id="brivoSubName"
+                                    name="brivoSubName"
+                                    placeholder="MSYK Access Events"
+                                    className="bg-white"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="brivoSubErrorEmail">
+                                    Error Notification Email
+                                  </Label>
+                                  <Input
+                                    id="brivoSubErrorEmail"
+                                    name="brivoSubErrorEmail"
+                                    type="email"
+                                    placeholder="admin@example.com"
+                                    className="bg-white"
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="brivoSubUrl">Webhook URL</Label>
+                                <Input
+                                  id="brivoSubUrl"
+                                  name="brivoSubUrl"
+                                  placeholder="https://yourdomain.com/brivo/callback"
+                                  className="bg-white"
+                                />
+                                <p className="text-xs text-gray-500">
+                                  This should be your production domain followed
+                                  by /brivo/callback
+                                </p>
+                              </div>
+                              <Button
+                                type="submit"
+                                className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                              >
+                                Create Subscription
+                              </Button>
+                            </Form>
+                          </div>
                         </div>
                       );
                     })()}

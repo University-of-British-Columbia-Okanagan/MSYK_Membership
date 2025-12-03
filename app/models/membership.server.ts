@@ -14,6 +14,7 @@ import { PassThrough } from "stream";
 import { PDFDocument as PDFLibDocument, StandardFonts, rgb } from "pdf-lib";
 import * as fs from "fs";
 import * as path from "path";
+import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -528,6 +529,7 @@ export async function registerMembershipSubscription(
     }
   }
 
+  await syncUserDoorAccess(userId);
   return subscription;
 }
 
@@ -566,7 +568,7 @@ export async function cancelMembership(
 
     // Sync the UserMembershipForm status to cancelled as well
     await updateMembershipFormStatus(userId, membershipPlanId, "cancelled");
-
+    await syncUserDoorAccess(userId);
     return updatedMembership;
   } else {
     // 2b) Cancelling *after* the cycle → delete that one record
@@ -592,6 +594,7 @@ export async function cancelMembership(
       data: { roleLevel: newRoleLevel },
     });
 
+    await syncUserDoorAccess(userId);
     return deleted;
   }
 }
@@ -716,50 +719,103 @@ export function startMonthlyMembershipCheck() {
         }
       }
 
+      type CachedUser = {
+        id: number;
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone: string | null;
+        roleLevel: number;
+        allowLevel4: boolean;
+        membershipStatus: string;
+        brivoPersonId: string | null;
+      };
+
       for (const membership of dueMemberships) {
-        const user = await db.user.findUnique({
-          where: { id: membership.userId },
-        });
-        if (!user) {
-          console.error(`No user found for ID ${membership.userId}, skipping`);
-          continue;
-        }
+        let cachedUser: CachedUser | null | undefined;
 
-    const syncUserRole = async () => {
-      const activeMembership = await db.userMembership.findFirst({
-        where: {
-          userId: membership.userId,
-          status: { not: "inactive" },
-        },
-        include: {
-          membershipPlan: true,
-        },
-      });
+        const ensureUser = async (): Promise<CachedUser | null> => {
+          if (cachedUser !== undefined) {
+            return cachedUser;
+          }
+          const userRecord = await db.user.findUnique({
+            where: { id: membership.userId },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              phone: true,
+              roleLevel: true,
+              allowLevel4: true,
+              membershipStatus: true,
+              brivoPersonId: true,
+            },
+          });
 
-      if (activeMembership) {
-        if (
-          activeMembership.membershipPlan.needAdminPermission &&
-          user.allowLevel4 === true
-        ) {
-          await db.user.update({
-            where: { id: user.id },
-            data: { roleLevel: 4 },
+          cachedUser = userRecord
+            ? {
+                id: userRecord.id,
+                firstName: userRecord.firstName,
+                lastName: userRecord.lastName,
+                email: userRecord.email,
+                phone: userRecord.phone,
+                roleLevel: userRecord.roleLevel,
+                allowLevel4: userRecord.allowLevel4 ?? false,
+                membershipStatus: userRecord.membershipStatus,
+                brivoPersonId: userRecord.brivoPersonId,
+              }
+            : null;
+
+          return cachedUser;
+        };
+
+        const syncUserRole = async () => {
+          const user = await ensureUser();
+          if (!user) return;
+          const activeMembership = await db.userMembership.findFirst({
+            where: {
+              userId: membership.userId,
+              status: { not: "inactive" },
+            },
+            include: {
+              membershipPlan: true,
+            },
           });
-        } else {
-          await db.user.update({
-            where: { id: user.id },
-            data: { roleLevel: 3 },
-          });
-        }
-      } else {
-        await db.user.update({
-          where: { id: user.id },
-          data: { roleLevel: 2 },
-        });
-      }
-    };
+
+          let nextRoleLevel = user.roleLevel;
+          if (activeMembership) {
+            if (
+              activeMembership.membershipPlan.needAdminPermission &&
+              user.allowLevel4 === true
+            ) {
+              nextRoleLevel = 4;
+            } else {
+              nextRoleLevel = 3;
+            }
+          } else {
+            nextRoleLevel = 2;
+          }
+
+          if (nextRoleLevel !== user.roleLevel) {
+            await db.user.update({
+              where: { id: user.id },
+              data: { roleLevel: nextRoleLevel },
+            });
+            user.roleLevel = nextRoleLevel;
+          }
+          await syncUserDoorAccess(user.id, { user });
+        };
 
         if (membership.status === "active") {
+          const user = await ensureUser();
+          if (!user) {
+            console.error(
+              `No user found for ID ${membership.userId}, skipping`,
+            );
+            continue;
+          }
+
           // Non-monthly subscriptions are not auto-renewed; expire when due
           if (membership.billingCycle !== "monthly") {
             await db.userMembership.update({
@@ -881,6 +937,8 @@ export function startMonthlyMembershipCheck() {
               err.message
             );
           }
+
+          await syncUserRole();
         } else if (
           membership.status === "ending" ||
           membership.status === "cancelled"
@@ -901,9 +959,9 @@ export function startMonthlyMembershipCheck() {
             membership.membershipPlanId,
             "inactive"
           );
-        }
 
-        await syncUserRole();
+          await syncUserRole();
+        }
       }
     } catch (error) {
       console.error("Error in monthly membership check:", error);
@@ -1243,6 +1301,7 @@ export async function revokeUserMembershipByAdmin(
     }
   }
 
+  await syncUserDoorAccess(userId);
   return result;
 }
 
@@ -1306,6 +1365,7 @@ export async function unrevokeUserMembershipByAdmin(
     }
   }
 
+  await syncUserDoorAccess(userId);
   return result;
 }
 
