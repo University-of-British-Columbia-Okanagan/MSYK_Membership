@@ -1076,7 +1076,7 @@ Last Updated: 11/19/2025
    - In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
    - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Fix this
    - You should not be able to edit the workshop prereqs of an equipment in edit equipment. The workshop prereqs you add after adding an equipment should be final
-   - In payment information page to add a payment method, it says "Automatic payment methods filling is disabled..." when putting in inputs. Remove this
+   - ~~In payment information page to add a payment method, it says "Automatic payment methods filling is disabled..." when putting in inputs. Remove this~~
    - ~~There is no validation to determine if the payment method they added is a valid payment method. Need to add this **[HIGH PRIORITY]**~~
    - In the multiple billing options, it is possible to have a negative Save %, if the save percentage is negative, do not even show it
    - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
