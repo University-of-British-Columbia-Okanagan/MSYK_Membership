@@ -923,7 +923,7 @@ Last Updated: 11/19/2025
 
 - **Findings**:
   - In add payment method, the country is not all countries **[HIGH PRIORITY]**
-  - Recent Activity in Profile does nothing
+  - ~~Recent Activity in Profile does nothing~~
   - In a multi day orientation, you still have to pass individual times even though it is multi day [ARIQ WILL DO THIS]
   - Orientation History confusing on if workshop is single occurrence or multi day [ARIQ WILL DO THIS]
   - When we create a workshop that is not a price variation, do we want to be able to edit the workshop to add price variations and vise versa? [ARIQ WILL DO THIS]
