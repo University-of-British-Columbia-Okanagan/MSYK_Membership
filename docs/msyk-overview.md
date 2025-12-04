@@ -1077,8 +1077,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 Last Updated: 11/19/2025
 
 - **Findings**:
-  - In add payment method, the country is not all countries **[HIGH PRIORITY]**
   - ~~Recent Activity in Profile does nothing~~
+  - ~~In add payment method, the country is not all countries **[HIGH PRIORITY]**~~
   - In a multi day orientation, you still have to pass individual times even though it is multi day [ARIQ WILL DO THIS]
   - Orientation History confusing on if workshop is single occurrence or multi day [ARIQ WILL DO THIS]
   - When we create a workshop that is not a price variation, do we want to be able to edit the workshop to add price variations and vise versa? [ARIQ WILL DO THIS]
@@ -1119,8 +1119,8 @@ Last Updated: 11/19/2025
    - In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
    - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Fix this
    - You should not be able to edit the workshop prereqs of an equipment in edit equipment. The workshop prereqs you add after adding an equipment should be final
-   - In payment information page to add a payment method, it says "Automatic payment methods filling is disabled..." when putting in inputs. Remove this
-   - There is no validation to determine if the payment method they added is a valid payment method. Need to add this **[HIGH PRIORITY]**
+   - ~~In payment information page to add a payment method, it says "Automatic payment methods filling is disabled..." when putting in inputs. Remove this~~
+   - ~~There is no validation to determine if the payment method they added is a valid payment method. Need to add this **[HIGH PRIORITY]**~~
    - In the multiple billing options, it is possible to have a negative Save %, if the save percentage is negative, do not even show it
    - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
    - When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options
