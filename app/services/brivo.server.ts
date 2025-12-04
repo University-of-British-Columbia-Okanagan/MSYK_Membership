@@ -446,6 +446,35 @@ class BrivoClient {
     });
     return result?.data ?? [];
   }
+
+  /**
+   * Check if a Brivo user is a member of a specific group.
+   * Returns false on any error to avoid breaking calling flows.
+   */
+  async isUserInGroup(userId: string, groupId: string): Promise<boolean> {
+    if (!this.isEnabled()) {
+      return false;
+    }
+
+    const normalizedGroupId = String(groupId);
+
+    try {
+      const result = await this.request<{ data: BrivoGroup[] }>(
+        `/users/${userId}/groups`,
+        { method: "GET" },
+      );
+
+      const groups = result?.data ?? [];
+      return groups.some((group) => String(group.id) === normalizedGroupId);
+    } catch (error) {
+      logger.warn("Failed to check Brivo user group membership", {
+        userId,
+        groupId: normalizedGroupId,
+        error,
+      });
+      return false;
+    }
+  }
 }
 
 type DigitalInvitation = {
