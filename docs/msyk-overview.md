@@ -1070,11 +1070,91 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Guests:** Equipments | Go to /dasboard/equipments | When guests go into this route, they need an account to book equipments and they are prompted for "Account required". If an equipment is unavaliable, they should not be able to go to http://localhost:5173/dashboard/equipments/:equipmentID or http://localhost:5173/dashboard/equipmentbooking/:equipmentID. It should redirect to /dashboard if they do this | `NA` | `TODO/TOFIX`
 | ---- | **Guests:** Memberships | Go to /dasboard/memberships | When guests go into this route, they need an account to subscribe toa. membership and they are prompted for "Account required". For guests, they shoud not be able to go into any route like  /dashboard/memberships/:membershipPlanID and /dashboard/payment/:membershipPlanID. It should redirect them to /dashboard | `NA` | `TODO/TOFIX`
 
+---
+
+### Bug Fix Priority
+
+- **High**:
+  - In a multi day orientation, you still have to pass individual times even though it is multi day **[ARIQ WILL DO THIS]**
+  - Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**
+  - Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"
+  - Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops
+  - Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)
+  - People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)
+  - When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop button, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly. Maybe it only does that if you are going from a workshop that books equipment to one that doesn't anymore after editing)
+  - Right now, users are eligible for refund if they refund 48 hours or more before the workshop start date (the individual times for regular workshops, and the first day in the multi-day workshop if it is multi-day). Make it so that they are eligible for refund if they cancelled within 48 hours of their registration instead
+  - When people used to have an membership but it is now inactive, sometimes, they cannot subscribe to another because it says "You can change only after your old membership billing cycle ends." An example of when this can happen is when it is Nov 21st for example but in the db in UserMembership, startDate is 2025-11-12 03:35:51.909 and nextPaymentDate is 2025-12-12 03:35:51.909 and it is status inactive
+  - Disable the ability to edit equipment prereqs after creating them (in edit equipment)
+  - If equipment unavaliable, users and guests should not be able to access dashboard/equipmentbooking/:id or dashboard/equipments/:id (even by typing URL)
+  - You should not be able to edit the workshop prereqs of an equipment in edit equipment. The workshop prereqs you add after adding an equipment should be final. Change this
+  - In edit membership, they should not be able to edit the monthly price, any prices set in the multiple billing options and unchecking it, and they also cannot uncheck the require admin permission if already checked
+  - When it is time to charge the user for membership billing, monthly works, quartely billing option does not work (it turns it from active to inactive even when I have a payment method), semi-annually billing option does not work (it turns it from active to inactive even when I have a payment method), yearly billing option does not work (it turns it from active to inactive even when I have a payment method)
+  - When it is time to pay, users with memberships without Payment Method and Membership Inactive Email should just turn the membership inactive since they do not have a payment method from the crom and send them an email that their membership is inactive. Monthly: Works for setting inactive and email. Quarterly: Does set it as inactive but does not send inactive email. Semi-annually: Does set it as inactive but does not send inactive email. Yearly: Does set it as inactive but does not send inactive email
+  - When it is time to pay, users should get an email if do not have a payment method. It sends an email regarding the amount due and when it will be charged. The email should be sent 24 hrs before their membership ends. Monthly: Works. Quarterly: Does not work. Semi-annually: Does not work. Yearly: Does not work
+  - Guests are able to go to /dashboard/report when they should not be able to
+  - For guests and registered users, if an equipment is unavaliable, they should not be able to go to http://localhost:5173/dashboard/equipments/:equipmentID or http://localhost:5173/dashboard/equipmentbooking/:equipmentID. It should redirect to /dashboard or /dashboard/user respectively
+  - When users goes to this page, they should not be able to go /dashboard/memberships/:membershipPlanID if they are currently actively subscribed to that membership, if that membership route is in a state where "You can change only after your old membership billing cycle ends." and if that membership is what where they do not have enough permission, such as them not having enough permissions to being able to subscribe to level 4 memberships/ This should be the same when typing in the url for the membership page (/dashboard/payment/:membershipPlanID). This should be the same for admins, registered users, and guests. It should redirect them to /dashboard/admin, /dashboard/user and /dashboard respectively
+- **Medium**:
+  - When a admin deletes all workshop dates (and there are none in the past or cancelled tabs), then admin should not be able to update workshop until a date is added, but right now, it is able to do that and is stuck on "Updating..." when pressing Update Workshop. This is for single occurrence and multi-day workshops
+  - When editing the workshop, deleting any required fields (name, location, capacity, description, occurrences) and not filling in required information should throw an error but right now, the button is just stuck on loading
+  - In Workshops of type Workshop, in the View Users page for that workshop, the pass all button should only pass users of status pending (since some users can have status cancelled)
+  - In a multi-day workshop it says "Workshop Registration Has Past" or not dependening on the first occurrence in the multi day workshop (which is intended). However, it will still show up in active workshops (because the multi day can have dates in the future which is probably the reason why it will be put in active workshop). Make this show in past events, even if the multi-day workshop has other dates in the future 
+  - In /myequipments for users, equipment bookings in the past should not show up (right now they do, fix this)
+  - Have the ability to have Equipments that cost 0 dollars and register for them (do not need to use payment)
+  - Have the ability to register for workshops that cost 0 dollars (do not need to use payment)
+  - When you subscribe to a membership and then cancel, lets say that membership you cancelled was 50 dollars. If there is another membership that is 50 dollars, the button for the other membership would say resubscribe
+  - If a user has a membership and a payment method, currently no email is sent if it is the payment date for their membership, but they will still be charged
+  - When there is a level 4 user and there is the button "Revoke Level 4", if I press on that, the user will stay level 4 but the button just disappears, there is no "Allow Level 4" button (kinda broke the levels logic i cant lie)
+  - Right now, in volunteer, it is possible to have a 24 hour volunteer submission (so someone can put like 12/01/2025 9 am to 12/02/2025 9 am to make a 24 hour volunteer entry). Make this so this is not possible since the only possible times people can record are from 9 am to 11:45 PM. Volunteer entries should be the same day only
+  - Registered users and guests cannot access http://localhost:5173/dashboard/logs, they just see a white screen but make it so that it redirects to /dashboard/user or /dashboard respectively
+  - When a user registers for a workshop and they cancel, it should disappear from /dashboard/myworkshops unless they register again
+  - When guests go into this route (/dashboard/workshops), they need an account to register for workshops and they are prompted for "Account required". When guests go to /dashboard/payment/:workshopId/:occurrenceId, /dashboard/payment/:workshopId/:occurrenceId/:variationId, /dashboard/payment/:workshopId/connect/:connectId/:variationId, /dashboard/payment/:workshopId/connect/:connectId, they should be redirectd to /dashboard/workshops (right now, I think it shows a white screen)
+  - When guests go into this route (dashboard/memberships), they need an account to subscribe to a membership and they are prompted for "Account required". For guests, they shoud not be able to go into any route like /dashboard/memberships/:membershipPlanID and /dashboard/payment/:membershipPlanID. It should redirect them to /dashboard 
+- **Low**:
+  - When creating a price variation and it has errors of All pricing option prices must be unique and The sum of all pricing option capacities cannot exceed the total workshop capacity, in the price variation card, it shows as "All pricing option prices must be unique., The sum of all pricing option capacities cannot exceed the total workshop capacity". Fix the ".," shown in the UI
+  - Sometimes when you edit a workshop that has a workshop image with a new image, it will redirect back to the workshops and the new image is not shown until you refresh the page
+  - When editing a workshop with a total capacity of 10 and then price variation with capacity 2 and capacity 1 (3 capacity taken by the variations). Now, when you change the price variation with capacity 2 to capacity 10, it will be obviously 11 > 10 and when you press update workshop, the button will be stuck on "Updating..."
+  - Add a UI to go back to the workshop details aftet they go into the route when clicking View Users
+  - Sometimes when you edit a equipment that has a equipment image with a new image, it will redirect back to the equipments route and the new image is not shown until you refresh the page. This mostly happens when you edit the auto generated equipments from seed.ts (such as Laser Cutter) and then edit it to add an image
+  - No form errors shown in add equipment when required fields not filled and also when it is filled, (lets say we set price to -1), it does not show an error that says price should be >= 0
+  - In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
+  - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Make it show the highlited fields for errors
+  - In the multiple billing options, it is possible to have a negative Save % shown in the /dashboard/memberships, if the save percentage is negative, do not even show it
+  - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
+  - When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options
+  - When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty
+  - In the payment reminder email, it says something for example "Your membership plan "Test" will be charged on 11/28/2025, 5:36:37 PM." but we do not actually charge it at that time, in this case, it would be charged the next day at 11/29/2025 12 AM
+  - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options
+  - In google calendar for multi day workshop, the capacity of each price variation is not shown
+  - When adding a occurrence to a multi day workshop with and without price variations, the new occurrence that is shown in Google Calendar does not have the That it is Part of a Multi-day Series note
+  - "When admin deletes all occurrences, the deleted occurrences should not show up anymore (if no one has registered since you cannot add dates anymore if a user has registered) but you must add at least one occurrence or more and those occurrence added will show on the calendar with Name, Location, Description, Price, Type, Capacity, That it is Part of a Multi-day Series, Register Link (in localhost or prod website)". The issue with this is when the admin adds the occurrence(s) after deleting them, the "That it is Part of a Multi-day Series" is not shown. This is an issue for multi day workshops with and without price variations
+  - In workshop reports, we should add UI that tells if this workshop is multi day or not or if they have price variation or not
+  - For admins, clicking on the workshops sidebar should just redirect to /dasboard/admin since they are the same thing. Future implementations that want to have a custom dashboard can just change this in the future
+  - Users who registered for workshops (/dashboard/myworkshops) can see the registration time and date but there is no information if it is part of a multi day series or not with a price variation or not. Also, when someone has registered for a multi day workshop, the first date of the multiday series is the one that is shown, not the rest of the dates
+  - For the user sidebar, the All Workshops should be switched to /dashboard/user rather than /dashboard/workshops since they are the same thing
+  
+---
+
+### Findings and Notes
+
+- **Start Date and Time and End Date and Time Filter Implementation**
+  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it should be inclusive by start date and time but should it also be inclusive with the end date and time as well?
+     - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
+      - In Profile page, it is inclusive with the start date and time but not end date and time
+      - In Manage Volunteer Hours, it is inclusive with the start date and time but not end date and time
+      - In Recently Managed Volunteer Actions, it is inclusive with the start date and time but not end date and time
+      - In Volunteer Reports, it is inclusive with the start date and time but not end date and time
+- **Duplicate Worksohp Dates**
+  - You are able to create duplicate workshop dates in the same workshop (applies in regular workshops and multi-day workshops)
+- **Workshop Registration and Equipment Booking Cancellation and Registration**
+  - People could technically spam register/book, cancel register/book, register/book, cancel register/book, etc. for workshop registration and equipment bookings
+- **Reported Issues**
+  - For reported issues, when you upload an image, there is no way to see an image (the screenshot of the bug given by the user when they make the report)
 
 ---
 
 ### Findings and Bugs
-Last Updated: 11/19/2025
+Last Updated: 12/05/2025
 
 - **Findings**:
   - ~~Recent Activity in Profile does nothing~~
@@ -1145,12 +1225,12 @@ Last Updated: 11/19/2025
    - Users who registered for workshops (/dashboard/myworkshops) can see the registration time and date but there is no information if it is part of a multi day series or not with a price variation or not. Also, when someone has registered for a multi day workshop, the first date of the multiday series is the one that is shown, not the rest of the dates
    - Guests are able to go to /dashboard/report when they should not be able to 
    - Registered users and guests cannot access http://localhost:5173/dashboard/logs, they just see a white screen but make it so that it redirects to /dashboard/user or /dashboard respectively
-   - When a user registers for a workshop and they cancel, it should disappea from /dashboard/myworkshops unless they register again
+   - When a user registers for a workshop and they cancel, it should disappear from /dashboard/myworkshops unless they register again
    - For the user sidebar, the All Workshops should be switched to /dashboard/user rather than /dashboard/workshops since they are the same thing
    - For guests and registered users, if an equipment is unavaliable, they should not be able to go to http://localhost:5173/dashboard/equipments/:equipmentID or http://localhost:5173/dashboard/equipmentbooking/:equipmentID. It should redirect to /dashboard or /dashboard/user respectively
    - When users goes to this page, they should not be able to go /dashboard/memberships/:membershipPlanID if they are currently actively subscribed to that membership, if that membership route is in a state where "You can change only after your old membership billing cycle ends." and if that membership is what where they do not have enough permission, such as them not having enough permissions to being able to subscribe to level 4 memberships/ This should be the same when typing in the url for the membership page (/dashboard/payment/:membershipPlanID). This should be the same for admins, registered users, and guests. It should redirect them to /dashboard/admin, /dashboard/user and /dashboard respectively
    - When guests go into this route (/dashboard/workshops), they need an account to register for workshops and they are prompted for "Account required". When guests go to /dashboard/payment/:workshopId/:occurrenceId, /dashboard/payment/:workshopId/:occurrenceId/:variationId, /dashboard/payment/:workshopId/connect/:connectId/:variationId, /dashboard/payment/:workshopId/connect/:connectId, they should be redirectd to /dashboard/workshops (right now, I think it shows a white screen)
-   - When guests go into this route (dashboard/memberships), they need an account to subscribe toa. membership and they are prompted for "Account required". For guests, they shoud not be able to go into any route like  /dashboard/memberships/:membershipPlanID and /dashboard/payment/:membershipPlanID. It should redirect them to /dashboard 
+   - When guests go into this route (dashboard/memberships), they need an account to subscribe to a membership and they are prompted for "Account required". For guests, they shoud not be able to go into any route like /dashboard/memberships/:membershipPlanID and /dashboard/payment/:membershipPlanID. It should redirect them to /dashboard 
 
 - **Open Bugs**:
   - Add Workshop with Price Variation not working **[Resolved]**
