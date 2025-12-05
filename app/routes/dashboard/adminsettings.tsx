@@ -266,6 +266,45 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
+  // Enrich users with Brivo Level 4 door access provisioning status
+  let usersWithDoorAccess = users.map((user) => ({
+    ...user,
+    hasLevel4DoorAccessProvisioned: false as boolean,
+  }));
+
+  if (brivoEnabled) {
+    const groupId = brivoAccessGroupLevel4.trim();
+    if (groupId) {
+      try {
+        usersWithDoorAccess = await Promise.all(
+          users.map(async (user) => {
+            if (!user.brivoPersonId) {
+              return { ...user, hasLevel4DoorAccessProvisioned: false as boolean };
+            }
+
+            const inGroup = await brivoClient.isUserInGroup(
+              String(user.brivoPersonId),
+              groupId,
+            );
+
+            return {
+              ...user,
+              hasLevel4DoorAccessProvisioned: inGroup,
+            };
+          }),
+        );
+      } catch (error) {
+        logger.warn("Failed to resolve Brivo group membership for users", {
+          error,
+        });
+      }
+    } else {
+      logger.warn(
+        "Brivo is enabled but no access group for Level 4 is configured. Skipping group membership checks.",
+      );
+    }
+  }
+
   // Return settings to the component
   return {
     roleUser,
@@ -281,7 +320,7 @@ export async function loader({ request }: { request: Request }) {
       gstPercentage: parseFloat(gstPercentage),
     },
     workshops,
-    users,
+    users: usersWithDoorAccess,
     volunteerHours: allVolunteerHours,
     recentVolunteerActions,
     workshopCancellations: enhancedWorkshopCancellations,
@@ -1115,6 +1154,7 @@ function DoorAccessStatus({
     brivoPersonId?: string | null;
     brivoLastSyncedAt?: string | Date | null;
     brivoSyncError?: string | null;
+    hasLevel4DoorAccessProvisioned: boolean;
   };
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1131,9 +1171,12 @@ function DoorAccessStatus({
   } else if (!eligible) {
     badgeVariant = "outline";
     badgeLabel = "Disabled";
-  } else if (user.brivoPersonId) {
+  } else if (user.hasLevel4DoorAccessProvisioned) {
     badgeVariant = "secondary";
     badgeLabel = "Provisioned";
+  } else if (user.brivoPersonId) {
+    badgeVariant = "outline";
+    badgeLabel = "Registered";
   } else {
     badgeVariant = "outline";
     badgeLabel = "Pending Sync";
@@ -1157,16 +1200,35 @@ function DoorAccessStatus({
     setTimeout(() => setIsRetrying(false), 2000);
   };
 
+  const showRegisteredTooltip =
+    !user.brivoSyncError &&
+    eligible &&
+    !!user.brivoPersonId &&
+    !user.hasLevel4DoorAccessProvisioned;
+
+  const baseBadge = <Badge variant={badgeVariant}>{badgeLabel}</Badge>;
+
   const badge = user.brivoSyncError ? (
     <button
       onClick={() => setDialogOpen(true)}
       className="cursor-pointer hover:opacity-80 transition-opacity"
       type="button"
     >
-      <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+      {baseBadge}
     </button>
+  ) : showRegisteredTooltip ? (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{baseBadge}</TooltipTrigger>
+        <TooltipContent>
+          <p className="text-xs">
+            User is registered in Brivo but not yet assigned to an access group.
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   ) : (
-    <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+    baseBadge
   );
 
   return (
@@ -1178,9 +1240,11 @@ function DoorAccessStatus({
         ) : (
           <p className="text-xs text-gray-500">
             {eligible
-              ? user.brivoPersonId
+              ? user.hasLevel4DoorAccessProvisioned
                 ? "24/7 access active"
-                : "Eligible – syncing shortly"
+                : user.brivoPersonId
+                  ? "Registered in Brivo – assign to access group to enable door access"
+                  : "Eligible – syncing shortly"
               : "Not eligible (role < 4 or membership revoked)"}
           </p>
         )}
@@ -2048,6 +2112,7 @@ export default function AdminSettings() {
       brivoPersonId?: string | null;
       brivoLastSyncedAt?: Date | string | null;
       brivoSyncError?: string | null;
+      hasLevel4DoorAccessProvisioned: boolean;
     }>;
     volunteerHours: Array<{
       id: number;

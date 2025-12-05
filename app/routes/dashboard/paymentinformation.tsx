@@ -10,6 +10,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "../../components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "../../components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "../../components/ui/Dashboard/guestsidebar";
+import { CountryDropdown } from "@/components/ui/country-dropdown";
 import { getUserId, getRoleUser } from "~/utils/session.server";
 import { getProfileDetails } from "~/models/profile.server";
 import { getSavedPaymentMethod } from "~/models/user.server";
@@ -39,6 +40,62 @@ export const loader: LoaderFunction = async ({ request }) => {
   const savedPaymentMethod = await getSavedPaymentMethod(parseInt(userId));
 
   return { user, savedPaymentMethod, roleUser };
+};
+
+const sanitizeDigits = (value: string) => value.replace(/\D/g, "");
+
+const isValidCardNumber = (value: string | null) => {
+  if (!value) return false;
+  const digits = sanitizeDigits(value);
+  if (digits.length < 13 || digits.length > 19) return false;
+  if (/^0+$/.test(digits)) return false;
+
+  let sum = 0;
+  let shouldDouble = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let digit = parseInt(digits.charAt(i), 10);
+    if (Number.isNaN(digit)) return false;
+
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+
+  return sum % 10 === 0;
+};
+
+const normalizeYear = (year: number) => {
+  if (year < 100) {
+    return 2000 + year;
+  }
+  return year;
+};
+
+const isExpiryInFuture = (monthStr: string | null, yearStr: string | null) => {
+  if (!monthStr || !yearStr) return false;
+  const month = parseInt(monthStr, 10);
+  let year = parseInt(yearStr, 10);
+  if (Number.isNaN(month) || Number.isNaN(year)) return false;
+  if (month < 1 || month > 12) return false;
+  year = normalizeYear(year);
+
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+
+  if (year > currentYear) return true;
+  if (year < currentYear) return false;
+  return month >= currentMonth;
+};
+
+const isValidCvc = (value: string | null) => {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return /^\d{3,4}$/.test(trimmed);
 };
 
 // Action - Handle form submission and card deletion
@@ -92,11 +149,21 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   if (!cardholderName) errors.cardholderName = "Cardholder name is required";
-  if (!cardNumber || cardNumber.replace(/\s/g, "").length !== 16)
-    errors.cardNumber = "Valid card number is required";
-  if (!expiryMonth || !expiryYear) errors.expiry = "Expiry date is required";
-  if (!cvc || cvc.length < 3 || cvc.length > 4)
-    errors.cvc = "Valid CVC is required";
+  if (!cardNumber) {
+    errors.cardNumber = "Card number is required";
+  } else if (!isValidCardNumber(cardNumber)) {
+    errors.cardNumber = "Enter a valid card number";
+  }
+  if (!expiryMonth || !expiryYear) {
+    errors.expiry = "Expiry date is required";
+  } else if (!isExpiryInFuture(expiryMonth, expiryYear)) {
+    errors.expiry = "Card has expired";
+  }
+  if (!cvc) {
+    errors.cvc = "CVC is required";
+  } else if (!isValidCvc(cvc)) {
+    errors.cvc = "CVC must be 3 or 4 digits";
+  }
   if (!billingAddressLine1)
     errors.billingAddressLine1 = "Billing address is required";
   if (!billingCity) errors.billingCity = "City is required";
@@ -159,9 +226,17 @@ export default function PaymentInformationPage() {
     success?: boolean;
     deleted?: boolean;
   }>();
+  const { user, savedPaymentMethod, roleUser } = loaderData;
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const { user, savedPaymentMethod, roleUser } = loaderData;
+  const computedBillingCountry =
+    actionData?.values?.billingCountry ||
+    savedPaymentMethod?.billingCountry ||
+    "";
+  const [billingCountry, setBillingCountry] = useState(computedBillingCountry);
+  useEffect(() => {
+    setBillingCountry(computedBillingCountry);
+  }, [computedBillingCountry]);
 
   // Determine which sidebar to show based on role
   const isAdmin =
@@ -797,33 +872,19 @@ export default function PaymentInformationPage() {
                               >
                                 Country
                               </label>
-                              <select
+                              <CountryDropdown
+                                value={billingCountry}
+                                onChange={(code) => setBillingCountry(code)}
+                                placeholder="Select country"
+                                error={actionData?.errors?.billingCountry}
+                                disabled={isEditMode}
+                              />
+                              <input
+                                type="hidden"
                                 id="billingCountry"
                                 name="billingCountry"
-                                className={`w-full px-3 py-2 border rounded-md ${
-                                  actionData?.errors?.billingCountry
-                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                                }`}
-                                defaultValue={
-                                  actionData?.values?.billingCountry ||
-                                  savedPaymentMethod?.billingCountry ||
-                                  ""
-                                }
-                              >
-                                <option value="">Select Country</option>
-                                <option value="US">United States</option>
-                                <option value="CA">Canada</option>
-                                <option value="MX">Mexico</option>
-                                <option value="UK">United Kingdom</option>
-                                <option value="AU">Australia</option>
-                                <option value="NZ">New Zealand</option>
-                                <option value="JP">Japan</option>
-                                <option value="FR">France</option>
-                                <option value="DE">Germany</option>
-                                <option value="IT">Italy</option>
-                                {/* Add more countries later as needed */}
-                              </select>
+                                value={billingCountry || ""}
+                              />
                               {actionData?.errors?.billingCountry && (
                                 <p className="mt-1 text-sm text-red-600">
                                   {actionData.errors.billingCountry}
@@ -869,14 +930,14 @@ export default function PaymentInformationPage() {
                 <div className="flex flex-col md:flex-row items-center gap-6 text-center md:text-left">
                   <div className="bg-gray-50 p-4 rounded-lg flex items-center justify-center w-full md:w-auto">
                     <svg
-                      width="100"
-                      height="40"
-                      viewBox="0 0 60 25"
                       xmlns="http://www.w3.org/2000/svg"
+                      width="76.57"
+                      height="32"
+                      viewBox="0 0 512 214"
                     >
                       <path
-                        d="M28.7 10.9c-0.8-0.2-0.8-0.3-0.8-0.5 0-0.2 0.2-0.3 0.6-0.3 0.2 0 0.5 0 0.9 0.2 0.1 0 0.2 0.1 0.3 0.1 0.2 0 0.3-0.1 0.4-0.3l0.2-0.6c0-0.2-0.1-0.3-0.2-0.4C29.7 8.9 29.2 8.8 28.6 8.8c-1.5 0-2.4 0.8-2.4 2 0 1 0.6 1.5 1.9 1.8 0.8 0.2 0.8 0.3 0.8 0.5 0 0.3-0.2 0.4-0.8 0.4 -0.4 0-0.8-0.1-1.1-0.2 -0.1 0-0.2-0.1-0.3-0.1 -0.2 0-0.3 0.1-0.4 0.3l-0.2 0.6c-0.1 0.2 0 0.3 0.1 0.4 0.3 0.2 0.9 0.4 1.9 0.4 1.5 0 2.5-0.8 2.5-2.1C30.6 11.7 30 11.2 28.7 10.9M22.1 14.3h-1.1c-0.4 0-0.7-0.3-0.7-0.7V9.6c0-0.4 0.3-0.7 0.7-0.7h1.1c0.4 0 0.7 0.3 0.7 0.7v4.1C22.7 14 22.5 14.3 22.1 14.3M22.5 8.1h-1.8c-0.3 0-0.5-0.2-0.5-0.5V6.7c0-0.3 0.2-0.5 0.5-0.5h1.8c0.3 0 0.5 0.2 0.5 0.5v0.9C23 7.9 22.8 8.1 22.5 8.1M18.5 14.3h-1.1c-0.4 0-0.7-0.3-0.7-0.7v-4.7h-1.3c-0.4 0-0.7-0.3-0.7-0.7V7.3c0-0.4 0.3-0.7 0.7-0.7h1.3V5.9c0-0.8 0.2-1.4 0.7-1.9C17.7 3.5 18.3 3.3 19 3.3c0.3 0 0.5 0 0.7 0.1 0.2 0.1 0.3 0.2 0.3 0.4v0.8c0 0.2-0.1 0.4-0.3 0.4 -0.1 0-0.1 0-0.2 0 -0.5 0-0.7 0.2-0.7 0.8v0.8h1c0.4 0 0.7 0.3 0.7 0.7v0.9c0 0.4-0.3 0.7-0.7 0.7h-1v4.7C19.2 14 18.9 14.3 18.5 14.3M10.9 9c-0.5 0-0.9 0.2-1.2 0.6 -0.3 0.4-0.5 0.9-0.5 1.5 0 0.7 0.2 1.2 0.5 1.5 0.3 0.4 0.7 0.6 1.2 0.6 0.5 0 0.9-0.2 1.2-0.5 0.3-0.4 0.5-0.9 0.5-1.5 0-0.7-0.2-1.2-0.5-1.5C11.8 9.2 11.4 9 10.9 9 10.9 9 10.9 9 10.9 9M10.9 14.7c-0.5 0-0.9-0.1-1.4-0.3 -0.4-0.2-0.8-0.5-1.1-0.8s-0.5-0.8-0.7-1.3c-0.2-0.5-0.2-1-0.2-1.5 0-0.5 0.1-1 0.2-1.5 0.2-0.5 0.4-0.9 0.7-1.3 0.3-0.4 0.7-0.6 1.1-0.8 0.4-0.2 0.9-0.3 1.4-0.3 0.5 0 0.9 0.1 1.4 0.3 0.4 0.2 0.8 0.5 1.1 0.8 0.3 0.4 0.5 0.8 0.7 1.3 0.2 0.5 0.2 1 0.2 1.5 0 0.5-0.1 1-0.2 1.5 -0.2 0.5-0.4 0.9-0.7 1.3 -0.3 0.4-0.7 0.6-1.1 0.8C11.9 14.6 11.4 14.7 10.9 14.7M6.7 6.7C6.3 6.5 5.9 6.5 5.5 6.5c-0.5 0-1 0.1-1.4 0.3S3.3 7.3 3 7.7C2.7 8 2.4 8.5 2.3 9c-0.2 0.5-0.3 1-0.3 1.6 0 0.6 0.1 1.1 0.3 1.6 0.2 0.5 0.4 0.9 0.7 1.3 0.3 0.4 0.7 0.6 1.1 0.8 0.4 0.2 0.9 0.3 1.5 0.3 0.8 0 1.5-0.2 2.1-0.6 0.2-0.1 0.2-0.3 0.2-0.5 0-0.3-0.3-0.4-0.5-0.4 -0.1 0-0.2 0-0.3 0.1 -0.5 0.3-0.9 0.4-1.5 0.4 -0.7 0-1.3-0.2-1.7-0.7C2.6 12.4 2.3 11.8 2.3 11h5.5c0.4 0 0.7-0.3 0.7-0.7 0-0.7-0.1-1.3-0.2-1.8 -0.2-0.5-0.4-0.9-0.6-1.2 -0.3-0.3-0.6-0.5-0.9-0.7M5.5 7.5c0.6 0 1.1 0.2 1.4 0.5C7.3 8.3 7.5 8.8 7.6 9.5H2.3c0.1-0.7 0.4-1.3 0.8-1.6C3.6 7.7 4.2 7.5 4.8 7.5 4.9 7.5 5 7.5 5.1 7.5c0.1 0 0.2 0 0.3 0 0 0 0.1 0 0.1 0C5.5 7.5 5.5 7.5 5.5 7.5"
                         fill="#635BFF"
+                        d="M512 110.08c0-36.409-17.636-65.138-51.342-65.138c-33.85 0-54.33 28.73-54.33 64.854c0 42.808 24.179 64.426 58.88 64.426c16.925 0 29.725-3.84 39.396-9.244v-28.445c-9.67 4.836-20.764 7.823-34.844 7.823c-13.796 0-26.027-4.836-27.591-21.618h69.547c0-1.85.284-9.245.284-12.658m-70.258-13.511c0-16.071 9.814-22.756 18.774-22.756c8.675 0 17.92 6.685 17.92 22.756zm-90.31-51.627c-13.939 0-22.899 6.542-27.876 11.094l-1.85-8.818h-31.288v165.83l35.555-7.537l.143-40.249c5.12 3.698 12.657 8.96 25.173 8.96c25.458 0 48.64-20.48 48.64-65.564c-.142-41.245-23.609-63.716-48.498-63.716m-8.534 97.991c-8.391 0-13.37-2.986-16.782-6.684l-.143-52.765c3.698-4.124 8.818-6.968 16.925-6.968c12.942 0 21.902 14.506 21.902 33.137c0 19.058-8.818 33.28-21.902 33.28M241.493 36.551l35.698-7.68V0l-35.698 7.538zm0 10.809h35.698v124.444h-35.698zm-38.257 10.524L200.96 47.36h-30.72v124.444h35.556V87.467c8.39-10.951 22.613-8.96 27.022-7.396V47.36c-4.551-1.707-21.191-4.836-29.582 10.524m-71.112-41.386l-34.702 7.395l-.142 113.92c0 21.05 15.787 36.551 36.836 36.551c11.662 0 20.195-2.133 24.888-4.693V140.8c-4.55 1.849-27.022 8.391-27.022-12.658V77.653h27.022V47.36h-27.022zM35.982 83.484c0-5.546 4.551-7.68 12.09-7.68c10.808 0 24.461 3.272 35.27 9.103V51.484c-11.804-4.693-23.466-6.542-35.27-6.542C19.2 44.942 0 60.018 0 85.192c0 39.252 54.044 32.995 54.044 49.92c0 6.541-5.688 8.675-13.653 8.675c-11.804 0-26.88-4.836-38.827-11.378v33.849c13.227 5.689 26.596 8.106 38.827 8.106c29.582 0 49.92-14.648 49.92-40.106c-.142-42.382-54.329-34.845-54.329-50.774"
                       />
                     </svg>
                   </div>

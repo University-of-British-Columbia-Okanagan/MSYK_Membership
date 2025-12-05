@@ -722,23 +722,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Account Activity */}
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-              <div className="p-6 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Recent Activity
-                </h3>
-              </div>
-              <div className="p-6">
-                <div className="space-y-4">
-                  {/* You could add recent activity items here */}
-                  <p className="text-gray-500 text-center py-4">
-                    No recent activity to display
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {/* Orientation History */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 border-b border-gray-200">
