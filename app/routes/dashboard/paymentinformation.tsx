@@ -68,6 +68,22 @@ const isValidCardNumber = (value: string | null) => {
   return sum % 10 === 0;
 };
 
+const formatCardNumber = (value: string) => {
+  const v = value.replace(/\s+/g, "").replace(/[^0-9]/gi, "");
+  const matches = v.match(/\d{4,16}/g);
+  const match = (matches && matches[0]) || "";
+  const parts = [];
+
+  for (let i = 0; i < match.length; i += 4) {
+    parts.push(match.substring(i, i + 4));
+  }
+
+  if (parts.length) {
+    return parts.join(" ");
+  }
+  return value;
+};
+
 const normalizeYear = (year: number) => {
   if (year < 100) {
     return 2000 + year;
@@ -234,9 +250,33 @@ export default function PaymentInformationPage() {
     savedPaymentMethod?.billingCountry ||
     "";
   const [billingCountry, setBillingCountry] = useState(computedBillingCountry);
+  const initialCardNumber =
+    typeof actionData?.values?.cardNumber === "string"
+      ? formatCardNumber(actionData.values.cardNumber)
+      : "";
+  const [cardNumber, setCardNumber] = useState(initialCardNumber);
+  const [cardNumberError, setCardNumberError] = useState<string | undefined>();
+  const initialCvc =
+    typeof actionData?.values?.cvc === "string"
+      ? sanitizeDigits(actionData.values.cvc).slice(0, 4)
+      : "";
+  const [cvc, setCvc] = useState(initialCvc);
+  const [cvcError, setCvcError] = useState<string | undefined>();
   useEffect(() => {
     setBillingCountry(computedBillingCountry);
   }, [computedBillingCountry]);
+  useEffect(() => {
+    if (typeof actionData?.values?.cardNumber === "string") {
+      setCardNumber(formatCardNumber(actionData.values.cardNumber));
+      setCardNumberError(undefined);
+    }
+  }, [actionData?.values?.cardNumber]);
+  useEffect(() => {
+    if (typeof actionData?.values?.cvc === "string") {
+      setCvc(sanitizeDigits(actionData.values.cvc).slice(0, 4));
+      setCvcError(undefined);
+    }
+  }, [actionData?.values?.cvc]);
 
   // Determine which sidebar to show based on role
   const isAdmin =
@@ -273,23 +313,30 @@ export default function PaymentInformationPage() {
     }
   }, [actionData, showSuccessMessage, navigate]);
 
-  // Credit card input formatting
-  const formatCardNumber = (value: string) => {
-    const v = value.replace(/\s+/g, "").replace(/[^0-9]/gi, "");
-    const matches = v.match(/\d{4,16}/g);
-    const match = (matches && matches[0]) || "";
-    const parts = [];
-
-    for (let i = 0; i < match.length; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-
-    if (parts.length) {
-      return parts.join(" ");
-    } else {
-      return value;
+  const handleCardNumberChange = (value: string) => {
+    const formatted = formatCardNumber(value);
+    setCardNumber(formatted);
+    if (cardNumberError) {
+      setCardNumberError(undefined);
     }
   };
+
+  const handleCardNumberBlur = () => {
+    const digits = sanitizeDigits(cardNumber);
+    if (!digits) {
+      setCardNumberError(undefined);
+      return;
+    }
+    if (!isValidCardNumber(cardNumber)) {
+      setCardNumberError("Enter a valid card number");
+    } else {
+      setCardNumberError(undefined);
+    }
+  };
+
+  const cardNumberInlineError =
+    cardNumberError || actionData?.errors?.cardNumber;
+  const cvcInlineError = cvcError || actionData?.errors?.cvc;
 
   const isEditMode = !!savedPaymentMethod;
 
@@ -580,28 +627,25 @@ export default function PaymentInformationPage() {
                               id="cardNumber"
                               name="cardNumber"
                               className={`w-full px-3 py-2 border rounded-md ${
-                                actionData?.errors?.cardNumber
+                              cardNumberInlineError
                                   ? "border-red-300 focus:ring-red-500 focus:border-red-500"
                                   : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                               }`}
                               placeholder="1234 5678 9012 3456"
                               maxLength={19}
-                              onChange={(e) => {
-                                e.target.value = formatCardNumber(
-                                  e.target.value
-                                );
-                              }}
-                              defaultValue={
-                                actionData?.values?.cardNumber || ""
-                              }
+                            value={cardNumber}
+                            onChange={(e) =>
+                              handleCardNumberChange(e.target.value)
+                            }
+                            onBlur={handleCardNumberBlur}
                             />
                             <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                               <Lock className="h-4 w-4 text-gray-400" />
                             </div>
                           </div>
-                          {actionData?.errors?.cardNumber && (
+                        {cardNumberInlineError && (
                             <p className="mt-1 text-sm text-red-600">
-                              {actionData.errors.cardNumber}
+                            {cardNumberInlineError}
                             </p>
                           )}
                         </div>
@@ -696,21 +740,42 @@ export default function PaymentInformationPage() {
                                 id="cvc"
                                 name="cvc"
                                 className={`w-full px-3 py-2 border rounded-md ${
-                                  actionData?.errors?.cvc
+                                  cvcInlineError
                                     ? "border-red-300 focus:ring-red-500 focus:border-red-500"
                                     : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
                                 }`}
                                 placeholder="123"
                                 maxLength={4}
-                                defaultValue={actionData?.values?.cvc || ""}
+                                value={cvc}
+                                onChange={(e) => {
+                                  const digits = sanitizeDigits(e.target.value).slice(
+                                    0,
+                                    4
+                                  );
+                                  setCvc(digits);
+                                  if (cvcError) {
+                                    setCvcError(undefined);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (!cvc) {
+                                    setCvcError(undefined);
+                                    return;
+                                  }
+                                  if (!isValidCvc(cvc)) {
+                                    setCvcError("CVC must be 3 or 4 digits");
+                                  } else {
+                                    setCvcError(undefined);
+                                  }
+                                }}
                               />
                               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                                 <Lock className="h-4 w-4 text-gray-400" />
                               </div>
                             </div>
-                            {actionData?.errors?.cvc && (
+                            {cvcInlineError && (
                               <p className="mt-1 text-sm text-red-600">
-                                {actionData.errors.cvc}
+                                {cvcInlineError}
                               </p>
                             )}
                           </div>
