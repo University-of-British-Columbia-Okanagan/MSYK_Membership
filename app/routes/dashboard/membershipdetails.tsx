@@ -46,7 +46,7 @@ export async function loader({
   params: { membershipId: string };
 }) {
   const user = await getUser(request);
-  if (!user) throw redirect("/login");
+  if (!user) throw redirect("/dashboard");
 
   const roleUser = await getRoleUser(request);
   const membershipId = Number(params.membershipId);
@@ -61,6 +61,34 @@ export async function loader({
 
   const userActiveMembership = await getUserActiveMembership(user.id);
   const userRecord = await getUserById(user.id);
+
+  const roleRedirect =
+    roleUser?.roleName?.toLowerCase() === "admin"
+      ? "/dashboard/admin"
+      : "/dashboard/user";
+
+  if (
+    userActiveMembership &&
+    userActiveMembership.membershipPlanId === membershipId &&
+    userActiveMembership.status === "active"
+  ) {
+    throw redirect(roleRedirect);
+  }
+
+  if (
+    membershipPlan.needAdminPermission &&
+    ((userRecord?.roleLevel ?? 0) < 3 || userRecord?.allowLevel4 !== true)
+  ) {
+    throw redirect(roleRedirect);
+  }
+
+  if (
+    userActiveMembership &&
+    userActiveMembership.billingCycle &&
+    userActiveMembership.billingCycle !== "monthly"
+  ) {
+    throw redirect(roleRedirect);
+  }
 
   // Check if user already has a signed agreement for this membership (pending or active)
   const existingForm = await getUserMembershipForm(user.id, membershipId);
