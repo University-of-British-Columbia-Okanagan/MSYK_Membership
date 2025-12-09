@@ -1077,7 +1077,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 - **High**:
   - ~~In a multi day orientation, you still have to pass individual times even though it is multi day **[ARIQ WILL DO THIS]**~~
   - ~~Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**~~
-  - Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"
+  - ~~Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"~~
   - Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops
   - Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)
   - People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)

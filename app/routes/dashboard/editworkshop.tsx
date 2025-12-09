@@ -2004,6 +2004,7 @@ export default function EditWorkshop() {
                           }
                         }}
                         className="sr-only peer"
+                        disabled={true}
                       />
                       <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
@@ -2013,7 +2014,7 @@ export default function EditWorkshop() {
                     </span>
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
-                    Enable this to create multiple pricing options. The first
+                    If checked, this workshop has multiple pricing options. The first
                     price field will be disabled and pricing will be managed
                     through price variations
                   </p>
