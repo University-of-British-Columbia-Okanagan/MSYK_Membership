@@ -736,29 +736,85 @@ export default function ProfilePage() {
                 {completedOrientations.length > 0 ? (
                   <div className="space-y-4">
                     {completedOrientations.map((orientation, index) => {
-                      // Check if this is a multi-day orientation by grouping by workshop
+                      // Check if this orientation has a connectId (multi-day)
+                      const connectId = orientation.occurrence.connectId;
+
+                      // Create a unique group key for the React key prop
+                      const groupKey = connectId
+                        ? `${orientation.workshop.id}-${connectId}`
+                        : `${orientation.workshop.id}`;
+
+                      // Group by workshop.id AND connectId (if it exists)
+                      // This groups all occurrences with same connectId together
+                      // And groups single-day by workshop.id
                       const workshopGroup = completedOrientations.filter(
-                        (item) => item.workshop.id === orientation.workshop.id
+                        (item) => {
+                          // If both have connectId, they must match
+                          if (
+                            connectId !== null &&
+                            item.occurrence.connectId !== null
+                          ) {
+                            return (
+                              item.occurrence.connectId === connectId &&
+                              item.workshop.id === orientation.workshop.id
+                            );
+                          }
+                          // If neither has connectId, group by workshop.id only
+                          if (
+                            connectId === null &&
+                            item.occurrence.connectId === null
+                          ) {
+                            return item.workshop.id === orientation.workshop.id;
+                          }
+                          // Don't mix connectId and non-connectId
+                          return false;
+                        }
                       );
 
-                      // Only render the first occurrence of each workshop
+                      // Only show "Multi-Day" badge if there's a connectId AND multiple sessions
+                      const isMultiDay =
+                        connectId !== null && workshopGroup.length > 1;
+
+                      // Only render the first occurrence of each group
                       const isFirstOccurrence =
-                        completedOrientations.findIndex(
-                          (item) => item.workshop.id === orientation.workshop.id
-                        ) === index;
+                        completedOrientations.findIndex((item) => {
+                          if (
+                            connectId !== null &&
+                            item.occurrence.connectId !== null
+                          ) {
+                            return (
+                              item.occurrence.connectId === connectId &&
+                              item.workshop.id === orientation.workshop.id
+                            );
+                          }
+                          if (
+                            connectId === null &&
+                            item.occurrence.connectId === null
+                          ) {
+                            return item.workshop.id === orientation.workshop.id;
+                          }
+                          return false;
+                        }) === index;
 
                       if (!isFirstOccurrence) return null;
 
                       return (
                         <div
-                          key={orientation.workshop.id}
+                          key={groupKey}
                           className="border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow"
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                             <div className="flex-1">
-                              <h4 className="font-medium text-gray-900 mb-1">
-                                {orientation.workshop.name}
-                              </h4>
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-medium text-gray-900">
+                                  {orientation.workshop.name}
+                                </h4>
+                                {isMultiDay && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                    Multi-Day ({workshopGroup.length} sessions)
+                                  </span>
+                                )}
+                              </div>
                               {orientation.workshop.description && (
                                 <p className="text-sm text-gray-600 mb-2">
                                   {orientation.workshop.description}
@@ -792,9 +848,6 @@ export default function ProfilePage() {
                             <div className="text-right">
                               {workshopGroup.length > 1 ? (
                                 <div className="text-sm text-gray-600">
-                                  <p className="font-medium">
-                                    {/* Multi-day training/orientation: */}
-                                  </p>
                                   {workshopGroup
                                     .sort(
                                       (a, b) =>
