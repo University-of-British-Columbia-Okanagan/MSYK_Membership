@@ -1785,6 +1785,7 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
       user: true,
       occurrence: true,
       workshop: true,
+      priceVariation: true,
     },
   });
 }

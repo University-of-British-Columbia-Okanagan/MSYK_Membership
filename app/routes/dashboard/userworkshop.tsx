@@ -33,6 +33,7 @@ interface LoaderData {
     user: { id: number; firstName: string; lastName: string };
     occurrence: { startDate: string; endDate: string } | null;
     workshop?: { name: string; type: string };
+    priceVariation?: { id: number; name: string; price: number } | null;
   }>;
 }
 
@@ -109,6 +110,15 @@ export default function WorkshopUsers() {
     {
       header: "Last Name",
       render: (reg) => reg.user.lastName,
+    },
+    {
+      header: "Price Variation",
+      render: (reg) => {
+        if (reg.priceVariation) {
+          return `${reg.priceVariation.name} ($${reg.priceVariation.price})`;
+        }
+        return "N/A";
+      },
     },
     {
       header: "Result",
