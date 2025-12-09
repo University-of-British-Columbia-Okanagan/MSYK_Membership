@@ -70,6 +70,24 @@ export async function loader({
     true
   );
 
+  if (equipmentId) {
+    const selectedEquipment: any = equipmentWithSlots.find(
+      (equip) => equip.id === equipmentId
+    );
+    const isAdmin =
+      roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
+    const isUnavailable =
+      !selectedEquipment || selectedEquipment.availability === false;
+    if (isUnavailable) {
+      const redirectPath = !roleUser
+        ? "/dashboard"
+        : isAdmin
+          ? "/dashboard/admin"
+          : "/dashboard/user";
+      throw redirect(redirectPath);
+    }
+  }
+
   // Check prerequisites for all equipment
   const equipmentPrerequisiteMap: Record<number, boolean> = {};
   if (user && (roleLevel === 3 || roleLevel === 4)) {
@@ -137,6 +155,14 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const user = await getUser(request);
   const roleLevel = user?.roleLevel ?? 1;
+  const roleUser = await getRoleUser(request);
+  const isAdmin =
+    roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
+  const roleRedirectPath = !roleUser
+    ? "/dashboard"
+    : isAdmin
+      ? "/dashboard/admin"
+      : "/dashboard/user";
 
   if (!user) {
     logger.warn(`[Guest] Attempt to book equipment without authentication`, {
@@ -178,19 +204,12 @@ export async function action({ request }: { request: Request }) {
   }
 
   const equipment = await getEquipmentById(equipmentId);
-  if (!equipment) {
-    logger.warn(`[User: ${user.id}] Equipment ID ${equipmentId} not found`, {
-      url: request.url,
-    });
-    throw new Response("Equipment Not Found", { status: 404 });
-  }
-
-  if (!equipment.availability) {
+  if (!equipment || !equipment.availability) {
     logger.warn(
-      `[User: ${user.id}] Equipment ID ${equipmentId} is not available`,
+      `[User: ${user.id}] Equipment ID ${equipmentId} unavailable or missing`,
       { url: request.url }
     );
-    throw new Response("Equipment Not Available", { status: 419 });
+    return redirect(roleRedirectPath);
   }
 
   // Check prerequisites before allowing booking
