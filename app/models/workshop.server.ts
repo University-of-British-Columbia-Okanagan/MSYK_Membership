@@ -1794,10 +1794,7 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
       workshop: true,
       priceVariation: true,
     },
-    orderBy: [
-      { userId: 'asc' },
-      { occurrence: { startDate: 'asc' } },
-    ],
+    orderBy: [{ userId: "asc" }, { occurrence: { startDate: "asc" } }],
   });
 }
 
@@ -3077,6 +3074,7 @@ export async function getUserCompletedOrientations(userId: number) {
           id: true,
           startDate: true,
           endDate: true,
+          connectId: true,
         },
       },
       priceVariation: {
