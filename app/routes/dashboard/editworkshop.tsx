@@ -2233,7 +2233,7 @@ export default function EditWorkshop() {
                                   if (registrationCount > 0) {
                                     return (
                                       <div className="text-xs text-blue-600 mt-1">
-                                        A max of {registrationCount} user(s)
+                                        A max of {registrationCount} user
                                         {registrationCount !== 1
                                           ? "s"
                                           : ""}{" "}
