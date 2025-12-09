@@ -1,11 +1,12 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, redirect } from "react-router";
+import { useLoaderData, redirect, useParams, Link } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import { getUserWorkshopRegistrationsByWorkshopId } from "~/models/workshop.server";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import { FiSearch, FiChevronDown, FiChevronRight } from "react-icons/fi";
+import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -15,6 +16,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
+import { Button } from "@/components/ui/button";
 
 interface Registration {
   id: number;
@@ -72,6 +74,7 @@ export async function loader({
 
 export default function WorkshopUsers() {
   const { roleUser, registrations } = useLoaderData<LoaderData>();
+  const { workshopId } = useParams();
 
   const isAdmin =
     roleUser &&
@@ -199,6 +202,20 @@ export default function WorkshopUsers() {
           <div className="flex items-center gap-4 mb-6 md:hidden">
             <SidebarTrigger />
             <h1 className="text-xl font-bold">Workshop Users</h1>
+          </div>
+
+          {/* Back to Workshop Button */}
+          <div className="mb-6">
+            <Button
+              variant="outline"
+              onClick={() =>
+                (window.location.href = `/dashboard/workshops/${workshopId}`)
+              }
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Workshop
+            </Button>
           </div>
 
           <h1 className="text-2xl font-bold mb-4 hidden md:block">
