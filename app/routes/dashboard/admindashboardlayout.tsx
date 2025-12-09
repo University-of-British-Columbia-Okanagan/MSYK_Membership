@@ -166,6 +166,34 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (action === "updateMultipleResults") {
+    const registrationIdsStr = formData.get("registrationIds");
+    const newResult = formData.get("newResult");
+    if (registrationIdsStr && newResult) {
+      const registrationIds = JSON.parse(
+        registrationIdsStr as string
+      ) as number[];
+      try {
+        await updateMultipleRegistrations(registrationIds, String(newResult));
+        logger.info(
+          `[User: ${roleUser?.userId}] updateMultipleResults executed for ${registrationIds.length} registrations`,
+          {
+            registrationIds,
+            newResult,
+            url: request.url,
+          }
+        );
+        return redirect("/dashboard/admin");
+      } catch (error) {
+        logger.error(`Error updating multiple registrations: ${error}`, {
+          registrationIds,
+          url: request.url,
+        });
+        return { error: "Failed to update registrations" };
+      }
+    }
+  }
+
   return null;
 }
 

@@ -21,9 +21,9 @@ interface Registration {
   result: string;
   date: string | Date;
   user: { id: number; firstName: string; lastName: string; email: string };
-  occurrence: { 
+  occurrence: {
     id: number;
-    startDate: string; 
+    startDate: string;
     endDate: string;
     connectId: number | null;
   };
@@ -65,9 +65,8 @@ export async function loader({
     return redirect("/login");
   }
   const workshopId = Number(params.workshopId);
-  const registrations = await getUserWorkshopRegistrationsByWorkshopId(
-    workshopId
-  );
+  const registrations =
+    await getUserWorkshopRegistrationsByWorkshopId(workshopId);
   return { roleUser, registrations };
 }
 
@@ -121,7 +120,7 @@ export default function WorkshopUsers() {
 
       const group = groups.get(key)!;
       group.registrations.push(reg);
-      
+
       // Check if all registrations in group are passed
       if (reg.result !== "passed") {
         group.allPassed = false;
@@ -134,7 +133,8 @@ export default function WorkshopUsers() {
   // Filter by user name
   const filteredGroups = useMemo(() => {
     return groupedRegistrations.filter((group) => {
-      const userName = `${group.userFirstName} ${group.userLastName}`.toLowerCase();
+      const userName =
+        `${group.userFirstName} ${group.userLastName}`.toLowerCase();
       return searchUser === "" || userName.includes(searchUser.toLowerCase());
     });
   }, [groupedRegistrations, searchUser]);
@@ -171,41 +171,23 @@ export default function WorkshopUsers() {
     window.location.reload();
   };
 
-  const handleUpdateGroupResult = async (group: GroupedRegistration, newResult: string) => {
-    // For multi-day workshops, update all dates
+  const handleUpdateGroupResult = async (
+    group: GroupedRegistration,
+    newResult: string
+  ) => {
+    // Get all registration IDs in the group
     const registrationIds = group.registrations.map((reg) => reg.id);
-    
-    if (group.isMultiDay) {
-      // Update all registrations in the group
-      const formData = new FormData();
-      formData.append("action", "passAll");
-      formData.append("registrationIds", JSON.stringify(registrationIds));
-      // We'll use the same endpoint but map the result value
-      
-      // If the action needs to support different statuses, we need to call updateRegistrationResult for each
-      for (const regId of registrationIds) {
-        const formData = new FormData();
-        formData.append("action", "updateRegistrationResult");
-        formData.append("registrationId", regId.toString());
-        formData.append("newResult", newResult);
-        await fetch("/dashboard/admin", {
-          method: "POST",
-          body: formData,
-        });
-      }
-      window.location.reload();
-    } else {
-      // Single registration
-      const formData = new FormData();
-      formData.append("action", "updateRegistrationResult");
-      formData.append("registrationId", registrationIds[0].toString());
-      formData.append("newResult", newResult);
-      await fetch("/dashboard/admin", {
-        method: "POST",
-        body: formData,
-      });
-      window.location.reload();
-    }
+
+    const formData = new FormData();
+    formData.append("action", "updateMultipleResults");
+    formData.append("registrationIds", JSON.stringify(registrationIds));
+    formData.append("newResult", newResult);
+
+    await fetch("/dashboard/admin", {
+      method: "POST",
+      body: formData,
+    });
+    window.location.reload();
   };
 
   return (
@@ -324,7 +306,9 @@ export default function WorkshopUsers() {
                                 <SelectContent>
                                   <SelectItem value="passed">Passed</SelectItem>
                                   <SelectItem value="failed">Failed</SelectItem>
-                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="pending">
+                                    Pending
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
                               {group.isMultiDay && (
@@ -358,7 +342,9 @@ export default function WorkshopUsers() {
                                 ).toLocaleDateString()}{" "}
                                 -{" "}
                                 {new Date(
-                                  group.registrations[group.registrations.length - 1].occurrence.endDate
+                                  group.registrations[
+                                    group.registrations.length - 1
+                                  ].occurrence.endDate
                                 ).toLocaleDateString()}
                               </div>
                               {isExpanded && (
@@ -378,8 +364,8 @@ export default function WorkshopUsers() {
                                           reg.result === "passed"
                                             ? "bg-green-100 text-green-800"
                                             : reg.result === "failed"
-                                            ? "bg-red-100 text-red-800"
-                                            : "bg-yellow-100 text-yellow-800"
+                                              ? "bg-red-100 text-red-800"
+                                              : "bg-yellow-100 text-yellow-800"
                                         }`}
                                       >
                                         {reg.result}
