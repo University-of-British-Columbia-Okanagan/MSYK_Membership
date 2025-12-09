@@ -77,17 +77,16 @@ export async function loader({
     const isAdmin =
       roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
     const isUnavailable =
-      !selectedEquipment || selectedEquipment.availability === false;
+      !selectedEquipment || !selectedEquipment.availability;
     if (isUnavailable) {
       const redirectPath = !roleUser
-        ? "/dashboard"
+        ? "/dashboard?message=equipment_unavailable"
         : isAdmin
-          ? "/dashboard/admin"
-          : "/dashboard/user";
+          ? "/dashboard/admin?message=equipment_unavailable"
+          : "/dashboard/user?message=equipment_unavailable";
       throw redirect(redirectPath);
     }
   }
-
   // Check prerequisites for all equipment
   const equipmentPrerequisiteMap: Record<number, boolean> = {};
   if (user && (roleLevel === 3 || roleLevel === 4)) {
