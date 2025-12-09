@@ -26,10 +26,27 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
 
+function isPastRegistrationCutoff(
+  startDate: Date,
+  cutoffMinutes?: number | null
+): boolean {
+  if (!cutoffMinutes || cutoffMinutes <= 0) {
+    return false;
+  }
+  const cutoffTime = new Date(startDate);
+  cutoffTime.setMinutes(cutoffTime.getMinutes() - cutoffMinutes);
+  return new Date() >= cutoffTime;
+}
+
 // Loader: load either workshop data or membership plan data based on route parameters
 export const loader: LoaderFunction = async ({ params, request }) => {
   const user = await getUser(request);
-  if (!user) throw new Response("Unauthorized", { status: 401 });
+  if (!user) {
+    if (params.membershipPlanId) {
+      throw redirect("/dashboard");
+    }
+    throw redirect("/dashboard/workshops");
+  }
 
   // Get role user to determine redirect path
   const roleUser = await getRoleUser(request);
@@ -39,10 +56,13 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
   // Determine redirect path based on user role
   const getRedirectPath = () => {
-    if (!user) return "/dashboard";
+    if (!user) return "/dashboard/workshops";
     if (isAdmin) return "/dashboard/admin";
     return "/dashboard/user";
   };
+
+  const roleRedirectPath = isAdmin ? "/dashboard/admin" : "/dashboard/user";
+  const searchParams = new URL(request.url).searchParams;
 
   const savedPaymentMethod = await getSavedPaymentMethod(user.id);
 
@@ -59,6 +79,16 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     const membershipPlan = await getMembershipPlanById(membershipPlanId);
     if (!membershipPlan)
       throw new Response("Membership Plan not found", { status: 404 });
+
+    const userActiveMembership = await getUserActiveMembership(user.id);
+
+    if (
+      userActiveMembership &&
+      userActiveMembership.membershipPlanId === membershipPlanId &&
+      userActiveMembership.status === "active"
+    ) {
+      throw redirect(roleRedirectPath);
+    }
 
     const url = new URL(request.url);
     const billingCycle =
@@ -78,26 +108,17 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       membershipPrice = membershipPlan.priceYearly;
     }
 
-    // Get user's active membership if any
-    const userActiveMembership = await getUserActiveMembership(user.id);
-
     // Enforce server-side gating for plans requiring admin permission
     if (membershipPlan.needAdminPermission) {
-      const hasActiveSubscription = !!userActiveMembership;
       const meetsLevelRequirement = (userRecord?.roleLevel ?? 0) >= 3;
       const hasAdminPermission = userRecord?.allowLevel4 === true;
-
-      // Check if this is a resubscription - if so, we don't need an active subscription
-      const searchParams = new URL(request.url).searchParams;
       const isResubscription = searchParams.get("resubscribe") === "true";
 
       if (
         !isResubscription &&
-        (!hasActiveSubscription ||
-          !meetsLevelRequirement ||
-          !hasAdminPermission)
+        (!meetsLevelRequirement || !hasAdminPermission)
       ) {
-        throw redirect("/dashboard/memberships");
+        throw redirect(roleRedirectPath);
       }
     }
 
@@ -148,7 +169,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     let isResubscription = false;
 
     // Check if this is a resubscription based on query parameter
-    const searchParams = new URL(request.url).searchParams;
     if (searchParams.get("resubscribe") === "true") {
       isResubscription = true;
       upgradeFee = 0; // No payment needed for resubscription
@@ -172,6 +192,10 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     needsPayment =
       !userActiveMembership ||
       (upgradeFee > 0 && !isDowngrade && !changeNotAllowed);
+
+    if (changeNotAllowed) {
+      throw redirect(roleRedirectPath);
+    }
 
     return {
       membershipPlan: {
@@ -221,6 +245,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     // CHECK: If occurrence is in the past, redirect user
     const now = new Date();
     if (new Date(occurrence.endDate) < now) {
+      throw redirect(getRedirectPath());
+    }
+
+    if (
+      isPastRegistrationCutoff(
+        new Date(occurrence.startDate),
+        workshop.registrationCutoff
+      )
+    ) {
       throw redirect(getRedirectPath());
     }
 
@@ -334,6 +367,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw redirect(getRedirectPath());
     }
 
+    if (
+      isPastRegistrationCutoff(
+        new Date(occurrences[0].startDate),
+        workshop.registrationCutoff
+      )
+    ) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
@@ -396,6 +438,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       (occ) => new Date(occ.endDate) < now
     );
     if (hasAnyPastOccurrence) {
+      throw redirect(getRedirectPath());
+    }
+
+    if (
+      isPastRegistrationCutoff(
+        new Date(occurrences[0].startDate),
+        workshop.registrationCutoff
+      )
+    ) {
       throw redirect(getRedirectPath());
     }
 
