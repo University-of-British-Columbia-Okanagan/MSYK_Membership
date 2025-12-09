@@ -125,11 +125,14 @@ export default function UserDashboard() {
           </div>
 
           {isGuest && (
-            <div className="mb-6 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-6 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
               Account required to register for workshops.
             </div>
           )}
-
           {/* Add Workshop Button - Only show for admins */}
           {isAdmin && (
             <div className="flex justify-end mb-6">
