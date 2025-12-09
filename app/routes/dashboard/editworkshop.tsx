@@ -987,12 +987,28 @@ export default function EditWorkshop() {
       ?.map((occ: any) => {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
+
+        // Get cancelled variation IDs
+        const cancelledVariationIds =
+          workshop.priceVariations
+            ?.filter((v: any) => v.status === "cancelled")
+            .map((v: any) => v.id) ?? [];
+
+        // Count only non-cancelled registrations and exclude cancelled variations
+        const activeUserCount =
+          occ.userWorkshops?.filter(
+            (uw: any) =>
+              uw.result !== "cancelled" &&
+              (!uw.priceVariationId ||
+                !cancelledVariationIds.includes(uw.priceVariationId))
+          ).length ?? 0;
+
         return {
           id: occ.id,
           startDate: localStart,
           endDate: localEnd,
           status: occ.status,
-          userCount: occ.userWorkshops?.length ?? 0,
+          userCount: activeUserCount,
           connectId: occ.connectId,
           offerId: occ.offerId,
         };
@@ -2014,9 +2030,9 @@ export default function EditWorkshop() {
                     </span>
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
-                    If checked, this workshop has multiple pricing options. The first
-                    price field will be disabled and pricing will be managed
-                    through price variations
+                    If checked, this workshop has multiple pricing options. The
+                    first price field will be disabled and pricing will be
+                    managed through price variations
                   </p>
                 </div>
 
