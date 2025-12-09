@@ -1,5 +1,5 @@
 import { json } from "@remix-run/node";
-import { useLoaderData, useSearchParams } from "react-router-dom";
+import { useLoaderData, useSearchParams, redirect } from "react-router";
 import fs from "fs/promises";
 import path from "path";
 import { Input } from "@/components/ui/input";
@@ -20,8 +20,11 @@ export type LoaderData = {
 };
 export async function loader({ request }: { request: Request }) {
     const roleUser = await getRoleUser(request);
-    if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
-      throw new Response("Not Authorized", { status: 419 });
+    if (!roleUser) {
+      throw redirect("/dashboard");
+    }
+    if (roleUser.roleName.toLowerCase() !== "admin") {
+      throw redirect("/dashboard/user");
     }
 
   const url = new URL(request.url);
