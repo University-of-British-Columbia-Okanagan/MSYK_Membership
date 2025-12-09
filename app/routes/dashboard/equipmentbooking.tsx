@@ -28,6 +28,10 @@ import { getRoleUser } from "../../utils/session.server";
 import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
 
+type EquipmentWithSlots = Awaited<
+  ReturnType<typeof getEquipmentSlotsWithStatus>
+>[number] & { availability?: boolean };
+
 export async function loader({
   request,
   params,
@@ -71,7 +75,7 @@ export async function loader({
   );
 
   if (equipmentId) {
-    const selectedEquipment: any = equipmentWithSlots.find(
+    const selectedEquipment: EquipmentWithSlots | undefined = equipmentWithSlots.find(
       (equip) => equip.id === equipmentId
     );
     const isAdmin =
