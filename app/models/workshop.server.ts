@@ -1783,10 +1783,21 @@ export async function getUserWorkshopRegistrationsByWorkshopId(
     },
     include: {
       user: true,
-      occurrence: true,
+      occurrence: {
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          connectId: true,
+        },
+      },
       workshop: true,
       priceVariation: true,
     },
+    orderBy: [
+      { userId: 'asc' },
+      { occurrence: { startDate: 'asc' } },
+    ],
   });
 }
 
