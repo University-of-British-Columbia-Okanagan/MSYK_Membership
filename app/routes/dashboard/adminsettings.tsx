@@ -5804,6 +5804,31 @@ export default function AdminSettings() {
                         {
                           header: "Eligible for Refund",
                           render: (cancellation: any) => {
+                            // Check if this was an admin-cancelled price variation
+                            const isPriceVariationCancellation =
+                              cancellation.cancelledByAdmin === true;
+
+                            // If it's a price variation cancellation, always show Yes with tooltip
+                            if (isPriceVariationCancellation) {
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 cursor-help">
+                                          Yes
+                                        </span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Price variation cancelled by admin</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            }
+
+                            // For user-initiated cancellations: Check if cancelled within 48 hours of registration
                             const cancellationDate = new Date(
                               cancellation.cancellationDate
                             );
@@ -5811,16 +5836,19 @@ export default function AdminSettings() {
                               cancellation.registrationDate
                             );
 
-                            // Check if cancelled within 48 hours of registration
-                            const eligibleDate = new Date(
-                              registrationDate.getTime() + 48 * 60 * 60 * 1000
-                            );
-                            const isEligible = cancellationDate <= eligibleDate;
+                            // Calculate hours since registration
+                            const hoursSinceRegistration =
+                              (cancellationDate.getTime() -
+                                registrationDate.getTime()) /
+                              (1000 * 60 * 60);
+
+                            // Eligible if cancelled within 48 hours of registration
+                            const isEligible = hoursSinceRegistration <= 48;
 
                             return (
-                              <div className="flex items-center">
+                              <div>
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                  className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                                     isEligible
                                       ? "bg-green-100 text-green-800"
                                       : "bg-red-100 text-red-800"
@@ -5965,6 +5993,31 @@ export default function AdminSettings() {
                         {
                           header: "Eligible for Refund",
                           render: (cancellation: any) => {
+                            // Check if this was an admin-cancelled price variation
+                            const isPriceVariationCancellation =
+                              cancellation.cancelledByAdmin === true;
+
+                            // If it's a price variation cancellation, always show Yes with tooltip
+                            if (isPriceVariationCancellation) {
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 cursor-help">
+                                          Yes
+                                        </span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Price variation cancelled by admin</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              );
+                            }
+
+                            // For user-initiated cancellations: Check if cancelled within 48 hours of registration
                             const cancellationDate = new Date(
                               cancellation.cancellationDate
                             );
@@ -5972,16 +6025,19 @@ export default function AdminSettings() {
                               cancellation.registrationDate
                             );
 
-                            // Check if cancelled within 48 hours of registration
-                            const eligibleDate = new Date(
-                              registrationDate.getTime() + 48 * 60 * 60 * 1000
-                            );
-                            const isEligible = cancellationDate <= eligibleDate;
+                            // Calculate hours since registration
+                            const hoursSinceRegistration =
+                              (cancellationDate.getTime() -
+                                registrationDate.getTime()) /
+                              (1000 * 60 * 60);
+
+                            // Eligible if cancelled within 48 hours of registration
+                            const isEligible = hoursSinceRegistration <= 48;
 
                             return (
-                              <div className="flex items-center">
+                              <div>
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                  className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                                     isEligible
                                       ? "bg-green-100 text-green-800"
                                       : "bg-red-100 text-red-800"

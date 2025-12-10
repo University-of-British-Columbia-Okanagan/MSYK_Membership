@@ -1854,6 +1854,7 @@ export async function cancelUserWorkshopRegistration({
     registrationDate: existingRegistration.date,
     cancellationDate: new Date(),
     paymentIntentId: existingRegistration.paymentIntentId,
+    cancelledByAdmin: false, // User-initiated cancellation
   });
 
   return updateResult;
@@ -1927,6 +1928,7 @@ export async function cancelMultiDayWorkshopRegistration({
     registrationDate: firstRegistration.date,
     cancellationDate: new Date(),
     paymentIntentId: firstRegistration.paymentIntentId,
+    cancelledByAdmin: false, // User-initiated cancellation
   });
 
   return updateResult;
@@ -2704,9 +2706,64 @@ export async function cancelWorkshopPriceVariation(variationId: number) {
 
     // Update all user registrations for this price variation to cancelled status
     await db.userWorkshop.updateMany({
-      where: { priceVariationId: variationId },
+      where: {
+        priceVariationId: variationId,
+        result: { not: "cancelled" }, // Only update non-cancelled registrations
+      },
       data: { result: "cancelled" },
     });
+
+    // Create cancellation records for the cancelled events tab
+    const now = new Date();
+
+    if (isMultiDay) {
+      // For multi-day workshops: Create ONE cancellation record per user (not per occurrence)
+      // Group by user and connectId combination
+      const userConnectIdMap = new Map<
+        string,
+        (typeof priceVariation.userWorkshops)[0]
+      >();
+
+      for (const registration of priceVariation.userWorkshops) {
+        const key = `${registration.user.id}-${registration.occurrence.connectId || "null"}`;
+        if (!userConnectIdMap.has(key)) {
+          userConnectIdMap.set(key, registration);
+        }
+      }
+
+      // Create one cancellation record per user-connectId combination
+      for (const registration of userConnectIdMap.values()) {
+        await db.workshopCancelledRegistration.create({
+          data: {
+            userId: registration.user.id,
+            workshopId: priceVariation.workshopId,
+            workshopOccurrenceId: registration.occurrenceId, // Use first occurrence
+            priceVariationId: variationId,
+            registrationDate: registration.date,
+            cancellationDate: now,
+            paymentIntentId: registration.paymentIntentId,
+            cancelledByAdmin: true, // Mark as admin cancellation
+          },
+        });
+      }
+    } else {
+      // For regular workshops: Create ONE cancellation record per user-occurrence combination
+      // Each separate registration gets its own cancellation record
+      for (const registration of priceVariation.userWorkshops) {
+        await db.workshopCancelledRegistration.create({
+          data: {
+            userId: registration.user.id,
+            workshopId: priceVariation.workshopId,
+            workshopOccurrenceId: registration.occurrenceId,
+            priceVariationId: variationId,
+            registrationDate: registration.date,
+            cancellationDate: now,
+            paymentIntentId: registration.paymentIntentId,
+            cancelledByAdmin: true, // Mark as admin cancellation
+          },
+        });
+      }
+    }
 
     // Collect affected user emails for return
     const affectedUsers: Array<{ email: string; userId: number }> = [];
@@ -3097,6 +3154,7 @@ export async function createWorkshopCancellation({
   registrationDate,
   cancellationDate,
   paymentIntentId,
+  cancelledByAdmin = false,
 }: {
   userId: number;
   workshopId: number;
@@ -3105,6 +3163,7 @@ export async function createWorkshopCancellation({
   registrationDate: Date;
   cancellationDate: Date;
   paymentIntentId: string | null;
+  cancelledByAdmin?: boolean;
 }) {
   return await db.workshopCancelledRegistration.create({
     data: {
@@ -3115,6 +3174,7 @@ export async function createWorkshopCancellation({
       registrationDate,
       cancellationDate,
       paymentIntentId,
+      cancelledByAdmin,
     },
   });
 }
