@@ -1150,6 +1150,9 @@ The following acceptance criteria should be manually tested by QA in the applica
   - People could technically spam register/book, cancel register/book, register/book, cancel register/book, etc. for workshop registration and equipment bookings
 - **Reported Issues**
   - For reported issues, when you upload an image, there is no way to see an image (the screenshot of the bug given by the user when they make the report)
+- **Eligible for Refund Cancelled Events**
+  - **Workshops**: Full refunds are only available if canceled within 48 hours of registration. The system calculates eligibility by comparing the cancellation date against the registration date plus 48 hours. This applies to all workshop types (regular, multi-day, with or without price variations)
+  - **Equipment**: Full refunds are only available if canceled at least 48 hours (2 days) before the earliest booked slot time. The system calculates eligibility by checking if the earliest slot's start time is more than 2 days in the future from the cancellation date
 
 ---
 
