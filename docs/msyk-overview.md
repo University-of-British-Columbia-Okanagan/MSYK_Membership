@@ -1138,7 +1138,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 ### Findings and Notes
 
 - **Start Date and Time and End Date and Time Filter Implementation**
-  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it should be inclusive by start date and time but should it also be inclusive with the end date and time as well?
+  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it is inclusive by start date and time but NOT inclusive with the end date and time
      - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
       - In Profile page, it is inclusive with the start date and time but not end date and time
       - In Manage Volunteer Hours, it is inclusive with the start date and time but not end date and time
@@ -1153,6 +1153,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 - **Eligible for Refund Cancelled Events**
   - **Workshops**: Full refunds are only available if canceled within 48 hours of registration. The system calculates eligibility by comparing the cancellation date against the registration date plus 48 hours. This applies to all workshop types (regular, multi-day, with or without price variations)
   - **Equipment**: Full refunds are only available if canceled at least 48 hours (2 days) before the earliest booked slot time. The system calculates eligibility by checking if the earliest slot's start time is more than 2 days in the future from the cancellation date
+- **My Equipments Page**
+  - The /dashboard/myequipments does not group equipments times together for timings under one payment. In the future, if they are grouped, users should still be able to cancel individual times even though multiple bookings can be under one payment (we can logic that handles this, refer to Admin Settings -> Cancelled Events)
 
 ---
 
