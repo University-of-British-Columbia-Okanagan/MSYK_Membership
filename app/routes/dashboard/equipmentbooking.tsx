@@ -78,16 +78,14 @@ export async function loader({
     const selectedEquipment: EquipmentWithSlots | undefined = equipmentWithSlots.find(
       (equip) => equip.id === equipmentId
     );
-    const isAdmin =
+    const isAdminForLoader =
       roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
     const isUnavailable =
       !selectedEquipment || !selectedEquipment.availability;
-    if (isUnavailable) {
+    if (isUnavailable && !isAdminForLoader) {
       const redirectPath = !roleUser
-        ? "/dashboard?message=equipment_unavailable"
-        : isAdmin
-          ? "/dashboard/admin?message=equipment_unavailable"
-          : "/dashboard/user?message=equipment_unavailable";
+        ? "/dashboard"
+        : "/dashboard/user";
       throw redirect(redirectPath);
     }
   }
@@ -207,7 +205,9 @@ export async function action({ request }: { request: Request }) {
   }
 
   const equipment = await getEquipmentById(equipmentId);
-  if (!equipment || !equipment.availability) {
+  const isAdminForAction =
+    roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
+  if (!equipment || (!equipment.availability && !isAdminForAction)) {
     logger.warn(
       `[User: ${user.id}] Equipment ID ${equipmentId} unavailable or missing`,
       { url: request.url }

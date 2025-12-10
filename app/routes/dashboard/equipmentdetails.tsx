@@ -47,16 +47,14 @@ export async function loader({
   const isAdmin =
     currentUserRole?.roleName &&
     currentUserRole.roleName.toLowerCase() === "admin";
-  if (!equipment || !equipment.availability) {
+  if (!equipment || (!equipment.availability && !isAdmin)) {
     logger.warn(
       `[User: ${currentUserRole?.userId}] Requested equipment unavailable or missing`,
       { url: request.url }
     );
     const redirectPath = !currentUserRole
       ? "/dashboard"
-      : isAdmin
-        ? "/dashboard/admin"
-        : "/dashboard/user";
+      : "/dashboard/user";
     throw redirect(redirectPath);
   }
 
