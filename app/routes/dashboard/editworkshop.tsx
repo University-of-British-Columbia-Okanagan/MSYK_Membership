@@ -2934,9 +2934,15 @@ export default function EditWorkshop() {
                                                                   occ.id !==
                                                                   undefined
                                                               );
+                                                            // Use the actual userCount from occurrences (which gets updated when price variations are cancelled)
+                                                            // instead of userCounts.totalUsers (which is only set on initial load)
                                                             const hasUsers =
-                                                              userCounts.totalUsers >
-                                                              0;
+                                                              activeOccurrences.some(
+                                                                (occ) =>
+                                                                  occ.userCount &&
+                                                                  occ.userCount >
+                                                                    0
+                                                              );
 
                                                             // If no existing occurrences (all new dates), show Delete button
                                                             if (
