@@ -1131,7 +1131,6 @@ The following acceptance criteria should be manually tested by QA in the applica
   - In workshop reports, we should add UI that tells if this workshop is multi day or not or if they have price variation or not
   - For admins, clicking on the workshops sidebar should just redirect to /dasboard/admin since they are the same thing. Future implementations that want to have a custom dashboard can just change this in the future
   - Users who registered for workshops (/dashboard/myworkshops) can see the registration time and date but there is no information if it is part of a multi day series or not with a price variation or not. Also, when someone has registered for a multi day workshop, the first date of the multiday series is the one that is shown, not the rest of the dates
-  - For the user sidebar, the All Workshops should be switched to /dashboard/user rather than /dashboard/workshops since they are the same thing
   
 ---
 
