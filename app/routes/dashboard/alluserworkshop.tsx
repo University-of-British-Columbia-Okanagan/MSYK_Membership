@@ -32,6 +32,7 @@ interface LoaderData {
     id: number;
     result: string;
     date: string | Date;
+    status: string;
     user: { id: number; firstName: string; lastName: string };
     occurrence: { startDate: string; endDate: string } | null;
     workshop: { name: string; type: string };
@@ -137,6 +138,9 @@ export default function AllUserWorkshop() {
     {
       header: "Result",
       render: (reg) => {
+        if (reg.status === "Cancelled" || reg.result === "cancelled") {
+          return <span className="text-gray-500">Cancelled</span>;
+        }
         if (reg.workshop.type.toLowerCase() === "orientation") {
           return (
             <Select
@@ -216,10 +220,10 @@ export default function AllUserWorkshop() {
                       {type === "all"
                         ? "All Types"
                         : type === "orientation"
-                        ? "Orientation"
-                        : type === "workshop"
-                        ? "Workshop"
-                        : type}
+                          ? "Orientation"
+                          : type === "workshop"
+                            ? "Workshop"
+                            : type}
                     </SelectItem>
                   ))}
                 </SelectContent>
