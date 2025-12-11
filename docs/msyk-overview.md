@@ -1075,14 +1075,14 @@ The following acceptance criteria should be manually tested by QA in the applica
 ### Bug Fix Priority
 
 - **High**:
-  - In a multi day orientation, you still have to pass individual times even though it is multi day **[ARIQ WILL DO THIS]**
-  - Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**
-  - Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"
-  - ~~Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops~~
-  - Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)
-  - People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)
+  - ~~In a multi day orientation, you still have to pass individual times even though it is multi day **[ARIQ WILL DO THIS]**~~
+  - ~~Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**~~
+  - ~~Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"~~
+  - Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops
+  - ~~Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)~~
+  - ~~People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)~~
   - When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop button, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly. Maybe it only does that if you are going from a workshop that books equipment to one that doesn't anymore after editing)
-  - Right now, users are eligible for refund if they refund 48 hours or more before the workshop start date (the individual times for regular workshops, and the first day in the multi-day workshop if it is multi-day). Make it so that they are eligible for refund if they cancelled within 48 hours of their registration instead
+  - ~~Right now, users are eligible for refund if they refund 48 hours or more before the workshop start date (the individual times for regular workshops, and the first day in the multi-day workshop if it is multi-day). Make it so that they are eligible for refund if they cancelled within 48 hours of their registration instead~~
   - When people used to have an membership but it is now inactive, sometimes, they cannot subscribe to another because it says "You can change only after your old membership billing cycle ends." An example of when this can happen is when it is Nov 21st for example but in the db in UserMembership, startDate is 2025-11-12 03:35:51.909 and nextPaymentDate is 2025-12-12 03:35:51.909 and it is status inactive
   - Disable the ability to edit equipment prereqs after creating them (in edit equipment)
   - ~~If equipment unavaliable, users and guests should not be able to access dashboard/equipmentbooking/:id or dashboard/equipments/:id (even by typing URL)~~
@@ -1114,7 +1114,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - When creating a price variation and it has errors of All pricing option prices must be unique and The sum of all pricing option capacities cannot exceed the total workshop capacity, in the price variation card, it shows as "All pricing option prices must be unique., The sum of all pricing option capacities cannot exceed the total workshop capacity". Fix the ".," shown in the UI
   - Sometimes when you edit a workshop that has a workshop image with a new image, it will redirect back to the workshops and the new image is not shown until you refresh the page
   - When editing a workshop with a total capacity of 10 and then price variation with capacity 2 and capacity 1 (3 capacity taken by the variations). Now, when you change the price variation with capacity 2 to capacity 10, it will be obviously 11 > 10 and when you press update workshop, the button will be stuck on "Updating..."
-  - Add a UI to go back to the workshop details aftet they go into the route when clicking View Users
+  - ~~Add a UI to go back to the workshop details aftet they go into the route when clicking View Users~~
   - Sometimes when you edit a equipment that has a equipment image with a new image, it will redirect back to the equipments route and the new image is not shown until you refresh the page. This mostly happens when you edit the auto generated equipments from seed.ts (such as Laser Cutter) and then edit it to add an image
   - No form errors shown in add equipment when required fields not filled and also when it is filled, (lets say we set price to -1), it does not show an error that says price should be >= 0
   - In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
@@ -1138,7 +1138,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 ### Findings and Notes
 
 - **Start Date and Time and End Date and Time Filter Implementation**
-  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it should be inclusive by start date and time but should it also be inclusive with the end date and time as well?
+  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it is inclusive by start date and time but NOT inclusive with the end date and time
      - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
       - In Profile page, it is inclusive with the start date and time but not end date and time
       - In Manage Volunteer Hours, it is inclusive with the start date and time but not end date and time
@@ -1150,6 +1150,13 @@ The following acceptance criteria should be manually tested by QA in the applica
   - People could technically spam register/book, cancel register/book, register/book, cancel register/book, etc. for workshop registration and equipment bookings
 - **Reported Issues**
   - For reported issues, when you upload an image, there is no way to see an image (the screenshot of the bug given by the user when they make the report)
+- **Eligible for Refund Cancelled Events**
+  - **Workshops**: Full refunds are only available if canceled within 48 hours of registration. The system calculates eligibility by comparing the cancellation date against the registration date plus 48 hours. This applies to all workshop types (regular, multi-day, with or without price variations)
+  - **Equipment**: Full refunds are only available if canceled at least 48 hours (2 days) before the earliest booked slot time. The system calculates eligibility by checking if the earliest slot's start time is more than 2 days in the future from the cancellation date
+- **My Equipments Page**
+  - The /dashboard/myequipments does not group equipments times together for timings under one payment. In the future, if they are grouped, users should still be able to cancel individual times even though multiple bookings can be under one payment (we can logic that handles this, refer to Admin Settings -> Cancelled Events)
+- **Equipment Bookings**
+  - Currently, there is no way to "directly" cancel a user's equipment booking (for level 3 and 4) compared to like workshops where admins can cancel date(s) and cancel price variations. However, equipments have many ways in disabling when users can book through planned closures and restricting bookings days and times, etc.
 
 ---
 

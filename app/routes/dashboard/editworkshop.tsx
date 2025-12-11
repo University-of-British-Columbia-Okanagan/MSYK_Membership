@@ -987,12 +987,28 @@ export default function EditWorkshop() {
       ?.map((occ: any) => {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
+
+        // Get cancelled variation IDs
+        const cancelledVariationIds =
+          workshop.priceVariations
+            ?.filter((v: any) => v.status === "cancelled")
+            .map((v: any) => v.id) ?? [];
+
+        // Count only non-cancelled registrations and exclude cancelled variations
+        const activeUserCount =
+          occ.userWorkshops?.filter(
+            (uw: any) =>
+              uw.result !== "cancelled" &&
+              (!uw.priceVariationId ||
+                !cancelledVariationIds.includes(uw.priceVariationId))
+          ).length ?? 0;
+
         return {
           id: occ.id,
           startDate: localStart,
           endDate: localEnd,
           status: occ.status,
-          userCount: occ.userWorkshops?.length ?? 0,
+          userCount: activeUserCount,
           connectId: occ.connectId,
           offerId: occ.offerId,
         };
@@ -2004,6 +2020,7 @@ export default function EditWorkshop() {
                           }
                         }}
                         className="sr-only peer"
+                        disabled={true}
                       />
                       <div className="w-6 h-6 bg-white border border-gray-300 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
                       <CheckIcon className="absolute h-4 w-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity" />
@@ -2013,9 +2030,9 @@ export default function EditWorkshop() {
                     </span>
                   </label>
                   <p className="mt-2 pl-9 text-sm text-gray-500">
-                    Enable this to create multiple pricing options. The first
-                    price field will be disabled and pricing will be managed
-                    through price variations
+                    If checked, this workshop has multiple pricing options. The
+                    first price field will be disabled and pricing will be
+                    managed through price variations
                   </p>
                 </div>
 
@@ -2216,7 +2233,7 @@ export default function EditWorkshop() {
                                   if (registrationCount > 0) {
                                     return (
                                       <div className="text-xs text-blue-600 mt-1">
-                                        {registrationCount} user
+                                        A max of {registrationCount} user
                                         {registrationCount !== 1
                                           ? "s"
                                           : ""}{" "}
@@ -2917,9 +2934,15 @@ export default function EditWorkshop() {
                                                                   occ.id !==
                                                                   undefined
                                                               );
+                                                            // Use the actual userCount from occurrences (which gets updated when price variations are cancelled)
+                                                            // instead of userCounts.totalUsers (which is only set on initial load)
                                                             const hasUsers =
-                                                              userCounts.totalUsers >
-                                                              0;
+                                                              activeOccurrences.some(
+                                                                (occ) =>
+                                                                  occ.userCount &&
+                                                                  occ.userCount >
+                                                                    0
+                                                              );
 
                                                             // If no existing occurrences (all new dates), show Delete button
                                                             if (
