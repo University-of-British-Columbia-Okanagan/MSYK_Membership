@@ -1158,6 +1158,8 @@ The following acceptance criteria should be manually tested by QA in the applica
   - The /dashboard/myequipments does not group equipments times together for timings under one payment. In the future, if they are grouped, users should still be able to cancel individual times even though multiple bookings can be under one payment (we can logic that handles this, refer to Admin Settings -> Cancelled Events)
 - **Equipment Bookings**
   - Currently, there is no way to "directly" cancel a user's equipment booking (for level 3 and 4) compared to like workshops where admins can cancel date(s) and cancel price variations. However, equipments have many ways in disabling when users can book through planned closures and restricting bookings days and times, etc.
+- **Membership Plans**
+  - Admins are able to change the prices (monthly, quarterly, semi-annually, and yearly) and also remove requiring admin permission
 
 ---
 
