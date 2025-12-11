@@ -913,7 +913,7 @@ export default function MembershipDetails() {
                             <FormControl>
                               <div>
                                 <DigitalSignaturePad
-                                  value={field.value}
+                                  value={field.value ?? null}
                                   onChange={field.onChange}
                                   disabled={!agreementDocumentViewed}
                                 />
