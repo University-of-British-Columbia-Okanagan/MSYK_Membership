@@ -599,55 +599,53 @@ export async function action({
     const user = await getUser(request);
     const userId = user?.id || 1;
 
-    // Enhanced cleanup - also clean up orphaned slots
-    if (parsed.data.equipments && parsed.data.equipments.length > 0) {
-      // Find equipment slots that belong to this workshop's occurrences
-      for (const occurrence of currentOccurrences) {
-        if (occurrence.id) {
-          try {
-            // Delete old equipment bookings for this occurrence
-            await db.equipmentBooking.deleteMany({
-              where: {
-                workshopId: Number(params.workshopId),
-                slot: {
-                  workshopOccurrenceId: occurrence.id,
-                },
-              },
-            });
-
-            // Reset equipment slots that were assigned to this occurrence
-            await db.equipmentSlot.updateMany({
-              where: {
+    // Enhanced cleanup - ALWAYS clean up old slots regardless of whether new equipment is being added
+    // This is critical when removing ALL equipment from a workshop
+    for (const occurrence of currentOccurrences) {
+      if (occurrence.id) {
+        try {
+          // Delete old equipment bookings for this occurrence
+          await db.equipmentBooking.deleteMany({
+            where: {
+              workshopId: Number(params.workshopId),
+              slot: {
                 workshopOccurrenceId: occurrence.id,
               },
-              data: {
-                isBooked: false,
-                workshopOccurrenceId: null,
-              },
-            });
-          } catch (error: any) {
-            logger.error(
-              `[User: ${roleUser.userId}] Error cleaning old slots for occurrence ${occurrence.id}: ${error.message}`,
-              { url: request.url }
-            );
-          }
+            },
+          });
+
+          // Reset equipment slots that were assigned to this occurrence
+          await db.equipmentSlot.updateMany({
+            where: {
+              workshopOccurrenceId: occurrence.id,
+            },
+            data: {
+              isBooked: false,
+              workshopOccurrenceId: null,
+            },
+          });
+        } catch (error: any) {
+          logger.error(
+            `[User: ${roleUser.userId}] Error cleaning old slots for occurrence ${occurrence.id}: ${error.message}`,
+            { url: request.url }
+          );
         }
       }
+    }
 
-      // Remove any orphaned bookings for this workshop
-      try {
-        await db.equipmentBooking.deleteMany({
-          where: {
-            workshopId: Number(params.workshopId),
-            bookedFor: "workshop",
-          },
-        });
-      } catch (error: any) {
-        logger.error(
-          `[User: ${roleUser.userId}] Error cleaning orphaned workshop bookings: ${error.message}`,
-          { url: request.url }
-        );
-      }
+    // Remove any orphaned bookings for this workshop
+    try {
+      await db.equipmentBooking.deleteMany({
+        where: {
+          workshopId: Number(params.workshopId),
+          bookedFor: "workshop",
+        },
+      });
+    } catch (error: any) {
+      logger.error(
+        `[User: ${roleUser.userId}] Error cleaning orphaned workshop bookings: ${error.message}`,
+        { url: request.url }
+      );
     }
 
     await updateWorkshopWithOccurrences(Number(params.workshopId), {
