@@ -1133,3 +1133,275 @@ export async function sendWorkshopPriceVariationCancellationEmailMultiDay(params
     html: htmlBody,
   });
 }
+
+/**
+ * Sends email notification when admin cancels a workshop occurrence (regular workshop or orientation)
+ * Handles both workshops with and without price variations
+ */
+export async function sendWorkshopOccurrenceCancellationEmail(params: {
+  userEmail: string;
+  workshopName: string;
+  workshopType: string; // 'workshop' or 'orientation'
+  startDate: Date;
+  endDate: Date;
+  location?: string;
+  basePrice?: number;
+  priceVariation?: {
+    name: string;
+    description?: string | null;
+    price: number;
+  } | null;
+}): Promise<void> {
+  const {
+    userEmail,
+    workshopName,
+    workshopType,
+    startDate,
+    endDate,
+    location,
+    basePrice,
+    priceVariation,
+  } = params;
+
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+  }
+
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("BASE_URL must be a valid absolute URL origin");
+  }
+
+  const workshopsUrl = new URL("/dashboard/workshops", origin);
+
+  const start = new Date(startDate).toLocaleString();
+  const end = new Date(endDate).toLocaleString();
+
+  const workshopTypeLabel =
+    workshopType === "orientation" ? "Orientation" : "Workshop";
+
+  const pricingLines: string[] = [];
+  if (priceVariation) {
+    pricingLines.push(
+      `Price Variation: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+    );
+    if (priceVariation.description) {
+      pricingLines.push(`Details: ${priceVariation.description}`);
+    }
+    if (typeof basePrice === "number") {
+      pricingLines.push(
+        `Base ${workshopTypeLabel.toLowerCase()} price: $${basePrice.toFixed(2)}`
+      );
+    }
+  } else if (typeof basePrice === "number") {
+    pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
+  }
+
+  const parts = [
+    `We regret to inform you that the ${workshopTypeLabel.toLowerCase()} "${workshopName}" has been cancelled by the administrator.`,
+    ``,
+    `${workshopTypeLabel} Session Details:`,
+    `${start} - ${end}`,
+    ...(location ? [`Location: ${location}`] : []),
+    ``,
+    ...(pricingLines.length > 0
+      ? [`Pricing Information:`, ...pricingLines, ``]
+      : []),
+    `Your payment will be fully refunded within 5-10 business days to your original payment method.`,
+    ``,
+    `We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at info@makerspaceyk.com.`,
+    ``,
+    `You can view other available ${workshopType === "orientation" ? "orientations" : "workshops"} at: ${workshopsUrl.toString()}`,
+  ].filter(Boolean);
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #dc2626;">${workshopTypeLabel} Occurrence Cancelled by Administrator</h2>
+      <p>We regret to inform you that an occurrence from ${workshopTypeLabel.toLowerCase()} "<strong>${escapeHTML(workshopName)}</strong>" has been cancelled by the administrator.</p>
+      
+      <h3 style="color: #374151; margin-top: 20px;">${workshopTypeLabel} Session Details:</h3>
+      <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(start)} - ${escapeHTML(end)}</p>
+      ${location ? `<p style="margin: 5px 0;"><strong>Location:</strong> ${escapeHTML(location)}</p>` : ""}
+      
+      ${
+        pricingLines.length > 0
+          ? `
+      <h3 style="color: #374151; margin-top: 20px;">Pricing Information:</h3>
+      ${
+        priceVariation
+          ? `
+      <p style="margin: 5px 0;"><strong>Price Variation:</strong> ${escapeHTML(priceVariation.name)} - $${priceVariation.price.toFixed(2)}</p>
+      ${priceVariation.description ? `<p style="margin: 5px 0;"><strong>Details:</strong> ${escapeHTML(priceVariation.description)}</p>` : ""}
+      ${typeof basePrice === "number" ? `<p style="margin: 5px 0;"><strong>Base ${workshopTypeLabel.toLowerCase()} price:</strong> $${basePrice.toFixed(2)}</p>` : ""}
+      `
+          : `
+      <p style="margin: 5px 0;"><strong>Price:</strong> $${basePrice?.toFixed(2) || "N/A"}</p>
+      `
+      }
+      `
+          : ""
+      }
+      
+      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e;"><strong>Refund Information:</strong> Your payment will be fully refunded to your original payment method.</p>
+      </div>
+      
+      <p>We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at <a href="mailto:info@makerspaceyk.com">info@makerspaceyk.com</a>.</p>
+      
+      <p style="margin-top: 20px;">You can view other available ${workshopType === "orientation" ? "orientations" : "workshops"} at: <a href="${workshopsUrl.toString()}" style="color: #2563eb;">Browse ${workshopType === "orientation" ? "Orientations" : "Workshops"}</a></p>
+    </div>
+  `;
+
+  await sendMail({
+    to: userEmail,
+    subject: `${workshopTypeLabel} Occurrence Cancelled: ${workshopName}`,
+    text: parts.join("\n"),
+    html: htmlBody,
+  });
+}
+
+/**
+ * Sends email notification when admin cancels a multi-day workshop occurrence
+ * Handles both workshops with and without price variations
+ */
+export async function sendWorkshopOccurrenceCancellationEmailMultiDay(params: {
+  userEmail: string;
+  workshopName: string;
+  sessions: Array<{ startDate: Date; endDate: Date }>;
+  location?: string;
+  basePrice?: number;
+  priceVariation?: {
+    name: string;
+    description?: string | null;
+    price: number;
+  } | null;
+}): Promise<void> {
+  const {
+    userEmail,
+    workshopName,
+    sessions,
+    location,
+    basePrice,
+    priceVariation,
+  } = params;
+
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+  }
+
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("BASE_URL must be a valid absolute URL origin");
+  }
+
+  const workshopsUrl = new URL("/dashboard/workshops", origin);
+
+  const sessionLines = sessions
+    .map(
+      (s, idx) =>
+        `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+    )
+    .join("\n");
+
+  const pricingLines: string[] = [];
+  if (priceVariation) {
+    pricingLines.push(
+      `Price Variation: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+    );
+    if (priceVariation.description) {
+      pricingLines.push(`Details: ${priceVariation.description}`);
+    }
+  } else if (typeof basePrice === "number") {
+    pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
+  }
+
+  const parts = [
+    `We regret to inform you that the multi-day workshop "${workshopName}" has been cancelled by the administrator.`,
+    ``,
+    `Workshop Sessions (All Cancelled):`,
+    sessionLines,
+    ...(location ? [``, `Location: ${location}`] : []),
+    ``,
+    ...(pricingLines.length > 0
+      ? [`Pricing Information:`, ...pricingLines, ``]
+      : []),
+    `Your payment will be fully refunded to your original payment method.`,
+    ``,
+    `We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at info@makerspaceyk.com.`,
+    ``,
+    `You can view other available workshops at: ${workshopsUrl.toString()}`,
+  ].filter(Boolean);
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const sessionLinesHtml = sessions
+    .map(
+      (s, idx) =>
+        `<li>${escapeHTML(new Date(s.startDate).toLocaleString())} - ${escapeHTML(new Date(s.endDate).toLocaleString())}</li>`
+    )
+    .join("");
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #dc2626;">Multi-Day Workshop Cancelled by Administrator</h2>
+      <p>We regret to inform you that the multi-day workshop "<strong>${escapeHTML(workshopName)}</strong>" has been cancelled by the administrator.</p>
+      
+      <h3 style="color: #374151; margin-top: 20px;">Workshop Sessions (All Cancelled):</h3>
+      <ol style="margin: 5px 0; padding-left: 20px;">
+        ${sessionLinesHtml}
+      </ol>
+      ${location ? `<p style="margin: 5px 0;"><strong>Location:</strong> ${escapeHTML(location)}</p>` : ""}
+      
+      ${
+        pricingLines.length > 0
+          ? `
+      <h3 style="color: #374151; margin-top: 20px;">Pricing Information:</h3>
+      ${
+        priceVariation
+          ? `
+      <p style="margin: 5px 0;"><strong>Price Variation:</strong> ${escapeHTML(priceVariation.name)} - $${priceVariation.price.toFixed(2)}</p>
+      ${priceVariation.description ? `<p style="margin: 5px 0;"><strong>Details:</strong> ${escapeHTML(priceVariation.description)}</p>` : ""}
+      `
+          : `
+      <p style="margin: 5px 0;"><strong>Price:</strong> $${basePrice?.toFixed(2) || "N/A"}</p>
+      `
+      }
+      `
+          : ""
+      }
+      
+      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e;"><strong>Refund Information:</strong> Your payment will be fully refunded to your original payment method.</p>
+      </div>
+      
+      <p>We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at <a href="mailto:info@makerspaceyk.com">info@makerspaceyk.com</a>.</p>
+      
+      <p style="margin-top: 20px;">You can view other available workshops at: <a href="${workshopsUrl.toString()}" style="color: #2563eb;">Browse Workshops</a></p>
+    </div>
+  `;
+
+  await sendMail({
+    to: userEmail,
+    subject: `Multi-Day Workshop Cancelled: ${workshopName}`,
+    text: parts.join("\n"),
+    html: htmlBody,
+  });
+}

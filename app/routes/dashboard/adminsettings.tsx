@@ -5804,12 +5804,8 @@ export default function AdminSettings() {
                         {
                           header: "Eligible for Refund",
                           render: (cancellation: any) => {
-                            // Check if this was an admin-cancelled price variation
-                            const isPriceVariationCancellation =
-                              cancellation.cancelledByAdmin === true;
-
-                            // If it's a price variation cancellation, always show Yes with tooltip
-                            if (isPriceVariationCancellation) {
+                            // Check if this was cancelled by admin (either price variation or occurrence cancellation)
+                            if (cancellation.cancelledByAdmin === true) {
                               return (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -5821,7 +5817,10 @@ export default function AdminSettings() {
                                       </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Price variation cancelled by admin</p>
+                                      <p>
+                                        Cancelled by admin: Cancelled price
+                                        variation or cancelled occurrence(s)
+                                      </p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
@@ -5993,12 +5992,8 @@ export default function AdminSettings() {
                         {
                           header: "Eligible for Refund",
                           render: (cancellation: any) => {
-                            // Check if this was an admin-cancelled price variation
-                            const isPriceVariationCancellation =
-                              cancellation.cancelledByAdmin === true;
-
-                            // If it's a price variation cancellation, always show Yes with tooltip
-                            if (isPriceVariationCancellation) {
+                            // Check if this was cancelled by admin (either price variation or occurrence cancellation)
+                            if (cancellation.cancelledByAdmin === true) {
                               return (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -6010,7 +6005,10 @@ export default function AdminSettings() {
                                       </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Price variation cancelled by admin</p>
+                                      <p>
+                                        Cancelled by admin: Cancelled price
+                                        variation or cancelled occurrence(s)
+                                      </p>
                                     </TooltipContent>
                                   </Tooltip>
                                 </TooltipProvider>
