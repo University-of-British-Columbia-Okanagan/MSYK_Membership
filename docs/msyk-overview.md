@@ -1087,7 +1087,6 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Disable the ability to edit equipment prereqs after creating them (in edit equipment)~~
   - ~~If equipment unavaliable, users and guests should not be able to access dashboard/equipmentbooking/:id or dashboard/equipments/:id (even by typing URL)~~
   - ~~You should not be able to edit the workshop prereqs of an equipment in edit equipment. The workshop prereqs you add after adding an equipment should be final. Change this~~
-  - In edit membership, they should not be able to edit the monthly price, any prices set in the multiple billing options and unchecking it, and they also cannot uncheck the require admin permission if already checked
   - When it is time to charge the user for membership billing, monthly works, quartely billing option does not work (it turns it from active to inactive even when I have a payment method), semi-annually billing option does not work (it turns it from active to inactive even when I have a payment method), yearly billing option does not work (it turns it from active to inactive even when I have a payment method)
   - When it is time to pay, users with memberships without Payment Method and Membership Inactive Email should just turn the membership inactive since they do not have a payment method from the crom and send them an email that their membership is inactive. Monthly: Works for setting inactive and email. Quarterly: Does set it as inactive but does not send inactive email. Semi-annually: Does set it as inactive but does not send inactive email. Yearly: Does set it as inactive but does not send inactive email
   - When it is time to pay, users should get an email if do not have a payment method. It sends an email regarding the amount due and when it will be charged. The email should be sent 24 hrs before their membership ends. Monthly: Works. Quarterly: Does not work. Semi-annually: Does not work. Yearly: Does not work
@@ -1123,7 +1122,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Make it show the highlited fields for errors
   - In the multiple billing options, it is possible to have a negative Save % shown in the /dashboard/memberships, if the save percentage is negative, do not even show it
   - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
-  - When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options
+  - ~~When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options~~
   - When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty
   - In the payment reminder email, it says something for example "Your membership plan "Test" will be charged on 11/28/2025, 5:36:37 PM." but we do not actually charge it at that time, in this case, it would be charged the next day at 11/29/2025 12 AM
   - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options
@@ -1158,6 +1157,8 @@ The following acceptance criteria should be manually tested by QA in the applica
   - The /dashboard/myequipments does not group equipments times together for timings under one payment. In the future, if they are grouped, users should still be able to cancel individual times even though multiple bookings can be under one payment (we can logic that handles this, refer to Admin Settings -> Cancelled Events)
 - **Equipment Bookings**
   - Currently, there is no way to "directly" cancel a user's equipment booking (for level 3 and 4) compared to like workshops where admins can cancel date(s) and cancel price variations. However, equipments have many ways in disabling when users can book through planned closures and restricting bookings days and times, etc.
+- **Membership Plans**
+  - Admins are able to change the prices (monthly, quarterly, semi-annually, and yearly) and also remove requiring admin permission
 
 ---
 
