@@ -1,5 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { redirect, useLoaderData, Form as RouterForm, useNavigate } from "react-router";
+import {
+  redirect,
+  useLoaderData,
+  Form as RouterForm,
+  useNavigate,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -15,7 +20,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info, ChevronDown, ChevronUp, Download, ArrowLeft } from "lucide-react";
+import {
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  ArrowLeft,
+} from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -537,24 +548,32 @@ export default function MembershipDetails() {
                   </h2>
 
                   {/* Warning for new subscribers selecting non-monthly billing cycles */}
-                  {!userActiveMembership && selectedBillingCycle !== "monthly" && (
-                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                      <p className="text-sm text-gray-700">
-                        <strong>Important:</strong> If you select a non-monthly billing cycle, you will not be able to upgrade or downgrade your subscription until the billing period ends. You will need to cancel and resubscribe to change plans.
-                      </p>
-                    </div>
-                  )}
+                  {!userActiveMembership &&
+                    selectedBillingCycle !== "monthly" && (
+                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-sm text-gray-700">
+                          <strong>Important:</strong> If you select a
+                          non-monthly billing cycle, you will not be able to
+                          upgrade or downgrade your subscription until the
+                          billing period ends. You will need to cancel and
+                          resubscribe to change plans.
+                        </p>
+                      </div>
+                    )}
 
                   {/* Warning for non-monthly billing cycles when upgrading/downgrading */}
-                  {userActiveMembership && userActiveMembership.billingCycle !== "monthly" && (
-                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                      <p className="text-sm text-gray-700">
-                        <strong>Note:</strong> You currently have a {userActiveMembership.billingCycle} billing cycle.
-                        To change plans, you must select <strong>monthly billing</strong> only.
-                        Other billing cycles are not available for upgrades or downgrades.
-                      </p>
-                    </div>
-                  )}
+                  {userActiveMembership &&
+                    userActiveMembership.billingCycle !== "monthly" && (
+                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-sm text-gray-700">
+                          <strong>Note:</strong> You currently have a{" "}
+                          {userActiveMembership.billingCycle} billing cycle. To
+                          change plans, you must select{" "}
+                          <strong>monthly billing</strong> only. Other billing
+                          cycles are not available for upgrades or downgrades.
+                        </p>
+                      </div>
+                    )}
 
                   <div className="space-y-3">
                     {/* Monthly Option */}
@@ -591,11 +610,14 @@ export default function MembershipDetails() {
                     </label>
 
                     {membershipPlan.price3Months && (
-                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
-                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
-                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
-                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
-                      } transition-colors`}>
+                      <label
+                        className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                          userActiveMembership &&
+                          userActiveMembership.billingCycle !== "monthly"
+                            ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                            : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                        } transition-colors`}
+                      >
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -611,45 +633,65 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
-                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
+                            disabled={
+                              !!(
+                                userActiveMembership &&
+                                userActiveMembership.billingCycle !== "monthly"
+                              )
+                            }
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
                               Every 3 Months
                             </p>
-                            <p className="text-sm text-gray-600">
-                              Save {" "}
-                              {(
-                                ((membershipPlan.price * 3 -
-                                  membershipPlan.price3Months) /
-                                  (membershipPlan.price * 3)) *
-                                100
-                              ).toFixed(0)}
-                              %
-                            </p>
+                            {((membershipPlan.price * 3 -
+                              membershipPlan.price3Months) /
+                              (membershipPlan.price * 3)) *
+                              100 >
+                              0 && (
+                              <p className="text-sm text-gray-600">
+                                Save{" "}
+                                {(
+                                  ((membershipPlan.price * 3 -
+                                    membershipPlan.price3Months) /
+                                    (membershipPlan.price * 3)) *
+                                  100
+                                ).toFixed(0)}
+                                %
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.price3Months.toFixed(2)}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            (CA$
-                            {(membershipPlan.price3Months / 3).toFixed(2)}
-                            /mo)
-                          </p>
+                          {((membershipPlan.price * 3 -
+                            membershipPlan.price3Months) /
+                            (membershipPlan.price * 3)) *
+                            100 >
+                            0 && (
+                            <p className="text-sm text-gray-600">
+                              (CA$
+                              {(membershipPlan.price3Months / 3).toFixed(2)}
+                              /mo)
+                            </p>
+                          )}
                         </div>
                       </label>
                     )}
 
                     {/* 6 Months Option */}
                     {membershipPlan.price6Months && (
-                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
-                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
-                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
-                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
-                      } transition-colors`}>
+                      <label
+                        className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                          userActiveMembership &&
+                          userActiveMembership.billingCycle !== "monthly"
+                            ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                            : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                        } transition-colors`}
+                      >
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -665,45 +707,65 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
-                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
+                            disabled={
+                              !!(
+                                userActiveMembership &&
+                                userActiveMembership.billingCycle !== "monthly"
+                              )
+                            }
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
                               Every 6 Months
                             </p>
-                            <p className="text-sm text-gray-600">
-                              Save{" "}
-                              {(
-                                ((membershipPlan.price * 6 -
-                                  membershipPlan.price6Months) /
-                                  (membershipPlan.price * 6)) *
-                                100
-                              ).toFixed(0)}
-                              %
-                            </p>
+                            {((membershipPlan.price * 6 -
+                              membershipPlan.price6Months) /
+                              (membershipPlan.price * 6)) *
+                              100 >
+                              0 && (
+                              <p className="text-sm text-gray-600">
+                                Save{" "}
+                                {(
+                                  ((membershipPlan.price * 6 -
+                                    membershipPlan.price6Months) /
+                                    (membershipPlan.price * 6)) *
+                                  100
+                                ).toFixed(0)}
+                                %
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.price6Months.toFixed(2)}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            (CA$
-                            {(membershipPlan.price6Months / 6).toFixed(2)}
-                            /mo)
-                          </p>
+                          {((membershipPlan.price * 3 -
+                            membershipPlan.price6Months) /
+                            (membershipPlan.price * 3)) *
+                            100 >
+                            0 && (
+                            <p className="text-sm text-gray-600">
+                              (CA$
+                              {(membershipPlan.price6Months / 6).toFixed(2)}
+                              /mo)
+                            </p>
+                          )}
                         </div>
                       </label>
                     )}
 
                     {/* Yearly Option */}
                     {membershipPlan.priceYearly && (
-                      <label className={`flex items-center justify-between p-4 border-2 rounded-lg ${
-                        userActiveMembership && userActiveMembership.billingCycle !== "monthly"
-                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
-                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
-                      } transition-colors`}>
+                      <label
+                        className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                          userActiveMembership &&
+                          userActiveMembership.billingCycle !== "monthly"
+                            ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                            : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                        } transition-colors`}
+                      >
                         <div className="flex items-center space-x-3">
                           <input
                             type="radio"
@@ -719,34 +781,51 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
-                            disabled={!!(userActiveMembership && userActiveMembership.billingCycle !== "monthly")}
+                            disabled={
+                              !!(
+                                userActiveMembership &&
+                                userActiveMembership.billingCycle !== "monthly"
+                              )
+                            }
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
                               Yearly
                             </p>
-                            <p className="text-sm text-gray-600">
-                              Save{" "}
-                              {(
-                                ((membershipPlan.price * 12 -
-                                  membershipPlan.priceYearly) /
-                                  (membershipPlan.price * 12)) *
-                                100
-                              ).toFixed(0)}
-                              %
-                            </p>
+                            {((membershipPlan.price * 12 -
+                              membershipPlan.priceYearly) /
+                              (membershipPlan.price * 12)) *
+                              100 >
+                              0 && (
+                              <p className="text-sm text-gray-600">
+                                Save{" "}
+                                {(
+                                  ((membershipPlan.price * 12 -
+                                    membershipPlan.priceYearly) /
+                                    (membershipPlan.price * 12)) *
+                                  100
+                                ).toFixed(0)}
+                                %
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.priceYearly.toFixed(2)}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            (CA$
-                            {(membershipPlan.priceYearly / 12).toFixed(2)}
-                            /mo)
-                          </p>
+                          {((membershipPlan.price * 12 -
+                            membershipPlan.priceYearly) /
+                            (membershipPlan.price * 12)) *
+                            100 >
+                            0 && (
+                            <p className="text-sm text-gray-600">
+                              (CA$
+                              {(membershipPlan.priceYearly / 12).toFixed(2)}
+                              /mo)
+                            </p>
+                          )}
                         </div>
                       </label>
                     )}
@@ -762,8 +841,8 @@ export default function MembershipDetails() {
                   <AlertTitle>Membership access revoked</AlertTitle>
                   <AlertDescription>
                     <p className="mb-2">
-                      You cannot complete this agreement because your
-                      membership access has been revoked by an administrator.
+                      You cannot complete this agreement because your membership
+                      access has been revoked by an administrator.
                     </p>
                     {membershipRevokedReason && (
                       <p className="mb-2">
@@ -852,7 +931,7 @@ export default function MembershipDetails() {
                             <FormControl>
                               <div>
                                 <DigitalSignaturePad
-                                  value={field.value}
+                                  value={field.value ?? null}
                                   onChange={field.onChange}
                                   disabled={!agreementDocumentViewed}
                                 />

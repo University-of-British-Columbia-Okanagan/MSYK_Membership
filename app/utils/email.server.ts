@@ -653,13 +653,18 @@ export async function sendMembershipPaymentReminderEmail(params: {
     gstPercentage,
     needsPaymentMethod,
   } = params;
-  const when = new Date(nextPaymentDate).toLocaleString();
+  const dateOnly = new Date(nextPaymentDate).toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
   const gstLine =
     typeof gstPercentage === "number"
       ? ` (includes ${gstPercentage}% GST)`
       : "";
   const parts = [
-    `Reminder: Your membership plan "${planTitle}" will be charged on ${when}.`,
+    `Reminder: Your membership plan "${planTitle}" will be charged overnight on ${dateOnly}.`,
     `Amount due: $${amountDue.toFixed(2)}${gstLine}.`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean);

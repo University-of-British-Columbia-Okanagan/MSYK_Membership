@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 interface Registration {
   id: number;
   result: string;
+  status: string;
   date: string | Date;
   user: { id: number; firstName: string; lastName: string; email: string };
   occurrence: {
@@ -333,7 +334,10 @@ export default function WorkshopUsers() {
                             : "N/A"}
                         </td>
                         <td className="px-4 py-3">
-                          {isOrientation ? (
+                          {firstReg.status === "Cancelled" ||
+                          firstReg.result === "cancelled" ? (
+                            <span className="text-gray-500">Cancelled</span>
+                          ) : isOrientation ? (
                             <div className="flex items-center gap-2">
                               <Select
                                 defaultValue={firstReg.result}

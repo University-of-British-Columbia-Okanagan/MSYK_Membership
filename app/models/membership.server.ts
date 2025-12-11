@@ -72,7 +72,10 @@ export function calculateProratedUpgradeAmount(
   if (newMonthly <= oldMonthly) return 0;
   const effectiveStart = new Date(nextPaymentDate);
   effectiveStart.setMonth(effectiveStart.getMonth() - 1);
-  const totalMs = Math.max(0, nextPaymentDate.getTime() - effectiveStart.getTime());
+  const totalMs = Math.max(
+    0,
+    nextPaymentDate.getTime() - effectiveStart.getTime()
+  );
   const remainingMs = Math.max(
     0,
     Math.min(nextPaymentDate.getTime() - now.getTime(), totalMs)
@@ -364,7 +367,6 @@ export async function registerMembershipSubscription(
       "active",
       subscription.id
     );
-
   } else if (currentMembershipId) {
     console.log("hello world3");
     const currentMembership = await db.userMembership.findUnique({
@@ -459,7 +461,6 @@ export async function registerMembershipSubscription(
         });
       }
     }
-
   } else {
     // Standard new subscription or simple update logic
     console.log("Creating brand‑new subscription record");
@@ -656,7 +657,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("0 0 * * *", async () => {
+  cron.schedule("10 15 * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -675,11 +676,10 @@ export function startMonthlyMembershipCheck() {
         },
       });
 
-      // Send reminders for memberships that will be charged within the next 24 hours (only for active)
+      // Send reminders for memberships that will be charged within the next 24 hours (all billing cycles)
       const reminderCandidates = await db.userMembership.findMany({
         where: {
           status: "active",
-          billingCycle: "monthly",
           nextPaymentDate: { gt: now, lte: reminderWindowEnd },
         },
         include: { membershipPlan: true },
@@ -691,7 +691,27 @@ export function startMonthlyMembershipCheck() {
         });
         if (!user) continue;
 
-        const baseAmount = Number(membership.membershipPlan.price);
+        // Calculate charge amount with GST based on billing cycle
+        let baseAmount = Number(membership.membershipPlan.price);
+
+        // Use appropriate price based on billing cycle
+        if (
+          membership.billingCycle === "quarterly" &&
+          membership.membershipPlan.price3Months
+        ) {
+          baseAmount = Number(membership.membershipPlan.price3Months);
+        } else if (
+          membership.billingCycle === "semiannually" &&
+          membership.membershipPlan.price6Months
+        ) {
+          baseAmount = Number(membership.membershipPlan.price6Months);
+        } else if (
+          membership.billingCycle === "yearly" &&
+          membership.membershipPlan.priceYearly
+        ) {
+          baseAmount = Number(membership.membershipPlan.priceYearly);
+        }
+
         const gstPercentage = await getAdminSetting("gst_percentage", "5");
         const gstRate = parseFloat(gstPercentage) / 100;
         const chargeAmount = baseAmount * (1 + gstRate);
@@ -711,6 +731,9 @@ export function startMonthlyMembershipCheck() {
               !savedPayment?.stripeCustomerId ||
               !savedPayment?.stripePaymentMethodId,
           });
+          console.log(
+            `✅ Sent payment reminder to user ${membership.userId} for ${membership.billingCycle} membership ($${chargeAmount.toFixed(2)})`
+          );
         } catch (emailErr) {
           console.error(
             `Failed to send membership payment reminder to user ${membership.userId}:`,
@@ -811,27 +834,31 @@ export function startMonthlyMembershipCheck() {
           const user = await ensureUser();
           if (!user) {
             console.error(
-              `No user found for ID ${membership.userId}, skipping`,
+              `No user found for ID ${membership.userId}, skipping`
             );
             continue;
           }
 
-          // Non-monthly subscriptions are not auto-renewed; expire when due
-          if (membership.billingCycle !== "monthly") {
-            await db.userMembership.update({
-              where: { id: membership.id },
-              data: { status: "inactive" },
-            });
-            await updateMembershipFormStatus(
-              membership.userId,
-              membership.membershipPlanId,
-              "inactive"
-            );
-        await syncUserRole();
-            continue;
+          // Calculate charge amount with GST based on billing cycle
+          let baseAmount = Number(membership.membershipPlan.price);
+
+          // Use appropriate price based on billing cycle
+          if (
+            membership.billingCycle === "quarterly" &&
+            membership.membershipPlan.price3Months
+          ) {
+            baseAmount = Number(membership.membershipPlan.price3Months);
+          } else if (
+            membership.billingCycle === "semiannually" &&
+            membership.membershipPlan.price6Months
+          ) {
+            baseAmount = Number(membership.membershipPlan.price6Months);
+          } else if (
+            membership.billingCycle === "yearly" &&
+            membership.membershipPlan.priceYearly
+          ) {
+            baseAmount = Number(membership.membershipPlan.priceYearly);
           }
-          // Calculate charge amount with GST
-          const baseAmount = Number(membership.membershipPlan.price);
 
           // Get GST percentage from admin settings
           const gstPercentage = await getAdminSetting("gst_percentage", "5");
@@ -848,7 +875,7 @@ export function startMonthlyMembershipCheck() {
             !savedPayment?.stripePaymentMethodId
           ) {
             console.warn(
-              `User ${membership.userId} has no saved payment info; membership ${membership.id} set to inactive.`
+              `User ${membership.userId} (${membership.billingCycle} cycle) has no saved payment info; membership ${membership.id} set to inactive.`
             );
 
             await db.userMembership.update({
@@ -861,13 +888,19 @@ export function startMonthlyMembershipCheck() {
               membership.membershipPlanId,
               "inactive"
             );
-          await syncUserRole();
 
+            // Sync user role and door access for all billing cycles
+            await syncUserRole();
+
+            // Send email for all billing cycles (monthly, quarterly, semiannually, yearly)
             try {
               await sendMembershipEndedNoPaymentMethodEmail({
                 userEmail: user.email,
                 planTitle: membership.membershipPlan.title,
               });
+              console.log(
+                `✅ Sent no payment method email to user ${membership.userId} for ${membership.billingCycle} membership`
+              );
             } catch (emailErr) {
               console.error(
                 `Failed to send missing payment method notice to user ${membership.userId}:`,
