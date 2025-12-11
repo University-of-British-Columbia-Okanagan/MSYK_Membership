@@ -1120,7 +1120,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - No form errors shown in add equipment when required fields not filled and also when it is filled, (lets say we set price to -1), it does not show an error that says price should be >= 0
   - In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)
   - If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Make it show the highlited fields for errors
-  - In the multiple billing options, it is possible to have a negative Save % shown in the /dashboard/memberships, if the save percentage is negative, do not even show it
+  - ~~In the multiple billing options, it is possible to have a negative Save % shown in the /dashboard/memberships, if the save percentage is negative, do not even show it~~
   - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
   - ~~When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options~~
   - When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty
