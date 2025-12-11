@@ -1406,7 +1406,10 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
       workshop: {
         select: {
           id: true,
+          name: true,
           type: true,
+          location: true,
+          price: true,
         },
       },
       userWorkshops: {
@@ -1513,6 +1516,108 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
           cancelledByAdmin: true, // Mark as admin cancellation
         },
       });
+    }
+  }
+
+  // Send email notifications to affected users
+  if (isMultiDay && occurrence.connectId !== null) {
+    // For multi-day workshops: Group by user and send one email per user with all sessions
+    type UserRegistration = (typeof occurrence.userWorkshops)[number];
+    const userRegistrationsMap = new Map<number, UserRegistration[]>();
+
+    // Get all occurrences for this multi-day workshop to include in email
+    const allOccurrences = await db.workshopOccurrence.findMany({
+      where: {
+        workshopId: occurrence.workshopId,
+        connectId: occurrence.connectId,
+      },
+      orderBy: {
+        startDate: "asc",
+      },
+    });
+
+    for (const registration of occurrence.userWorkshops) {
+      if (!userRegistrationsMap.has(registration.userId)) {
+        userRegistrationsMap.set(registration.userId, []);
+      }
+      userRegistrationsMap.get(registration.userId)!.push(registration);
+    }
+
+    // Import email function dynamically to avoid circular dependencies
+    const { sendWorkshopOccurrenceCancellationEmailMultiDay } =
+      await import("../utils/email.server");
+
+    for (const [userId, registrations] of userRegistrationsMap.entries()) {
+      const user = registrations[0].user;
+
+      const sessions = allOccurrences.map((occ) => ({
+        startDate: new Date(occ.startDate),
+        endDate: new Date(occ.endDate),
+      }));
+
+      // Get price variation if exists
+      const priceVariation = registrations[0].priceVariationId
+        ? await db.workshopPriceVariation.findUnique({
+            where: { id: registrations[0].priceVariationId },
+            select: {
+              name: true,
+              description: true,
+              price: true,
+            },
+          })
+        : null;
+
+      try {
+        await sendWorkshopOccurrenceCancellationEmailMultiDay({
+          userEmail: user.email,
+          workshopName: occurrence.workshop.name,
+          sessions,
+          location: occurrence.workshop.location,
+          basePrice: occurrence.workshop.price,
+          priceVariation,
+        });
+      } catch (emailError) {
+        console.error(
+          `Failed to send multi-day workshop cancellation email to user ${user.id}:`,
+          emailError
+        );
+      }
+    }
+  } else {
+    // For regular workshops: Send separate email for each user
+    const { sendWorkshopOccurrenceCancellationEmail } =
+      await import("../utils/email.server");
+
+    for (const registration of occurrence.userWorkshops) {
+      // Get price variation if exists
+      const priceVariation = registration.priceVariationId
+        ? await db.workshopPriceVariation.findUnique({
+            where: { id: registration.priceVariationId },
+            select: {
+              name: true,
+              description: true,
+              price: true,
+            },
+          })
+        : null;
+
+      try {
+        await sendWorkshopOccurrenceCancellationEmail({
+          userEmail: registration.user.email,
+          workshopName: occurrence.workshop.name,
+          workshopType: occurrence.workshop.type,
+          startDate: new Date(occurrence.startDate),
+          endDate: new Date(occurrence.endDate),
+          location: occurrence.workshop.location,
+          basePrice: occurrence.workshop.price,
+          priceVariation,
+        });
+      } catch (emailError) {
+        console.error(
+          `Failed to send workshop cancellation email to user ${registration.user.id}:`,
+          emailError
+        );
+      }
     }
   }
 
