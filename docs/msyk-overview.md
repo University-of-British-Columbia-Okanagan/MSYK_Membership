@@ -1079,10 +1079,10 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**~~
   - ~~Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"~~
   - Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops
-  - Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)
-  - People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)
+  - ~~Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)~~
+  - ~~People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)~~
   - When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop button, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly. Maybe it only does that if you are going from a workshop that books equipment to one that doesn't anymore after editing)
-  - Right now, users are eligible for refund if they refund 48 hours or more before the workshop start date (the individual times for regular workshops, and the first day in the multi-day workshop if it is multi-day). Make it so that they are eligible for refund if they cancelled within 48 hours of their registration instead
+  - ~~Right now, users are eligible for refund if they refund 48 hours or more before the workshop start date (the individual times for regular workshops, and the first day in the multi-day workshop if it is multi-day). Make it so that they are eligible for refund if they cancelled within 48 hours of their registration instead~~
   - When people used to have an membership but it is now inactive, sometimes, they cannot subscribe to another because it says "You can change only after your old membership billing cycle ends." An example of when this can happen is when it is Nov 21st for example but in the db in UserMembership, startDate is 2025-11-12 03:35:51.909 and nextPaymentDate is 2025-12-12 03:35:51.909 and it is status inactive
   - Disable the ability to edit equipment prereqs after creating them (in edit equipment)
   - If equipment unavaliable, users and guests should not be able to access dashboard/equipmentbooking/:id or dashboard/equipments/:id (even by typing URL)
@@ -1138,7 +1138,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 ### Findings and Notes
 
 - **Start Date and Time and End Date and Time Filter Implementation**
-  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it should be inclusive by start date and time but should it also be inclusive with the end date and time as well?
+  - When inputing start date and time and end date and time (in profile route for volunteer and also in admin settings volunteer and also in volunteer admin reports), it is inclusive by start date and time but NOT inclusive with the end date and time
      - If filter is on 2025-11-03 at 10:00 and 2025-11-05 at 10:00, it should show entries that all have a start date inside that bound
       - In Profile page, it is inclusive with the start date and time but not end date and time
       - In Manage Volunteer Hours, it is inclusive with the start date and time but not end date and time
@@ -1150,6 +1150,13 @@ The following acceptance criteria should be manually tested by QA in the applica
   - People could technically spam register/book, cancel register/book, register/book, cancel register/book, etc. for workshop registration and equipment bookings
 - **Reported Issues**
   - For reported issues, when you upload an image, there is no way to see an image (the screenshot of the bug given by the user when they make the report)
+- **Eligible for Refund Cancelled Events**
+  - **Workshops**: Full refunds are only available if canceled within 48 hours of registration. The system calculates eligibility by comparing the cancellation date against the registration date plus 48 hours. This applies to all workshop types (regular, multi-day, with or without price variations)
+  - **Equipment**: Full refunds are only available if canceled at least 48 hours (2 days) before the earliest booked slot time. The system calculates eligibility by checking if the earliest slot's start time is more than 2 days in the future from the cancellation date
+- **My Equipments Page**
+  - The /dashboard/myequipments does not group equipments times together for timings under one payment. In the future, if they are grouped, users should still be able to cancel individual times even though multiple bookings can be under one payment (we can logic that handles this, refer to Admin Settings -> Cancelled Events)
+- **Equipment Bookings**
+  - Currently, there is no way to "directly" cancel a user's equipment booking (for level 3 and 4) compared to like workshops where admins can cancel date(s) and cancel price variations. However, equipments have many ways in disabling when users can book through planned closures and restricting bookings days and times, etc.
 
 ---
 

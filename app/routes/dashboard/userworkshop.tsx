@@ -1,7 +1,10 @@
 import { useState, useMemo } from "react";
 import { useLoaderData, redirect, useParams, Link } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
-import { getUserWorkshopRegistrationsByWorkshopId } from "~/models/workshop.server";
+import {
+  getUserWorkshopRegistrationsByWorkshopId,
+  getWorkshopById,
+} from "~/models/workshop.server";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
@@ -63,12 +66,33 @@ export async function loader({
   params: { workshopId: string };
 }) {
   const roleUser = await getRoleUser(request);
+
+  // Check if user is logged in
   if (!roleUser || !roleUser.userId) {
     return redirect("/login");
   }
+
+  // Check if user is admin
+  if (roleUser.roleName.toLowerCase() !== "admin") {
+    return redirect("/dashboard/user");
+  }
+
   const workshopId = Number(params.workshopId);
+
+  // Check if workshop exists
+  try {
+    const workshop = await getWorkshopById(workshopId);
+    if (!workshop) {
+      return redirect("/dashboard/admin");
+    }
+  } catch (error) {
+    // Workshop doesn't exist, redirect to admin dashboard
+    return redirect("/dashboard/admin");
+  }
+
   const registrations =
     await getUserWorkshopRegistrationsByWorkshopId(workshopId);
+
   return { roleUser, registrations };
 }
 

@@ -1,5 +1,5 @@
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
+import jwt from "jsonwebtoken";
+import dotenv from "dotenv";
 import Mailgun from "mailgun.js";
 import { randomUUID } from "crypto";
 import formData from "form-data";
@@ -75,7 +75,7 @@ async function sendMail({
 
 async function sendPasswordResetEmail(
   userEmail: string,
-  resetLink: string,
+  resetLink: string
 ): Promise<void> {
   await sendMail({
     to: userEmail,
@@ -89,7 +89,7 @@ function generateResetToken(email: string): string {
   if (!secret) {
     throw new Error("JWT_SECRET is not configured");
   }
-  return jwt.sign({ email }, secret, { expiresIn: '1h' });
+  return jwt.sign({ email }, secret, { expiresIn: "1h" });
 }
 
 export async function sendResetEmail(email: string): Promise<void> {
@@ -104,11 +104,10 @@ export async function sendResetEmail(email: string): Promise<void> {
   } catch {
     throw new Error("BASE_URL must be a valid absolute URL origin");
   }
-  const resetUrl = new URL('/passwordReset', origin);
-  resetUrl.searchParams.set('token', token);
+  const resetUrl = new URL("/passwordReset", origin);
+  resetUrl.searchParams.set("token", token);
   await sendPasswordResetEmail(email, resetUrl.toString());
 }
-
 
 export async function sendWorkshopConfirmationEmail(params: {
   userEmail: string;
@@ -120,10 +119,23 @@ export async function sendWorkshopConfirmationEmail(params: {
   sessions?: Array<{ startDate: Date; endDate: Date }>;
   // Pricing
   basePrice?: number;
-  priceVariation?: { name: string; description?: string | null; price: number } | null;
+  priceVariation?: {
+    name: string;
+    description?: string | null;
+    price: number;
+  } | null;
   location?: string;
 }): Promise<void> {
-  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation, location } = params;
+  const {
+    userEmail,
+    workshopName,
+    startDate,
+    endDate,
+    sessions,
+    basePrice,
+    priceVariation,
+    location,
+  } = params;
 
   function pad(number: number): string {
     return number < 10 ? `0${number}` : String(number);
@@ -172,8 +184,12 @@ export async function sendWorkshopConfirmationEmail(params: {
       `DTSTART:${toICalUTC(options.dtStart)}`,
       `DTEND:${toICalUTC(options.dtEnd)}`,
       `SUMMARY:${escapeICalText(options.summary)}`,
-      options.description ? `DESCRIPTION:${escapeICalText(options.description)}` : undefined,
-      options.location ? `LOCATION:${escapeICalText(options.location)}` : undefined,
+      options.description
+        ? `DESCRIPTION:${escapeICalText(options.description)}`
+        : undefined,
+      options.location
+        ? `LOCATION:${escapeICalText(options.location)}`
+        : undefined,
       "END:VEVENT",
       "END:VCALENDAR",
     ].filter(Boolean) as string[];
@@ -203,16 +219,28 @@ export async function sendWorkshopConfirmationEmail(params: {
         `DTSTART:${toICalUTC(start)}`,
         `DTEND:${toICalUTC(end)}`,
         `SUMMARY:${escapeICalText(options.summary)}`,
-        options.description ? `DESCRIPTION:${escapeICalText(options.description)}` : undefined,
-        options.location ? `LOCATION:${escapeICalText(options.location)}` : undefined,
+        options.description
+          ? `DESCRIPTION:${escapeICalText(options.description)}`
+          : undefined,
+        options.location
+          ? `LOCATION:${escapeICalText(options.location)}`
+          : undefined,
         "END:VEVENT",
-      ].filter(Boolean).join("\r\n");
+      ]
+        .filter(Boolean)
+        .join("\r\n");
     });
     const footer = ["END:VCALENDAR"];
     return [...header, ...events, ...footer].join("\r\n");
   }
 
-  function buildGoogleCalendarLink(title: string, start: Date, end: Date, details?: string, loc?: string): string {
+  function buildGoogleCalendarLink(
+    title: string,
+    start: Date,
+    end: Date,
+    details?: string,
+    loc?: string
+  ): string {
     const base = "https://www.google.com/calendar/render";
     const text = encodeURIComponent(title);
     const dates = `${toICalUTC(start)}/${toICalUTC(end)}`;
@@ -224,7 +252,9 @@ export async function sendWorkshopConfirmationEmail(params: {
 
   const pricingLines: string[] = [];
   if (priceVariation) {
-    pricingLines.push(`Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`);
+    pricingLines.push(
+      `Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+    );
     if (priceVariation.description) {
       pricingLines.push(`Details: ${priceVariation.description}`);
     }
@@ -235,9 +265,15 @@ export async function sendWorkshopConfirmationEmail(params: {
   let detailsBlock = "";
   if (sessions && sessions.length > 0) {
     const lines = sessions
-      .map((s, idx) => `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`)
+      .map(
+        (s, idx) =>
+          `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+      )
       .join("\n");
-    detailsBlock = sessions.length > 1 ? `Sessions confirmed:\n${lines}` : `Session confirmed:\n${lines}`;
+    detailsBlock =
+      sessions.length > 1
+        ? `Sessions confirmed:\n${lines}`
+        : `Session confirmed:\n${lines}`;
   } else if (startDate && endDate) {
     detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
   }
@@ -248,13 +284,17 @@ export async function sendWorkshopConfirmationEmail(params: {
   let icsContent = "";
   let icsFilename = "";
 
-  const descriptionForICS = pricingLines.length > 0 ? pricingLines.join(" ") : undefined;
+  const descriptionForICS =
+    pricingLines.length > 0 ? pricingLines.join(" ") : undefined;
 
   if (sessions && sessions.length > 0) {
     icsContent = buildMultiEventICS({
       summary: workshopName,
       description: descriptionForICS,
-      sessions: sessions.map(s => ({ start: new Date(s.startDate), end: new Date(s.endDate) })),
+      sessions: sessions.map((s) => ({
+        start: new Date(s.startDate),
+        end: new Date(s.endDate),
+      })),
       location,
     });
     icsFilename = `${workshopName.replace(/[^a-z0-9]+/gi, "-")}-sessions.ics`;
@@ -269,7 +309,9 @@ export async function sendWorkshopConfirmationEmail(params: {
         location
       );
       calendarSectionLines.push(`${idx + 1}. Add to Google Calendar: ${link}`);
-      htmlCalendarLinks.push(`<li><a href="${link}">Add session ${idx + 1} to Google Calendar</a></li>`);
+      htmlCalendarLinks.push(
+        `<li><a href="${link}">Add session ${idx + 1} to Google Calendar</a></li>`
+      );
     });
   } else if (startDate && endDate) {
     icsContent = buildSingleEventICS({
@@ -281,7 +323,13 @@ export async function sendWorkshopConfirmationEmail(params: {
     });
     icsFilename = `${workshopName.replace(/[^a-z0-9]+/gi, "-")}.ics`;
 
-    const link = buildGoogleCalendarLink(workshopName, new Date(startDate), new Date(endDate), descriptionForICS, location);
+    const link = buildGoogleCalendarLink(
+      workshopName,
+      new Date(startDate),
+      new Date(endDate),
+      descriptionForICS,
+      location
+    );
     calendarSectionLines.push(`Add to Google Calendar: ${link}`);
     htmlCalendarLinks.push(`<a href="${link}">Add to Google Calendar</a>`);
   }
@@ -291,9 +339,9 @@ export async function sendWorkshopConfirmationEmail(params: {
     `Your registration has been confirmed.`,
     detailsBlock,
     pricingLines.join("\n"),
-    (calendarSectionLines.length > 0
+    calendarSectionLines.length > 0
       ? `\nAdd to calendar:\n${calendarSectionLines.join("\n")}`
-      : undefined),
+      : undefined,
     `We look forward to seeing you there!`,
   ].filter(Boolean) as string[];
 
@@ -308,11 +356,14 @@ export async function sendWorkshopConfirmationEmail(params: {
     ? `<p>${escapeHTML(detailsBlock).replace(/\n/g, "<br/>")}</p>`
     : "";
 
-  const pricingHtml = pricingLines.length > 0
-    ? `<p>${pricingLines.map(l => escapeHTML(l)).join("<br/>")}</p>`
-    : "";
+  const pricingHtml =
+    pricingLines.length > 0
+      ? `<p>${pricingLines.map((l) => escapeHTML(l)).join("<br/>")}</p>`
+      : "";
 
-  const locationHtml = location ? `<p><strong>Location:</strong> ${escapeHTML(location)}</p>` : "";
+  const locationHtml = location
+    ? `<p><strong>Location:</strong> ${escapeHTML(location)}</p>`
+    : "";
 
   const htmlBody = [
     `<p>Thank you for registering for "${escapeHTML(workshopName)}".</p>`,
@@ -320,7 +371,9 @@ export async function sendWorkshopConfirmationEmail(params: {
     detailsHtml,
     locationHtml,
     pricingHtml,
-    htmlCalendarLinks.length > 0 ? `<p><strong>Add to calendar:</strong></p><ul>${htmlCalendarLinks.join("")}</ul>` : "",
+    htmlCalendarLinks.length > 0
+      ? `<p><strong>Add to calendar:</strong></p><ul>${htmlCalendarLinks.join("")}</ul>`
+      : "",
     `<p>We look forward to seeing you there!</p>`,
   ]
     .filter(Boolean)
@@ -375,7 +428,10 @@ export async function sendEquipmentBulkConfirmationEmail(params: {
 }): Promise<void> {
   const { userEmail, equipmentName, slots, pricePerSlot } = params;
   const lines = slots
-    .map((s, idx) => `${idx + 1}. ${new Date(s.startTime).toLocaleString()} - ${new Date(s.endTime).toLocaleString()}`)
+    .map(
+      (s, idx) =>
+        `${idx + 1}. ${new Date(s.startTime).toLocaleString()} - ${new Date(s.endTime).toLocaleString()}`
+    )
     .join("\n");
 
   const parts = [
@@ -383,7 +439,10 @@ export async function sendEquipmentBulkConfirmationEmail(params: {
     `Times:`,
     lines,
     ...(typeof pricePerSlot === "number"
-      ? [`Price per slot: $${pricePerSlot.toFixed(2)}`, `Total: $${(pricePerSlot * slots.length).toFixed(2)}`]
+      ? [
+          `Price per slot: $${pricePerSlot.toFixed(2)}`,
+          `Total: $${(pricePerSlot * slots.length).toFixed(2)}`,
+        ]
       : []),
     `We look forward to seeing you there!`,
   ].filter(Boolean);
@@ -405,13 +464,27 @@ export async function sendWorkshopCancellationEmail(params: {
   sessions?: Array<{ startDate: Date; endDate: Date }>;
   // Pricing
   basePrice?: number;
-  priceVariation?: { name: string; description?: string | null; price: number } | null;
+  priceVariation?: {
+    name: string;
+    description?: string | null;
+    price: number;
+  } | null;
 }): Promise<void> {
-  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation } = params;
+  const {
+    userEmail,
+    workshopName,
+    startDate,
+    endDate,
+    sessions,
+    basePrice,
+    priceVariation,
+  } = params;
 
   const pricingLines: string[] = [];
   if (priceVariation) {
-    pricingLines.push(`Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`);
+    pricingLines.push(
+      `Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+    );
     if (priceVariation.description) {
       pricingLines.push(`Details: ${priceVariation.description}`);
     }
@@ -422,9 +495,15 @@ export async function sendWorkshopCancellationEmail(params: {
   let detailsBlock = "";
   if (sessions && sessions.length > 0) {
     const lines = sessions
-      .map((s, idx) => `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`)
+      .map(
+        (s, idx) =>
+          `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+      )
       .join("\n");
-    detailsBlock = sessions.length > 1 ? `Sessions cancelled:\n${lines}` : `Session cancelled:\n${lines}`;
+    detailsBlock =
+      sessions.length > 1
+        ? `Sessions cancelled:\n${lines}`
+        : `Session cancelled:\n${lines}`;
   } else if (startDate && endDate) {
     detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
   }
@@ -470,11 +549,15 @@ function paymentMethodAction(needsPaymentMethod?: boolean): string | undefined {
  * @param userId - The user ID to check
  * @returns Promise<boolean> - true if payment method is needed, false otherwise
  */
-export async function checkPaymentMethodStatus(userId: number): Promise<boolean> {
+export async function checkPaymentMethodStatus(
+  userId: number
+): Promise<boolean> {
   const savedPayment = await db.userPaymentInformation.findUnique({
     where: { userId },
   });
-  return !savedPayment?.stripeCustomerId || !savedPayment?.stripePaymentMethodId;
+  return (
+    !savedPayment?.stripeCustomerId || !savedPayment?.stripePaymentMethodId
+  );
 }
 
 export async function sendMembershipConfirmationEmail(params: {
@@ -490,20 +573,45 @@ export async function sendMembershipConfirmationEmail(params: {
   planPrice?: number;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, planDescription, monthlyPrice, features, needAdminPermission, gstPercentage, nextBillingDate, billingCycle, planPrice, needsPaymentMethod } = params;
+  const {
+    userEmail,
+    planTitle,
+    planDescription,
+    monthlyPrice,
+    features,
+    needAdminPermission,
+    gstPercentage,
+    nextBillingDate,
+    billingCycle,
+    planPrice,
+    needsPaymentMethod,
+  } = params;
 
-  const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
+  const gstLine =
+    typeof gstPercentage === "number"
+      ? ` (includes ${gstPercentage}% GST)`
+      : "";
   const showNextLine = billingCycle === "monthly" && nextBillingDate;
-  const nextLine = showNextLine ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}` : "";
+  const nextLine = showNextLine
+    ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}`
+    : "";
 
-  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "semiannually" ? "Every 6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
+  const cycleLabel =
+    billingCycle === "quarterly"
+      ? "Quarterly"
+      : billingCycle === "semiannually"
+        ? "Every 6 months"
+        : billingCycle === "yearly"
+          ? "Yearly"
+          : "Monthly";
   const cycleLine = billingCycle ? `\nBilling cycle: ${cycleLabel}` : "";
-  const selectedPrice = typeof planPrice === "number" ? planPrice : monthlyPrice;
+  const selectedPrice =
+    typeof planPrice === "number" ? planPrice : monthlyPrice;
 
   // Format features list
   const featuresList = Object.values(features)
-    .filter(feature => feature && feature.trim() !== "")
-    .map(feature => `• ${feature}`)
+    .filter((feature) => feature && feature.trim() !== "")
+    .map((feature) => `• ${feature}`)
     .join("\n");
 
   const accessHours = needAdminPermission ? "24/7" : "Open Hours";
@@ -537,9 +645,19 @@ export async function sendMembershipPaymentReminderEmail(params: {
   gstPercentage?: number;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, nextPaymentDate, amountDue, gstPercentage, needsPaymentMethod } = params;
+  const {
+    userEmail,
+    planTitle,
+    nextPaymentDate,
+    amountDue,
+    gstPercentage,
+    needsPaymentMethod,
+  } = params;
   const when = new Date(nextPaymentDate).toLocaleString();
-  const gstLine = typeof gstPercentage === "number" ? ` (includes ${gstPercentage}% GST)` : "";
+  const gstLine =
+    typeof gstPercentage === "number"
+      ? ` (includes ${gstPercentage}% GST)`
+      : "";
   const parts = [
     `Reminder: Your membership plan "${planTitle}" will be charged on ${when}.`,
     `Amount due: $${amountDue.toFixed(2)}${gstLine}.`,
@@ -561,10 +679,19 @@ export async function sendMembershipDowngradeEmail(params: {
   effectiveDate: Date;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, currentPlanTitle, newPlanTitle, currentMonthlyPrice, newMonthlyPrice, effectiveDate, needsPaymentMethod } = params;
-  const priceLine = currentMonthlyPrice != null && newMonthlyPrice != null
-    ? `Current price: $${currentMonthlyPrice.toFixed(2)} → New price: $${newMonthlyPrice.toFixed(2)}`
-    : undefined;
+  const {
+    userEmail,
+    currentPlanTitle,
+    newPlanTitle,
+    currentMonthlyPrice,
+    newMonthlyPrice,
+    effectiveDate,
+    needsPaymentMethod,
+  } = params;
+  const priceLine =
+    currentMonthlyPrice != null && newMonthlyPrice != null
+      ? `Current price: $${currentMonthlyPrice.toFixed(2)} → New price: $${newMonthlyPrice.toFixed(2)}`
+      : undefined;
   const parts = [
     `Your membership downgrade has been scheduled.`,
     `Current plan: ${currentPlanTitle}`,
@@ -614,11 +741,32 @@ export async function sendMembershipResubscribeEmail(params: {
   planPrice?: number;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
-  const { userEmail, planTitle, monthlyPrice, nextBillingDate, billingCycle, planPrice, needsPaymentMethod } = params;
-  const cycleLabel = billingCycle === "quarterly" ? "Quarterly" : billingCycle === "semiannually" ? "Every 6 months" : billingCycle === "yearly" ? "Yearly" : "Monthly";
+  const {
+    userEmail,
+    planTitle,
+    monthlyPrice,
+    nextBillingDate,
+    billingCycle,
+    planPrice,
+    needsPaymentMethod,
+  } = params;
+  const cycleLabel =
+    billingCycle === "quarterly"
+      ? "Quarterly"
+      : billingCycle === "semiannually"
+        ? "Every 6 months"
+        : billingCycle === "yearly"
+          ? "Yearly"
+          : "Monthly";
   const priceVal = typeof planPrice === "number" ? planPrice : monthlyPrice;
-  const priceLine = priceVal != null ? `Price: $${priceVal.toFixed(2)} (${cycleLabel})` : `Billing cycle: ${cycleLabel}`;
-  const nextLine = billingCycle === "monthly" && nextBillingDate ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}` : undefined;
+  const priceLine =
+    priceVal != null
+      ? `Price: $${priceVal.toFixed(2)} (${cycleLabel})`
+      : `Billing cycle: ${cycleLabel}`;
+  const nextLine =
+    billingCycle === "monthly" && nextBillingDate
+      ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}`
+      : undefined;
   const parts = [
     `Your membership has been reactivated: "${planTitle}".`,
     priceLine,
@@ -722,7 +870,7 @@ export async function sendRegistrationConfirmationEmail(params: {
   } catch {
     throw new Error("BASE_URL must be a valid absolute URL origin");
   }
-  const loginUrl = new URL('/login', origin).toString();
+  const loginUrl = new URL("/login", origin).toString();
 
   const parts = [
     `${greeting},`,
@@ -767,6 +915,221 @@ export async function sendRegistrationConfirmationEmail(params: {
     to: userEmail,
     subject: "Welcome to Makerspace YK - Account Created",
     text: parts.join("\n\n"),
+    html: htmlBody,
+  });
+}
+
+export async function sendWorkshopPriceVariationCancellationEmail(params: {
+  userEmail: string;
+  workshopName: string;
+  startDate: Date;
+  endDate: Date;
+  location?: string;
+  basePrice?: number;
+  priceVariation: { name: string; description?: string | null; price: number };
+}): Promise<void> {
+  const {
+    userEmail,
+    workshopName,
+    startDate,
+    endDate,
+    location,
+    basePrice,
+    priceVariation,
+  } = params;
+
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+  }
+
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("BASE_URL must be a valid absolute URL origin");
+  }
+
+  const workshopsUrl = new URL("/dashboard/workshops", origin);
+
+  const start = new Date(startDate).toLocaleString();
+  const end = new Date(endDate).toLocaleString();
+
+  const pricingLines: string[] = [];
+  pricingLines.push(
+    `Price Variation: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+  );
+  if (priceVariation.description) {
+    pricingLines.push(`Details: ${priceVariation.description}`);
+  }
+  if (typeof basePrice === "number") {
+    pricingLines.push(`Base workshop price: $${basePrice.toFixed(2)}`);
+  }
+
+  const parts = [
+    `We regret to inform you that the price variation "${priceVariation.name}" for the workshop "${workshopName}" has been cancelled by the administrator.`,
+    ``,
+    `Workshop Session Details:`,
+    `${start} - ${end}`,
+    ...(location ? [`Location: ${location}`] : []),
+    ``,
+    `Pricing Information:`,
+    ...pricingLines,
+    ``,
+    `Your payment will be fully refunded to your original payment method.`,
+    ``,
+    `We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at info@makerspaceyk.com.`,
+    ``,
+    `You can view other available workshops at: ${workshopsUrl.toString()}`,
+  ].filter(Boolean);
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #dc2626;">Workshop Price Variation Cancelled</h2>
+      <p>We regret to inform you that the price variation "<strong>${escapeHTML(priceVariation.name)}</strong>" for the workshop "<strong>${escapeHTML(workshopName)}</strong>" has been cancelled by the administrator.</p>
+      
+      <h3 style="color: #374151; margin-top: 20px;">Workshop Session Details:</h3>
+      <p style="margin: 5px 0;"><strong>Time:</strong> ${escapeHTML(start)} - ${escapeHTML(end)}</p>
+      ${location ? `<p style="margin: 5px 0;"><strong>Location:</strong> ${escapeHTML(location)}</p>` : ""}
+      
+      <h3 style="color: #374151; margin-top: 20px;">Pricing Information:</h3>
+      <p style="margin: 5px 0;"><strong>Price Variation:</strong> ${escapeHTML(priceVariation.name)} - $${priceVariation.price.toFixed(2)}</p>
+      ${priceVariation.description ? `<p style="margin: 5px 0;"><strong>Details:</strong> ${escapeHTML(priceVariation.description)}</p>` : ""}
+      
+      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e;"><strong>Refund Information:</strong> Your payment will be fully refunded to your original payment method.</p>
+      </div>
+      
+      <p>We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at <a href="mailto:info@makerspaceyk.com">info@makerspaceyk.com</a>.</p>
+      
+      <p style="margin-top: 20px;">You can view other available workshops at: <a href="${workshopsUrl.toString()}" style="color: #2563eb;">Browse Workshops</a></p>
+    </div>
+  `;
+
+  await sendMail({
+    to: userEmail,
+    subject: `Workshop Price Variation Cancelled: ${workshopName}`,
+    text: parts.join("\n"),
+    html: htmlBody,
+  });
+}
+
+export async function sendWorkshopPriceVariationCancellationEmailMultiDay(params: {
+  userEmail: string;
+  workshopName: string;
+  sessions: Array<{ startDate: Date; endDate: Date }>;
+  location?: string;
+  basePrice?: number;
+  priceVariation: { name: string; description?: string | null; price: number };
+}): Promise<void> {
+  const {
+    userEmail,
+    workshopName,
+    sessions,
+    location,
+    basePrice,
+    priceVariation,
+  } = params;
+
+  const baseUrl = process.env.BASE_URL;
+  if (!baseUrl) {
+    throw new Error("BASE_URL is not configured");
+  }
+
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("BASE_URL must be a valid absolute URL origin");
+  }
+
+  const workshopsUrl = new URL("/dashboard/workshops", origin);
+
+  const sessionLines = sessions
+    .map(
+      (s, idx) =>
+        `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+    )
+    .join("\n");
+
+  const pricingLines: string[] = [];
+  pricingLines.push(
+    `Price Variation: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+  );
+  if (priceVariation.description) {
+    pricingLines.push(`Details: ${priceVariation.description}`);
+  }
+  if (typeof basePrice === "number") {
+    pricingLines.push(`Base workshop price: $${basePrice.toFixed(2)}`);
+  }
+
+  const parts = [
+    `We regret to inform you that the price variation "${priceVariation.name}" for the workshop "${workshopName}" has been cancelled by the administrator.`,
+    ``,
+    `Workshop Sessions (All Cancelled):`,
+    sessionLines,
+    ...(location ? [`Location: ${location}`] : []),
+    ``,
+    `Pricing Information:`,
+    ...pricingLines,
+    ``,
+    `Your payment will be fully refunded within 5-10 business days to your original payment method.`,
+    ``,
+    `We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at info@makerspaceyk.com.`,
+    ``,
+    `You can view other available workshops at: ${workshopsUrl.toString()}`,
+  ].filter(Boolean);
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const sessionLinesHtml = sessions
+    .map(
+      (s, idx) =>
+        `<li>${escapeHTML(new Date(s.startDate).toLocaleString())} - ${escapeHTML(new Date(s.endDate).toLocaleString())}</li>`
+    )
+    .join("");
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #dc2626;">Workshop Price Variation Cancelled</h2>
+      <p>We regret to inform you that the price variation "<strong>${escapeHTML(priceVariation.name)}</strong>" for the workshop "<strong>${escapeHTML(workshopName)}</strong>" has been cancelled by the administrator.</p>
+      
+      <h3 style="color: #374151; margin-top: 20px;">Workshop Sessions (All Cancelled):</h3>
+      <ol style="margin: 5px 0; padding-left: 20px;">
+        ${sessionLinesHtml}
+      </ol>
+      ${location ? `<p style="margin: 5px 0;"><strong>Location:</strong> ${escapeHTML(location)}</p>` : ""}
+      
+      <h3 style="color: #374151; margin-top: 20px;">Pricing Information:</h3>
+      <p style="margin: 5px 0;"><strong>Price Variation:</strong> ${escapeHTML(priceVariation.name)} - $${priceVariation.price.toFixed(2)}</p>
+      ${priceVariation.description ? `<p style="margin: 5px 0;"><strong>Details:</strong> ${escapeHTML(priceVariation.description)}</p>` : ""}
+      
+      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
+        <p style="margin: 0; color: #92400e;"><strong>Refund Information:</strong> Your payment will be fully refunded within 5-10 business days to your original payment method.</p>
+      </div>
+      
+      <p>We apologize for any inconvenience this may cause. If you have any questions or concerns, please contact us at <a href="mailto:info@makerspaceyk.com">info@makerspaceyk.com</a>.</p>
+      
+      <p style="margin-top: 20px;">You can view other available workshops at: <a href="${workshopsUrl.toString()}" style="color: #2563eb;">Browse Workshops</a></p>
+    </div>
+  `;
+
+  await sendMail({
+    to: userEmail,
+    subject: `Workshop Price Variation Cancelled: ${workshopName}`,
+    text: parts.join("\n"),
     html: htmlBody,
   });
 }
