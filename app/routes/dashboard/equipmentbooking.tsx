@@ -28,6 +28,10 @@ import { getRoleUser } from "../../utils/session.server";
 import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
 
+type EquipmentWithSlots = Awaited<
+  ReturnType<typeof getEquipmentSlotsWithStatus>
+>[number] & { availability?: boolean };
+
 export async function loader({
   request,
   params,
@@ -70,6 +74,21 @@ export async function loader({
     true
   );
 
+  if (equipmentId) {
+    const selectedEquipment: EquipmentWithSlots | undefined = equipmentWithSlots.find(
+      (equip) => equip.id === equipmentId
+    );
+    const isAdminForLoader =
+      roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
+    const isUnavailable =
+      !selectedEquipment || !selectedEquipment.availability;
+    if (isUnavailable && !isAdminForLoader) {
+      const redirectPath = !roleUser
+        ? "/dashboard"
+        : "/dashboard/user";
+      throw redirect(redirectPath);
+    }
+  }
   // Check prerequisites for all equipment
   const equipmentPrerequisiteMap: Record<number, boolean> = {};
   if (user && (roleLevel === 3 || roleLevel === 4)) {
@@ -137,6 +156,14 @@ export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const user = await getUser(request);
   const roleLevel = user?.roleLevel ?? 1;
+  const roleUser = await getRoleUser(request);
+  const isAdmin =
+    roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
+  const roleRedirectPath = !roleUser
+    ? "/dashboard"
+    : isAdmin
+      ? "/dashboard/admin"
+      : "/dashboard/user";
 
   if (!user) {
     logger.warn(`[Guest] Attempt to book equipment without authentication`, {
@@ -178,19 +205,14 @@ export async function action({ request }: { request: Request }) {
   }
 
   const equipment = await getEquipmentById(equipmentId);
-  if (!equipment) {
-    logger.warn(`[User: ${user.id}] Equipment ID ${equipmentId} not found`, {
-      url: request.url,
-    });
-    throw new Response("Equipment Not Found", { status: 404 });
-  }
-
-  if (!equipment.availability) {
+  const isAdminForAction =
+    roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
+  if (!equipment || (!equipment.availability && !isAdminForAction)) {
     logger.warn(
-      `[User: ${user.id}] Equipment ID ${equipmentId} is not available`,
+      `[User: ${user.id}] Equipment ID ${equipmentId} unavailable or missing`,
       { url: request.url }
     );
-    throw new Response("Equipment Not Available", { status: 419 });
+    return redirect(roleRedirectPath);
   }
 
   // Check prerequisites before allowing booking
