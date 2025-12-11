@@ -72,7 +72,10 @@ export function calculateProratedUpgradeAmount(
   if (newMonthly <= oldMonthly) return 0;
   const effectiveStart = new Date(nextPaymentDate);
   effectiveStart.setMonth(effectiveStart.getMonth() - 1);
-  const totalMs = Math.max(0, nextPaymentDate.getTime() - effectiveStart.getTime());
+  const totalMs = Math.max(
+    0,
+    nextPaymentDate.getTime() - effectiveStart.getTime()
+  );
   const remainingMs = Math.max(
     0,
     Math.min(nextPaymentDate.getTime() - now.getTime(), totalMs)
@@ -364,7 +367,6 @@ export async function registerMembershipSubscription(
       "active",
       subscription.id
     );
-
   } else if (currentMembershipId) {
     console.log("hello world3");
     const currentMembership = await db.userMembership.findUnique({
@@ -459,7 +461,6 @@ export async function registerMembershipSubscription(
         });
       }
     }
-
   } else {
     // Standard new subscription or simple update logic
     console.log("Creating brand‑new subscription record");
@@ -811,27 +812,31 @@ export function startMonthlyMembershipCheck() {
           const user = await ensureUser();
           if (!user) {
             console.error(
-              `No user found for ID ${membership.userId}, skipping`,
+              `No user found for ID ${membership.userId}, skipping`
             );
             continue;
           }
 
-          // Non-monthly subscriptions are not auto-renewed; expire when due
-          if (membership.billingCycle !== "monthly") {
-            await db.userMembership.update({
-              where: { id: membership.id },
-              data: { status: "inactive" },
-            });
-            await updateMembershipFormStatus(
-              membership.userId,
-              membership.membershipPlanId,
-              "inactive"
-            );
-        await syncUserRole();
-            continue;
+          // Calculate charge amount with GST based on billing cycle
+          let baseAmount = Number(membership.membershipPlan.price);
+
+          // Use appropriate price based on billing cycle
+          if (
+            membership.billingCycle === "quarterly" &&
+            membership.membershipPlan.price3Months
+          ) {
+            baseAmount = Number(membership.membershipPlan.price3Months);
+          } else if (
+            membership.billingCycle === "semiannually" &&
+            membership.membershipPlan.price6Months
+          ) {
+            baseAmount = Number(membership.membershipPlan.price6Months);
+          } else if (
+            membership.billingCycle === "yearly" &&
+            membership.membershipPlan.priceYearly
+          ) {
+            baseAmount = Number(membership.membershipPlan.priceYearly);
           }
-          // Calculate charge amount with GST
-          const baseAmount = Number(membership.membershipPlan.price);
 
           // Get GST percentage from admin settings
           const gstPercentage = await getAdminSetting("gst_percentage", "5");
@@ -861,7 +866,7 @@ export function startMonthlyMembershipCheck() {
               membership.membershipPlanId,
               "inactive"
             );
-          await syncUserRole();
+            await syncUserRole();
 
             try {
               await sendMembershipEndedNoPaymentMethodEmail({
