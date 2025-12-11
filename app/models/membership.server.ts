@@ -853,7 +853,7 @@ export function startMonthlyMembershipCheck() {
             !savedPayment?.stripePaymentMethodId
           ) {
             console.warn(
-              `User ${membership.userId} has no saved payment info; membership ${membership.id} set to inactive.`
+              `User ${membership.userId} (${membership.billingCycle} cycle) has no saved payment info; membership ${membership.id} set to inactive.`
             );
 
             await db.userMembership.update({
@@ -866,13 +866,19 @@ export function startMonthlyMembershipCheck() {
               membership.membershipPlanId,
               "inactive"
             );
+
+            // Sync user role and door access for all billing cycles
             await syncUserRole();
 
+            // Send email for all billing cycles (monthly, quarterly, semiannually, yearly)
             try {
               await sendMembershipEndedNoPaymentMethodEmail({
                 userEmail: user.email,
                 planTitle: membership.membershipPlan.title,
               });
+              console.log(
+                `✅ Sent no payment method email to user ${membership.userId} for ${membership.billingCycle} membership`
+              );
             } catch (emailErr) {
               console.error(
                 `Failed to send missing payment method notice to user ${membership.userId}:`,
