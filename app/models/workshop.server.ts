@@ -1393,26 +1393,31 @@ export async function duplicateOccurrence(
 }
 
 /**
- * Gets the number of users registered for a specific workshop occurrence
- * @param occurrenceId - The ID of the occurrence to count registrations for
- * @returns Promise<number> - The count of registered users
- */
-export async function getRegistrationCountForOccurrence(occurrenceId: number) {
-  return db.userWorkshop.count({
-    where: { occurrenceId },
-  });
-}
-
-/**
  * Cancels a workshop occurrence by updating its status and deleting Google Calendar event
+ * Also creates cancellation records for all registered users
  * @param occurrenceId - The ID of the occurrence to cancel
  * @returns Promise<WorkshopOccurrence> - The updated occurrence record
  */
 export async function cancelWorkshopOccurrence(occurrenceId: number) {
-  // First, get the occurrence to check if it has a Google Calendar event
+  // First, get the occurrence with workshop details and registered users
   const occurrence = await db.workshopOccurrence.findUnique({
     where: { id: occurrenceId },
-    select: { googleEventId: true },
+    include: {
+      workshop: {
+        select: {
+          id: true,
+          type: true,
+        },
+      },
+      userWorkshops: {
+        where: {
+          result: { not: "cancelled" }, // Only get active registrations
+        },
+        include: {
+          user: true,
+        },
+      },
+    },
   });
 
   if (!occurrence) {
@@ -1429,6 +1434,85 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
         error
       );
       // Continue with cancellation even if Google Calendar deletion fails
+    }
+  }
+
+  // Update all registrations to cancelled
+  await db.userWorkshop.updateMany({
+    where: {
+      occurrenceId: occurrenceId,
+      result: { not: "cancelled" },
+    },
+    data: {
+      result: "cancelled",
+    },
+  });
+
+  // Create cancellation records for all registered users
+  const now = new Date();
+
+  // Check if this is a multi-day workshop
+  const isMultiDay =
+    occurrence.workshop.type === "multi_day" || occurrence.connectId !== null;
+
+  if (isMultiDay && occurrence.connectId !== null) {
+    // For multi-day workshops: Create ONE cancellation record per user (not per occurrence)
+    // Group by userId to avoid duplicate cancellation records
+    const uniqueUsers = new Map<number, (typeof occurrence.userWorkshops)[0]>();
+
+    for (const registration of occurrence.userWorkshops) {
+      if (!uniqueUsers.has(registration.userId)) {
+        uniqueUsers.set(registration.userId, registration);
+      }
+    }
+
+    // Create one cancellation record per user, but only if one doesn't already exist
+    for (const registration of uniqueUsers.values()) {
+      // Check if a cancellation record already exists for this user and workshop
+      const existingCancellation =
+        await db.workshopCancelledRegistration.findFirst({
+          where: {
+            userId: registration.userId,
+            workshopId: occurrence.workshopId,
+            cancelledByAdmin: true,
+            // Match by connectId through the occurrence
+            workshopOccurrence: {
+              connectId: occurrence.connectId,
+            },
+          },
+        });
+
+      // Only create if no cancellation record exists
+      if (!existingCancellation) {
+        await db.workshopCancelledRegistration.create({
+          data: {
+            userId: registration.userId,
+            workshopId: occurrence.workshopId,
+            workshopOccurrenceId: occurrenceId,
+            priceVariationId: registration.priceVariationId,
+            registrationDate: registration.date,
+            cancellationDate: now,
+            paymentIntentId: registration.paymentIntentId,
+            cancelledByAdmin: true, // Mark as admin cancellation
+          },
+        });
+      }
+    }
+  } else {
+    // For regular workshops (workshop or orientation): Create ONE cancellation record per user-occurrence combination
+    for (const registration of occurrence.userWorkshops) {
+      await db.workshopCancelledRegistration.create({
+        data: {
+          userId: registration.userId,
+          workshopId: occurrence.workshopId,
+          workshopOccurrenceId: occurrenceId,
+          priceVariationId: registration.priceVariationId,
+          registrationDate: registration.date,
+          cancellationDate: now,
+          paymentIntentId: registration.paymentIntentId,
+          cancelledByAdmin: true, // Mark as admin cancellation
+        },
+      });
     }
   }
 
