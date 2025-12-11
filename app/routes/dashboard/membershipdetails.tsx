@@ -667,11 +667,17 @@ export default function MembershipDetails() {
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.price3Months.toFixed(2)}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            (CA$
-                            {(membershipPlan.price3Months / 3).toFixed(2)}
-                            /mo)
-                          </p>
+                          {((membershipPlan.price * 3 -
+                            membershipPlan.price3Months) /
+                            (membershipPlan.price * 3)) *
+                            100 >
+                            0 && (
+                            <p className="text-sm text-gray-600">
+                              (CA$
+                              {(membershipPlan.price3Months / 3).toFixed(2)}
+                              /mo)
+                            </p>
+                          )}
                         </div>
                       </label>
                     )}
@@ -735,11 +741,17 @@ export default function MembershipDetails() {
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.price6Months.toFixed(2)}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            (CA$
-                            {(membershipPlan.price6Months / 6).toFixed(2)}
-                            /mo)
-                          </p>
+                          {((membershipPlan.price * 3 -
+                            membershipPlan.price6Months) /
+                            (membershipPlan.price * 3)) *
+                            100 >
+                            0 && (
+                            <p className="text-sm text-gray-600">
+                              (CA$
+                              {(membershipPlan.price6Months / 6).toFixed(2)}
+                              /mo)
+                            </p>
+                          )}
                         </div>
                       </label>
                     )}
@@ -803,11 +815,17 @@ export default function MembershipDetails() {
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.priceYearly.toFixed(2)}
                           </p>
-                          <p className="text-sm text-gray-600">
-                            (CA$
-                            {(membershipPlan.priceYearly / 12).toFixed(2)}
-                            /mo)
-                          </p>
+                          {((membershipPlan.price * 12 -
+                            membershipPlan.priceYearly) /
+                            (membershipPlan.price * 12)) *
+                            100 >
+                            0 && (
+                            <p className="text-sm text-gray-600">
+                              (CA$
+                              {(membershipPlan.priceYearly / 12).toFixed(2)}
+                              /mo)
+                            </p>
+                          )}
                         </div>
                       </label>
                     )}
