@@ -1124,7 +1124,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
   - ~~When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options~~
   - When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty
-  - In the payment reminder email, it says something for example "Your membership plan "Test" will be charged on 11/28/2025, 5:36:37 PM." but we do not actually charge it at that time, in this case, it would be charged the next day at 11/29/2025 12 AM
+  - ~~In the payment reminder email, it says something for example "Your membership plan "Test" will be charged on 11/28/2025, 5:36:37 PM." but we do not actually charge it at that time, in this case, it would be charged the next day at 11/29/2025 12 AM~~
   - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options
   - In google calendar for multi day workshop, the capacity of each price variation is not shown
   - When adding a occurrence to a multi day workshop with and without price variations, the new occurrence that is shown in Google Calendar does not have the That it is Part of a Multi-day Series note
