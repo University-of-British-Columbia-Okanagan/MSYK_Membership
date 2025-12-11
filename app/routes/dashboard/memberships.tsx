@@ -256,6 +256,12 @@ export default function MembershipPage() {
             <SidebarTrigger />
             <h1 className="text-xl font-bold">Memberships</h1>
           </div>
+
+          {isGuest && (
+            <div className="mb-6 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Account required to subscribe to a membership.
+            </div>
+          )}
           {isAdmin && (
             <div className="flex justify-end mb-6">
               <Link to="/dashboard/addmembershipplan">

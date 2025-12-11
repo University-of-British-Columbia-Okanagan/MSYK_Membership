@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
-import { json } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { AppSidebar } from "~/components/ui/Dashboard/sidebar";
@@ -15,6 +15,9 @@ import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
+  if (!roleUser) {
+    throw redirect("/dashboard");
+  }
   return { roleUser };
 }
 
@@ -26,7 +29,7 @@ export async function action({ request }: { request: Request }) {
     logger.warn(`User must be logged in to submit an issue.`, {
       url: request.url,
     });
-    throw new Response("Not Authorized", { status: 401 });
+    throw redirect("/dashboard");
   }
 
   const title = form.get("title") as string;

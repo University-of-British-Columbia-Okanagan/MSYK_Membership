@@ -35,7 +35,6 @@ import {
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 import { getWorkshops } from "~/models/workshop.server";
-import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import { useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
@@ -44,6 +43,7 @@ import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import * as fs from "fs";
 import * as path from "path";
+import { Badge } from "@/components/ui/badge";
 
 export async function loader({
   request,
@@ -303,6 +303,10 @@ export default function EditEquipment() {
   const [removeImageFlag, setRemoveImageFlag] = useState(false);
 
   const navigate = useNavigate();
+
+  // Check if equipment has existing prerequisites that shouldn't be modified
+  const hasExistingPrerequisites =
+    equipment.prerequisites && equipment.prerequisites.length > 0;
 
   const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
 
@@ -565,22 +569,46 @@ export default function EditEquipment() {
                   )}
                 />
 
-                <MultiSelectField
+                <FormField
                   control={form.control}
                   name="workshopPrerequisites"
-                  label="Workshop Prerequisites"
-                  options={workshops}
-                  selectedItems={selectedWorkshopPrerequisites}
-                  onSelect={handleWorkshopPrerequisiteSelect}
-                  onRemove={removeWorkshopPrerequisite}
-                  error={actionData?.errors?.workshopPrerequisites}
-                  placeholder="Select workshop prerequisites..."
-                  helperText="Select workshops of type Orientation that must be completed before using this equipment."
-                  filterFn={(item) =>
-                    item.type.toLowerCase() === "orientation" &&
-                    Array.isArray(item.occurrences) &&
-                    item.occurrences.some((o) => o.status === "active")
-                  }
+                  render={() => (
+                    <FormItem>
+                      <FormLabel>Workshop Prerequisites</FormLabel>
+                      <FormControl>
+                        <div>
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {selectedWorkshopPrerequisites.map((prereqId) => {
+                              const workshopPrereq = workshops.find(
+                                (w: any) => w.id === prereqId
+                              );
+                              return workshopPrereq ? (
+                                <Badge
+                                  key={prereqId}
+                                  variant="secondary"
+                                  className="py-1 px-2"
+                                >
+                                  {workshopPrereq.name}
+                                </Badge>
+                              ) : null;
+                            })}
+                            {selectedWorkshopPrerequisites.length === 0 && (
+                              <span className="text-gray-500 text-sm">
+                                No prerequisites set
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </FormControl>
+                      <FormMessage>
+                        {actionData?.errors?.workshopPrerequisites}
+                      </FormMessage>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Prerequisites are read-only and cannot be modified when
+                        editing.
+                      </div>
+                    </FormItem>
+                  )}
                 />
 
                 {/* Hidden input for form submission */}

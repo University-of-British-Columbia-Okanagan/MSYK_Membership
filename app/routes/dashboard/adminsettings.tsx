@@ -124,7 +124,11 @@ import { Badge } from "@/components/ui/badge";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 import { brivoClient } from "~/services/brivo.server";
 import { RefreshCw, FilterIcon } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export async function loader({ request }: { request: Request }) {
@@ -250,7 +254,7 @@ export async function loader({ request }: { request: Request }) {
   let brivoGroups: Array<{ id: number; name: string }> = [];
   const brivoAccessGroupLevel4 = await getAdminSetting(
     "brivo_access_group_level4",
-    process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? "",
+    process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? ""
   );
   if (brivoEnabled) {
     try {
@@ -279,19 +283,22 @@ export async function loader({ request }: { request: Request }) {
         usersWithDoorAccess = await Promise.all(
           users.map(async (user) => {
             if (!user.brivoPersonId) {
-              return { ...user, hasLevel4DoorAccessProvisioned: false as boolean };
+              return {
+                ...user,
+                hasLevel4DoorAccessProvisioned: false as boolean,
+              };
             }
 
             const inGroup = await brivoClient.isUserInGroup(
               String(user.brivoPersonId),
-              groupId,
+              groupId
             );
 
             return {
               ...user,
               hasLevel4DoorAccessProvisioned: inGroup,
             };
-          }),
+          })
         );
       } catch (error) {
         logger.warn("Failed to resolve Brivo group membership for users", {
@@ -300,7 +307,7 @@ export async function loader({ request }: { request: Request }) {
       }
     } else {
       logger.warn(
-        "Brivo is enabled but no access group for Level 4 is configured. Skipping group membership checks.",
+        "Brivo is enabled but no access group for Level 4 is configured. Skipping group membership checks."
       );
     }
   }
@@ -774,7 +781,8 @@ export async function action({ request }: { request: Request }) {
 
       return {
         success: true,
-        message: "Brivo sync retried successfully. The page will refresh to show updated status.",
+        message:
+          "Brivo sync retried successfully. The page will refresh to show updated status.",
       };
     } catch (error) {
       logger.error(`Error retrying Brivo sync: ${error}`, {
@@ -907,10 +915,13 @@ export async function action({ request }: { request: Request }) {
 
     try {
       await brivoClient.createEventSubscription(name, url, errorEmail);
-      logger.info(`[User: ${roleUser.userId}] Created Brivo event subscription`, {
-        name,
-        url,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Created Brivo event subscription`,
+        {
+          name,
+          url,
+        }
+      );
       return {
         success: true,
         message: "Brivo webhook subscription created successfully.",
@@ -931,9 +942,12 @@ export async function action({ request }: { request: Request }) {
 
     try {
       await brivoClient.deleteEventSubscription(subscriptionId);
-      logger.info(`[User: ${roleUser.userId}] Deleted Brivo event subscription`, {
-        subscriptionId,
-      });
+      logger.info(
+        `[User: ${roleUser.userId}] Deleted Brivo event subscription`,
+        {
+          subscriptionId,
+        }
+      );
       return {
         success: true,
         message: "Brivo webhook subscription deleted successfully.",
@@ -956,7 +970,7 @@ export async function action({ request }: { request: Request }) {
       await updateAdminSetting(
         "brivo_access_group_level4",
         groupId?.trim() ?? "",
-        "Brivo access group ID for Level 4 (24/7) members",
+        "Brivo access group ID for Level 4 (24/7) members"
       );
       logger.info(`[User: ${roleUser.userId}] Updated Brivo access group`, {
         groupId,
@@ -1006,39 +1020,41 @@ export async function action({ request }: { request: Request }) {
       accessCardExists: !!accessCard,
     };
   }
-if (actionType === "updateAccessCard") {
-  const cardUUID = formData.get("cardUUID") as string;
-  const email = formData.get("email") as string | null;
-  const permissionsRaw = formData.get("permissions") as string; // single JSON string
+  if (actionType === "updateAccessCard") {
+    const cardUUID = formData.get("cardUUID") as string;
+    const email = formData.get("email") as string | null;
+    const permissionsRaw = formData.get("permissions") as string; // single JSON string
 
-  if (!cardUUID) return { success: false, message: "Card UUID is required." };
+    if (!cardUUID) return { success: false, message: "Card UUID is required." };
 
-  let permissions: number[] = [];
-  try {
-    permissions = JSON.parse(permissionsRaw);
-  } catch {
-    permissions = [];
+    let permissions: number[] = [];
+    try {
+      permissions = JSON.parse(permissionsRaw);
+    } catch {
+      permissions = [];
+    }
+
+    try {
+      await updateAccessCard(cardUUID, email || null, permissions);
+
+      return {
+        success: true,
+        message: "Access Card updated successfully",
+      };
+    } catch (error) {
+      logger.error(`Error updating access card: ${error}`, {
+        url: request.url,
+        cardUUID,
+      });
+      return {
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to update Access Card",
+      };
+    }
   }
-
-  try {
-    await updateAccessCard(cardUUID, email || null, permissions);
-
-    return {
-      success: true,
-      message: "Access Card updated successfully",
-    };
-  } catch (error) {
-    logger.error(`Error updating access card: ${error}`, {
-      url: request.url,
-      cardUUID,
-    });
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : "Failed to update Access Card",
-    };
-  }
-}
-
 
   logger.warn(`[User: ${roleUser.userId}] Unknown actionType: ${actionType}`, {
     url: request.url,
@@ -1183,7 +1199,8 @@ function DoorAccessStatus({
   }
 
   const lastSynced =
-    user.brivoLastSyncedAt && !Number.isNaN(new Date(user.brivoLastSyncedAt).getTime())
+    user.brivoLastSyncedAt &&
+    !Number.isNaN(new Date(user.brivoLastSyncedAt).getTime())
       ? new Date(user.brivoLastSyncedAt).toLocaleString(undefined, {
           dateStyle: "medium",
           timeStyle: "short",
@@ -1272,7 +1289,9 @@ function DoorAccessStatus({
             </div>
             {lastSynced && (
               <div>
-                <Label className="text-sm font-semibold">Last Successful Sync:</Label>
+                <Label className="text-sm font-semibold">
+                  Last Successful Sync:
+                </Label>
                 <p className="text-sm text-gray-600 mt-1">{lastSynced}</p>
               </div>
             )}
@@ -1370,7 +1389,9 @@ function MembershipControl({
           {user.membershipStatus === "revoked" ? "Revoked" : "Allowed"}
         </Badge>
         <span className="text-xs text-gray-500">
-          {user.hasRevocableMembership ? "Active membership on file" : "No active membership"}
+          {user.hasRevocableMembership
+            ? "Active membership on file"
+            : "No active membership"}
         </span>
       </div>
       {user.membershipStatus === "revoked" && (
@@ -2297,7 +2318,6 @@ export default function AdminSettings() {
   const [cutoffValues, setCutoffValues] = useState<Record<number, number>>({});
   const [cutoffUnits, setCutoffUnits] = useState<Record<number, string>>({});
 
-
   // Volunteer hours management state
   const [volunteerSearchName, setVolunteerSearchName] = useState("");
   const [volunteerFromDate, setVolunteerFromDate] = useState("");
@@ -2725,7 +2745,6 @@ export default function AdminSettings() {
     return calculateTotalHours(filteredRecentActions);
   }, [filteredRecentActions]);
 
-
   const [plannedClosures, setPlannedClosures] = useState(
     settings.plannedClosures.map((closure) => ({
       id: closure.id,
@@ -2769,19 +2788,22 @@ export default function AdminSettings() {
     return users.filter((user) => {
       // Admin Status filter
       if (adminStatusFilter.length > 0) {
-        const userAdminStatus = user.roleUser.name === "Admin" ? "Admin" : "Not Admin";
+        const userAdminStatus =
+          user.roleUser.name === "Admin" ? "Admin" : "Not Admin";
         if (!adminStatusFilter.includes(userAdminStatus)) return false;
       }
 
       // Membership filter
       if (membershipFilter.length > 0) {
-        const userMembershipStatus = user.membershipStatus === "revoked" ? "Revoked" : "Active";
+        const userMembershipStatus =
+          user.membershipStatus === "revoked" ? "Revoked" : "Active";
         if (!membershipFilter.includes(userMembershipStatus)) return false;
       }
 
       // Door Access filter
       if (doorAccessFilter.length > 0) {
-        const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+        const eligible =
+          user.roleLevel >= 4 && user.membershipStatus !== "revoked";
         let doorAccessStatus: string;
         if (user.brivoSyncError) {
           doorAccessStatus = "Sync Error";
@@ -2810,7 +2832,9 @@ export default function AdminSettings() {
   }, [users]);
 
   const membershipOptions = useMemo(() => {
-    const revoked = users.filter((u) => u.membershipStatus === "revoked").length;
+    const revoked = users.filter(
+      (u) => u.membershipStatus === "revoked"
+    ).length;
     const active = users.length - revoked;
     return [
       { value: "Revoked", count: revoked },
@@ -2821,12 +2845,13 @@ export default function AdminSettings() {
   const doorAccessOptions = useMemo(() => {
     const counts = {
       "Sync Error": 0,
-      "Disabled": 0,
-      "Provisioned": 0,
+      Disabled: 0,
+      Provisioned: 0,
       "Pending Sync": 0,
     };
     users.forEach((user) => {
-      const eligible = user.roleLevel >= 4 && user.membershipStatus !== "revoked";
+      const eligible =
+        user.roleLevel >= 4 && user.membershipStatus !== "revoked";
       if (user.brivoSyncError) {
         counts["Sync Error"]++;
       } else if (!eligible) {
@@ -2846,27 +2871,37 @@ export default function AdminSettings() {
     {
       header: "First Name",
       accessorKey: "firstName",
-      cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
-        <div className="font-medium">{row.getValue("firstName")}</div>
-      ),
+      cell: ({
+        row,
+      }: {
+        row: { getValue: (key: string) => string; original: UserRow };
+      }) => <div className="font-medium">{row.getValue("firstName")}</div>,
       size: 120,
     },
     {
       header: "Last Name",
       accessorKey: "lastName",
-      cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
-        <div className="font-medium">{row.getValue("lastName")}</div>
-      ),
+      cell: ({
+        row,
+      }: {
+        row: { getValue: (key: string) => string; original: UserRow };
+      }) => <div className="font-medium">{row.getValue("lastName")}</div>,
       size: 120,
     },
     {
-      header:"Training Card User Number",
-    accessorKey: "trainingCardUserNumber",
-    cell: ({ row }: { row: { getValue: (key: string) => string; original: UserRow } }) => (
-      <div className="font-medium">{row.getValue("trainingCardUserNumber")}</div>
-    ),
-    size: 120,
-  },
+      header: "Training Card User Number",
+      accessorKey: "trainingCardUserNumber",
+      cell: ({
+        row,
+      }: {
+        row: { getValue: (key: string) => string; original: UserRow };
+      }) => (
+        <div className="font-medium">
+          {row.getValue("trainingCardUserNumber")}
+        </div>
+      ),
+      size: 120,
+    },
     {
       header: "Email",
       accessorKey: "email",
@@ -2880,31 +2915,41 @@ export default function AdminSettings() {
     {
       header: "Role Level",
       id: "roleLevel",
-      cell: ({ row }: { row: { original: UserRow } }) => <RoleControl user={row.original} />,
+      cell: ({ row }: { row: { original: UserRow } }) => (
+        <RoleControl user={row.original} />
+      ),
       size: 200,
       enableSorting: false,
     },
     {
       header: "Admin Status",
       id: "adminStatus",
-      accessorFn: (row) => row.roleUser.name === "Admin" ? "Admin" : "Not Admin",
-      cell: ({ row }: { row: { original: UserRow } }) => <AdminControl user={row.original} />,
+      accessorFn: (row) =>
+        row.roleUser.name === "Admin" ? "Admin" : "Not Admin",
+      cell: ({ row }: { row: { original: UserRow } }) => (
+        <AdminControl user={row.original} />
+      ),
       size: 150,
       enableSorting: false,
       filterFn: (row, id, value) => {
-        const status = row.original.roleUser.name === "Admin" ? "Admin" : "Not Admin";
+        const status =
+          row.original.roleUser.name === "Admin" ? "Admin" : "Not Admin";
         return value.includes(status);
       },
     },
     {
       header: "Membership",
       id: "membership",
-      accessorFn: (row) => row.membershipStatus === "revoked" ? "Revoked" : "Active",
-      cell: ({ row }: { row: { original: UserRow } }) => <MembershipControl user={row.original} />,
+      accessorFn: (row) =>
+        row.membershipStatus === "revoked" ? "Revoked" : "Active",
+      cell: ({ row }: { row: { original: UserRow } }) => (
+        <MembershipControl user={row.original} />
+      ),
       size: 200,
       enableSorting: false,
       filterFn: (row, id, value) => {
-        const status = row.original.membershipStatus === "revoked" ? "Revoked" : "Active";
+        const status =
+          row.original.membershipStatus === "revoked" ? "Revoked" : "Active";
         return value.includes(status);
       },
     },
@@ -2912,17 +2957,22 @@ export default function AdminSettings() {
       header: "Door Access",
       id: "doorAccess",
       accessorFn: (row) => {
-        const eligible = row.roleLevel >= 4 && row.membershipStatus !== "revoked";
+        const eligible =
+          row.roleLevel >= 4 && row.membershipStatus !== "revoked";
         if (row.brivoSyncError) return "Sync Error";
         if (!eligible) return "Disabled";
         if (row.brivoPersonId) return "Provisioned";
         return "Pending Sync";
       },
-      cell: ({ row }: { row: { original: UserRow } }) => <DoorAccessStatus user={row.original} />,
+      cell: ({ row }: { row: { original: UserRow } }) => (
+        <DoorAccessStatus user={row.original} />
+      ),
       size: 180,
       enableSorting: false,
       filterFn: (row, id, value) => {
-        const eligible = row.original.roleLevel >= 4 && row.original.membershipStatus !== "revoked";
+        const eligible =
+          row.original.roleLevel >= 4 &&
+          row.original.membershipStatus !== "revoked";
         let status: string;
         if (row.original.brivoSyncError) {
           status = "Sync Error";
@@ -3232,10 +3282,7 @@ export default function AdminSettings() {
     const formData = new FormData();
     if (!cardUUID.trim()) return;
 
-    formData.append(
-      "actionType",
-      "updateAccessCard"
-    );
+    formData.append("actionType", "updateAccessCard");
     formData.append("cardUUID", cardUUID.trim());
     formData.append("email", email.trim());
     formData.append("permissions", JSON.stringify(permissions));
@@ -3802,23 +3849,36 @@ export default function AdminSettings() {
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                        <PopoverContent
+                          className="w-auto min-w-36 p-3"
+                          align="start"
+                        >
                           <div className="space-y-3">
                             <div className="text-xs font-medium text-muted-foreground">
                               Filter by Admin Status
                             </div>
                             <div className="space-y-3">
                               {adminStatusOptions.map((option) => (
-                                <div key={option.value} className="flex items-center gap-2">
+                                <div
+                                  key={option.value}
+                                  className="flex items-center gap-2"
+                                >
                                   <Checkbox
                                     id={`admin-status-${option.value}`}
-                                    checked={adminStatusFilter.includes(option.value)}
+                                    checked={adminStatusFilter.includes(
+                                      option.value
+                                    )}
                                     onCheckedChange={(checked: boolean) => {
                                       if (checked) {
-                                        setAdminStatusFilter([...adminStatusFilter, option.value]);
+                                        setAdminStatusFilter([
+                                          ...adminStatusFilter,
+                                          option.value,
+                                        ]);
                                       } else {
                                         setAdminStatusFilter(
-                                          adminStatusFilter.filter((f) => f !== option.value)
+                                          adminStatusFilter.filter(
+                                            (f) => f !== option.value
+                                          )
                                         );
                                       }
                                     }}
@@ -3866,23 +3926,36 @@ export default function AdminSettings() {
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                        <PopoverContent
+                          className="w-auto min-w-36 p-3"
+                          align="start"
+                        >
                           <div className="space-y-3">
                             <div className="text-xs font-medium text-muted-foreground">
                               Filter by Membership
                             </div>
                             <div className="space-y-3">
                               {membershipOptions.map((option) => (
-                                <div key={option.value} className="flex items-center gap-2">
+                                <div
+                                  key={option.value}
+                                  className="flex items-center gap-2"
+                                >
                                   <Checkbox
                                     id={`membership-${option.value}`}
-                                    checked={membershipFilter.includes(option.value)}
+                                    checked={membershipFilter.includes(
+                                      option.value
+                                    )}
                                     onCheckedChange={(checked: boolean) => {
                                       if (checked) {
-                                        setMembershipFilter([...membershipFilter, option.value]);
+                                        setMembershipFilter([
+                                          ...membershipFilter,
+                                          option.value,
+                                        ]);
                                       } else {
                                         setMembershipFilter(
-                                          membershipFilter.filter((f) => f !== option.value)
+                                          membershipFilter.filter(
+                                            (f) => f !== option.value
+                                          )
                                         );
                                       }
                                     }}
@@ -3930,23 +4003,36 @@ export default function AdminSettings() {
                             )}
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto min-w-36 p-3" align="start">
+                        <PopoverContent
+                          className="w-auto min-w-36 p-3"
+                          align="start"
+                        >
                           <div className="space-y-3">
                             <div className="text-xs font-medium text-muted-foreground">
                               Filter by Door Access
                             </div>
                             <div className="space-y-3">
                               {doorAccessOptions.map((option) => (
-                                <div key={option.value} className="flex items-center gap-2">
+                                <div
+                                  key={option.value}
+                                  className="flex items-center gap-2"
+                                >
                                   <Checkbox
                                     id={`door-access-${option.value}`}
-                                    checked={doorAccessFilter.includes(option.value)}
+                                    checked={doorAccessFilter.includes(
+                                      option.value
+                                    )}
                                     onCheckedChange={(checked: boolean) => {
                                       if (checked) {
-                                        setDoorAccessFilter([...doorAccessFilter, option.value]);
+                                        setDoorAccessFilter([
+                                          ...doorAccessFilter,
+                                          option.value,
+                                        ]);
                                       } else {
                                         setDoorAccessFilter(
-                                          doorAccessFilter.filter((f) => f !== option.value)
+                                          doorAccessFilter.filter(
+                                            (f) => f !== option.value
+                                          )
                                         );
                                       }
                                     }}
@@ -3983,7 +4069,9 @@ export default function AdminSettings() {
                       data={filteredUsersForTable}
                       enableGlobalFilter={true}
                       globalFilterPlaceholder="Search by first or last name..."
-                      globalFilterAccessor={(user) => `${user.firstName} ${user.lastName} ${user.email}`}
+                      globalFilterAccessor={(user) =>
+                        `${user.firstName} ${user.lastName} ${user.email}`
+                      }
                       enableColumnVisibility={true}
                       emptyMessage="No users found"
                       initialSorting={[
@@ -5716,61 +5804,50 @@ export default function AdminSettings() {
                         {
                           header: "Eligible for Refund",
                           render: (cancellation: any) => {
-                            const cancellationDate = new Date(
-                              cancellation.cancellationDate
-                            );
-
-                            // Check if this is a multi-day workshop
-                            const isMultiDay =
-                              cancellation.workshop.type === "multi_day" ||
-                              (cancellation.workshopOccurrence.connectId !==
-                                null &&
-                                cancellation.workshopOccurrence.connectId !==
-                                  undefined);
-
-                            let workshopStartDate: Date;
-
-                            if (
-                              isMultiDay &&
-                              cancellation.allOccurrences &&
-                              cancellation.allOccurrences.length > 0
-                            ) {
-                              // For multi-day workshops, find the earliest start date from all occurrences
-                              const earliestOccurrence =
-                                cancellation.allOccurrences.reduce(
-                                  (earliest: any, current: any) => {
-                                    const currentStart = new Date(
-                                      current.startDate
-                                    );
-                                    const earliestStart = new Date(
-                                      earliest.startDate
-                                    );
-                                    return currentStart < earliestStart
-                                      ? current
-                                      : earliest;
-                                  }
-                                );
-                              workshopStartDate = new Date(
-                                earliestOccurrence.startDate
-                              );
-                            } else {
-                              // For regular workshops, use the single occurrence start date
-                              workshopStartDate = new Date(
-                                cancellation.workshopOccurrence.startDate
+                            // Check if this was cancelled by admin (either price variation or occurrence cancellation)
+                            if (cancellation.cancelledByAdmin === true) {
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 cursor-help">
+                                          Yes
+                                        </span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>
+                                        Cancelled by admin: Cancelled price
+                                        variation or cancelled occurrence(s)
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               );
                             }
 
-                            // Check if cancelled at least 2 days before the workshop start time
-                            const eligibleDate = new Date(
-                              workshopStartDate.getTime() -
-                                2 * 24 * 60 * 60 * 1000
+                            // For user-initiated cancellations: Check if cancelled within 48 hours of registration
+                            const cancellationDate = new Date(
+                              cancellation.cancellationDate
                             );
-                            const isEligible = cancellationDate <= eligibleDate;
+                            const registrationDate = new Date(
+                              cancellation.registrationDate
+                            );
+
+                            // Calculate hours since registration
+                            const hoursSinceRegistration =
+                              (cancellationDate.getTime() -
+                                registrationDate.getTime()) /
+                              (1000 * 60 * 60);
+
+                            // Eligible if cancelled within 48 hours of registration
+                            const isEligible = hoursSinceRegistration <= 48;
 
                             return (
-                              <div className="flex items-center">
+                              <div>
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                  className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                                     isEligible
                                       ? "bg-green-100 text-green-800"
                                       : "bg-red-100 text-red-800"
@@ -5915,61 +5992,50 @@ export default function AdminSettings() {
                         {
                           header: "Eligible for Refund",
                           render: (cancellation: any) => {
-                            const cancellationDate = new Date(
-                              cancellation.cancellationDate
-                            );
-
-                            // Check if this is a multi-day workshop
-                            const isMultiDay =
-                              cancellation.workshop.type === "multi_day" ||
-                              (cancellation.workshopOccurrence.connectId !==
-                                null &&
-                                cancellation.workshopOccurrence.connectId !==
-                                  undefined);
-
-                            let workshopStartDate: Date;
-
-                            if (
-                              isMultiDay &&
-                              cancellation.allOccurrences &&
-                              cancellation.allOccurrences.length > 0
-                            ) {
-                              // For multi-day workshops, find the earliest start date from all occurrences
-                              const earliestOccurrence =
-                                cancellation.allOccurrences.reduce(
-                                  (earliest: any, current: any) => {
-                                    const currentStart = new Date(
-                                      current.startDate
-                                    );
-                                    const earliestStart = new Date(
-                                      earliest.startDate
-                                    );
-                                    return currentStart < earliestStart
-                                      ? current
-                                      : earliest;
-                                  }
-                                );
-                              workshopStartDate = new Date(
-                                earliestOccurrence.startDate
-                              );
-                            } else {
-                              // For regular workshops, use the single occurrence start date
-                              workshopStartDate = new Date(
-                                cancellation.workshopOccurrence.startDate
+                            // Check if this was cancelled by admin (either price variation or occurrence cancellation)
+                            if (cancellation.cancelledByAdmin === true) {
+                              return (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 cursor-help">
+                                          Yes
+                                        </span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>
+                                        Cancelled by admin: Cancelled price
+                                        variation or cancelled occurrence(s)
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               );
                             }
 
-                            // Check if cancelled at least 2 days before the workshop start time
-                            const eligibleDate = new Date(
-                              workshopStartDate.getTime() -
-                                2 * 24 * 60 * 60 * 1000
+                            // For user-initiated cancellations: Check if cancelled within 48 hours of registration
+                            const cancellationDate = new Date(
+                              cancellation.cancellationDate
                             );
-                            const isEligible = cancellationDate <= eligibleDate;
+                            const registrationDate = new Date(
+                              cancellation.registrationDate
+                            );
+
+                            // Calculate hours since registration
+                            const hoursSinceRegistration =
+                              (cancellationDate.getTime() -
+                                registrationDate.getTime()) /
+                              (1000 * 60 * 60);
+
+                            // Eligible if cancelled within 48 hours of registration
+                            const isEligible = hoursSinceRegistration <= 48;
 
                             return (
-                              <div className="flex items-center">
+                              <div>
                                 <span
-                                  className={`px-2 py-1 rounded text-xs font-medium ${
+                                  className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                                     isEligible
                                       ? "bg-green-100 text-green-800"
                                       : "bg-red-100 text-red-800"
@@ -6615,7 +6681,10 @@ export default function AdminSettings() {
                               Select the Brivo group that Level 4 (24/7 access)
                               members should be assigned to.
                             </p>
-                            <Form method="post" className="flex items-end gap-3">
+                            <Form
+                              method="post"
+                              className="flex items-end gap-3"
+                            >
                               <input
                                 type="hidden"
                                 name="actionType"
@@ -6917,7 +6986,9 @@ export default function AdminSettings() {
                                     )
                                 }
                               >
-                                {actionData.accessCardExists ? "Update" : "Register"}
+                                {actionData.accessCardExists
+                                  ? "Update"
+                                  : "Register"}
                               </Button>
                             </div>
                           </div>

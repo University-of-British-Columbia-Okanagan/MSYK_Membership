@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher, useNavigate } from "react-router";
+import { useLoaderData, useFetcher, useNavigate, redirect } from "react-router";
 import {
   Card,
   CardHeader,
@@ -44,12 +44,18 @@ export async function loader({
   const equipmentId = parseInt(params.id);
   const slots = await getAvailableSlots(equipmentId);
   const equipment = await getEquipmentById(equipmentId);
-  if (!equipment) {
+  const isAdmin =
+    currentUserRole?.roleName &&
+    currentUserRole.roleName.toLowerCase() === "admin";
+  if (!equipment || (!equipment.availability && !isAdmin)) {
     logger.warn(
-      `[User: ${currentUserRole?.userId}] Requested equipment not found`,
+      `[User: ${currentUserRole?.userId}] Requested equipment unavailable or missing`,
       { url: request.url }
     );
-    throw new Response("Equipment not found", { status: 404 });
+    const redirectPath = !currentUserRole
+      ? "/dashboard"
+      : "/dashboard/user";
+    throw redirect(redirectPath);
   }
 
   let prerequisiteWorkshops: PrerequisiteWorkshop[] = [];

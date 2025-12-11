@@ -124,6 +124,15 @@ export default function UserDashboard() {
             <h1 className="text-xl font-bold">Workshops</h1>
           </div>
 
+          {isGuest && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-6 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              Account required to register for workshops.
+            </div>
+          )}
           {/* Add Workshop Button - Only show for admins */}
           {isAdmin && (
             <div className="flex justify-end mb-6">
