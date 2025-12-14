@@ -1101,8 +1101,8 @@ The following acceptance criteria should be manually tested by QA in the applica
   - In Workshops of type Workshop, in the View Users page for that workshop, the pass all button should only pass users of status pending (since some users can have status cancelled)
   - In a multi-day workshop it says "Workshop Registration Has Past" or not dependening on the first occurrence in the multi day workshop (which is intended). However, it will still show up in active workshops (because the multi day can have dates in the future which is probably the reason why it will be put in active workshop). Make this show in past events, even if the multi-day workshop has other dates in the future 
   - In /myequipments for users, equipment bookings in the past should not show up (right now they do, fix this)
-  - Have the ability to have Equipments that cost 0 dollars and register for them (do not need to use payment)
-  - Have the ability to register for workshops that cost 0 dollars (do not need to use payment)
+  - ~~Have the ability to have Equipments that cost 0 dollars and register for them (do not need to use payment)~~
+  - ~~Have the ability to register for workshops that cost 0 dollars (do not need to use payment)~~
   - When you subscribe to a membership and then cancel, lets say that membership you cancelled was 50 dollars. If there is another membership that is 50 dollars, the button for the other membership would say resubscribe
   - If a user has a membership and a payment method, currently no email is sent if it is the payment date for their membership, but they will still be charged
   - When there is a level 4 user and there is the button "Revoke Level 4", if I press on that, the user will stay level 4 but the button just disappears, there is no "Allow Level 4" button (kinda broke the levels logic i cant lie)
