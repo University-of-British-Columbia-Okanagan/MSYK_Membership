@@ -1024,7 +1024,6 @@ export default function EditWorkshop() {
   const fetcher = useFetcher();
 
   // React Hook Form setup
-  // Initialize hasPriceVariations based on workshop data
   const initialHasPriceVariations =
     workshop.priceVariations && workshop.priceVariations.length > 0;
 
@@ -1055,8 +1054,8 @@ export default function EditWorkshop() {
       priceVariations:
         workshop.priceVariations && workshop.priceVariations.length > 0
           ? workshop.priceVariations
-              .filter((v: any) => v.status !== "cancelled")
-              .map((v: any) => ({
+              .filter((v) => v.status !== "cancelled")
+              .map((v) => ({
                 name: v.name,
                 price: v.price,
                 description: v.description,
@@ -1589,30 +1588,22 @@ export default function EditWorkshop() {
     e.preventDefault();
     console.log("Form submit triggered");
 
-    // Store form element reference BEFORE any async operations (React event pooling)
     const formElement = e.currentTarget as HTMLFormElement;
 
     // Check for client-side file validation errors
     if (workshopImageError) {
-      return; // Stop submission if there's a file validation error
+      return;
     }
 
     // Validate all fields before submission
     const isValid = await form.trigger();
 
-    // If validation failed, check if it's ONLY the price field failing
     if (!isValid) {
       const errors = form.formState.errors;
-      console.log("Validation errors detected:", errors);
-      console.log("Current form values:", form.getValues());
 
-      // If we have price variations enabled and the ONLY error is the price field, ignore it
       if (hasPriceVariations && Object.keys(errors).length === 1 && errors.price) {
-        // Clear the price error and continue
         form.clearErrors("price");
       } else {
-        // There are other validation errors, stop submission
-        // Scroll to the first error
         const firstErrorField = Object.keys(errors)[0];
         const errorElement = document.querySelector(`[name="${firstErrorField}"]`);
         if (errorElement) {
@@ -1679,10 +1670,8 @@ export default function EditWorkshop() {
       });
     } catch (error) {
       console.error("Error in form submission:", error);
-      // Ensure form submits even if there's an error in our checks
       setFormSubmitting(true);
 
-      // Create FormData even in error case
       const nativeFormData = new FormData(formElement);
       if (workshopImageFile) {
         nativeFormData.append("workshopImage", workshopImageFile);
@@ -1738,10 +1727,8 @@ export default function EditWorkshop() {
     }
   }, [occurrences, selectedEquipments]); // Remove selectedSlotsMap from dependencies to prevent infinite loop
 
-  // Sync priceVariations with form whenever they change
   React.useEffect(() => {
     if (hasPriceVariations && priceVariations.length > 0) {
-      // Convert string values to numbers for form validation
       const formattedVariations = priceVariations.map((v) => ({
         name: v.name,
         price: parseFloat(v.price) || 0,
@@ -2060,7 +2047,6 @@ export default function EditWorkshop() {
                             if (!isChecked) {
                               setPriceVariations([]);
                               form.setValue("priceVariations", []);
-                              // Re-enable the price field when unchecking
                               const originalPrice = workshop.price || 0;
                               form.setValue("price", originalPrice);
                             } else {
@@ -3800,14 +3786,11 @@ export default function EditWorkshop() {
                       </AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => {
-                          // User confirmed removal
                           setHasPriceVariations(false);
                           setPriceVariations([]);
                           setShowPriceVariationConfirm(false);
-                          // Update form values
                           form.setValue("hasPriceVariations", false);
                           form.setValue("priceVariations", []);
-                          // Re-enable the price field
                           const originalPrice = workshop.price || 0;
                           form.setValue("price", originalPrice);
                         }}
