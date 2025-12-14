@@ -1024,15 +1024,20 @@ export default function EditWorkshop() {
   const fetcher = useFetcher();
 
   // React Hook Form setup
+  // Initialize hasPriceVariations based on workshop data
+  const initialHasPriceVariations =
+    workshop.priceVariations && workshop.priceVariations.length > 0;
+
   const form = useForm<WorkshopFormValues>({
     resolver: zodResolver(workshopFormSchema),
+    mode: "onBlur",
     defaultValues: {
       name: workshop.name,
       description: workshop.description,
       price: workshop.price,
       location: workshop.location,
       capacity: workshop.capacity,
-      // type: (workshop.type as "workshop" | "orientation") || "workshop",
+      type: (workshop.type as "workshop" | "orientation") || "workshop",
       occurrences: initialOccurrences,
       // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
       prerequisites:
@@ -1046,6 +1051,18 @@ export default function EditWorkshop() {
           ? workshop.equipments.map((e: any) => e.equipmentId)
           : workshop.equipments || [],
       isMultiDayWorkshop: isMultiDay,
+      hasPriceVariations: initialHasPriceVariations,
+      priceVariations:
+        workshop.priceVariations && workshop.priceVariations.length > 0
+          ? workshop.priceVariations
+              .filter((v: any) => v.status !== "cancelled")
+              .map((v: any) => ({
+                name: v.name,
+                price: v.price,
+                description: v.description,
+                capacity: v.capacity || 0,
+              }))
+          : [],
     },
   });
 
@@ -1572,9 +1589,37 @@ export default function EditWorkshop() {
     e.preventDefault();
     console.log("Form submit triggered");
 
+    // Store form element reference BEFORE any async operations (React event pooling)
+    const formElement = e.currentTarget as HTMLFormElement;
+
     // Check for client-side file validation errors
     if (workshopImageError) {
       return; // Stop submission if there's a file validation error
+    }
+
+    // Validate all fields before submission
+    const isValid = await form.trigger();
+
+    // If validation failed, check if it's ONLY the price field failing
+    if (!isValid) {
+      const errors = form.formState.errors;
+      console.log("Validation errors detected:", errors);
+      console.log("Current form values:", form.getValues());
+
+      // If we have price variations enabled and the ONLY error is the price field, ignore it
+      if (hasPriceVariations && Object.keys(errors).length === 1 && errors.price) {
+        // Clear the price error and continue
+        form.clearErrors("price");
+      } else {
+        // There are other validation errors, stop submission
+        // Scroll to the first error
+        const firstErrorField = Object.keys(errors)[0];
+        const errorElement = document.querySelector(`[name="${firstErrorField}"]`);
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        return;
+      }
     }
 
     try {
@@ -1618,8 +1663,6 @@ export default function EditWorkshop() {
       console.log("Proceeding with form submission");
       setFormSubmitting(true);
 
-      const formElement = e.currentTarget as HTMLFormElement;
-
       // Create FormData from the form element
       const nativeFormData = new FormData(formElement);
 
@@ -1638,7 +1681,6 @@ export default function EditWorkshop() {
       console.error("Error in form submission:", error);
       // Ensure form submits even if there's an error in our checks
       setFormSubmitting(true);
-      const formElement = e.currentTarget as HTMLFormElement;
 
       // Create FormData even in error case
       const nativeFormData = new FormData(formElement);
@@ -1695,6 +1737,22 @@ export default function EditWorkshop() {
       setSelectedSlotsMap({});
     }
   }, [occurrences, selectedEquipments]); // Remove selectedSlotsMap from dependencies to prevent infinite loop
+
+  // Sync priceVariations with form whenever they change
+  React.useEffect(() => {
+    if (hasPriceVariations && priceVariations.length > 0) {
+      // Convert string values to numbers for form validation
+      const formattedVariations = priceVariations.map((v) => ({
+        name: v.name,
+        price: parseFloat(v.price) || 0,
+        description: v.description,
+        capacity: parseInt(v.capacity) || 0,
+      }));
+      form.setValue("priceVariations", formattedVariations, {
+        shouldValidate: true,
+      });
+    }
+  }, [priceVariations, hasPriceVariations, form]);
 
   const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
 
@@ -1998,18 +2056,27 @@ export default function EditWorkshop() {
                           } else {
                             // If checking or no variations exist, proceed normally
                             setHasPriceVariations(isChecked);
+                            form.setValue("hasPriceVariations", isChecked);
                             if (!isChecked) {
                               setPriceVariations([]);
+                              form.setValue("priceVariations", []);
                               // Re-enable the price field when unchecking
                               const originalPrice = workshop.price || 0;
                               form.setValue("price", originalPrice);
                             } else {
-                              setPriceVariations([
+                              const newVariation = {
+                                name: "",
+                                price: "",
+                                description: "",
+                                capacity: "",
+                              };
+                              setPriceVariations([newVariation]);
+                              form.setValue("priceVariations", [
                                 {
                                   name: "",
-                                  price: "",
+                                  price: 0,
                                   description: "",
-                                  capacity: "",
+                                  capacity: 0,
                                 },
                               ]);
                               // Set the base price to -1 since it's now managed in variations
@@ -3737,6 +3804,9 @@ export default function EditWorkshop() {
                           setHasPriceVariations(false);
                           setPriceVariations([]);
                           setShowPriceVariationConfirm(false);
+                          // Update form values
+                          form.setValue("hasPriceVariations", false);
+                          form.setValue("priceVariations", []);
                           // Re-enable the price field
                           const originalPrice = workshop.price || 0;
                           form.setValue("price", originalPrice);
