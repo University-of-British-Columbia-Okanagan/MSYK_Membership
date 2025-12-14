@@ -16,7 +16,7 @@ import {
   activateMembershipForm,
   MEMBERSHIP_REVOKED_ERROR,
 } from "../../models/membership.server";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   sendWorkshopConfirmationEmail,
   sendEquipmentConfirmationEmail,
@@ -33,20 +33,23 @@ export async function loader({ request }: { request: Request }) {
   const isResubscribe = url.searchParams.get("resubscribe") === "true";
   const isQuickCheckout = url.searchParams.get("quick_checkout") === "true";
   const checkoutType = url.searchParams.get("type");
+  const isFree = url.searchParams.get("free") === "1";
 
   if (isQuickCheckout && checkoutType) {
-    let message = "🎉 Payment successful!";
+    let message = isFree ? "🎉 Registration successful!" : "🎉 Payment successful!";
     let redirectPath = "/dashboard";
 
     switch (checkoutType) {
       case "workshop":
-        message =
-          "🎉 Workshop registration successful! A confirmation email has been sent.";
+        message = isFree
+          ? "🎉 Workshop registration successful! A confirmation email has been sent."
+          : "🎉 Workshop registration successful! A confirmation email has been sent.";
         redirectPath = "/dashboard/workshops";
         break;
       case "equipment":
-        message =
-          "🎉 Equipment payment successful! Your booking slots will be processed.";
+        message = isFree
+          ? "🎉 Equipment booking successful! Your booking slots will be processed."
+          : "🎉 Equipment payment successful! Your booking slots will be processed.";
         redirectPath = "/dashboard/equipments";
 
         // For equipment quick checkout, we need to handle the booking
@@ -568,11 +571,16 @@ export default function PaymentSuccess() {
   };
   const navigate = useNavigate();
   const [bookingStatus, setBookingStatus] = useState<string>("");
+  const hasProcessedBooking = useRef(false);
 
   // Handle equipment booking after payment success
   useEffect(() => {
-    if (data.isEquipment && data.slotsDataKey && data.equipmentId) {
+    if (data.isEquipment && data.slotsDataKey && data.equipmentId && !hasProcessedBooking.current) {
       const processEquipmentBooking = async () => {
+        // Prevent duplicate calls using ref (persists across re-renders)
+        if (hasProcessedBooking.current) return;
+        hasProcessedBooking.current = true;
+
         try {
           setBookingStatus("Processing your equipment booking...");
 
@@ -602,7 +610,8 @@ export default function PaymentSuccess() {
           });
 
           if (!response.ok) {
-            throw new Error("Failed to book equipment slots");
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || "Failed to book equipment slots");
           }
 
           // Clean up sessionStorage
@@ -613,6 +622,8 @@ export default function PaymentSuccess() {
           setBookingStatus(
             `❌ Booking failed: ${error.message}. Please contact support.`
           );
+          // Reset on error so user can retry if needed
+          hasProcessedBooking.current = false;
         }
       };
 
