@@ -168,7 +168,7 @@ export async function quickCheckout(
       if (
         !checkoutData.equipmentId ||
         !checkoutData.slotCount ||
-        !checkoutData.price ||
+        checkoutData.price == null ||
         !checkoutData.slotsDataKey
       ) {
         throw new Error(
@@ -246,6 +246,146 @@ export async function quickCheckout(
 
     default:
       throw new Error("Invalid checkout type");
+  }
+
+  // If price is 0, skip payment and complete the action directly
+  if (price === 0) {
+    if (checkoutData.type === "workshop") {
+      if (checkoutData.connectId) {
+        // Multi-day workshop registration
+        await registerUserForAllOccurrences(
+          checkoutData.workshopId!,
+          checkoutData.connectId,
+          userId,
+          checkoutData.variationId || null,
+          undefined
+        );
+
+        // Send confirmation email for multi-day workshop
+        try {
+          const { sendWorkshopConfirmationEmail } = await import(
+            "../utils/email.server"
+          );
+          const {
+            getWorkshopById,
+            getWorkshopOccurrencesByConnectId,
+            getWorkshopPriceVariation,
+          } = await import("./workshop.server");
+
+          const workshop = await getWorkshopById(checkoutData.workshopId!);
+          const occurrences = await getWorkshopOccurrencesByConnectId(
+            checkoutData.workshopId!,
+            checkoutData.connectId
+          );
+
+          if (workshop && occurrences) {
+            let priceVariation = null;
+            if (checkoutData.variationId) {
+              priceVariation = await getWorkshopPriceVariation(
+                checkoutData.variationId
+              );
+            }
+
+            const sessions = occurrences.map((occ) => ({
+              startDate: occ.startDate,
+              endDate: occ.endDate,
+            }));
+
+            await sendWorkshopConfirmationEmail({
+              userEmail: user.email,
+              workshopName: workshop.name,
+              sessions,
+              location: workshop.location,
+              basePrice: workshop.price,
+              priceVariation: priceVariation
+                ? {
+                    name: priceVariation.name,
+                    description: priceVariation.description,
+                    price: priceVariation.price,
+                  }
+                : null,
+            });
+          }
+        } catch (emailError) {
+          console.error(
+            "Failed to send workshop confirmation email:",
+            emailError
+          );
+        }
+      } else if (checkoutData.occurrenceId) {
+        // Single occurrence registration
+        await registerForWorkshop(
+          checkoutData.workshopId!,
+          checkoutData.occurrenceId,
+          userId,
+          checkoutData.variationId || null,
+          undefined
+        );
+
+        // Send confirmation email for single occurrence workshop
+        try {
+          const { sendWorkshopConfirmationEmail } = await import(
+            "../utils/email.server"
+          );
+          const {
+            getWorkshopById,
+            getWorkshopOccurrence,
+            getWorkshopPriceVariation,
+          } = await import("./workshop.server");
+
+          const workshop = await getWorkshopById(checkoutData.workshopId!);
+          const occurrence = await getWorkshopOccurrence(
+            checkoutData.workshopId!,
+            checkoutData.occurrenceId
+          );
+
+          if (workshop && occurrence) {
+            let priceVariation = null;
+            if (checkoutData.variationId) {
+              priceVariation = await getWorkshopPriceVariation(
+                checkoutData.variationId
+              );
+            }
+
+            await sendWorkshopConfirmationEmail({
+              userEmail: user.email,
+              workshopName: workshop.name,
+              startDate: occurrence.startDate,
+              endDate: occurrence.endDate,
+              location: workshop.location,
+              basePrice: workshop.price,
+              priceVariation: priceVariation
+                ? {
+                    name: priceVariation.name,
+                    description: priceVariation.description,
+                    price: priceVariation.price,
+                  }
+                : null,
+            });
+          }
+        } catch (emailError) {
+          console.error(
+            "Failed to send workshop confirmation email:",
+            emailError
+          );
+        }
+      }
+    } else if (checkoutData.type === "equipment") {
+      // For free equipment, just return success and let the success page handle booking
+      return {
+        success: true,
+        paymentIntentId: null,
+        amount: 0,
+        type: checkoutData.type,
+      };
+    }
+
+    return {
+      success: true,
+      paymentIntentId: null,
+      amount: 0,
+      type: checkoutData.type,
+    };
   }
 
   try {
@@ -845,7 +985,7 @@ export async function createCheckoutSession(request: Request) {
   // Workshop Single Occurrence Payment
   else if (body.workshopId && body.occurrenceId) {
     const { workshopId, occurrenceId, price, userId, variationId } = body;
-    if (!workshopId || !occurrenceId || !price || !userId) {
+    if (!workshopId || !occurrenceId || price == null || !userId) {
       throw new Error("Missing required payment data");
     }
     const workshop = await getWorkshopById(Number(workshopId));
@@ -862,6 +1002,70 @@ export async function createCheckoutSession(request: Request) {
       const variation = await getWorkshopPriceVariation(Number(variationId));
       if (variation) {
         workshopDisplayName = `${workshop.name} - ${variation.name}`;
+      }
+    }
+
+    // If price is 0, register immediately without payment
+    if (price === 0) {
+      try {
+        await registerForWorkshop(
+          Number(workshopId),
+          Number(occurrenceId),
+          Number(userId),
+          variationId ? Number(variationId) : null,
+          undefined
+        );
+
+        // Send confirmation email
+        const user = await db.user.findUnique({
+          where: { id: Number(userId) },
+          select: { email: true },
+        });
+
+        if (user) {
+          const { sendWorkshopConfirmationEmail } = await import(
+            "../utils/email.server"
+          );
+
+          let priceVariation = null;
+          if (variationId) {
+            priceVariation = await getWorkshopPriceVariation(Number(variationId));
+          }
+
+          await sendWorkshopConfirmationEmail({
+            userEmail: user.email,
+            workshopName: workshop.name,
+            startDate: occurrence.startDate,
+            endDate: occurrence.endDate,
+            location: workshop.location,
+            basePrice: workshop.price,
+            priceVariation: priceVariation
+              ? {
+                  name: priceVariation.name,
+                  description: priceVariation.description,
+                  price: priceVariation.price,
+                }
+              : null,
+          });
+        }
+
+        return new Response(
+          JSON.stringify({
+            url: `/dashboard/payment/success?quick_checkout=true&type=workshop&free=1`,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      } catch (error: any) {
+        return new Response(
+          JSON.stringify({ error: error.message }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
     }
 
@@ -908,7 +1112,7 @@ export async function createCheckoutSession(request: Request) {
   // Multi-day Workshop Payment
   else if (body.workshopId && body.connectId) {
     const { workshopId, connectId, price, userId, variationId } = body;
-    if (!workshopId || !connectId || !price || !userId) {
+    if (!workshopId || !connectId || price == null || !userId) {
       throw new Error("Missing required payment data");
     }
     const workshop = await getWorkshopById(Number(workshopId));
@@ -925,6 +1129,74 @@ export async function createCheckoutSession(request: Request) {
       const variation = await getWorkshopPriceVariation(Number(variationId));
       if (variation) {
         workshopDisplayName = `${workshop.name} - ${variation.name}`;
+      }
+    }
+
+    // If price is 0, register immediately without payment
+    if (price === 0) {
+      try {
+        await registerUserForAllOccurrences(
+          Number(workshopId),
+          Number(connectId),
+          Number(userId),
+          variationId ? Number(variationId) : null,
+          undefined
+        );
+
+        // Send confirmation email
+        const user = await db.user.findUnique({
+          where: { id: Number(userId) },
+          select: { email: true },
+        });
+
+        if (user) {
+          const { sendWorkshopConfirmationEmail } = await import(
+            "../utils/email.server"
+          );
+
+          let priceVariation = null;
+          if (variationId) {
+            priceVariation = await getWorkshopPriceVariation(Number(variationId));
+          }
+
+          const sessions = occurrences.map((occ) => ({
+            startDate: occ.startDate,
+            endDate: occ.endDate,
+          }));
+
+          await sendWorkshopConfirmationEmail({
+            userEmail: user.email,
+            workshopName: workshop.name,
+            sessions,
+            location: workshop.location,
+            basePrice: workshop.price,
+            priceVariation: priceVariation
+              ? {
+                  name: priceVariation.name,
+                  description: priceVariation.description,
+                  price: priceVariation.price,
+                }
+              : null,
+          });
+        }
+
+        return new Response(
+          JSON.stringify({
+            url: `/dashboard/payment/success?quick_checkout=true&type=workshop&free=1`,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      } catch (error: any) {
+        return new Response(
+          JSON.stringify({ error: error.message }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
       }
     }
 
@@ -979,11 +1251,24 @@ export async function createCheckoutSession(request: Request) {
   else if (
     body.equipmentId &&
     body.slotCount &&
-    body.price &&
+    body.price != null &&
     body.userId &&
     body.slotsDataKey
   ) {
     const { equipmentId, slotCount, price, userId, slots, slotsDataKey } = body;
+
+    // If price is 0, redirect to success page where booking will occur
+    if (price === 0) {
+      return new Response(
+        JSON.stringify({
+          url: `/dashboard/payment/success?quick_checkout=true&type=equipment&equipment_id=${equipmentId}&slots_data_key=${slotsDataKey}&free=1`,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
