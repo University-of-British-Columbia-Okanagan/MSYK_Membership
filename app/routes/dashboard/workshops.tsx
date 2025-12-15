@@ -68,25 +68,79 @@ export default function UserDashboard() {
   const pastCutoffDate = new Date();
   pastCutoffDate.setDate(pastCutoffDate.getDate() - pastVisibilityDays);
 
-  const activeWorkshops = workshops.filter(
-    (event) =>
-      event.type === "workshop" &&
-      event.occurrences.some(
-        (occurrence) => new Date(occurrence.endDate) >= now
-      )
-  );
+  const activeWorkshops = workshops.filter((event) => {
+    if (event.type !== "workshop") return false;
 
-  const activeOrientations = workshops.filter(
-    (event) =>
-      event.type === "orientation" &&
-      event.occurrences.some(
-        (occurrence) => new Date(occurrence.endDate) >= now
-      )
-  );
+    // Check if this is a multi-day workshop
+    const isMultiDayWorkshop = event.occurrences.some(
+      (occ: any) => occ.connectId !== null && occ.connectId !== undefined
+    );
+
+    // For multi-day workshops, check if the FIRST occurrence is still in the future
+    if (isMultiDayWorkshop) {
+      const sortedOccurrences = [...event.occurrences].sort(
+        (a, b) =>
+          new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+      );
+      const firstOccurrence = sortedOccurrences[0];
+      return firstOccurrence && new Date(firstOccurrence.startDate) >= now;
+    }
+
+    // For regular workshops, check if ANY occurrence is in the future
+    return event.occurrences.some(
+      (occurrence) => new Date(occurrence.endDate) >= now
+    );
+  });
+
+  const activeOrientations = workshops.filter((event) => {
+    if (event.type !== "orientation") return false;
+
+    // Check if this is a multi-day orientation
+    const isMultiDayOrientation = event.occurrences.some(
+      (occ: any) => occ.connectId !== null && occ.connectId !== undefined
+    );
+
+    // For multi-day orientations, check if the FIRST occurrence is still in the future
+    if (isMultiDayOrientation) {
+      const sortedOccurrences = [...event.occurrences].sort(
+        (a, b) =>
+          new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+      );
+      const firstOccurrence = sortedOccurrences[0];
+      return firstOccurrence && new Date(firstOccurrence.startDate) >= now;
+    }
+
+    // For regular orientations, check if ANY occurrence is in the future
+    return event.occurrences.some(
+      (occurrence) => new Date(occurrence.endDate) >= now
+    );
+  });
 
   // Use the past visibility setting to filter past events
   const pastEvents = workshops.filter((event) => {
-    // Check if all occurrences are in the past
+    // Check if this is a multi-day workshop
+    const isMultiDayWorkshop = event.occurrences.some(
+      (occ: any) => occ.connectId !== null && occ.connectId !== undefined
+    );
+
+    // For multi-day workshops, check if the FIRST occurrence has passed
+    if (isMultiDayWorkshop) {
+      const sortedOccurrences = [...event.occurrences].sort(
+        (a, b) =>
+          new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+      );
+      const firstOccurrence = sortedOccurrences[0];
+
+      if (!firstOccurrence) return false;
+
+      const firstOccurrencePast = new Date(firstOccurrence.startDate) < now;
+      const hasRecentOccurrence =
+        new Date(firstOccurrence.startDate) >= pastCutoffDate;
+
+      return firstOccurrencePast && hasRecentOccurrence;
+    }
+
+    // For regular workshops, check if all occurrences are in the past
     const allOccurrencesPast = event.occurrences.every(
       (occurrence) => new Date(occurrence.endDate) < now
     );
