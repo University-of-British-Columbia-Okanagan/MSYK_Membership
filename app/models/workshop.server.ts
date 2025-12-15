@@ -1915,9 +1915,12 @@ export async function getUserWorkshopRegistrations(userId: number) {
  * @returns Promise<Array> - Array of workshops with full occurrence arrays (deduplicated)
  */
 export async function getUserWorkshopsWithOccurrences(userId: number) {
-  // 1. Find all userWorkshop records for the given user
+  // 1. Find all userWorkshop records for the given user, excluding cancelled registrations
   const userWorkshops = await db.userWorkshop.findMany({
-    where: { userId },
+    where: {
+      userId,
+      result: { not: "cancelled" }, // Exclude cancelled registrations
+    },
     // 2. Include the occurrence -> workshop -> occurrences
     include: {
       occurrence: {
