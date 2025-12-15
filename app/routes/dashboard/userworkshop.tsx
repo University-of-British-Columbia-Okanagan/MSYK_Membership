@@ -185,8 +185,11 @@ export default function WorkshopUsers() {
   };
 
   const handlePassAll = async () => {
+    // Only pass registrations that have status "pending"
     const registrationIds = sortedGroups.flatMap((group) =>
-      group.registrations.map((reg) => reg.id)
+      group.registrations
+        .filter((reg) => reg.result === "pending")
+        .map((reg) => reg.id)
     );
     if (registrationIds.length === 0) return;
     const formData = new FormData();
