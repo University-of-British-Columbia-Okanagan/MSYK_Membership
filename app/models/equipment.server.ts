@@ -186,9 +186,8 @@ export async function bookEquipment(
   // Send confirmation email unless suppressed
   if (!options?.suppressEmail) {
     try {
-      const { sendEquipmentConfirmationEmail } = await import(
-        "../utils/email.server"
-      );
+      const { sendEquipmentConfirmationEmail } =
+        await import("../utils/email.server");
       const equipment = await db.equipment.findUnique({
         where: { id: equipmentId },
         select: { name: true, price: true },
@@ -236,9 +235,8 @@ export async function bookEquipmentBulkByTimes(
 
   // Send one consolidated email
   try {
-    const { sendEquipmentBulkConfirmationEmail } = await import(
-      "../utils/email.server"
-    );
+    const { sendEquipmentBulkConfirmationEmail } =
+      await import("../utils/email.server");
     const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
     const equipment = await db.equipment.findUnique({
       where: { id: equipmentId },
@@ -808,11 +806,18 @@ export async function duplicateEquipment(equipmentId: number) {
  * @returns Array of booked equipment with booking details and status
  */
 export async function getUserBookedEquipments(userId: number) {
+  const now = new Date();
+
   const bookings = await db.equipmentBooking.findMany({
     where: {
       userId,
       status: { not: "cancelled" }, // Filter out cancelled bookings
       bookedFor: "user",
+      slot: {
+        endTime: {
+          gte: now, // Only show bookings that haven't ended yet
+        },
+      },
     },
     include: {
       equipment: {
