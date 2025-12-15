@@ -20,6 +20,12 @@ import {
 } from "@/components/ui/select";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Registration {
   id: number;
@@ -257,13 +263,24 @@ export default function WorkshopUsers() {
               onChange={(e) => setSearchUser(e.target.value)}
               className="w-full md:w-64"
             />
-            <ConfirmButton
-              confirmTitle="Confirm Pass All"
-              confirmDescription="Are you sure you want to mark all filtered registrations as passed?"
-              onConfirm={handlePassAll}
-              buttonLabel="Pass All"
-              buttonClassName="bg-indigo-500 hover:bg-indigo-600 text-white"
-            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <ConfirmButton
+                      confirmTitle="Confirm Pass All"
+                      confirmDescription="Are you sure you want to mark all filtered registrations as passed?"
+                      onConfirm={handlePassAll}
+                      buttonLabel="Pass All"
+                      buttonClassName="bg-indigo-500 hover:bg-indigo-600 text-white"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Passes all users with status "pending"</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           {/* Grouped Registrations Table */}
