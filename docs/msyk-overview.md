@@ -1103,7 +1103,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~In /myequipments for users, equipment bookings in the past should not show up (right now they do, fix this)~~
   - ~~Have the ability to have Equipments that cost 0 dollars and register for them (do not need to use payment)~~
   - ~~Have the ability to register for workshops that cost 0 dollars (do not need to use payment)~~
-  - When you subscribe to a membership and then cancel, lets say that membership you cancelled was 50 dollars. If there is another membership that is 50 dollars, the button for the other membership would say resubscribe
+  - ~~When you subscribe to a membership and then cancel, lets say that membership you cancelled was 50 dollars. If there is another membership that is 50 dollars, the button for the other membership would say resubscribe~~
   - If a user has a membership and a payment method, currently no email is sent if it is the payment date for their membership, but they will still be charged
   - When there is a level 4 user and there is the button "Revoke Level 4", if I press on that, the user will stay level 4 but the button just disappears, there is no "Allow Level 4" button (kinda broke the levels logic i cant lie)
   - Right now, in volunteer, it is possible to have a 24 hour volunteer submission (so someone can put like 12/01/2025 9 am to 12/02/2025 9 am to make a 24 hour volunteer entry). Make this so this is not possible since the only possible times people can record are from 9 am to 11:45 PM. Volunteer entries should be the same day only
