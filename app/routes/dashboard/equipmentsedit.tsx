@@ -312,6 +312,8 @@ export default function EditEquipment() {
 
   const form = useForm<EquipmentFormValues>({
     resolver: zodResolver(equipmentFormSchema),
+    mode: "onBlur",
+    reValidateMode: "onBlur",
     defaultValues: {
       name: equipment.name || "",
       description: equipment.description || "",
@@ -320,6 +322,10 @@ export default function EditEquipment() {
       workshopPrerequisites: equipment.prerequisites || [],
     },
   });
+
+  const [equipmentImageError, setEquipmentImageError] = useState<string | null>(
+    null
+  );
 
   const handleWorkshopPrerequisiteSelect = (workshopId: number) => {
     let updated: number[];
@@ -382,6 +388,25 @@ export default function EditEquipment() {
                 method="post"
                 encType="multipart/form-data"
                 className="space-y-6"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+
+                  const formElement = e.currentTarget as HTMLFormElement | null;
+                  if (!formElement) {
+                    return;
+                  }
+
+                  if (equipmentImageError) {
+                    return;
+                  }
+
+                  const isValid = await form.trigger();
+                  if (!isValid) {
+                    return;
+                  }
+
+                  formElement.submit();
+                }}
               >
                 {/* Name & Price */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -398,6 +423,10 @@ export default function EditEquipment() {
                             id="name"
                             placeholder="Enter equipment name"
                             {...field}
+                            onBlur={(event) => {
+                              field.onBlur();
+                              form.trigger("name");
+                            }}
                             className="w-full"
                           />
                         </FormControl>
@@ -420,6 +449,10 @@ export default function EditEquipment() {
                             type="number"
                             placeholder="Enter price"
                             {...field}
+                            onBlur={(event) => {
+                              field.onBlur();
+                              form.trigger("price");
+                            }}
                             step="0.01"
                             className="w-full"
                           />
@@ -444,6 +477,10 @@ export default function EditEquipment() {
                           id="description"
                           placeholder="Enter equipment description"
                           {...field}
+                          onBlur={(event) => {
+                            field.onBlur();
+                            form.trigger("description");
+                          }}
                           rows={4}
                           className="w-full"
                         />
@@ -488,14 +525,45 @@ export default function EditEquipment() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            const maxSize = 5 * 1024 * 1024; // 5MB
+                            const allowedTypes = [
+                              "image/jpeg",
+                              "image/jpg",
+                              "image/png",
+                              "image/gif",
+                              "image/webp",
+                            ];
+
+                            setEquipmentImageError(null);
+
+                            if (!allowedTypes.includes(file.type)) {
+                              setEquipmentImageError(
+                                "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP."
+                              );
+                              e.target.value = "";
+                              setEquipmentImageFile(null);
+                              return;
+                            }
+
+                            if (file.size > maxSize) {
+                              setEquipmentImageError(
+                                "File size exceeds 5MB limit."
+                              );
+                              e.target.value = "";
+                              setEquipmentImageFile(null);
+                              return;
+                            }
+
                             setEquipmentImageFile(file);
                             setRemoveImageFlag(false);
-                            // Preview the new image
                             const reader = new FileReader();
                             reader.onloadend = () => {
                               setCurrentImageUrl(reader.result as string);
                             };
                             reader.readAsDataURL(file);
+                          } else {
+                            setEquipmentImageFile(null);
+                            setEquipmentImageError(null);
                           }
                         }}
                         name="equipmentImage"
@@ -507,9 +575,15 @@ export default function EditEquipment() {
                       add one if you have not uploaded one. Accepted formats:
                       JPG, JPEG, PNG, GIF, WEBP (Max 5MB)
                     </p>
-                    {actionData?.errors?.equipmentImage && (
+                    {(equipmentImageError ||
+                      actionData?.errors?.equipmentImage) && (
                       <p className="text-sm text-red-500 mt-1">
-                        {actionData.errors.equipmentImage}
+                        {equipmentImageError ||
+                          (actionData?.errors?.equipmentImage
+                            ? Array.isArray(actionData.errors.equipmentImage)
+                              ? actionData.errors.equipmentImage[0]
+                              : actionData.errors.equipmentImage
+                            : null)}
                       </p>
                     )}
                   </FormItem>
