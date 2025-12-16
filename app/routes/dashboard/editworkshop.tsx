@@ -1584,6 +1584,8 @@ export default function EditWorkshop() {
     return slotStrings;
   }
 
+  const priceVariationsSectionRef = React.useRef<HTMLDivElement | null>(null);
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submit triggered");
@@ -1601,11 +1603,25 @@ export default function EditWorkshop() {
     if (!isValid) {
       const errors = form.formState.errors;
 
+      // If price variations are enabled and the only error is on price,
+      // clear it and allow the submission to continue (price is driven by variations)
       if (hasPriceVariations && Object.keys(errors).length === 1 && errors.price) {
         form.clearErrors("price");
+      } else if (errors.priceVariations) {
+        // When there is a priceVariations error (including Zod cross-field refinements),
+        // make sure the user is taken to the pricing section instead of failing silently.
+        if (priceVariationsSectionRef.current) {
+          priceVariationsSectionRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }
+        return;
       } else {
         const firstErrorField = Object.keys(errors)[0];
-        const errorElement = document.querySelector(`[name="${firstErrorField}"]`);
+        const errorElement = document.querySelector(
+          `[name="${firstErrorField}"]`
+        );
         if (errorElement) {
           errorElement.scrollIntoView({ behavior: "smooth", block: "center" });
         }
@@ -2089,7 +2105,10 @@ export default function EditWorkshop() {
 
                 {/* Price Variations Management */}
                 {hasPriceVariations && (
-                  <div className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
+                  <div
+                    ref={priceVariationsSectionRef}
+                    className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50"
+                  >
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium">Price Variations</h3>
                       <Button
@@ -2128,12 +2147,15 @@ export default function EditWorkshop() {
                       )}
                     </div>
 
-                    {/* ERROR DISPLAY: */}
-                    {actionData?.errors?.priceVariations && (
+                    {/* ERROR DISPLAY: aggregate price variation errors */}
+                    {(actionData?.errors?.priceVariations ||
+                      (form.formState.errors as any).priceVariations) && (
                       <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
-                        {Array.isArray(actionData.errors.priceVariations)
-                          ? actionData.errors.priceVariations.join(", ")
-                          : actionData.errors.priceVariations}
+                        {Array.isArray(actionData?.errors?.priceVariations)
+                          ? actionData?.errors?.priceVariations.join(", ")
+                          : actionData?.errors?.priceVariations ||
+                            (form.formState.errors as any).priceVariations
+                              ?.message}
                       </div>
                     )}
 
