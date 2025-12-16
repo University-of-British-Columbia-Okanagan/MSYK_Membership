@@ -939,20 +939,49 @@ export function startMonthlyMembershipCheck() {
                 `✅ Payment intent succeeded for user ${membership.userId}, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
               );
 
+              const newNextPaymentDate = addMonthsForCycle(
+                membership.nextPaymentDate,
+                membership.billingCycle as
+                  | "monthly"
+                  | "quarterly"
+                  | "semiannually"
+                  | "yearly"
+              );
+
               await db.userMembership.update({
                 where: { id: membership.id },
                 data: {
-                  nextPaymentDate: addMonthsForCycle(
-                    membership.nextPaymentDate,
-                    membership.billingCycle as
-                      | "monthly"
-                      | "quarterly"
-                      | "semiannually"
-                      | "yearly"
-                  ),
+                  nextPaymentDate: newNextPaymentDate,
                   paymentIntentId: pi.id,
                 },
               });
+
+              // Send payment success email for all billing cycles
+              try {
+                const { sendMembershipPaymentSuccessEmail } =
+                  await import("../utils/email.server");
+                await sendMembershipPaymentSuccessEmail({
+                  userEmail: user.email,
+                  planTitle: membership.membershipPlan.title,
+                  amountCharged: chargeAmount,
+                  baseAmount: baseAmount,
+                  gstPercentage: parseFloat(gstPercentage),
+                  nextPaymentDate: newNextPaymentDate,
+                  billingCycle: membership.billingCycle as
+                    | "monthly"
+                    | "quarterly"
+                    | "semiannually"
+                    | "yearly",
+                });
+                console.log(
+                  `✅ Sent payment success email to user ${membership.userId} for ${membership.billingCycle} membership`
+                );
+              } catch (emailErr) {
+                console.error(
+                  `Failed to send payment success email to user ${membership.userId}:`,
+                  emailErr
+                );
+              }
             } else {
               console.log(
                 `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`
