@@ -475,17 +475,44 @@ export default function MembershipCard({
               );
             }
 
-            // 4) Fully cancelled (no active), must resubscribe first
+            // 4) Fully cancelled (no active), check if THIS specific plan is cancelled
             if (!hasActiveSubscription && hasCancelledSubscription) {
-              return (
-                <Button
-                  onClick={handleSelect}
-                  className="bg-indigo-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-indigo-600 transition flex items-center justify-center"
-                >
-                  <RefreshCw className="w-5 h-5 mr-2" />
-                  Resubscribe
-                </Button>
-              );
+              // Only show "Resubscribe" if THIS plan is the cancelled one
+              if (membershipStatus === "cancelled") {
+                return (
+                  <Button
+                    onClick={handleSelect}
+                    className="bg-indigo-500 text-white px-6 py-2 rounded-full shadow-md hover:bg-indigo-600 transition flex items-center justify-center"
+                  >
+                    <RefreshCw className="w-5 h-5 mr-2" />
+                    Resubscribe
+                  </Button>
+                );
+              } else {
+                // This plan was NOT cancelled, so disable the Subscribe button
+                return (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Button
+                            disabled
+                            className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed opacity-50 pointer-events-none"
+                          >
+                            <PlusCircle className="w-5 h-5 mr-2" />
+                            Subscribe
+                          </Button>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Please resubscribe to your cancelled membership first
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              }
             }
 
             // 5) Fallback: brand‑new Subscribe

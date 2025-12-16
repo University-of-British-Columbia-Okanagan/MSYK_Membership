@@ -3594,3 +3594,122 @@ export function startWorkshopOccurrenceStatusUpdate() {
 
   console.log("Started workshop occurrence status update job");
 }
+
+/**
+ * Fetches all workshops a user is registered for with detailed registration information
+ * including all registered occurrences, price variations, and multi-day workshop detection
+ * @param userId - The ID of the user to get workshops for
+ * @returns Promise<Array> - Array of workshops with registration details
+ */
+export async function getUserWorkshopsWithRegistrationDetails(userId: number) {
+  // 1. Get all non-cancelled registrations for this user with full details
+  const registrations = await db.userWorkshop.findMany({
+    where: {
+      userId,
+      result: { not: "cancelled" }, // Exclude cancelled registrations
+    },
+    include: {
+      occurrence: {
+        include: {
+          workshop: {
+            include: {
+              occurrences: true,
+              priceVariations: {
+                where: {
+                  status: "active",
+                },
+              },
+            },
+          },
+        },
+      },
+      priceVariation: {
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          description: true,
+        },
+      },
+    },
+  });
+
+  // 2. Group registrations by workshop
+  const workshopMap = new Map<number, any>();
+
+  for (const reg of registrations) {
+    const workshop = reg.occurrence.workshop;
+    const workshopId = workshop.id;
+
+    if (!workshopMap.has(workshopId)) {
+      // Initialize workshop entry
+      workshopMap.set(workshopId, {
+        id: workshop.id,
+        name: workshop.name,
+        description: workshop.description,
+        price: workshop.price,
+        type: workshop.type,
+        imageUrl: workshop.imageUrl,
+        hasPriceVariations: workshop.hasPriceVariations,
+        displayPrice:
+          workshop.hasPriceVariations && workshop.priceVariations.length > 0
+            ? workshop.priceVariations[0].price
+            : workshop.price,
+        priceRange:
+          workshop.hasPriceVariations && workshop.priceVariations.length > 1
+            ? {
+                min: workshop.priceVariations[0].price,
+                max: workshop.priceVariations[
+                  workshop.priceVariations.length - 1
+                ].price,
+              }
+            : null,
+        occurrences: workshop.occurrences ?? [],
+        registeredOccurrences: [],
+        priceVariation: null,
+        isMultiDay: false,
+      });
+    }
+
+    // Add this occurrence to the registered occurrences list
+    const workshopData = workshopMap.get(workshopId);
+    workshopData.registeredOccurrences.push({
+      id: reg.occurrence.id,
+      startDate: reg.occurrence.startDate,
+      endDate: reg.occurrence.endDate,
+      connectId: reg.occurrence.connectId,
+    });
+
+    // Set price variation (same for all occurrences in a registration)
+    if (reg.priceVariation && !workshopData.priceVariation) {
+      workshopData.priceVariation = reg.priceVariation;
+    }
+
+    // Detect if this is a multi-day workshop
+    if (
+      reg.occurrence.connectId !== null &&
+      reg.occurrence.connectId !== undefined
+    ) {
+      workshopData.isMultiDay = true;
+    }
+  }
+
+  // 3. Sort registered occurrences by start date for each workshop
+  const workshops = Array.from(workshopMap.values()).map((workshop) => {
+    const sortedOccurrences = workshop.registeredOccurrences.sort(
+      (a: any, b: any) => {
+        return (
+          new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        );
+      }
+    );
+
+    return {
+      ...workshop,
+      registeredOccurrences: sortedOccurrences,
+      isRegistered: sortedOccurrences.length > 0,
+    };
+  });
+
+  return workshops;
+}
