@@ -106,6 +106,41 @@ export async function action({ request }: { request: Request }) {
       return { error: "End time must be after start time" };
     }
 
+    // NEW: Validate that start and end are on the same day
+    const startDate = new Date(
+      startTime.getFullYear(),
+      startTime.getMonth(),
+      startTime.getDate()
+    );
+    const endDate = new Date(
+      endTime.getFullYear(),
+      endTime.getMonth(),
+      endTime.getDate()
+    );
+
+    if (startDate.getTime() !== endDate.getTime()) {
+      return {
+        error:
+          "Volunteer hours must be logged within the same day. Please split multi-day sessions into separate entries.",
+      };
+    }
+
+    // NEW: Validate time is between 9 AM (09:00) and 11:45 PM (23:45)
+    const startHour = startTime.getHours();
+    const startMinute = startTime.getMinutes();
+    const endHour = endTime.getHours();
+    const endMinute = endTime.getMinutes();
+
+    // Start time must be >= 9:00 AM
+    if (startHour < 9) {
+      return { error: "Start time must be 9:00 AM or later" };
+    }
+
+    // End time must be <= 11:45 PM
+    if (endHour > 23 || (endHour === 23 && endMinute > 45)) {
+      return { error: "End time must be 11:45 PM or earlier" };
+    }
+
     // Check if trying to log hours in the future
     const now = new Date();
     if (startTime > now) {
@@ -113,13 +148,6 @@ export async function action({ request }: { request: Request }) {
     }
     if (endTime > now) {
       return { error: "Cannot log volunteer hours that end in the future" };
-    }
-
-    // Check if the time period is reasonable (not more than 24 hours)
-    const durationMs = endTime.getTime() - startTime.getTime();
-    const maxDurationMs = 24 * 60 * 60 * 1000; // 24 hours
-    if (durationMs > maxDurationMs) {
-      return { error: "Volunteer session cannot be longer than 24 hours" };
     }
 
     // Check for overlapping volunteer hours (pass isResubmission flag)
