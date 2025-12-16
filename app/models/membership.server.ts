@@ -1679,3 +1679,17 @@ export function decryptMembershipAgreement(encryptedData: string): Buffer {
     throw new Error("Failed to decrypt membership agreement");
   }
 }
+
+/**
+ * Get all user memberships with active or cancelled status
+ * @param userId The ID of the user whose memberships to retrieve
+ * @returns Array of user membership records with active or cancelled status
+ */
+export async function getUserActiveOrCancelledMemberships(userId: number) {
+  return await db.userMembership.findMany({
+    where: {
+      userId,
+      status: { in: ["active", "cancelled"] },
+    },
+  });
+}
