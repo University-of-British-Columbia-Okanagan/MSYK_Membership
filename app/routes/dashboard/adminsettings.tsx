@@ -1091,24 +1091,26 @@ function RoleControl({
   return (
     <div className="flex items-center gap-2">
       <span className="font-semibold">{user.roleLevel}</span>
-      {allowLevel4 ? (
-        <ConfirmButton
-          confirmTitle="Confirm Revoke Level 4"
-          confirmDescription="Are you sure you want to revoke Level 4 for this user? This will remove the extra privileges."
-          onConfirm={() => updateAllow(false)}
-          buttonLabel="Revoke Level 4"
-          buttonClassName="bg-red-500 hover:bg-red-600 text-white"
-        />
-      ) : (
-        user.roleLevel === 3 && (
-          <ConfirmButton
-            confirmTitle="Confirm Enable Level 4"
-            confirmDescription="Are you sure you want to enable Level 4 for this user? This will grant extra privileges."
-            onConfirm={() => updateAllow(true)}
-            buttonLabel="Allow Level 4"
-            buttonClassName="bg-green-500 hover:bg-green-600 text-white"
-          />
-        )
+      {(user.roleLevel === 3 || user.roleLevel === 4) && (
+        <>
+          {allowLevel4 ? (
+            <ConfirmButton
+              confirmTitle="Confirm Revoke Level 4"
+              confirmDescription="Are you sure you want to revoke Level 4 for this user? This will remove the extra privileges."
+              onConfirm={() => updateAllow(false)}
+              buttonLabel="Revoke Level 4"
+              buttonClassName="bg-red-500 hover:bg-red-600 text-white"
+            />
+          ) : (
+            <ConfirmButton
+              confirmTitle="Confirm Enable Level 4"
+              confirmDescription="Are you sure you want to enable Level 4 for this user? This will grant extra privileges."
+              onConfirm={() => updateAllow(true)}
+              buttonLabel="Allow Level 4"
+              buttonClassName="bg-green-500 hover:bg-green-600 text-white"
+            />
+          )}
+        </>
       )}
     </div>
   );
