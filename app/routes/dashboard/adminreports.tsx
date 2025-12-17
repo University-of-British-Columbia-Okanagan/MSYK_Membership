@@ -51,6 +51,8 @@ const generateCSV = (workshopOccurrences: any[]) => {
   const headers = [
     "Workshop Name",
     "Workshop Type",
+    "Multi-Day Workshop",
+    "Has Price Variations",
     "ID",
     "Start Date",
     "End Date",
@@ -65,6 +67,8 @@ const generateCSV = (workshopOccurrences: any[]) => {
     workshop.occurrences.map((occ: any) => [
       workshop.name,
       workshop.type,
+      occ.connectId !== null && occ.connectId !== undefined ? "Yes" : "No",
+      workshop.hasPriceVariations ? "Yes" : "No",
       occ.id,
       new Date(occ.startDate).toLocaleString(),
       new Date(occ.endDate).toLocaleString(),
@@ -653,15 +657,32 @@ export default function AdminReports() {
                                 workshop.activeOccurrences.length > 0 && (
                                   <div key={workshop.id} className="mb-8">
                                     <div className="flex justify-between items-center mb-3">
-                                      <h3 className="text-lg font-semibold flex items-center">
-                                        {workshop.name}
-                                        <Badge
-                                          variant="outline"
-                                          className="ml-2 bg-blue-50 border-blue-200 text-blue-700"
-                                        >
-                                          {workshop.type}
-                                        </Badge>
-                                      </h3>
+                                      <div>
+                                        <h3 className="text-lg font-semibold flex items-center">
+                                          {workshop.name}
+                                          <Badge
+                                            variant="outline"
+                                            className="ml-2 bg-blue-50 border-blue-200 text-blue-700"
+                                          >
+                                            {workshop.type}
+                                          </Badge>
+                                        </h3>
+                                        <div className="text-sm text-gray-600 mt-1">
+                                          {workshop.activeOccurrences.some(
+                                            (occ: any) =>
+                                              occ.connectId !== null &&
+                                              occ.connectId !== undefined
+                                          ) && (
+                                            <span className="mr-3">
+                                              Multi-Day Workshop
+                                            </span>
+                                          )}
+                                          {(workshop as any)
+                                            .hasPriceVariations && (
+                                            <span>Has Price Variations</span>
+                                          )}
+                                        </div>
+                                      </div>
                                       <Badge
                                         variant="outline"
                                         className="bg-green-50 border-green-200"
@@ -769,15 +790,32 @@ export default function AdminReports() {
                                 workshop.pastOccurrences.length > 0 && (
                                   <div key={workshop.id} className="mb-8">
                                     <div className="flex justify-between items-center mb-3">
-                                      <h3 className="text-lg font-semibold flex items-center">
-                                        {workshop.name}
-                                        <Badge
-                                          variant="outline"
-                                          className="ml-2 bg-blue-50 border-blue-200 text-blue-700"
-                                        >
-                                          {workshop.type}
-                                        </Badge>
-                                      </h3>
+                                      <div>
+                                        <h3 className="text-lg font-semibold flex items-center">
+                                          {workshop.name}
+                                          <Badge
+                                            variant="outline"
+                                            className="ml-2 bg-blue-50 border-blue-200 text-blue-700"
+                                          >
+                                            {workshop.type}
+                                          </Badge>
+                                        </h3>
+                                        <div className="text-sm text-gray-600 mt-1">
+                                          {workshop.pastOccurrences.some(
+                                            (occ: any) =>
+                                              occ.connectId !== null &&
+                                              occ.connectId !== undefined
+                                          ) && (
+                                            <span className="mr-3">
+                                              Multi-Day Workshop
+                                            </span>
+                                          )}
+                                          {(workshop as any)
+                                            .hasPriceVariations && (
+                                            <span>Has Price Variations</span>
+                                          )}
+                                        </div>
+                                      </div>
                                       <Badge
                                         variant="outline"
                                         className="bg-gray-50 border-gray-200"
