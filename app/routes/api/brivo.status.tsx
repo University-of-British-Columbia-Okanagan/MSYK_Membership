@@ -48,16 +48,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
   }
 
-  const [subsRes, groupsRes] = await Promise.allSettled([
-    brivoClient.listEventSubscriptions(),
-    brivoClient.listGroups(),
+  const [subscriptions, groups] = await Promise.all([
+    brivoClient.listEventSubscriptions().catch(() => []),
+    brivoClient.listGroups().catch(() => []),
   ]);
 
   return jsonResponse({
     enabled,
     accessGroupLevel4,
-    subscriptions: subsRes.status === "fulfilled" ? subsRes.value : [],
-    groups: groupsRes.status === "fulfilled" ? groupsRes.value : [],
+    subscriptions,
+    groups,
   });
 }
 
