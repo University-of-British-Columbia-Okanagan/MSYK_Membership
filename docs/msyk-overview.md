@@ -1160,6 +1160,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 - **Membership Plans**
   - Admins are able to change the prices (monthly, quarterly, semi-annually, and yearly) and also remove requiring admin permission
   - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options. They can only check this through their profile
+- **Google Calender**:
+ - When adding a multi-day workshop with price variations with google calender integration, in the events tab for that multi-day workshop, the dates do not show the capacity of each price variation
 
 ---
 
