@@ -2246,14 +2246,18 @@ export default function AdminSettings() {
   });
 
   const effectiveBrivoAccessGroupLevel4 = (
-    brivoStatusFetcher.data?.accessGroupLevel4 ??
     brivo.accessGroupLevel4 ??
+    brivoStatusFetcher.data?.accessGroupLevel4 ??
     ""
   ).trim();
   const [selectedBrivoAccessGroupLevel4, setSelectedBrivoAccessGroupLevel4] =
     useState<string>(effectiveBrivoAccessGroupLevel4);
   const [brivoAccessGroupTouched, setBrivoAccessGroupTouched] =
     useState<boolean>(false);
+
+  useEffect(() => {
+    setProvisioningByUserId({});
+  }, [effectiveBrivoAccessGroupLevel4]);
 
   useEffect(() => {
     if (activeTab !== "integrations") return;
@@ -2275,9 +2279,7 @@ export default function AdminSettings() {
   useEffect(() => {
     if (activeTab !== "users") return;
     if (!brivo?.enabled) return;
-    const groupId =
-      (brivoStatusFetcher.data?.accessGroupLevel4 ?? brivo.accessGroupLevel4 ?? "").trim();
-    if (!groupId) return;
+    if (!effectiveBrivoAccessGroupLevel4) return;
     if (brivoProvisioningFetcher.state !== "idle") return;
     if (Object.keys(provisioningByUserId).length > 0) return;
 
@@ -2293,7 +2295,7 @@ export default function AdminSettings() {
     if (eligibleUserIds.length === 0) return;
 
     const formData = new FormData();
-    formData.append("groupId", groupId);
+    formData.append("groupId", effectiveBrivoAccessGroupLevel4);
     formData.append("userIds", JSON.stringify(eligibleUserIds));
     brivoProvisioningFetcher.submit(formData, {
       method: "post",
@@ -2302,8 +2304,7 @@ export default function AdminSettings() {
   }, [
     activeTab,
     brivo?.enabled,
-    brivo?.accessGroupLevel4,
-    brivoStatusFetcher.data?.accessGroupLevel4,
+    effectiveBrivoAccessGroupLevel4,
     brivoProvisioningFetcher,
     provisioningByUserId,
     users,
