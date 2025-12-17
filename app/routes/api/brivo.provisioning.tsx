@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import { brivoClient } from "~/services/brivo.server";
 import { db } from "~/utils/db.server";
+import { logger } from "~/logging/logger";
 
 type ProvisioningResponse = { statuses: Record<string, boolean> };
 
@@ -60,11 +61,17 @@ export async function action({ request }: ActionFunctionArgs) {
     const chunk = eligible.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
       chunk.map(async (u) => {
-        const inGroup = await brivoClient.isUserInGroup(
-          String(u.brivoPersonId),
-          groupId,
-        );
-        return [String(u.id), inGroup] as const;
+        try {
+          const inGroup = await brivoClient.isUserInGroup(
+            String(u.brivoPersonId),
+            groupId,
+          );
+          return [String(u.id), inGroup] as const;
+        } catch (error) {
+          // Log error for debugging but continue processing other users
+          logger.error(`Failed to check group membership for user ${u.id}:`, error);
+          return [String(u.id), false] as const;
+        }
       }),
     );
 
@@ -72,7 +79,6 @@ export async function action({ request }: ActionFunctionArgs) {
       statuses[id] = inGroup;
     }
   }
-
   return jsonResponse({ statuses });
 }
 
