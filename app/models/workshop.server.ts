@@ -637,6 +637,16 @@ export async function updateWorkshopWithOccurrences(
     // Use the highest existing offerId (or default to 1 if none exists)
     const currentOfferId = (maxOfferIdResult._max.offerId as number) || 1;
 
+    // Check if this is already a multi-day workshop BEFORE creating new occurrences
+    let existingConnectIdForNewOccurrences: number | null = null;
+    const existingMultiDayCheck = await db.workshopOccurrence.findFirst({
+      where: { workshopId, connectId: { not: null } },
+      select: { connectId: true },
+    });
+    if (existingMultiDayCheck && existingMultiDayCheck.connectId) {
+      existingConnectIdForNewOccurrences = existingMultiDayCheck.connectId;
+    }
+
     const createdOccurrences = await Promise.all(
       createOccurrences.map(async (occ) => {
         const status =
@@ -647,6 +657,7 @@ export async function updateWorkshopWithOccurrences(
               : "past";
 
         // Create each occurrence individually to get its ID
+        // If this workshop already has a connectId, assign it to new occurrences immediately
         const createdOcc = await db.workshopOccurrence.create({
           data: {
             workshopId,
@@ -656,6 +667,7 @@ export async function updateWorkshopWithOccurrences(
             endDatePST: occ.endDatePST,
             status,
             offerId: currentOfferId, // Use the current highest offerId
+            connectId: existingConnectIdForNewOccurrences, // Assign connectId immediately if this is a multi-day workshop
           },
         });
 
