@@ -143,7 +143,6 @@ export async function loader({ request }: { request: Request }) {
     return redirect("/dashboard/user");
   }
 
-  // Load everything in parallel wherever possible (this route blocks navigation)
   const [
     workshopVisibilityDays,
     pastWorkshopVisibility,
@@ -252,28 +251,16 @@ export async function loader({ request }: { request: Request }) {
 
   // Brivo integration status
   const brivoEnabled = brivoClient.isEnabled();
-  let brivoSubscriptions: Array<{
-    id: number;
-    name: string;
-    url: string;
-    errorEmail: string;
-  }> = [];
-  let brivoGroups: Array<{ id: number; name: string }> = [];
   const brivoAccessGroupLevel4 = await getAdminSetting(
     "brivo_access_group_level4",
     process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? ""
   );
-  // NOTE: Brivo subscriptions & groups are loaded on-demand (Integrations tab)
-  // to avoid blocking initial navigation to the Admin Settings page.
 
   // Enrich users with Brivo Level 4 door access provisioning status
   let usersWithDoorAccess = users.map((user) => ({
     ...user,
     hasLevel4DoorAccessProvisioned: null as boolean | null,
   }));
-
-  // NOTE: Brivo group membership checks (provisioning status) are loaded on-demand
-  // on the Users tab to avoid blocking initial navigation.
 
   // Return settings to the component
   return {
@@ -303,8 +290,8 @@ export async function loader({ request }: { request: Request }) {
     },
     brivo: {
       enabled: brivoEnabled,
-      subscriptions: brivoSubscriptions,
-      groups: brivoGroups,
+      subscriptions: [],
+      groups: [],
       accessGroupLevel4: brivoAccessGroupLevel4,
     },
     allEquipments,
@@ -2214,7 +2201,6 @@ export default function AdminSettings() {
     brivo: {
       enabled: boolean;
       accessGroupLevel4: string;
-      // subscriptions/groups are loaded on-demand on the Integrations tab
       subscriptions: Array<{
         id: number;
         name: string;
@@ -2247,7 +2233,7 @@ export default function AdminSettings() {
   }>();
 
   const brivoProvisioningFetcher = useFetcher<{
-    statuses: Record<string, boolean | null>;
+    statuses: Record<string, boolean>;
   }>();
 
   const [provisioningByUserId, setProvisioningByUserId] = useState<
@@ -6797,11 +6783,6 @@ export default function AdminSettings() {
                               >
                                 {brivoLoading ? "Loading..." : "Refresh Brivo Status"}
                               </Button>
-                              {!brivoStatusFetcher.data && (
-                                <p className="text-xs text-gray-600">
-                                  Brivo status loads on-demand to keep page navigation fast.
-                                </p>
-                              )}
                             </div>
                           </div>
 
@@ -6856,11 +6837,6 @@ export default function AdminSettings() {
                                     </option>
                                   ))}
                                 </select>
-                                {!brivoStatusFetcher.data && (
-                                  <p className="text-xs text-gray-500">
-                                    Click “Refresh Brivo Status” to load available groups.
-                                  </p>
-                                )}
                               </div>
                               <Button
                                 type="submit"
@@ -6880,14 +6856,15 @@ export default function AdminSettings() {
                             <h4 className="font-medium mb-3">
                               Webhook Subscriptions
                             </h4>
-                            {!brivoStatusFetcher.data && (
-                              <p className="text-sm text-gray-600">
-                                Subscriptions are loaded on-demand. Click “Refresh Brivo Status”.
-                              </p>
-                            )}
                             {brivoInfo.subscriptions?.length > 0 ? (
                               <div className="space-y-2">
-                                {brivoInfo.subscriptions.map((sub: any) => (
+                                {brivoInfo.subscriptions.map(
+                                  (sub: {
+                                    id: number;
+                                    name: string;
+                                    url: string;
+                                    errorEmail: string;
+                                  }) => (
                                   <div
                                     key={sub.id}
                                     className="flex items-center justify-between p-3 bg-gray-50 rounded-md border"
