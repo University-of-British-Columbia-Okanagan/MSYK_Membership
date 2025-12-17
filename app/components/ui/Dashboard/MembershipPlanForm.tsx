@@ -19,6 +19,7 @@ type Props = {
   defaultValues: MembershipPlanFormValues & { needAdminPermission?: boolean };
   submitLabel?: string;
   initialShowMultipleBilling?: boolean;
+  onSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
 };
 
 export default function MembershipPlanForm({
@@ -27,6 +28,7 @@ export default function MembershipPlanForm({
   defaultValues,
   submitLabel = mode === "create" ? "Submit" : "Confirm",
   initialShowMultipleBilling = false,
+  onSubmit,
 }: Props) {
   const [features, setFeatures] = useState<string[]>(
     defaultValues.features || [""]
@@ -63,7 +65,7 @@ export default function MembershipPlanForm({
 
   return (
     <Form {...form}>
-      <form method="post">
+      <form method="post" onSubmit={onSubmit}>
         <FormField
           control={form.control}
           name="title"

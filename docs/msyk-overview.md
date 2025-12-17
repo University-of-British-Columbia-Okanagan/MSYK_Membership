@@ -1112,26 +1112,25 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~When guests go into this route (/dashboard/workshops), they need an account to register for workshops and they are prompted for "Account required". When guests go to /dashboard/payment/:workshopId/:occurrenceId, /dashboard/payment/:workshopId/:occurrenceId/:variationId, /dashboard/payment/:workshopId/connect/:connectId/:variationId, /dashboard/payment/:workshopId/connect/:connectId, they should be redirectd to /dashboard/workshops (right now, I think it shows a white screen)~~
   - ~~When guests go into this route (dashboard/memberships), they need an account to subscribe to a membership and they are prompted for "Account required". For guests, they shoud not be able to go into any route like /dashboard/memberships/:membershipPlanID and /dashboard/payment/:membershipPlanID. It should redirect them to /dashboard~~
 - **Low**:
-  - When creating a price variation and it has errors of All pricing option prices must be unique and The sum of all pricing option capacities cannot exceed the total workshop capacity, in the price variation card, it shows as "All pricing option prices must be unique., The sum of all pricing option capacities cannot exceed the total workshop capacity". Fix the ".," shown in the UI
-  - Sometimes when you edit a workshop that has a workshop image with a new image, it will redirect back to the workshops and the new image is not shown until you refresh the page
+  - ~~When creating a price variation and it has errors of All pricing option prices must be unique and The sum of all pricing option capacities cannot exceed the total workshop capacity, in the price variation card, it shows as "All pricing option prices must be unique., The sum of all pricing option capacities cannot exceed the total workshop capacity". Fix the ".," shown in the UI~~
+  - ~~Sometimes when you edit a workshop that has a workshop image with a new image, it will redirect back to the workshops and the new image is not shown until you refresh the page~~
   - ~~When editing a workshop with a total capacity of 10 and then price variation with capacity 2 and capacity 1 (3 capacity taken by the variations). Now, when you change the price variation with capacity 2 to capacity 10, it will be obviously 11 > 10 and when you press update workshop, the button will be stuck on "Updating..."~~
   - ~~Add a UI to go back to the workshop details aftet they go into the route when clicking View Users~~
-  - Sometimes when you edit a equipment that has a equipment image with a new image, it will redirect back to the equipments route and the new image is not shown until you refresh the page. This mostly happens when you edit the auto generated equipments from seed.ts (such as Laser Cutter) and then edit it to add an image
+  - ~~Sometimes when you edit a equipment that has a equipment image with a new image, it will redirect back to the equipments route and the new image is not shown until you refresh the page. This mostly happens when you edit the auto generated equipments from seed.ts (such as Laser Cutter) and then edit it to add an image~~
   - ~~No form errors shown in add equipment when required fields not filled and also when it is filled, (lets say we set price to -1), it does not show an error that says price should be >= 0~~
   - ~~In add/edit equipment, uploading a file greater than 5 MB should not be allowed. It does show this validation AFTER pressing the Add Equipment Button, it should show right after uploading the image (just like how it is in workshop images)~~
   - ~~If a required field is edited into empty, update equipment should not work. When doing this, it will show "There are some errors in your form. Please review the highlighted fields below." but it won't show the highlighted fields. Make it show the highlited fields for errors~~
   - ~~In the multiple billing options, it is possible to have a negative Save % shown in the /dashboard/memberships, if the save percentage is negative, do not even show it~~
-  - When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this
+  - ~~When adding a membership, the errors in the form do not show up and when you miss something, it resets all inputs. Fix this~~
   - ~~When adding multiple billing options, for some reason, when entering numbers, it keeps unselecting the add multiple billing options~~
-  - When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty
+  - ~~When editing the membership and you miss a required field, it does not update the membership but it does not currently show where the exact error is and which field was empty~~
   - ~~In the payment reminder email, it says something for example "Your membership plan "Test" will be charged on 11/28/2025, 5:36:37 PM." but we do not actually charge it at that time, in this case, it would be charged the next day at 11/29/2025 12 AM~~
-  - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options
-  - In google calendar for multi day workshop, the capacity of each price variation is not shown
-  - When adding a occurrence to a multi day workshop with and without price variations, the new occurrence that is shown in Google Calendar does not have the That it is Part of a Multi-day Series note
-  - "When admin deletes all occurrences, the deleted occurrences should not show up anymore (if no one has registered since you cannot add dates anymore if a user has registered) but you must add at least one occurrence or more and those occurrence added will show on the calendar with Name, Location, Description, Price, Type, Capacity, That it is Part of a Multi-day Series, Register Link (in localhost or prod website)". The issue with this is when the admin adds the occurrence(s) after deleting them, the "That it is Part of a Multi-day Series" is not shown. This is an issue for multi day workshops with and without price variations
-  - In workshop reports, we should add UI that tells if this workshop is multi day or not or if they have price variation or not
-  - For admins, clicking on the workshops sidebar should just redirect to /dasboard/admin since they are the same thing. Future implementations that want to have a custom dashboard can just change this in the future
-  - Users who registered for workshops (/dashboard/myworkshops) can see the registration time and date but there is no information if it is part of a multi day series or not with a price variation or not. Also, when someone has registered for a multi day workshop, the first date of the multiday series is the one that is shown, not the rest of the dates
+  - ~~When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options~~
+  - ~~In google calendar for multi day workshop, the capacity of each price variation is not shown~~
+  - ~~When adding a occurrence to a multi day workshop with and without price variations, the new occurrence that is shown in Google Calendar does not have the That it is Part of a Multi-day Series note~~
+  - ~~"When admin deletes all occurrences, the deleted occurrences should not show up anymore (if no one has registered since you cannot add dates anymore if a user has registered) but you must add at least one occurrence or more and those occurrence added will show on the calendar with Name, Location, Description, Price, Type, Capacity, That it is Part of a Multi-day Series, Register Link (in localhost or prod website)". The issue with this is when the admin adds the occurrence(s) after deleting them, the "That it is Part of a Multi-day Series" is not shown. This is an issue for multi day workshops with and without price variations~~
+  - ~~In workshop reports, we should add UI that tells if this workshop is multi day or not or if they have price variation or not~~
+  - ~~Users who registered for workshops (/dashboard/myworkshops) can see the registration time and date but there is no information if it is part of a multi day series or not with a price variation or not. Also, when someone has registered for a multi day workshop, the first date of the multiday series is the one that is shown, not the rest of the dates~~
   
 ---
 
@@ -1159,6 +1158,9 @@ The following acceptance criteria should be manually tested by QA in the applica
   - Currently, there is no way to "directly" cancel a user's equipment booking (for level 3 and 4) compared to like workshops where admins can cancel date(s) and cancel price variations. However, equipments have many ways in disabling when users can book through planned closures and restricting bookings days and times, etc.
 - **Membership Plans**
   - Admins are able to change the prices (monthly, quarterly, semi-annually, and yearly) and also remove requiring admin permission
+  - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options. They can only check this through their profile
+- **Google Calender**:
+ - When adding a multi-day workshop with price variations with google calender integration, in the events tab for that multi-day workshop, the dates do not show the capacity of each price variation
 
 ---
 

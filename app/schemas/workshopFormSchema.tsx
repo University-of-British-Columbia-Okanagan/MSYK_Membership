@@ -120,7 +120,7 @@ export const workshopFormSchema = z
       return true;
     },
     {
-      message: "All pricing option prices must be unique.",
+      message: "All pricing option prices must be unique",
       path: ["priceVariations"],
     }
   )
