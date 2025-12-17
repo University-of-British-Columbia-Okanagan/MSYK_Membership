@@ -1605,7 +1605,11 @@ export default function EditWorkshop() {
 
       // If price variations are enabled and the only error is on price,
       // clear it and allow the submission to continue (price is driven by variations)
-      if (hasPriceVariations && Object.keys(errors).length === 1 && errors.price) {
+      if (
+        hasPriceVariations &&
+        Object.keys(errors).length === 1 &&
+        errors.price
+      ) {
         form.clearErrors("price");
       } else if (errors.priceVariations) {
         // When there is a priceVariations error (including Zod cross-field refinements),
@@ -2148,16 +2152,21 @@ export default function EditWorkshop() {
                     </div>
 
                     {/* ERROR DISPLAY: aggregate price variation errors */}
-                    {(actionData?.errors?.priceVariations ||
-                      (form.formState.errors as any).priceVariations) && (
-                      <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
-                        {Array.isArray(actionData?.errors?.priceVariations)
-                          ? actionData?.errors?.priceVariations.join(", ")
-                          : actionData?.errors?.priceVariations ||
-                            (form.formState.errors as any).priceVariations
-                              ?.message}
-                      </div>
-                    )}
+                    {(() => {
+                      const errorMessage = Array.isArray(
+                        actionData?.errors?.priceVariations
+                      )
+                        ? actionData?.errors?.priceVariations.join(". ")
+                        : actionData?.errors?.priceVariations ||
+                          (form.formState.errors as any).priceVariations
+                            ?.message;
+
+                      return errorMessage ? (
+                        <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
+                          {errorMessage}
+                        </div>
+                      ) : null;
+                    })()}
 
                     {priceVariations.map((variation, index) => (
                       <div
