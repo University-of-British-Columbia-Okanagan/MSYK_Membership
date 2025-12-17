@@ -1159,6 +1159,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - Currently, there is no way to "directly" cancel a user's equipment booking (for level 3 and 4) compared to like workshops where admins can cancel date(s) and cancel price variations. However, equipments have many ways in disabling when users can book through planned closures and restricting bookings days and times, etc.
 - **Membership Plans**
   - Admins are able to change the prices (monthly, quarterly, semi-annually, and yearly) and also remove requiring admin permission
+  - When resubscribing, there is no way for the user to know which membership billing option they are resubscribing to if the membership has multiple billing options. They can only check this through their profile
 
 ---
 
