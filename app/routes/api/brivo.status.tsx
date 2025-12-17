@@ -49,10 +49,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 
   const [subscriptions, groups] = await Promise.all([
-    brivoClient.listEventSubscriptions().catch(() => []),
-    brivoClient.listGroups().catch(() => []),
+    brivoClient.listEventSubscriptions().catch((err) => {
+      logger.error("Failed to fetch Brivo event subscriptions", { error: err });
+      return [];
+    }),
+    brivoClient.listGroups().catch((err) => {
+      logger.error("Failed to fetch Brivo groups", { error: err });
+      return [];
+    }),
   ]);
-
   return jsonResponse({
     enabled,
     accessGroupLevel4,
