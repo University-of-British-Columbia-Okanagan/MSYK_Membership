@@ -211,6 +211,8 @@ export default function AddEquipment() {
 
   const form = useForm<EquipmentFormValues>({
     resolver: zodResolver(equipmentFormSchema),
+    mode: "onBlur",
+    reValidateMode: "onBlur",
     defaultValues: {
       name: "",
       description: "",
@@ -219,6 +221,10 @@ export default function AddEquipment() {
       workshopPrerequisites: [],
     },
   });
+
+  const [equipmentImageError, setEquipmentImageError] = useState<string | null>(
+    null
+  );
 
   const handleWorkshopPrerequisiteSelect = (workshopId: number) => {
     let updated: number[];
@@ -281,6 +287,25 @@ export default function AddEquipment() {
                 method="post"
                 encType="multipart/form-data"
                 className="space-y-6"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+
+                  const formElement = e.currentTarget as HTMLFormElement | null;
+                  if (!formElement) {
+                    return;
+                  }
+
+                  if (equipmentImageError) {
+                    return;
+                  }
+
+                  const isValid = await form.trigger();
+                  if (!isValid) {
+                    return;
+                  }
+
+                  formElement.submit();
+                }}
               >
                 {/* Name & Price */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -364,7 +389,39 @@ export default function AddEquipment() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            const maxSize = 5 * 1024 * 1024; // 5MB
+                            const allowedTypes = [
+                              "image/jpeg",
+                              "image/jpg",
+                              "image/png",
+                              "image/gif",
+                              "image/webp",
+                            ];
+
+                            setEquipmentImageError(null);
+
+                            if (!allowedTypes.includes(file.type)) {
+                              setEquipmentImageError(
+                                "Invalid file type. Please upload JPG, JPEG, PNG, GIF, or WEBP."
+                              );
+                              e.target.value = "";
+                              setEquipmentImageFile(null);
+                              return;
+                            }
+
+                            if (file.size > maxSize) {
+                              setEquipmentImageError(
+                                "File size exceeds 5MB limit."
+                              );
+                              e.target.value = "";
+                              setEquipmentImageFile(null);
+                              return;
+                            }
+
                             setEquipmentImageFile(file);
+                          } else {
+                            setEquipmentImageFile(null);
+                            setEquipmentImageError(null);
                           }
                         }}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -374,9 +431,15 @@ export default function AddEquipment() {
                       Optional. Upload an image for this equipment. Accepted
                       formats: JPG, JPEG, PNG, GIF, WEBP (Max 5MB)
                     </p>
-                    {actionData?.errors?.equipmentImage && (
+                    {(equipmentImageError ||
+                      actionData?.errors?.equipmentImage) && (
                       <p className="text-sm text-red-500 mt-1">
-                        {actionData.errors.equipmentImage}
+                        {equipmentImageError ||
+                          (actionData?.errors?.equipmentImage
+                            ? Array.isArray(actionData.errors.equipmentImage)
+                              ? actionData.errors.equipmentImage[0]
+                              : actionData.errors.equipmentImage
+                            : null)}
                       </p>
                     )}
                   </FormItem>
