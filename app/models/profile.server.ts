@@ -322,3 +322,19 @@ export async function getRecentVolunteerHourActions(limit: number = 50) {
     take: limit,
   });
 }
+
+/**
+ * Updates a user's avatar URL
+ * @param userId - The ID of the user to update
+ * @param avatarUrl - The new avatar URL, or null to remove the avatar
+ * @returns Promise<User> - The updated user record
+ */
+export async function updateUserAvatar(
+  userId: number,
+  avatarUrl: string | null
+) {
+  return await db.user.update({
+    where: { id: userId },
+    data: { avatarUrl },
+  });
+}

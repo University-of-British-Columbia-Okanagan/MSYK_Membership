@@ -1,14 +1,17 @@
 import React from "react";
 import { useLoaderData, Form, useActionData } from "react-router-dom";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   getProfileDetails,
   checkActiveVolunteerStatus,
   getVolunteerHours,
   logVolunteerHours,
   checkVolunteerHourOverlap,
+  updateUserAvatar,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
+import fs from "fs";
+import path from "path";
 import Sidebar from "../../components/ui/Dashboard/sidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
@@ -19,6 +22,8 @@ import {
   Plus,
   FileText,
   Download,
+  Camera,
+  X,
 } from "lucide-react";
 import {
   Select,
@@ -74,6 +79,55 @@ export async function action({ request }: { request: Request }) {
 
   if (!roleUser?.userId) {
     return { error: "Unauthorized" };
+  }
+
+  // Handle avatar upload/remove actions
+  if (action === "uploadAvatar") {
+    const avatarFile = formData.get("avatarFile");
+
+    if (!avatarFile || !(avatarFile instanceof File) || avatarFile.size === 0) {
+      return { error: "No file selected" };
+    }
+
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(avatarFile.type)) {
+      return { error: "Invalid file type. Please upload JPG, PNG, GIF, or WEBP." };
+    }
+
+    if (avatarFile.size > maxSize) {
+      return { error: "File size exceeds 5MB limit." };
+    }
+
+    try {
+      const buffer = Buffer.from(await avatarFile.arrayBuffer());
+      const filename = `avatar-${roleUser.userId}-${Date.now()}.${avatarFile.name.split('.').pop()}`;
+      const imagesDir = path.join(process.cwd(), "public", "images_custom");
+      const filepath = path.join(imagesDir, filename);
+
+      // Create directory if it doesn't exist
+      await fs.promises.mkdir(imagesDir, { recursive: true });
+      await fs.promises.writeFile(filepath, buffer);
+
+      const avatarUrl = `/images_custom/${filename}`;
+      await updateUserAvatar(roleUser.userId, avatarUrl);
+
+      return { success: "Profile photo updated successfully!", avatarUrl };
+    } catch (error) {
+      console.error("Error uploading avatar:", error);
+      return { error: "Failed to upload photo. Please try again." };
+    }
+  }
+
+  if (action === "removeAvatar") {
+    try {
+      await updateUserAvatar(roleUser.userId, null);
+      return { success: "Profile photo removed successfully!" };
+    } catch (error) {
+      console.error("Error removing avatar:", error);
+      return { error: "Failed to remove photo. Please try again." };
+    }
   }
 
   // Check if user is still an active volunteer
@@ -200,7 +254,12 @@ export default function ProfilePage() {
   const actionData = useActionData<{
     success?: string;
     error?: string;
+    avatarUrl?: string;
   }>();
+
+  // Avatar upload state
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Form state for volunteer hours
   const [startTime, setStartTime] = useState("");
@@ -541,8 +600,20 @@ export default function ProfilePage() {
             {/* Profile Card */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 sm:p-8 bg-gradient-to-r from-indigo-500 to-indigo-600">
+                {/* Avatar success/error messages */}
+                {actionData?.success && actionData.success.includes("photo") && (
+                  <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md text-sm">
+                    {actionData.success}
+                  </div>
+                )}
+                {actionData?.error && (actionData.error.includes("photo") || actionData.error.includes("file") || actionData.error.includes("upload")) && (
+                  <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm">
+                    {actionData.error}
+                  </div>
+                )}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                  <div className="relative">
+                  {/* Avatar with upload functionality */}
+                  <div className="relative group">
                     <img
                       src={
                         user.avatarUrl ||
@@ -551,9 +622,49 @@ export default function ProfilePage() {
                       alt={`${user.name}'s profile`}
                       className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-white shadow-md object-cover"
                     />
-                    <div className="absolute bottom-0 right-0 bg-green-500 border-2 border-white rounded-full w-6 h-6 flex items-center justify-center">
-                      <span className="text-white text-xs">✓</span>
-                    </div>
+                    {/* Camera overlay button */}
+                    <button
+                      type="button"
+                      onClick={() => avatarFileInputRef.current?.click()}
+                      className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      title="Change profile photo"
+                    >
+                      <Camera className="h-8 w-8 text-white" />
+                    </button>
+                    {/* Remove photo button (only if has custom avatar) */}
+                    {user.avatarUrl && (
+                      <Form method="post" className="absolute -top-1 -right-1">
+                        <input type="hidden" name="_action" value="removeAvatar" />
+                        <button
+                          type="submit"
+                          className="bg-red-500 hover:bg-red-600 border-2 border-white rounded-full w-6 h-6 flex items-center justify-center transition-colors"
+                          title="Remove profile photo"
+                        >
+                          <X className="h-3 w-3 text-white" />
+                        </button>
+                      </Form>
+                    )}
+                    {/* Hidden file input for avatar upload */}
+                    <Form
+                      method="post"
+                      encType="multipart/form-data"
+                      onChange={(e) => {
+                        const form = e.currentTarget;
+                        if (avatarFileInputRef.current?.files?.length) {
+                          setIsUploadingAvatar(true);
+                          form.submit();
+                        }
+                      }}
+                    >
+                      <input type="hidden" name="_action" value="uploadAvatar" />
+                      <input
+                        ref={avatarFileInputRef}
+                        type="file"
+                        name="avatarFile"
+                        accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                        className="hidden"
+                      />
+                    </Form>
                   </div>
                   <div className="text-center sm:text-left text-white">
                     <h2 className="text-2xl sm:text-3xl font-bold">
