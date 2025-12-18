@@ -70,61 +70,25 @@ export async function getProfileDetails(request: Request) {
   });
 
   const now = new Date();
+  const statuses = ["active", "ending", "cancelled", "inactive", "revoked"];
+  let membership = null;
 
-  let membership = await db.userMembership.findFirst({
-    where: {
+  for (const status of statuses) {
+    const where = {
       userId: parseInt(userId),
-      status: "active",
-      nextPaymentDate: { gt: now },
-    },
-    include: { membershipPlan: true },
-    orderBy: { date: "desc" },
-  });
+      status,
+      ...(["active", "ending", "cancelled"].includes(status)
+        ? { nextPaymentDate: { gt: now } }
+        : {}),
+    };
 
-  if (!membership) {
     membership = await db.userMembership.findFirst({
-      where: {
-        userId: parseInt(userId),
-        status: "ending",
-        nextPaymentDate: { gt: now },
-      },
+      where,
       include: { membershipPlan: true },
       orderBy: { date: "desc" },
     });
-  }
 
-  if (!membership) {
-    membership = await db.userMembership.findFirst({
-      where: {
-        userId: parseInt(userId),
-        status: "cancelled",
-        nextPaymentDate: { gt: now },
-      },
-      include: { membershipPlan: true },
-      orderBy: { date: "desc" },
-    });
-  }
-
-  if (!membership) {
-    membership = await db.userMembership.findFirst({
-      where: {
-        userId: parseInt(userId),
-        status: "inactive",
-      },
-      include: { membershipPlan: true },
-      orderBy: { date: "desc" },
-    });
-  }
-
-  if (!membership) {
-    membership = await db.userMembership.findFirst({
-      where: {
-        userId: parseInt(userId),
-        status: "revoked",
-      },
-      include: { membershipPlan: true },
-      orderBy: { date: "desc" },
-    });
+    if (membership) break;
   }
 
   const payment = await db.userPaymentInformation.findFirst({
