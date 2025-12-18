@@ -11,6 +11,7 @@ export type UserProfileData = {
   nextBillingDate: string | null;
   cardLast4: string;
   waiverSignature: string | null;
+  has247Vetting: boolean;
   userMembershipForms?: Array<{
     id: number;
     agreementSignature: string | null;
@@ -52,6 +53,7 @@ export async function getProfileDetails(request: Request) {
       avatarUrl: true,
       email: true,
       waiverSignature: true,
+      allowLevel4: true,
       userMembershipForms: {
         where: {
           status: { notIn: ["inactive", "pending"] },
@@ -131,6 +133,7 @@ export async function getProfileDetails(request: Request) {
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
     userMembershipForms: user.userMembershipForms,
+    has247Vetting: Boolean(user.allowLevel4),
   };
 }
 
