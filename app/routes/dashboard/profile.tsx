@@ -288,6 +288,13 @@ export default function ProfilePage() {
   // For resubmission hours
   const [isResubmission, setIsResubmission] = useState(false);
 
+  // State for expanded orientation descriptions
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(
+    new Set()
+  );
+
+  const DESCRIPTION_TRUNCATE_LIMIT = 150;
+
   // Clear form after successful submission and auto-hide success message
   useEffect(() => {
     if (actionData?.success) {
@@ -418,6 +425,19 @@ export default function ProfilePage() {
     setAppliedFromTime("");
     setAppliedToDate("");
     setAppliedToTime("");
+  };
+
+  // Toggle expanded description for orientation
+  const toggleExpandedDescription = (groupKey: string) => {
+    setExpandedDescriptions((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupKey)) {
+        newSet.delete(groupKey);
+      } else {
+        newSet.add(groupKey);
+      }
+      return newSet;
+    });
   };
 
   // Define columns for the ShadTable
@@ -954,11 +974,28 @@ export default function ProfilePage() {
                                   </span>
                                 )}
                               </div>
-                              {orientation.workshop.description && (
-                                <p className="text-sm text-gray-600 mb-2">
-                                  {orientation.workshop.description}
-                                </p>
-                              )}
+                              {orientation.workshop.description && (() => {
+                                const description = orientation.workshop.description;
+                                const isExpanded = expandedDescriptions.has(groupKey);
+                                const exceedsLimit = description.length > DESCRIPTION_TRUNCATE_LIMIT;
+                                const displayText = exceedsLimit && !isExpanded
+                                  ? description.substring(0, DESCRIPTION_TRUNCATE_LIMIT) + "..."
+                                  : description;
+
+                                return (
+                                  <p className="text-sm text-gray-600 mb-2">
+                                    {displayText}
+                                    {exceedsLimit && (
+                                      <button
+                                        onClick={() => toggleExpandedDescription(groupKey)}
+                                        className="text-sm text-blue-600 hover:text-blue-800 underline cursor-pointer ml-1"
+                                      >
+                                        {isExpanded ? "Show less" : "Show more"}
+                                      </button>
+                                    )}
+                                  </p>
+                                );
+                              })()}
 
                               {/* Price Variation Display */}
                               <div className="flex flex-wrap items-center gap-4 text-sm">
