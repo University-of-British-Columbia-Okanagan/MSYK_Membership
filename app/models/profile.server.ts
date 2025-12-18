@@ -69,6 +69,8 @@ export async function getProfileDetails(request: Request) {
     },
   });
 
+  if (!user) return null;
+
   const now = new Date();
   const statuses = ["active", "ending", "cancelled", "inactive", "revoked"];
   let membership = null;
@@ -95,8 +97,6 @@ export async function getProfileDetails(request: Request) {
     where: { userId: parseInt(userId) },
     select: { cardLast4: true, createdAt: true },
   });
-
-  if (!user) return null;
 
   const billingCycleMap: Record<string, string> = {
     quarterly: "Quarterly",
@@ -127,14 +127,20 @@ export async function getProfileDetails(request: Request) {
     finalStatus = membership?.status ?? null;
   }
 
+  // If the user is revoked or unrevoked (inactive with no active plan), clear plan details
+  const showPlanDetails = finalStatus !== "revoked" && finalStatus !== "inactive";
+  const displayTitle = showPlanDetails ? (membership?.membershipPlan.title ?? "None") : "None";
+  const displayBillingCycle = showPlanDetails ? billingCycleLabel : null;
+  const displayNextBillingDate = showPlanDetails ? (membership?.nextPaymentDate ?? null) : null;
+
   return {
     name: `${user.firstName} ${user.lastName}`,
     avatarUrl: user.avatarUrl,
     email: user.email,
-    membershipTitle: membership?.membershipPlan.title ?? "None",
-    billingCycle: billingCycleLabel,
+    membershipTitle: displayTitle,
+    billingCycle: displayBillingCycle,
     membershipStatus: finalStatus,
-    nextBillingDate: membership?.nextPaymentDate ?? null,
+    nextBillingDate: displayNextBillingDate,
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
     userMembershipForms: user.userMembershipForms,
