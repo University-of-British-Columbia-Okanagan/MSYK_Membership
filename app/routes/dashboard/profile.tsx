@@ -720,6 +720,8 @@ export default function ProfilePage() {
                               ? "Ending"
                               : user.membershipStatus === "cancelled"
                                 ? "Cancelled"
+                                : user.membershipStatus === "revoked"
+                                  ? "Revoked"
                                 : "Inactive"}
                         </span>
                       </div>

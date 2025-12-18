@@ -54,6 +54,7 @@ export async function getProfileDetails(request: Request) {
       email: true,
       waiverSignature: true,
       allowLevel4: true,
+      membershipStatus: true,
       userMembershipForms: {
         where: {
           status: { notIn: ["inactive", "pending"] },
@@ -104,6 +105,28 @@ export async function getProfileDetails(request: Request) {
     });
   }
 
+  if (!membership) {
+    membership = await db.userMembership.findFirst({
+      where: {
+        userId: parseInt(userId),
+        status: "inactive",
+      },
+      include: { membershipPlan: true },
+      orderBy: { date: "desc" },
+    });
+  }
+
+  if (!membership) {
+    membership = await db.userMembership.findFirst({
+      where: {
+        userId: parseInt(userId),
+        status: "revoked",
+      },
+      include: { membershipPlan: true },
+      orderBy: { date: "desc" },
+    });
+  }
+
   const payment = await db.userPaymentInformation.findFirst({
     where: { userId: parseInt(userId) },
     select: { cardLast4: true, createdAt: true },
@@ -122,13 +145,31 @@ export async function getProfileDetails(request: Request) {
     ? billingCycleMap[membership.billingCycle] ?? null
     : null;
 
+  // Priority logic:
+  // 1. If User model explicitly says "revoked", show "revoked"
+  // 2. If User model is "active", show the actual membership status (active, ending, cancelled, inactive, revoked)
+  // 3. BUT, if the user model is "active" AND the latest membership record is "revoked",
+  //    it means they were unrevoked at the user level but membership record wasn't updated.
+  //    In this case, we should probably treat them as "inactive" or "none" if we can't find an active one.
+
+  let finalStatus: string | null = null;
+  if (user.membershipStatus === "revoked") {
+    finalStatus = "revoked";
+  } else if (membership?.status === "revoked" && user.membershipStatus === "active") {
+    // Edge case: unrevoked at user level, but only membership record is 'revoked'
+    // We treat this as 'inactive' since they are no longer revoked but don't have an active membership found above
+    finalStatus = "inactive";
+  } else {
+    finalStatus = membership?.status ?? null;
+  }
+
   return {
     name: `${user.firstName} ${user.lastName}`,
     avatarUrl: user.avatarUrl,
     email: user.email,
     membershipTitle: membership?.membershipPlan.title ?? "None",
     billingCycle: billingCycleLabel,
-    membershipStatus: membership?.status ?? null,
+    membershipStatus: finalStatus,
     nextBillingDate: membership?.nextPaymentDate ?? null,
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
