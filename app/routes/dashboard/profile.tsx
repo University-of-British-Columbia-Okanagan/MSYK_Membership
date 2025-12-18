@@ -85,18 +85,16 @@ export async function action({ request }: { request: Request }) {
   if (action === "uploadAvatar") {
     const avatarFile = formData.get("avatarFile");
 
-    if (!avatarFile || !(avatarFile instanceof File) || avatarFile.size === 0) {
+    if (!(avatarFile instanceof File) || avatarFile.size === 0) {
       return { error: "No file selected" };
     }
 
     const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
-    const maxSize = 5 * 1024 * 1024; // 5MB
-
     if (!allowedTypes.includes(avatarFile.type)) {
       return { error: "Invalid file type. Please upload JPG, PNG, GIF, or WEBP." };
     }
 
-    if (avatarFile.size > maxSize) {
+    if (avatarFile.size > 5 * 1024 * 1024) {
       return { error: "File size exceeds 5MB limit." };
     }
 
@@ -984,28 +982,32 @@ export default function ProfilePage() {
                                   </span>
                                 )}
                               </div>
-                              {orientation.workshop.description && (() => {
-                                const description = orientation.workshop.description;
-                                const isExpanded = expandedDescriptions.has(groupKey);
-                                const exceedsLimit = description.length > DESCRIPTION_TRUNCATE_LIMIT;
-                                const displayText = exceedsLimit && !isExpanded
-                                  ? description.substring(0, DESCRIPTION_TRUNCATE_LIMIT) + "..."
-                                  : description;
-
-                                return (
-                                  <p className="text-sm text-gray-600 mb-2">
-                                    {displayText}
-                                    {exceedsLimit && (
-                                      <button
-                                        onClick={() => toggleExpandedDescription(groupKey)}
-                                        className="text-sm text-blue-600 hover:text-blue-800 underline cursor-pointer ml-1"
-                                      >
-                                        {isExpanded ? "Show less" : "Show more"}
-                                      </button>
-                                    )}
-                                  </p>
-                                );
-                              })()}
+                              {orientation.workshop.description && (
+                                <p className="text-sm text-gray-600 mb-2">
+                                  {expandedDescriptions.has(groupKey) ||
+                                  orientation.workshop.description.length <=
+                                    DESCRIPTION_TRUNCATE_LIMIT
+                                    ? orientation.workshop.description
+                                    : orientation.workshop.description.substring(
+                                        0,
+                                        DESCRIPTION_TRUNCATE_LIMIT
+                                      ) + "..."}
+                                  {orientation.workshop.description.length >
+                                    DESCRIPTION_TRUNCATE_LIMIT && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        toggleExpandedDescription(groupKey)
+                                      }
+                                      className="text-sm text-blue-600 hover:text-blue-800 underline cursor-pointer ml-1"
+                                    >
+                                      {expandedDescriptions.has(groupKey)
+                                        ? "Show less"
+                                        : "Show more"}
+                                    </button>
+                                  )}
+                                </p>
+                              )}
 
                               {/* Price Variation Display */}
                               <div className="flex flex-wrap items-center gap-4 text-sm">
