@@ -114,9 +114,46 @@ export default function AddMembershipPlan() {
       title: "",
       description: "",
       price: 0,
+      price3Months: null,
+      price6Months: null,
+      priceYearly: null,
       features: [],
+      needAdminPermission: false,
     },
   });
+
+  // Restore values on server errors and surface to RHF
+  React.useEffect(() => {
+    if (actionData?.errors) {
+      const saved = sessionStorage.getItem("addMembershipPlanFormValues");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          form.reset(parsed);
+        } catch {}
+      }
+      Object.entries(actionData.errors).forEach(([key, value]) => {
+        const message = Array.isArray(value) ? value[0] : value;
+        if (message) {
+          form.setError(
+            key as any,
+            { type: "server", message: String(message) } as any
+          );
+        }
+      });
+    }
+  }, [actionData, form]);
+
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Save current form values to sessionStorage before submission
+    sessionStorage.setItem(
+      "addMembershipPlanFormValues",
+      JSON.stringify(form.getValues())
+    );
+    // Submit the form
+    event.currentTarget.submit();
+  };
 
   const hasErrors =
     actionData?.errors && Object.keys(actionData.errors).length > 0;
@@ -169,6 +206,7 @@ export default function AddMembershipPlan() {
               }}
               submitLabel="Submit"
               initialShowMultipleBilling={false}
+              onSubmit={handleFormSubmit}
             />
           </div>
         </main>

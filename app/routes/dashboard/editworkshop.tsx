@@ -1024,15 +1024,19 @@ export default function EditWorkshop() {
   const fetcher = useFetcher();
 
   // React Hook Form setup
+  const initialHasPriceVariations =
+    workshop.priceVariations && workshop.priceVariations.length > 0;
+
   const form = useForm<WorkshopFormValues>({
     resolver: zodResolver(workshopFormSchema),
+    mode: "onBlur",
     defaultValues: {
       name: workshop.name,
       description: workshop.description,
       price: workshop.price,
       location: workshop.location,
       capacity: workshop.capacity,
-      // type: (workshop.type as "workshop" | "orientation") || "workshop",
+      type: (workshop.type as "workshop" | "orientation") || "workshop",
       occurrences: initialOccurrences,
       // This checks if workshop.prerequisites is an array of objects (with a prerequisiteId property) and maps them to numbers; otherwise, it uses the array as is (or defaults to an empty array).
       prerequisites:
@@ -1046,6 +1050,18 @@ export default function EditWorkshop() {
           ? workshop.equipments.map((e: any) => e.equipmentId)
           : workshop.equipments || [],
       isMultiDayWorkshop: isMultiDay,
+      hasPriceVariations: initialHasPriceVariations,
+      priceVariations:
+        workshop.priceVariations && workshop.priceVariations.length > 0
+          ? workshop.priceVariations
+              .filter((v) => v.status !== "cancelled")
+              .map((v) => ({
+                name: v.name,
+                price: v.price,
+                description: v.description,
+                capacity: v.capacity || 0,
+              }))
+          : [],
     },
   });
 
@@ -1568,13 +1584,53 @@ export default function EditWorkshop() {
     return slotStrings;
   }
 
+  const priceVariationsSectionRef = React.useRef<HTMLDivElement | null>(null);
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submit triggered");
 
+    const formElement = e.currentTarget as HTMLFormElement;
+
     // Check for client-side file validation errors
     if (workshopImageError) {
-      return; // Stop submission if there's a file validation error
+      return;
+    }
+
+    // Validate all fields before submission
+    const isValid = await form.trigger();
+
+    if (!isValid) {
+      const errors = form.formState.errors;
+
+      // If price variations are enabled and the only error is on price,
+      // clear it and allow the submission to continue (price is driven by variations)
+      if (
+        hasPriceVariations &&
+        Object.keys(errors).length === 1 &&
+        errors.price
+      ) {
+        form.clearErrors("price");
+      } else if (errors.priceVariations) {
+        // When there is a priceVariations error (including Zod cross-field refinements),
+        // make sure the user is taken to the pricing section instead of failing silently.
+        if (priceVariationsSectionRef.current) {
+          priceVariationsSectionRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }
+        return;
+      } else {
+        const firstErrorField = Object.keys(errors)[0];
+        const errorElement = document.querySelector(
+          `[name="${firstErrorField}"]`
+        );
+        if (errorElement) {
+          errorElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+        return;
+      }
     }
 
     try {
@@ -1618,8 +1674,6 @@ export default function EditWorkshop() {
       console.log("Proceeding with form submission");
       setFormSubmitting(true);
 
-      const formElement = e.currentTarget as HTMLFormElement;
-
       // Create FormData from the form element
       const nativeFormData = new FormData(formElement);
 
@@ -1636,11 +1690,8 @@ export default function EditWorkshop() {
       });
     } catch (error) {
       console.error("Error in form submission:", error);
-      // Ensure form submits even if there's an error in our checks
       setFormSubmitting(true);
-      const formElement = e.currentTarget as HTMLFormElement;
 
-      // Create FormData even in error case
       const nativeFormData = new FormData(formElement);
       if (workshopImageFile) {
         nativeFormData.append("workshopImage", workshopImageFile);
@@ -1695,6 +1746,20 @@ export default function EditWorkshop() {
       setSelectedSlotsMap({});
     }
   }, [occurrences, selectedEquipments]); // Remove selectedSlotsMap from dependencies to prevent infinite loop
+
+  React.useEffect(() => {
+    if (hasPriceVariations && priceVariations.length > 0) {
+      const formattedVariations = priceVariations.map((v) => ({
+        name: v.name,
+        price: parseFloat(v.price) || 0,
+        description: v.description,
+        capacity: parseInt(v.capacity) || 0,
+      }));
+      form.setValue("priceVariations", formattedVariations, {
+        shouldValidate: true,
+      });
+    }
+  }, [priceVariations, hasPriceVariations, form]);
 
   const isAdmin = roleUser?.roleName.toLowerCase() === "admin";
 
@@ -1998,18 +2063,26 @@ export default function EditWorkshop() {
                           } else {
                             // If checking or no variations exist, proceed normally
                             setHasPriceVariations(isChecked);
+                            form.setValue("hasPriceVariations", isChecked);
                             if (!isChecked) {
                               setPriceVariations([]);
-                              // Re-enable the price field when unchecking
+                              form.setValue("priceVariations", []);
                               const originalPrice = workshop.price || 0;
                               form.setValue("price", originalPrice);
                             } else {
-                              setPriceVariations([
+                              const newVariation = {
+                                name: "",
+                                price: "",
+                                description: "",
+                                capacity: "",
+                              };
+                              setPriceVariations([newVariation]);
+                              form.setValue("priceVariations", [
                                 {
                                   name: "",
-                                  price: "",
+                                  price: 0,
                                   description: "",
-                                  capacity: "",
+                                  capacity: 0,
                                 },
                               ]);
                               // Set the base price to -1 since it's now managed in variations
@@ -2036,7 +2109,10 @@ export default function EditWorkshop() {
 
                 {/* Price Variations Management */}
                 {hasPriceVariations && (
-                  <div className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
+                  <div
+                    ref={priceVariationsSectionRef}
+                    className="mt-6 mb-6 p-4 border border-indigo-200 rounded-lg bg-indigo-50"
+                  >
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="text-lg font-medium">Price Variations</h3>
                       <Button
@@ -2075,14 +2151,22 @@ export default function EditWorkshop() {
                       )}
                     </div>
 
-                    {/* ERROR DISPLAY: */}
-                    {actionData?.errors?.priceVariations && (
-                      <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
-                        {Array.isArray(actionData.errors.priceVariations)
-                          ? actionData.errors.priceVariations.join(", ")
-                          : actionData.errors.priceVariations}
-                      </div>
-                    )}
+                    {/* ERROR DISPLAY: aggregate price variation errors */}
+                    {(() => {
+                      const errorMessage = Array.isArray(
+                        actionData?.errors?.priceVariations
+                      )
+                        ? actionData?.errors?.priceVariations.join(". ")
+                        : actionData?.errors?.priceVariations ||
+                          (form.formState.errors as any).priceVariations
+                            ?.message;
+
+                      return errorMessage ? (
+                        <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
+                          {errorMessage}
+                        </div>
+                      ) : null;
+                    })()}
 
                     {priceVariations.map((variation, index) => (
                       <div
@@ -3733,11 +3817,11 @@ export default function EditWorkshop() {
                       </AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => {
-                          // User confirmed removal
                           setHasPriceVariations(false);
                           setPriceVariations([]);
                           setShowPriceVariationConfirm(false);
-                          // Re-enable the price field
+                          form.setValue("hasPriceVariations", false);
+                          form.setValue("priceVariations", []);
                           const originalPrice = workshop.price || 0;
                           form.setValue("price", originalPrice);
                         }}

@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { redirect, useActionData, useLoaderData, useNavigate } from "react-router";
+import {
+  redirect,
+  useActionData,
+  useLoaderData,
+  useNavigate,
+} from "react-router";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -15,7 +20,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { membershipPlanFormSchema } from "../../schemas/membershipPlanFormSchema";
 import type { MembershipPlanFormValues } from "../../schemas/membershipPlanFormSchema";
-import { updateMembershipPlan, getMembershipPlan } from "~/models/membership.server";
+import {
+  updateMembershipPlan,
+  getMembershipPlan,
+} from "~/models/membership.server";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -24,7 +32,13 @@ import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { ArrowLeft } from "lucide-react";
 import MembershipPlanForm from "~/components/ui/Dashboard/MembershipPlanForm";
 
-export async function loader({ params, request }: { params: { planId: string }; request: Request }) {
+export async function loader({
+  params,
+  request,
+}: {
+  params: { planId: string };
+  request: Request;
+}) {
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
     logger.warn(`Unauthorized access attempt to edit membership plan page`, {
@@ -38,11 +52,22 @@ export async function loader({ params, request }: { params: { planId: string }; 
   if (!membershipPlan) {
     throw new Response("Not Found", { status: 404 });
   }
-  const featuresArray = membershipPlan.feature ? Object.values(membershipPlan.feature) : [];
-  return { roleUser, membershipPlan: { ...membershipPlan, feature: featuresArray } };
+  const featuresArray = membershipPlan.feature
+    ? Object.values(membershipPlan.feature)
+    : [];
+  return {
+    roleUser,
+    membershipPlan: { ...membershipPlan, feature: featuresArray },
+  };
 }
 
-export async function action({ request, params }: { request: Request; params: { planId: string } }) {
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { planId: string };
+}) {
   const roleUser = await getRoleUser(request);
   if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
     throw new Response("Not Authorized", { status: 419 });
@@ -83,10 +108,13 @@ export async function action({ request, params }: { request: Request; params: { 
     return { errors: errors.fieldErrors };
   }
 
-  const featuresJson = featuresArray.reduce((acc, feature, index) => {
-    acc[`Feature${index + 1}`] = feature;
-    return acc;
-  }, {} as Record<string, string>);
+  const featuresJson = featuresArray.reduce(
+    (acc, feature, index) => {
+      acc[`Feature${index + 1}`] = feature;
+      return acc;
+    },
+    {} as Record<string, string>
+  );
 
   try {
     await updateMembershipPlan(Number(params.planId), {
@@ -99,9 +127,13 @@ export async function action({ request, params }: { request: Request; params: { 
       features: featuresJson,
       needAdminPermission: (rawValues.needAdminPermission as boolean) ?? false,
     });
-    logger.info(`Membership plan ${rawValues.title} updated successfully`, { url: request.url });
+    logger.info(`Membership plan ${rawValues.title} updated successfully`, {
+      url: request.url,
+    });
   } catch (error) {
-    logger.error(`Failed to edit membership plan: ${error}`, { url: request.url });
+    logger.error(`Failed to edit membership plan: ${error}`, {
+      url: request.url,
+    });
     return { errors: { database: ["Failed to update membership plan"] } };
   }
 
@@ -125,10 +157,45 @@ export default function EditMembershipPlan() {
       price6Months: membershipPlan.price6Months ?? null,
       priceYearly: membershipPlan.priceYearly ?? null,
       features: (membershipPlan.feature as any) || [],
+      needAdminPermission: Boolean(membershipPlan.needAdminPermission),
     },
   });
 
-  const hasErrors = actionData?.errors && Object.keys(actionData.errors).length > 0;
+  // Restore values on server errors and surface to RHF
+  React.useEffect(() => {
+    if (actionData?.errors) {
+      const saved = sessionStorage.getItem("editMembershipPlanFormValues");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          form.reset(parsed);
+        } catch {}
+      }
+      Object.entries(actionData.errors).forEach(([key, value]) => {
+        const message = Array.isArray(value) ? value[0] : value;
+        if (message) {
+          form.setError(
+            key as any,
+            { type: "server", message: String(message) } as any
+          );
+        }
+      });
+    }
+  }, [actionData, form]);
+
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Save current form values to sessionStorage before submission
+    sessionStorage.setItem(
+      "editMembershipPlanFormValues",
+      JSON.stringify(form.getValues())
+    );
+    // Submit the form
+    event.currentTarget.submit();
+  };
+
+  const hasErrors =
+    actionData?.errors && Object.keys(actionData.errors).length > 0;
 
   return (
     <SidebarProvider>
@@ -152,11 +219,14 @@ export default function EditMembershipPlan() {
                 Back to Memberships
               </Button>
             </div>
-            <h1 className="text-2xl font-bold mb-8 text-center">Edit Membership Plan</h1>
+            <h1 className="text-2xl font-bold mb-8 text-center">
+              Edit Membership Plan
+            </h1>
 
             {hasErrors && (
               <div className="mb-8 text-sm text-red-500 bg-red-100 border-red-400 rounded p-2">
-                There are some errors in your form. Please review the highlighted fields below.
+                There are some errors in your form. Please review the
+                highlighted fields below.
               </div>
             )}
 
@@ -171,12 +241,17 @@ export default function EditMembershipPlan() {
                 price6Months: membershipPlan.price6Months ?? null,
                 priceYearly: membershipPlan.priceYearly ?? null,
                 features: (membershipPlan.feature as any) || [],
-                needAdminPermission: Boolean(membershipPlan.needAdminPermission),
+                needAdminPermission: Boolean(
+                  membershipPlan.needAdminPermission
+                ),
               }}
               submitLabel="Confirm"
               initialShowMultipleBilling={Boolean(
-                membershipPlan.price3Months || membershipPlan.price6Months || membershipPlan.priceYearly
+                membershipPlan.price3Months ||
+                membershipPlan.price6Months ||
+                membershipPlan.priceYearly
               )}
+              onSubmit={handleFormSubmit}
             />
           </div>
         </main>
@@ -184,5 +259,3 @@ export default function EditMembershipPlan() {
     </SidebarProvider>
   );
 }
-
-

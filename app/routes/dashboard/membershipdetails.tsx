@@ -42,6 +42,7 @@ import {
   getUserMembershipForm,
   createMembershipForm,
   invalidateExistingMembershipForms,
+  getUserActiveOrCancelledMemberships,
 } from "~/models/membership.server";
 import { getUserById } from "~/models/user.server";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -73,11 +74,26 @@ export async function loader({
   const userActiveMembership = await getUserActiveMembership(user.id);
   const userRecord = await getUserById(user.id);
 
-  const roleRedirect =
-    roleUser?.roleName?.toLowerCase() === "admin"
+  const roleRedirect = !roleUser
+    ? "/dashboard"
+    : roleUser?.roleName?.toLowerCase() === "admin"
       ? "/dashboard/admin"
       : "/dashboard/user";
 
+  // Get all user memberships (active or cancelled)
+  const allUserMemberships = await getUserActiveOrCancelledMemberships(user.id);
+
+  // If user has ANY cancelled membership (including this one), redirect
+  // Cancelled memberships should resubscribe via payment page directly, not sign new agreement
+  const hasCancelledMembership = allUserMemberships.some(
+    (membership) => membership.status === "cancelled"
+  );
+
+  if (hasCancelledMembership) {
+    throw redirect(roleRedirect);
+  }
+
+  // Existing check: If user is trying to access their own currently active membership plan
   if (
     userActiveMembership &&
     userActiveMembership.membershipPlanId === membershipId &&
@@ -86,6 +102,7 @@ export async function loader({
     throw redirect(roleRedirect);
   }
 
+  // Existing check: If membership requires admin permission and user doesn't have it
   if (
     membershipPlan.needAdminPermission &&
     ((userRecord?.roleLevel ?? 0) < 3 || userRecord?.allowLevel4 !== true)
@@ -93,6 +110,7 @@ export async function loader({
     throw redirect(roleRedirect);
   }
 
+  // Existing check: If user has non-monthly billing cycle
   if (
     userActiveMembership &&
     userActiveMembership.billingCycle &&

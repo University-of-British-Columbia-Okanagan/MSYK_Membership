@@ -675,6 +675,67 @@ export async function sendMembershipPaymentReminderEmail(params: {
   });
 }
 
+export async function sendMembershipPaymentSuccessEmail(params: {
+  userEmail: string;
+  planTitle: string;
+  amountCharged: number;
+  baseAmount: number;
+  gstPercentage: number;
+  nextPaymentDate: Date;
+  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly";
+}): Promise<void> {
+  const {
+    userEmail,
+    planTitle,
+    amountCharged,
+    baseAmount,
+    gstPercentage,
+    nextPaymentDate,
+    billingCycle,
+  } = params;
+
+  const cycleLabel =
+    billingCycle === "quarterly"
+      ? "Quarterly"
+      : billingCycle === "semiannually"
+        ? "Every 6 months"
+        : billingCycle === "yearly"
+          ? "Yearly"
+          : "Monthly";
+
+  const gstAmount = amountCharged - baseAmount;
+  const nextDateFormatted = new Date(nextPaymentDate).toLocaleDateString(
+    undefined,
+    {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }
+  );
+
+  const parts = [
+    `Membership Payment Successful!`,
+    `Your ${cycleLabel.toLowerCase()} payment for "${planTitle}" has been processed.`,
+    ``,
+    `Payment Details:`,
+    `Amount charged: $${amountCharged.toFixed(2)}`,
+    `Base amount: $${baseAmount.toFixed(2)}`,
+    `GST (${gstPercentage}%): $${gstAmount.toFixed(2)}`,
+    ``,
+    `Billing cycle: ${cycleLabel}`,
+    `Next payment date: ${nextDateFormatted}`,
+    ``,
+    `Thank you for your continued membership with Makerspace YK!`,
+  ];
+
+  await sendMail({
+    to: userEmail,
+    subject: `Membership payment confirmation: ${planTitle}`,
+    text: parts.join("\n"),
+  });
+}
+
 export async function sendMembershipDowngradeEmail(params: {
   userEmail: string;
   currentPlanTitle: string;

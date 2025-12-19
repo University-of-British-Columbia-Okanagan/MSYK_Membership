@@ -2,6 +2,7 @@ import { useLoaderData, redirect } from "react-router";
 import {
   getUserWorkshopsWithOccurrences,
   getUserWorkshopRegistrations,
+  getUserWorkshopsWithRegistrationDetails,
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
@@ -17,59 +18,13 @@ export async function loader({ request }: { request: Request }) {
       return redirect("/login");
     }
 
-    // 2. Fetch "my workshops" for this user, including occurrences:
-    const myWorkshops = await getUserWorkshopsWithOccurrences(roleUser.userId);
-
-    // 3. Fetch user's registration details with occurrence information
-    const { db } = await import("~/utils/db.server");
-    const registrations = await db.userWorkshop.findMany({
-      where: {
-        userId: roleUser.userId,
-      },
-      select: {
-        occurrenceId: true,
-        occurrence: {
-          select: {
-            id: true,
-            startDate: true,
-            endDate: true,
-          },
-        },
-      },
-    });
-
-    // Create a map of occurrence ID to occurrence details (startDate, endDate)
-    const registrationMap = new Map(
-      registrations.map((reg) => [
-        reg.occurrenceId,
-        {
-          startDate: reg.occurrence?.startDate,
-          endDate: reg.occurrence?.endDate,
-        },
-      ])
+    // 2. Fetch workshops with full registration details using the new function
+    const workshops = await getUserWorkshopsWithRegistrationDetails(
+      roleUser.userId
     );
 
-    // 4. Transform workshops to include registration time info
-    const transformed = myWorkshops.map((workshop) => {
-      // Find the first occurrence the user is registered for
-      const registeredOccurrence = workshop.occurrences.find((occ: any) =>
-        registrationMap.has(occ.id)
-      );
-
-      const regInfo = registeredOccurrence
-        ? registrationMap.get(registeredOccurrence.id)
-        : null;
-
-      return {
-        ...workshop,
-        isRegistered: !!registeredOccurrence,
-        registrationStartDate: regInfo?.startDate,
-        registrationEndDate: regInfo?.endDate,
-      };
-    });
-
-    // 5. Return plain data
-    return { roleUser, workshops: transformed };
+    // 3. Return plain data
+    return { roleUser, workshops };
   } catch (error) {
     // If something goes wrong, redirect
     return redirect("/login");
@@ -115,8 +70,9 @@ export default function MyWorkshops() {
                   priceRange={workshop.priceRange}
                   hasPriceVariations={workshop.hasPriceVariations}
                   isMyWorkshops={true}
-                  registrationStartDate={workshop.registrationStartDate}
-                  registrationEndDate={workshop.registrationEndDate}
+                  registeredOccurrences={workshop.registeredOccurrences}
+                  isMultiDay={workshop.isMultiDay}
+                  priceVariation={workshop.priceVariation}
                 />
               ))}
             </div>

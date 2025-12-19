@@ -91,6 +91,7 @@ const GenericFormField: React.FC<GenericFormFieldProps> = ({
             {...field}
             value={valueToShow}
             onChange={onChangeHandler}
+            onBlur={field.onBlur}
             className={className}
             disabled={disabled}
             title={title}

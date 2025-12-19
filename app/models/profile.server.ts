@@ -11,6 +11,7 @@ export type UserProfileData = {
   nextBillingDate: string | null;
   cardLast4: string;
   waiverSignature: string | null;
+  has247Vetting: boolean;
   userMembershipForms?: Array<{
     id: number;
     agreementSignature: string | null;
@@ -52,6 +53,8 @@ export async function getProfileDetails(request: Request) {
       avatarUrl: true,
       email: true,
       waiverSignature: true,
+      allowLevel4: true,
+      membershipStatus: true,
       userMembershipForms: {
         where: {
           status: { notIn: ["inactive", "pending"] },
@@ -66,48 +69,34 @@ export async function getProfileDetails(request: Request) {
     },
   });
 
+  if (!user) return null;
+
   const now = new Date();
+  const statuses = ["active", "ending", "cancelled", "inactive", "revoked"];
+  let membership = null;
 
-  let membership = await db.userMembership.findFirst({
-    where: {
+  for (const status of statuses) {
+    const where = {
       userId: parseInt(userId),
-      status: "active",
-      nextPaymentDate: { gt: now },
-    },
-    include: { membershipPlan: true },
-    orderBy: { date: "desc" },
-  });
+      status,
+      ...(["active", "ending", "cancelled"].includes(status)
+        ? { nextPaymentDate: { gt: now } }
+        : {}),
+    };
 
-  if (!membership) {
     membership = await db.userMembership.findFirst({
-      where: {
-        userId: parseInt(userId),
-        status: "ending",
-        nextPaymentDate: { gt: now },
-      },
+      where,
       include: { membershipPlan: true },
       orderBy: { date: "desc" },
     });
-  }
 
-  if (!membership) {
-    membership = await db.userMembership.findFirst({
-      where: {
-        userId: parseInt(userId),
-        status: "cancelled",
-        nextPaymentDate: { gt: now },
-      },
-      include: { membershipPlan: true },
-      orderBy: { date: "desc" },
-    });
+    if (membership) break;
   }
 
   const payment = await db.userPaymentInformation.findFirst({
     where: { userId: parseInt(userId) },
     select: { cardLast4: true, createdAt: true },
   });
-
-  if (!user) return null;
 
   const billingCycleMap: Record<string, string> = {
     quarterly: "Quarterly",
@@ -120,17 +109,42 @@ export async function getProfileDetails(request: Request) {
     ? billingCycleMap[membership.billingCycle] ?? null
     : null;
 
+  // Priority logic:
+  // 1. If User model explicitly says "revoked", show "revoked"
+  // 2. If User model is "active", show the actual membership status (active, ending, cancelled, inactive, revoked)
+  // 3. BUT, if the user model is "active" AND the latest membership record is "revoked",
+  //    it means they were unrevoked at the user level but membership record wasn't updated.
+  //    In this case, we should probably treat them as "inactive" or "none" if we can't find an active one.
+
+  let finalStatus: string | null = null;
+  if (user.membershipStatus === "revoked") {
+    finalStatus = "revoked";
+  } else if (membership?.status === "revoked" && user.membershipStatus === "active") {
+    // Edge case: unrevoked at user level, but only membership record is 'revoked'
+    // We treat this as 'inactive' since they are no longer revoked but don't have an active membership found above
+    finalStatus = "inactive";
+  } else {
+    finalStatus = membership?.status ?? null;
+  }
+
+  // If the user is revoked or unrevoked (inactive with no active plan), clear plan details
+  const showPlanDetails = finalStatus !== "revoked" && finalStatus !== "inactive";
+  const displayTitle = showPlanDetails ? (membership?.membershipPlan.title ?? "None") : "None";
+  const displayBillingCycle = showPlanDetails ? billingCycleLabel : null;
+  const displayNextBillingDate = showPlanDetails ? (membership?.nextPaymentDate ?? null) : null;
+
   return {
     name: `${user.firstName} ${user.lastName}`,
     avatarUrl: user.avatarUrl,
     email: user.email,
-    membershipTitle: membership?.membershipPlan.title ?? "None",
-    billingCycle: billingCycleLabel,
-    membershipStatus: membership?.status ?? null,
-    nextBillingDate: membership?.nextPaymentDate ?? null,
+    membershipTitle: displayTitle,
+    billingCycle: displayBillingCycle,
+    membershipStatus: finalStatus,
+    nextBillingDate: displayNextBillingDate,
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
     userMembershipForms: user.userMembershipForms,
+    has247Vetting: Boolean(user.allowLevel4),
   };
 }
 
@@ -320,5 +334,21 @@ export async function getRecentVolunteerHourActions(limit: number = 50) {
       updatedAt: "desc",
     },
     take: limit,
+  });
+}
+
+/**
+ * Updates a user's avatar URL
+ * @param userId - The ID of the user to update
+ * @param avatarUrl - The new avatar URL, or null to remove the avatar
+ * @returns Promise<User> - The updated user record
+ */
+export async function updateUserAvatar(
+  userId: number,
+  avatarUrl: string | null
+) {
+  return await db.user.update({
+    where: { id: userId },
+    data: { avatarUrl },
   });
 }

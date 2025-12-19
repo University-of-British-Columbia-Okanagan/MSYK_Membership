@@ -343,7 +343,7 @@ export default function EquipmentBookingForm() {
     : null;
 
   const totalPrice =
-    selectedEquip?.price && selectedSlots.length
+    selectedEquip?.price != null && selectedSlots.length
       ? (selectedEquip.price * selectedSlots.length).toFixed(2)
       : null;
 
@@ -514,7 +514,7 @@ export default function EquipmentBookingForm() {
                     }
                   />
 
-                  {totalPrice && (
+                  {totalPrice != null && (
                     <p className="mt-3 font-semibold text-gray-700">
                       Total: ${totalPrice} ({selectedSlots.length} slots)
                     </p>
@@ -548,11 +548,12 @@ export default function EquipmentBookingForm() {
                 })()}
               />
 
-              {/* Quick Checkout Section */}
+              {/* Quick Checkout Section - only show if price > 0 */}
               {selectedSlots.length > 0 &&
                 savedPaymentMethod &&
                 selectedEquipment &&
-                totalPrice && (
+                totalPrice &&
+                parseFloat(totalPrice) > 0 && (
                   <div className="mt-6">
                     <QuickCheckout
                       userId={roleUser?.userId || 0}

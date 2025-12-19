@@ -140,6 +140,8 @@ export default [
     "/api/google-calendar/disconnect",
     "routes/api/google-calendar.disconnect.tsx"
   ),
+  route("/api/brivo/status", "routes/api/brivo.status.tsx"),
+  route("/api/brivo/provisioning", "routes/api/brivo.provisioning.tsx"),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
   route("/brivo/callback", "routes/brivo.callback.tsx"),

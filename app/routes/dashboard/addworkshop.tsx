@@ -1012,7 +1012,11 @@ export default function AddWorkshop() {
     if (!isValid) {
       const errors = form.formState.errors;
       // If we have price variations enabled and the ONLY error is the price field, ignore it
-      if (hasPriceVariations && Object.keys(errors).length === 1 && errors.price) {
+      if (
+        hasPriceVariations &&
+        Object.keys(errors).length === 1 &&
+        errors.price
+      ) {
         // Clear the price error and continue
         form.clearErrors("price");
       } else {
@@ -1560,7 +1564,7 @@ export default function AddWorkshop() {
                     {actionData?.errors?.priceVariations && (
                       <div className="mb-4 text-sm text-red-500 bg-red-100 border border-red-300 rounded p-2">
                         {Array.isArray(actionData.errors.priceVariations)
-                          ? actionData.errors.priceVariations.join(", ")
+                          ? actionData.errors.priceVariations.join(". ")
                           : actionData.errors.priceVariations}
                       </div>
                     )}

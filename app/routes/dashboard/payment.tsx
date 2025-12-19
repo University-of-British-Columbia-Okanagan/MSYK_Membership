@@ -905,8 +905,9 @@ export default function Payment() {
 
   return (
     <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
-      {/* Quick Checkout Section for Workshops */}
-      {data.workshop && data.savedPaymentMethod && (
+      {/* Quick Checkout Section for Workshops - only show if price > 0 */}
+      {data.workshop && data.savedPaymentMethod &&
+        (data.selectedVariation ? data.selectedVariation.price : data.workshop.price) > 0 && (
         <div className="mb-6">
           <QuickCheckout
             userId={data.user.id}
@@ -1153,47 +1154,47 @@ export default function Payment() {
       ) : (
         // Workshop Payment UI
         <>
-          <h2 className="text-xl font-bold mb-4">Complete Your Payment</h2>
-          <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
-          {data.selectedVariation && (
-            <p className="text-gray-700">
-              Option: {data.selectedVariation.name}
-            </p>
-          )}
-          {data.isMultiDayWorkshop ? (
-            <p className="text-gray-700">
-              Occurrence Group: {data.occurrence?.connectId}
-            </p>
-          ) : (
-            <p className="text-gray-700">
-              Occurrence ID: {data.occurrence?.id}
-            </p>
-          )}
-          <div className="mt-2">
-            <p className="text-lg font-semibold">
-              Total: CA$
-              {data.workshop
-                ? (
-                    (data.selectedVariation
-                      ? data.selectedVariation.price
-                      : data.workshop.price) *
-                    (1 + data.gstPercentage / 100)
-                  ).toFixed(2)
-                : "0.00"}
-            </p>
-            <p className="text-sm text-gray-600">
-              (Includes CA$
-              {data.workshop
-                ? (
-                    (data.selectedVariation
-                      ? data.selectedVariation.price
-                      : data.workshop.price) *
-                    (data.gstPercentage / 100)
-                  ).toFixed(2)
-                : "0.00"}{" "}
-              GST)
-            </p>
-          </div>
+          {(() => {
+            const workshopPrice = data.selectedVariation
+              ? data.selectedVariation.price
+              : data.workshop?.price || 0;
+            const isFree = workshopPrice === 0;
+
+            return (
+              <>
+                <h2 className="text-xl font-bold mb-4">
+                  {isFree ? "Confirm Your Registration" : "Complete Your Payment"}
+                </h2>
+                <p className="text-gray-700">Workshop: {data.workshop?.name}</p>
+                {data.selectedVariation && (
+                  <p className="text-gray-700">
+                    Option: {data.selectedVariation.name}
+                  </p>
+                )}
+                {data.isMultiDayWorkshop ? (
+                  <p className="text-gray-700">
+                    Occurrence Group: {data.occurrence?.connectId}
+                  </p>
+                ) : (
+                  <p className="text-gray-700">
+                    Occurrence ID: {data.occurrence?.id}
+                  </p>
+                )}
+                <div className="mt-2">
+                  <p className="text-lg font-semibold">
+                    Total: CA$
+                    {(workshopPrice * (1 + data.gstPercentage / 100)).toFixed(2)}
+                  </p>
+                  {!isFree && (
+                    <p className="text-sm text-gray-600">
+                      (Includes CA$
+                      {(workshopPrice * (data.gstPercentage / 100)).toFixed(2)} GST)
+                    </p>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </>
       )}
 
@@ -1202,7 +1203,15 @@ export default function Payment() {
         disabled={loading || (data.membershipPlan && data.changeNotAllowed) || isQuickCheckoutRedirecting}
         className="mt-4 bg-blue-500 text-white w-full"
       >
-        {loading ? "Processing..." : "Proceed"}
+        {loading ? "Processing..." : (() => {
+          if (data.workshop) {
+            const workshopPrice = data.selectedVariation
+              ? data.selectedVariation.price
+              : data.workshop.price;
+            return workshopPrice === 0 ? "Confirm Registration" : "Proceed";
+          }
+          return "Proceed";
+        })()}
       </Button>
     </div>
   );
