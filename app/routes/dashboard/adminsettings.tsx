@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Form,
   useLoaderData,
@@ -143,22 +143,48 @@ export async function loader({ request }: { request: Request }) {
     return redirect("/dashboard/user");
   }
 
-  // Load current settings
-  const workshopVisibilityDays = await getWorkshopVisibilityDays();
-  const pastWorkshopVisibility = await getPastWorkshopVisibility();
-  const equipmentVisibilityDays = await getEquipmentVisibilityDays();
-  const plannedClosures = await getPlannedClosures();
-  const maxEquipmentSlotsPerDay = await getAdminSetting(
-    "max_number_equipment_slots_per_day",
-    "4"
-  );
-  const maxEquipmentSlotsPerWeek = await getAdminSetting(
-    "max_number_equipment_slots_per_week",
-    "14"
-  );
-  const gstPercentage = await getAdminSetting("gst_percentage", "5");
+  const [
+    workshopVisibilityDays,
+    pastWorkshopVisibility,
+    equipmentVisibilityDays,
+    plannedClosures,
+    maxEquipmentSlotsPerDay,
+    maxEquipmentSlotsPerWeek,
+    gstPercentage,
+    workshopsRaw,
+    users,
+    level3Schedule,
+    level4UnavailableHours,
+    allVolunteerHours,
+    recentVolunteerActions,
+    workshopCancellations,
+    equipmentCancellations,
+    googleConnected,
+    googleCalendarId,
+    googleTimezone,
+    allEquipments,
+  ] = await Promise.all([
+    getWorkshopVisibilityDays(),
+    getPastWorkshopVisibility(),
+    getEquipmentVisibilityDays(),
+    getPlannedClosures(),
+    getAdminSetting("max_number_equipment_slots_per_day", "4"),
+    getAdminSetting("max_number_equipment_slots_per_week", "14"),
+    getAdminSetting("gst_percentage", "5"),
+    getWorkshops(),
+    getAllUsersWithVolunteerStatus(),
+    getLevel3ScheduleRestrictions(),
+    getLevel4UnavailableHours(),
+    getAllVolunteerHours(),
+    getRecentVolunteerHourActions(50),
+    getAllWorkshopCancellations(),
+    getAllEquipmentCancellations(),
+    isGoogleConnected(),
+    getAdminSetting("google_calendar_id", ""),
+    getAdminSetting("google_calendar_timezone", "America/Yellowknife"),
+    getAllEquipment(),
+  ]);
 
-  const workshopsRaw = await getWorkshops();
   // Process workshops to determine which have active occurrences
   const now = new Date();
   const workshops = workshopsRaw.map((workshop) => {
@@ -173,16 +199,6 @@ export async function loader({ request }: { request: Request }) {
     };
   });
 
-  // Fetch all users for the user management tab
-  const users = await getAllUsersWithVolunteerStatus();
-
-  const level3Schedule = await getLevel3ScheduleRestrictions();
-  const level4UnavailableHours = await getLevel4UnavailableHours();
-
-  const allVolunteerHours = await getAllVolunteerHours();
-  const recentVolunteerActions = await getRecentVolunteerHourActions(50);
-
-  const workshopCancellations = await getAllWorkshopCancellations();
   const enhancedWorkshopCancellations = await Promise.all(
     workshopCancellations.map(async (cancellation) => {
       if (cancellation.workshopOccurrence.connectId) {
@@ -200,15 +216,7 @@ export async function loader({ request }: { request: Request }) {
     })
   );
 
-  const equipmentCancellations = await getAllEquipmentCancellations();
-
   // Google Calendar config for integrations tab
-  const googleConnected = await isGoogleConnected();
-  const googleCalendarId = await getAdminSetting("google_calendar_id", "");
-  const googleTimezone = await getAdminSetting(
-    "google_calendar_timezone",
-    "America/Yellowknife"
-  );
   let googleCalendars: Array<{ id: string; summary: string }> = [];
   if (googleConnected) {
     try {
@@ -219,8 +227,6 @@ export async function loader({ request }: { request: Request }) {
     }
   }
 
-  // ESP32: Fetching existing equipments
-  const allEquipments = await getAllEquipment();
   allEquipments.push({
     id: 0,
     name: "Door",
@@ -245,72 +251,16 @@ export async function loader({ request }: { request: Request }) {
 
   // Brivo integration status
   const brivoEnabled = brivoClient.isEnabled();
-  let brivoSubscriptions: Array<{
-    id: number;
-    name: string;
-    url: string;
-    errorEmail: string;
-  }> = [];
-  let brivoGroups: Array<{ id: number; name: string }> = [];
   const brivoAccessGroupLevel4 = await getAdminSetting(
     "brivo_access_group_level4",
     process.env.BRIVO_ACCESS_GROUP_LEVEL4 ?? ""
   );
-  if (brivoEnabled) {
-    try {
-      const subs = await brivoClient.listEventSubscriptions();
-      brivoSubscriptions = subs;
-    } catch (e) {
-      logger.error(`Failed to list Brivo event subscriptions: ${String(e)}`);
-    }
-    try {
-      brivoGroups = await brivoClient.listGroups();
-    } catch (e) {
-      logger.error(`Failed to list Brivo groups: ${String(e)}`);
-    }
-  }
 
   // Enrich users with Brivo Level 4 door access provisioning status
   let usersWithDoorAccess = users.map((user) => ({
     ...user,
-    hasLevel4DoorAccessProvisioned: false as boolean,
+    hasLevel4DoorAccessProvisioned: null as boolean | null,
   }));
-
-  if (brivoEnabled) {
-    const groupId = brivoAccessGroupLevel4.trim();
-    if (groupId) {
-      try {
-        usersWithDoorAccess = await Promise.all(
-          users.map(async (user) => {
-            if (!user.brivoPersonId) {
-              return {
-                ...user,
-                hasLevel4DoorAccessProvisioned: false as boolean,
-              };
-            }
-
-            const inGroup = await brivoClient.isUserInGroup(
-              String(user.brivoPersonId),
-              groupId
-            );
-
-            return {
-              ...user,
-              hasLevel4DoorAccessProvisioned: inGroup,
-            };
-          })
-        );
-      } catch (error) {
-        logger.warn("Failed to resolve Brivo group membership for users", {
-          error,
-        });
-      }
-    } else {
-      logger.warn(
-        "Brivo is enabled but no access group for Level 4 is configured. Skipping group membership checks."
-      );
-    }
-  }
 
   // Return settings to the component
   return {
@@ -340,8 +290,8 @@ export async function loader({ request }: { request: Request }) {
     },
     brivo: {
       enabled: brivoEnabled,
-      subscriptions: brivoSubscriptions,
-      groups: brivoGroups,
+      subscriptions: [],
+      groups: [],
       accessGroupLevel4: brivoAccessGroupLevel4,
     },
     allEquipments,
@@ -1172,7 +1122,7 @@ function DoorAccessStatus({
     brivoPersonId?: string | null;
     brivoLastSyncedAt?: string | Date | null;
     brivoSyncError?: string | null;
-    hasLevel4DoorAccessProvisioned: boolean;
+    hasLevel4DoorAccessProvisioned: boolean | null;
   };
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1189,9 +1139,12 @@ function DoorAccessStatus({
   } else if (!eligible) {
     badgeVariant = "outline";
     badgeLabel = "Disabled";
-  } else if (user.hasLevel4DoorAccessProvisioned) {
+  } else if (user.hasLevel4DoorAccessProvisioned === true) {
     badgeVariant = "secondary";
     badgeLabel = "Provisioned";
+  } else if (user.hasLevel4DoorAccessProvisioned === null && user.brivoPersonId) {
+    badgeVariant = "outline";
+    badgeLabel = "Checking…";
   } else if (user.brivoPersonId) {
     badgeVariant = "outline";
     badgeLabel = "Registered";
@@ -1223,7 +1176,7 @@ function DoorAccessStatus({
     !user.brivoSyncError &&
     eligible &&
     !!user.brivoPersonId &&
-    !user.hasLevel4DoorAccessProvisioned;
+    user.hasLevel4DoorAccessProvisioned === false;
 
   const baseBadge = <Badge variant={badgeVariant}>{badgeLabel}</Badge>;
 
@@ -2083,6 +2036,7 @@ export default function AdminSettings() {
     workshopCancellations,
     equipmentCancellations,
     allEquipments,
+    brivo,
   } = useLoaderData<{
     settings: {
       workshopVisibilityDays: number;
@@ -2135,7 +2089,7 @@ export default function AdminSettings() {
       brivoPersonId?: string | null;
       brivoLastSyncedAt?: Date | string | null;
       brivoSyncError?: string | null;
-      hasLevel4DoorAccessProvisioned: boolean;
+      hasLevel4DoorAccessProvisioned: boolean | null;
     }>;
     volunteerHours: Array<{
       id: number;
@@ -2244,6 +2198,17 @@ export default function AdminSettings() {
       bookedSlots: number;
       status: string;
     }>;
+    brivo: {
+      enabled: boolean;
+      accessGroupLevel4: string;
+      subscriptions: Array<{
+        id: number;
+        name: string;
+        url: string;
+        errorEmail: string;
+      }>;
+      groups: Array<{ id: number; name: string }>;
+    };
   }>();
 
   const actionData = useActionData<{
@@ -2255,6 +2220,108 @@ export default function AdminSettings() {
   }>();
 
   const submit = useSubmit();
+  const brivoStatusFetcher = useFetcher<{
+    enabled: boolean;
+    accessGroupLevel4: string;
+    subscriptions: Array<{
+      id: number;
+      name: string;
+      url: string;
+      errorEmail: string;
+    }>;
+    groups: Array<{ id: number; name: string }>;
+  }>();
+
+  const brivoProvisioningFetcher = useFetcher<{
+    statuses: Record<string, boolean>;
+  }>();
+
+  const [provisioningByUserId, setProvisioningByUserId] = useState<
+    Record<number, boolean | null>
+  >({});
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window === "undefined") return "workshops";
+    return new URLSearchParams(window.location.search).get("tab") ?? "workshops";
+  });
+
+  const effectiveBrivoAccessGroupLevel4 = (
+    brivo.accessGroupLevel4 ??
+    brivoStatusFetcher.data?.accessGroupLevel4 ??
+    ""
+  ).trim();
+  const [selectedBrivoAccessGroupLevel4, setSelectedBrivoAccessGroupLevel4] =
+    useState<string>(effectiveBrivoAccessGroupLevel4);
+  const [brivoAccessGroupTouched, setBrivoAccessGroupTouched] =
+    useState<boolean>(false);
+
+  useEffect(() => {
+    setProvisioningByUserId({});
+  }, [effectiveBrivoAccessGroupLevel4]);
+
+  useEffect(() => {
+    if (activeTab !== "integrations") return;
+    if (brivoAccessGroupTouched) return;
+    setSelectedBrivoAccessGroupLevel4(effectiveBrivoAccessGroupLevel4);
+  }, [
+    activeTab,
+    brivoAccessGroupTouched,
+    effectiveBrivoAccessGroupLevel4,
+  ]);
+
+  useEffect(() => {
+    if (activeTab !== "integrations") return;
+    if (brivoStatusFetcher.data) return;
+    if (brivoStatusFetcher.state !== "idle") return;
+    brivoStatusFetcher.load("/api/brivo/status");
+  }, [activeTab, brivoStatusFetcher.data, brivoStatusFetcher.state, brivoStatusFetcher]);
+
+  useEffect(() => {
+    if (activeTab !== "users") return;
+    if (!brivo?.enabled) return;
+    if (!effectiveBrivoAccessGroupLevel4) return;
+    if (brivoProvisioningFetcher.state !== "idle") return;
+    if (Object.keys(provisioningByUserId).length > 0) return;
+
+    const eligibleUserIds = users
+      .filter(
+        (u) =>
+          u.roleLevel >= 4 &&
+          u.membershipStatus !== "revoked" &&
+          !!u.brivoPersonId,
+      )
+      .map((u) => u.id);
+
+    if (eligibleUserIds.length === 0) return;
+
+    const formData = new FormData();
+    formData.append("groupId", effectiveBrivoAccessGroupLevel4);
+    formData.append("userIds", JSON.stringify(eligibleUserIds));
+    brivoProvisioningFetcher.submit(formData, {
+      method: "post",
+      action: "/api/brivo/provisioning",
+    });
+  }, [
+    activeTab,
+    brivo?.enabled,
+    effectiveBrivoAccessGroupLevel4,
+    brivoProvisioningFetcher,
+    provisioningByUserId,
+    users,
+  ]);
+
+  useEffect(() => {
+    if (!brivoProvisioningFetcher.data?.statuses) return;
+    const next: Record<number, boolean | null> = {};
+    for (const [idStr, value] of Object.entries(
+      brivoProvisioningFetcher.data.statuses,
+    )) {
+      const id = Number(idStr);
+      if (!Number.isFinite(id)) continue;
+      next[id] = value;
+    }
+    setProvisioningByUserId(next);
+  }, [brivoProvisioningFetcher.data]);
 
   const [workshopVisibilityDays, setWorkshopVisibilityDays] = useState(
     settings.workshopVisibilityDays.toString()
@@ -2811,8 +2878,12 @@ export default function AdminSettings() {
           doorAccessStatus = "Sync Error";
         } else if (!eligible) {
           doorAccessStatus = "Disabled";
-        } else if (user.brivoPersonId) {
+        } else if (user.hasLevel4DoorAccessProvisioned === true) {
           doorAccessStatus = "Provisioned";
+        } else if (user.brivoPersonId && user.hasLevel4DoorAccessProvisioned === null) {
+          doorAccessStatus = "Checking";
+        } else if (user.brivoPersonId) {
+          doorAccessStatus = "Registered";
         } else {
           doorAccessStatus = "Pending Sync";
         }
@@ -2849,6 +2920,8 @@ export default function AdminSettings() {
       "Sync Error": 0,
       Disabled: 0,
       Provisioned: 0,
+      Checking: 0,
+      Registered: 0,
       "Pending Sync": 0,
     };
     users.forEach((user) => {
@@ -2858,8 +2931,12 @@ export default function AdminSettings() {
         counts["Sync Error"]++;
       } else if (!eligible) {
         counts["Disabled"]++;
-      } else if (user.brivoPersonId) {
+      } else if (user.hasLevel4DoorAccessProvisioned === true) {
         counts["Provisioned"]++;
+      } else if (user.brivoPersonId && user.hasLevel4DoorAccessProvisioned === null) {
+        counts["Checking"]++;
+      } else if (user.brivoPersonId) {
+        counts["Registered"]++;
       } else {
         counts["Pending Sync"]++;
       }
@@ -2963,11 +3040,21 @@ export default function AdminSettings() {
           row.roleLevel >= 4 && row.membershipStatus !== "revoked";
         if (row.brivoSyncError) return "Sync Error";
         if (!eligible) return "Disabled";
-        if (row.brivoPersonId) return "Provisioned";
+        if (row.hasLevel4DoorAccessProvisioned === true) return "Provisioned";
+        if (row.brivoPersonId && row.hasLevel4DoorAccessProvisioned === null)
+          return "Checking";
+        if (row.brivoPersonId) return "Registered";
         return "Pending Sync";
       },
       cell: ({ row }: { row: { original: UserRow } }) => (
-        <DoorAccessStatus user={row.original} />
+        <DoorAccessStatus
+          user={{
+            ...row.original,
+            hasLevel4DoorAccessProvisioned:
+              provisioningByUserId[row.original.id] ??
+              row.original.hasLevel4DoorAccessProvisioned,
+          }}
+        />
       ),
       size: 180,
       enableSorting: false,
@@ -2980,8 +3067,19 @@ export default function AdminSettings() {
           status = "Sync Error";
         } else if (!eligible) {
           status = "Disabled";
-        } else if (row.original.brivoPersonId) {
+        } else if (
+          (provisioningByUserId[row.original.id] ??
+            row.original.hasLevel4DoorAccessProvisioned) === true
+        ) {
           status = "Provisioned";
+        } else if (
+          row.original.brivoPersonId &&
+          (provisioningByUserId[row.original.id] ??
+            row.original.hasLevel4DoorAccessProvisioned) === null
+        ) {
+          status = "Checking";
+        } else if (row.original.brivoPersonId) {
+          status = "Registered";
         } else {
           status = "Pending Sync";
         }
@@ -3324,7 +3422,11 @@ export default function AdminSettings() {
               </Alert>
             )}
 
-            <Tabs defaultValue="workshops" className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
               <div className="w-full overflow-x-auto mb-4">
                 <TabsList className="inline-flex w-max min-w-full">
                   <TabsTrigger value="workshops" className="whitespace-nowrap">
@@ -6644,11 +6746,11 @@ export default function AdminSettings() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     {(() => {
-                      const { brivo } = (useLoaderData() as any) || {
-                        brivo: {},
-                      };
+                      const brivoInfo = brivoStatusFetcher.data ?? brivo;
+                      const brivoLoading =
+                        brivoStatusFetcher.state !== "idle" && !brivoStatusFetcher.data;
 
-                      if (!brivo?.enabled) {
+                      if (!brivoInfo.enabled) {
                         return (
                           <div className="bg-yellow-50 p-4 rounded-md border border-yellow-200">
                             <p className="text-yellow-800 text-sm">
@@ -6673,6 +6775,16 @@ export default function AdminSettings() {
                             <p className="text-green-800 text-sm font-medium">
                               ✓ Brivo API Connected
                             </p>
+                            <div className="mt-3 flex items-center gap-3">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                disabled={brivoStatusFetcher.state !== "idle"}
+                                onClick={() => brivoStatusFetcher.load("/api/brivo/status")}
+                              >
+                                {brivoLoading ? "Loading..." : "Refresh Brivo Status"}
+                              </Button>
+                            </div>
                           </div>
 
                           <div className="border-b pb-4">
@@ -6699,11 +6811,28 @@ export default function AdminSettings() {
                                 <select
                                   id="brivoAccessGroupLevel4"
                                   name="brivoAccessGroupLevel4"
-                                  defaultValue={brivo.accessGroupLevel4 || ""}
+                                  value={selectedBrivoAccessGroupLevel4}
+                                  onChange={(e) => {
+                                    setBrivoAccessGroupTouched(true);
+                                    setSelectedBrivoAccessGroupLevel4(
+                                      e.currentTarget.value,
+                                    );
+                                  }}
                                   className="border rounded px-3 py-2 w-full bg-white"
                                 >
                                   <option value="">-- Select a group --</option>
-                                  {brivo.groups?.map((g: any) => (
+                                  {selectedBrivoAccessGroupLevel4 &&
+                                    !(brivoInfo.groups ?? []).some(
+                                      (g) =>
+                                        String(g.id) ===
+                                        selectedBrivoAccessGroupLevel4,
+                                    ) && (
+                                      <option value={selectedBrivoAccessGroupLevel4}>
+                                        Current (ID: {selectedBrivoAccessGroupLevel4})
+                                      </option>
+                                    )}
+                                  {(brivoInfo.groups ?? []).map(
+                                    (g: { id: number; name: string }) => (
                                     <option key={g.id} value={String(g.id)}>
                                       {g.name} (ID: {g.id})
                                     </option>
@@ -6717,9 +6846,9 @@ export default function AdminSettings() {
                                 Save
                               </Button>
                             </Form>
-                            {brivo.accessGroupLevel4 && (
+                            {effectiveBrivoAccessGroupLevel4 && (
                               <p className="text-xs text-gray-500 mt-2">
-                                Current: {brivo.accessGroupLevel4}
+                                Current: {effectiveBrivoAccessGroupLevel4}
                               </p>
                             )}
                           </div>
@@ -6728,9 +6857,15 @@ export default function AdminSettings() {
                             <h4 className="font-medium mb-3">
                               Webhook Subscriptions
                             </h4>
-                            {brivo.subscriptions?.length > 0 ? (
+                            {brivoInfo.subscriptions?.length > 0 ? (
                               <div className="space-y-2">
-                                {brivo.subscriptions.map((sub: any) => (
+                                {brivoInfo.subscriptions.map(
+                                  (sub: {
+                                    id: number;
+                                    name: string;
+                                    url: string;
+                                    errorEmail: string;
+                                  }) => (
                                   <div
                                     key={sub.id}
                                     className="flex items-center justify-between p-3 bg-gray-50 rounded-md border"
