@@ -1134,6 +1134,75 @@ The following acceptance criteria should be manually tested by QA in the applica
   
 ---
 
+### Beta Testing Bugs
+
+#### 1. Registration & Orientation Flow
+
+- The "email us" links in text (e.g., cancel registration, "Email us") don't work.
+
+- On mobile, the date-of-birth picker is almost unusable for older birthdates (requires scrolling month-by-month from the current year).
+
+- Grammar issue:
+  - "Registration has past" → should be "Registration period has passed."
+
+##### 2. Workshops & Calendar Experience
+
+- Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.
+
+- Calendar behavior issues:
+  - Clicking "More details" opens Google Calendar instead of a workshop detail page.
+
+##### 3. Equipment Booking & Management
+
+- Clicking "Book Equipment" button redirects users back to the Workshops page (even if they have the proper orientations).
+
+- Admin-specific issue:
+  - Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.
+
+- Grammar & UI:
+  - "My Equipments" / "All Equipments" should be "My Equipment" / "All Equipment."
+  - "My Equipment" and "All Equipment" share the same icon, making them hard to distinguish.
+
+##### 4. Membership Plans & Payments
+
+- Attempting to upgrade to a 24/7 membership if choosing a 3 month, 6 month or 1 year plan redirects users back to the Workshops page instead of processing payment page.
+
+- Grammar/UI
+  - For non-monthly subscriptions — Change "Every 3 Months" to 3 months so it is consistent with the 6 month and Yearly option.
+
+##### 5. Volunteer Features
+
+- Volunteer Opportunities page issues:
+  - "Email us" opens a blank tab instead of an email draft.
+
+- Grammar issue in volunteer description (sentence appears incomplete).
+
+- Volunteer hours tracking:
+  - Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?
+  - If hours are denied, a permanent "denied hours" notice remains with no clear way to resolve or clear it.
+
+- Grammar/UI
+  - The tags for the volunteer opportunities look like buttons and people wanted to click them but couldn't. Maybe change to bullet points.
+  - Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.
+
+##### 6. Profile & User Account Management
+
+- Users cannot edit profile details (e.g., address, phone, email changes).
+
+- ~~No option to upload or change a profile photo.~~
+- ~~Orientation history on the profile page displays full descriptions; a summary view (title, date/time, cost, completion status), or a lower character count for the description would be cleaner.~~
+- UI stuff
+  - ~~Would be nice if users can see if they are "vetted" for tier 4 access
+    - ex. In membership details there could be an additional status line that says "24/7 Vetting Completed" (Yes/No)~~
+    - Would also be nice to have a status for Volunteers (Active, Inactive)
+    - ~~If a users' membership is revoked, it isn't clear on the Membership Details (just shows up as Inactive)~~
+
+##### 7. Navigation, Performance
+
+- Menu bar lag when switching between links.
+
+---
+
 ### Findings and Notes
 
 - **Start Date and Time and End Date and Time Filter Implementation**
