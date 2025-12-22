@@ -89,9 +89,17 @@ export async function action({ request }: { request: Request }) {
       return { error: "No file selected" };
     }
 
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+    const allowedTypes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
     if (!allowedTypes.includes(avatarFile.type)) {
-      return { error: "Invalid file type. Please upload JPG, PNG, GIF, or WEBP." };
+      return {
+        error: "Invalid file type. Please upload JPG, PNG, GIF, or WEBP.",
+      };
     }
 
     if (avatarFile.size > 5 * 1024 * 1024) {
@@ -100,7 +108,7 @@ export async function action({ request }: { request: Request }) {
 
     try {
       const buffer = Buffer.from(await avatarFile.arrayBuffer());
-      const filename = `avatar-${roleUser.userId}-${Date.now()}.${avatarFile.name.split('.').pop()}`;
+      const filename = `avatar-${roleUser.userId}-${Date.now()}.${avatarFile.name.split(".").pop()}`;
       const imagesDir = path.join(process.cwd(), "public", "images_custom");
       const filepath = path.join(imagesDir, filename);
 
@@ -619,16 +627,20 @@ export default function ProfilePage() {
             <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
               <div className="p-6 sm:p-8 bg-gradient-to-r from-indigo-500 to-indigo-600">
                 {/* Avatar success/error messages */}
-                {actionData?.success && actionData.success.includes("photo") && (
-                  <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md text-sm">
-                    {actionData.success}
-                  </div>
-                )}
-                {actionData?.error && (actionData.error.includes("photo") || actionData.error.includes("file") || actionData.error.includes("upload")) && (
-                  <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm">
-                    {actionData.error}
-                  </div>
-                )}
+                {actionData?.success &&
+                  actionData.success.includes("photo") && (
+                    <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-md text-sm">
+                      {actionData.success}
+                    </div>
+                  )}
+                {actionData?.error &&
+                  (actionData.error.includes("photo") ||
+                    actionData.error.includes("file") ||
+                    actionData.error.includes("upload")) && (
+                    <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md text-sm">
+                      {actionData.error}
+                    </div>
+                  )}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
                   {/* Avatar with upload functionality */}
                   <div className="relative group">
@@ -652,7 +664,11 @@ export default function ProfilePage() {
                     {/* Remove photo button (only if has custom avatar) */}
                     {user.avatarUrl && (
                       <Form method="post" className="absolute -top-1 -right-1">
-                        <input type="hidden" name="_action" value="removeAvatar" />
+                        <input
+                          type="hidden"
+                          name="_action"
+                          value="removeAvatar"
+                        />
                         <button
                           type="submit"
                           className="bg-red-500 hover:bg-red-600 border-2 border-white rounded-full w-6 h-6 flex items-center justify-center transition-colors"
@@ -674,7 +690,11 @@ export default function ProfilePage() {
                         }
                       }}
                     >
-                      <input type="hidden" name="_action" value="uploadAvatar" />
+                      <input
+                        type="hidden"
+                        name="_action"
+                        value="uploadAvatar"
+                      />
                       <input
                         ref={avatarFileInputRef}
                         type="file"
@@ -720,7 +740,7 @@ export default function ProfilePage() {
                                 ? "Cancelled"
                                 : user.membershipStatus === "revoked"
                                   ? "Revoked"
-                                : "Inactive"}
+                                  : "Inactive"}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -1695,6 +1715,27 @@ export default function ProfilePage() {
                       <p className="text-gray-600 mb-4">
                         This section is only accessible to active volunteers.
                       </p>
+
+                      {/* Info about volunteer hour tracking */}
+                      <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4 text-left">
+                        <div className="flex items-start gap-3">
+                          <Clock className="h-6 w-6 text-blue-500 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h5 className="text-sm font-semibold text-blue-900 mb-2">
+                              Track Your Volunteer Hours
+                            </h5>
+                            <p className="text-sm text-blue-800 leading-relaxed">
+                              Once you become a volunteer, you'll be able to log
+                              and track your volunteer hours directly in your
+                              profile. This helps us recognize your
+                              contributions and provides you with a record of
+                              your community service for personal or
+                              professional use.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
                       <p className="text-sm text-gray-500">
                         Interested in volunteering? Contact us to learn more
                         about volunteer opportunities!

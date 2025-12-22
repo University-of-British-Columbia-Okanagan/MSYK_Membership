@@ -661,7 +661,7 @@ export default function MembershipDetails() {
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
-                              Every 3 Months
+                              3 Months
                             </p>
                             {((membershipPlan.price * 3 -
                               membershipPlan.price3Months) /

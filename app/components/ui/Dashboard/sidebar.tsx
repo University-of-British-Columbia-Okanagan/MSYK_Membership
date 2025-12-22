@@ -16,6 +16,7 @@ import {
   BookOpen,
   BugIcon,
   Heart,
+  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -77,8 +78,8 @@ export function AppSidebar() {
             to="/dashboard/myequipments"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
-            <Package className="w-5 h-5" />
-            My Equipments
+            <Wrench className="w-5 h-5" />
+            My Equipment
           </Link>
           <Link
             to="/dashboard/memberships"
