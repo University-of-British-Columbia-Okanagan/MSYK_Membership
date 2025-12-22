@@ -1142,8 +1142,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 - ~~On mobile, the date-of-birth picker is almost unusable for older birthdates (requires scrolling month-by-month from the current year).~~
 
-- Grammar issue:
-  - "Registration has past" → should be "Registration period has passed."
+- ~~Grammar issue:~~
+  - ~~"Registration has past" → should be "Registration period has passed."~~
 
 ##### 2. Workshops & Calendar Experience
 
