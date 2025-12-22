@@ -41,6 +41,7 @@ interface MembershipCardProps {
   } | null;
   hasActiveSubscription?: boolean;
   hasCancelledSubscription?: boolean;
+  hasEndingSubscription?: boolean;
   highestActivePrice?: number;
   nextPaymentDate?: Date;
   membershipRecordId?: number;
@@ -70,6 +71,7 @@ export default function MembershipCard({
   userRecord,
   hasCancelledSubscription = false,
   hasActiveSubscription = false,
+  hasEndingSubscription = false,
   highestActivePrice = 0,
   nextPaymentDate,
   membershipRecordId,
@@ -240,9 +242,7 @@ export default function MembershipCard({
             {/* Quarterly */}
             {price3Months && price3Months > 0 && (
               <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-200">
-                <span className="text-gray-700 font-medium">
-                  3 Months
-                </span>
+                <span className="text-gray-700 font-medium">3 Months</span>
                 <div className="text-right">
                   <span className="text-gray-900 font-bold">
                     ${price3Months.toFixed(2)}
@@ -445,7 +445,43 @@ export default function MembershipCard({
               );
             }
 
-            // 3) Normal upgrade/downgrade
+            // 3) If user has an ending subscription, disable all changes
+            if (hasEndingSubscription) {
+              const buttonLabel = hasActiveSubscription
+                ? price > highestActivePrice
+                  ? "Upgrade"
+                  : price === highestActivePrice
+                    ? "Switch"
+                    : "Downgrade"
+                : "Subscribe";
+              const Icon = getIconForLabel(buttonLabel);
+
+              return (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-block">
+                        <Button
+                          disabled
+                          className="bg-gray-400 text-white px-6 py-2 rounded-full shadow-md cursor-not-allowed flex items-center justify-center"
+                        >
+                          {Icon && <Icon className="w-5 h-5 mr-2" />}
+                          {buttonLabel}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>
+                        You can change only after your old membership billing
+                        cycle ends.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
+
+            // 4) Normal upgrade/downgrade
             if (hasActiveSubscription) {
               // Check if this plan is currently active (not just compare prices)
 
