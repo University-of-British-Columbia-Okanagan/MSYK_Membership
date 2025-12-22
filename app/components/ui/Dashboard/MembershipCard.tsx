@@ -241,7 +241,7 @@ export default function MembershipCard({
             {price3Months && price3Months > 0 && (
               <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-200">
                 <span className="text-gray-700 font-medium">
-                  Every 3 Months
+                  3 Months
                 </span>
                 <div className="text-right">
                   <span className="text-gray-900 font-bold">
