@@ -1190,8 +1190,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 - Grammar/UI
   - ~~The tags for the volunteer opportunities look like buttons and people wanted to click them but couldn't. Maybe change to bullet points.~~
      - ~~NOTE: Change it to not look like buttons~~
-  - Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.
-    - NOTE: Track volunter hours thing, add in profile
+  - ~~Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.~~
+    - ~~NOTE: Track volunter hours thing, add in profile~~
 
 ##### 6. Profile & User Account Management
 
