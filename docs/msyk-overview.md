@@ -1147,7 +1147,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ##### 2. Workshops & Calendar Experience
 
-- Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.
+- ~~Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.~~
 
 - ~~Calendar behavior issues:~~
   - ~~Clicking "More details" opens Google Calendar instead of a workshop detail page.~~
@@ -1169,8 +1169,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 - Attempting to upgrade to a 24/7 membership if choosing a 3 month, 6 month or 1 year plan redirects users back to the Workshops page instead of processing payment page.
 
-- Grammar/UI
-  - For non-monthly subscriptions — Change "Every 3 Months" to 3 months so it is consistent with the 6 month and Yearly option.
+- ~~Grammar/UI~~
+  - ~~For non-monthly subscriptions — Change "Every 3 Months" to 3 months so it is consistent with the 6 month and Yearly option.~~
 
 ##### 5. Volunteer Features
 
