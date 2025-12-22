@@ -1161,9 +1161,9 @@ The following acceptance criteria should be manually tested by QA in the applica
   - Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.
     - NOTE: This is when we cancelled the occurrence (regular, it is the individual times. multiday is the whole workshop)
 
-- Grammar & UI:
+- ~~Grammar & UI:~~
   - ~~"My Equipments" / "All Equipments" should be "My Equipment" / "All Equipment."~~
-  - "My Equipment" and "All Equipment" share the same icon, making them hard to distinguish.
+  - ~~"My Equipment" and "All Equipment" share the same icon, making them hard to distinguish.~~
 
 ##### 4. Membership Plans & Payments
 
