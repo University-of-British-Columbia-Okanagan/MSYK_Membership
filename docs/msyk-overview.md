@@ -1147,8 +1147,9 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ##### 2. Workshops & Calendar Experience
 
-- ~~Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.~~
-  - ~~NOTE: TBA, more information~~
+- Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.
+  - NOTE: TBA, more information
+  - FOR DEVELOPERS: Skip this
 
 - ~~Calendar behavior issues:~~
   - ~~Clicking "More details" opens Google Calendar instead of a workshop detail page.~~
@@ -1178,8 +1179,9 @@ The following acceptance criteria should be manually tested by QA in the applica
 - ~~Volunteer Opportunities page issues:~~
   - ~~"Email us" opens a blank tab instead of an email draft.~~
 
-- ~~Grammar issue in volunteer description (sentence appears incomplete).~~
-  - ~~NOTE: TBA, more information~~
+- Grammar issue in volunteer description (sentence appears incomplete).
+  - NOTE: TBA, more information
+  - FOR DEVELOPERS: Skip this
 
 - ~~Volunteer hours tracking:~~
   - ~~Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?~~
