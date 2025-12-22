@@ -1148,6 +1148,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 ##### 2. Workshops & Calendar Experience
 
 - ~~Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.~~
+  - ~~NOTE: TBA, more information~~
 
 - ~~Calendar behavior issues:~~
   - ~~Clicking "More details" opens Google Calendar instead of a workshop detail page.~~
