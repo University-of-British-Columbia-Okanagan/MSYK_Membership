@@ -1159,9 +1159,9 @@ The following acceptance criteria should be manually tested by QA in the applica
 - ~~Clicking "Book Equipment" button redirects users back to the Workshops page (even if they have the proper orientations).~~
   - ~~NOTE: For users not admin~~
 
-- Admin-specific issue:
-  - Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.
-    - NOTE: This is when we cancelled the occurrence (regular, it is the individual times. multiday is the whole workshop)
+- ~~Admin-specific issue:~~
+  - ~~Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.~~
+    - ~~NOTE: This is when we cancelled the occurrence (regular, it is the individual times. multiday is the whole workshop)~~
 
 - ~~Grammar & UI:~~
   - ~~"My Equipments" / "All Equipments" should be "My Equipment" / "All Equipment."~~
