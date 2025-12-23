@@ -56,9 +56,8 @@ export async function loader({
   let equipmentPrerequisiteMessage = "";
 
   if (user && equipmentId && (roleLevel === 3 || roleLevel === 4)) {
-    const { hasUserCompletedEquipmentPrerequisites } = await import(
-      "../../models/equipment.server"
-    );
+    const { hasUserCompletedEquipmentPrerequisites } =
+      await import("../../models/equipment.server");
     hasCompletedEquipmentPrerequisites =
       await hasUserCompletedEquipmentPrerequisites(user.id, equipmentId);
 
@@ -75,26 +74,23 @@ export async function loader({
   );
 
   if (equipmentId) {
-    const selectedEquipment: EquipmentWithSlots | undefined = equipmentWithSlots.find(
-      (equip) => equip.id === equipmentId
-    );
+    const selectedEquipment: EquipmentWithSlots | undefined =
+      equipmentWithSlots.find((equip) => equip.id === equipmentId);
     const isAdminForLoader =
       roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
-    const isUnavailable =
-      !selectedEquipment || !selectedEquipment.availability;
-    if (isUnavailable && !isAdminForLoader) {
-      const redirectPath = !roleUser
-        ? "/dashboard"
-        : "/dashboard/user";
+
+    // Only redirect if equipment doesn't exist (not found in the list)
+    // Don't redirect based on availability alone since users can still view/book
+    if (!selectedEquipment && !isAdminForLoader) {
+      const redirectPath = !roleUser ? "/dashboard" : "/dashboard/user";
       throw redirect(redirectPath);
     }
   }
   // Check prerequisites for all equipment
   const equipmentPrerequisiteMap: Record<number, boolean> = {};
   if (user && (roleLevel === 3 || roleLevel === 4)) {
-    const { hasUserCompletedEquipmentPrerequisites } = await import(
-      "../../models/equipment.server"
-    );
+    const { hasUserCompletedEquipmentPrerequisites } =
+      await import("../../models/equipment.server");
 
     const prerequisitePromises = equipmentWithSlots.map((equip) =>
       hasUserCompletedEquipmentPrerequisites(user.id, equip.id)
@@ -217,9 +213,8 @@ export async function action({ request }: { request: Request }) {
 
   // Check prerequisites before allowing booking
   if (user && (roleLevel === 3 || roleLevel === 4)) {
-    const { hasUserCompletedEquipmentPrerequisites } = await import(
-      "../../models/equipment.server"
-    );
+    const { hasUserCompletedEquipmentPrerequisites } =
+      await import("../../models/equipment.server");
 
     const hasPrereqs = await hasUserCompletedEquipmentPrerequisites(
       user.id,
@@ -326,7 +321,8 @@ export default function EquipmentBookingForm() {
     currentEquipmentHasPrerequisites,
     setCurrentEquipmentHasPrerequisites,
   ] = useState<boolean>(hasCompletedEquipmentPrerequisites);
-  const [isQuickCheckoutRedirecting, setIsQuickCheckoutRedirecting] = useState(false);
+  const [isQuickCheckoutRedirecting, setIsQuickCheckoutRedirecting] =
+    useState(false);
 
   // Initialize prerequisite status when selectedEquipment changes
   useEffect(() => {
