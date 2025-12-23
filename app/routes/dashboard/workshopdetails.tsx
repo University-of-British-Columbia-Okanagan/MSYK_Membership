@@ -1984,7 +1984,7 @@ export default function WorkshopDetails() {
                               ) : occurrence.status === "past" ? (
                                 <>
                                   <Badge className="bg-gray-500 text-white px-3 py-1">
-                                    Registration has past
+                                    Registration period has past
                                   </Badge>
                                 </>
                               ) : isOccurrenceRegistered ? (

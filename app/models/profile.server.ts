@@ -5,6 +5,10 @@ export type UserProfileData = {
   name: string;
   avatarUrl: string | null;
   email: string;
+  phone: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  emergencyContactEmail: string;
   membershipTitle: string;
   billingCycle: string | null;
   membershipStatus: string | null;
@@ -52,6 +56,10 @@ export async function getProfileDetails(request: Request) {
       lastName: true,
       avatarUrl: true,
       email: true,
+      phone: true,
+      emergencyContactName: true,
+      emergencyContactPhone: true,
+      emergencyContactEmail: true,
       waiverSignature: true,
       allowLevel4: true,
       membershipStatus: true,
@@ -137,6 +145,10 @@ export async function getProfileDetails(request: Request) {
     name: `${user.firstName} ${user.lastName}`,
     avatarUrl: user.avatarUrl,
     email: user.email,
+    phone: user.phone,
+    emergencyContactName: user.emergencyContactName,
+    emergencyContactPhone: user.emergencyContactPhone,
+    emergencyContactEmail: user.emergencyContactEmail,
     membershipTitle: displayTitle,
     billingCycle: displayBillingCycle,
     membershipStatus: finalStatus,
@@ -350,5 +362,42 @@ export async function updateUserAvatar(
   return await db.user.update({
     where: { id: userId },
     data: { avatarUrl },
+  });
+}
+
+/**
+ * Updates a user's phone number
+ * @param userId - The ID of the user to update
+ * @param phone - The new phone number
+ * @returns Promise<User> - The updated user record
+ */
+export async function updateUserPhone(userId: number, phone: string) {
+  return await db.user.update({
+    where: { id: userId },
+    data: { phone },
+  });
+}
+
+/**
+ * Updates a user's emergency contact details
+ * @param userId - The ID of the user to update
+ * @param emergencyContactName - The emergency contact name
+ * @param emergencyContactPhone - The emergency contact phone number
+ * @param emergencyContactEmail - The emergency contact email
+ * @returns Promise<User> - The updated user record
+ */
+export async function updateEmergencyContact(
+  userId: number,
+  emergencyContactName: string,
+  emergencyContactPhone: string,
+  emergencyContactEmail: string
+) {
+  return await db.user.update({
+    where: { id: userId },
+    data: {
+      emergencyContactName,
+      emergencyContactPhone,
+      emergencyContactEmail,
+    },
   });
 }

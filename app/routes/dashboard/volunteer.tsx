@@ -18,6 +18,7 @@ import {
   Calendar,
   MessageSquare,
   UserPlus,
+  CheckCircle2,
 } from "lucide-react";
 
 export async function loader({ request }: { request: Request }) {
@@ -243,17 +244,17 @@ export default function VolunteerPage() {
                         <p className="text-sm font-medium text-gray-900">
                           Skills needed:
                         </p>
-                        <div className="flex flex-wrap gap-2">
+                        <ul className="space-y-1.5">
                           {role.skills.map((skill, skillIndex) => (
-                            <Badge
+                            <li
                               key={skillIndex}
-                              variant="outline"
-                              className="text-xs bg-indigo-50 border-indigo-200 text-indigo-700"
+                              className="flex items-center gap-2 text-sm text-gray-700"
                             >
-                              {skill}
-                            </Badge>
+                              <CheckCircle2 className="h-4 w-4 text-indigo-500 flex-shrink-0" />
+                              <span>{skill}</span>
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                       </div>
                     </CardContent>
                   </Card>

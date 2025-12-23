@@ -1099,7 +1099,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~When a admin deletes all workshop dates (and there are none in the past or cancelled tabs), then admin should not be able to update workshop until a date is added, but right now, it is able to do that and is stuck on "Updating..." when pressing Update Workshop. This is for single occurrence and multi-day workshops~~
   - ~~When editing the workshop, deleting any required fields (name, location, capacity, description, occurrences) and not filling in required information should throw an error but right now, the button is just stuck on loading~~
   - ~~In Workshops of type Workshop, in the View Users page for that workshop, the pass all button should only pass users of status pending (since some users can have status cancelled)~~
-  - ~~In a multi-day workshop it says "Workshop Registration Has Past" or not dependening on the first occurrence in the multi day workshop (which is intended). However, it will still show up in active workshops (because the multi day can have dates in the future which is probably the reason why it will be put in active workshop). Make this show in past events, even if the multi-day workshop has other dates in the future~~
+  - ~~In a multi-day workshop it says "Past" or not dependening on the first occurrence in the multi day workshop (which is intended). However, it will still show up in active workshops (because the multi day can have dates in the future which is probably the reason why it will be put in active workshop). Make this show in past events, even if the multi-day workshop has other dates in the future~~
   - ~~In /myequipments for users, equipment bookings in the past should not show up (right now they do, fix this)~~
   - ~~Have the ability to have Equipments that cost 0 dollars and register for them (do not need to use payment)~~
   - ~~Have the ability to register for workshops that cost 0 dollars (do not need to use payment)~~
@@ -1138,68 +1138,78 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 #### 1. Registration & Orientation Flow
 
-- The "email us" links in text (e.g., cancel registration, "Email us") don't work.
+- ~~The "email us" links in text (e.g., cancel registration, "Email us") don't work.~~
 
-- On mobile, the date-of-birth picker is almost unusable for older birthdates (requires scrolling month-by-month from the current year).
+- ~~On mobile, the date-of-birth picker is almost unusable for older birthdates (requires scrolling month-by-month from the current year).~~
 
-- Grammar issue:
-  - "Registration has past" → should be "Registration period has passed."
+- ~~Grammar issue:~~
+  - ~~"Registration has past" → should be "Registration period has passed."~~
 
 ##### 2. Workshops & Calendar Experience
 
 - Workshop descriptions include URLs (Thingiverse, Tinkercad, Prusa3D) that are not clickable.
+  - NOTE: TBA, more information
+  - FOR DEVELOPERS: Skip this
 
-- Calendar behavior issues:
-  - Clicking "More details" opens Google Calendar instead of a workshop detail page.
+- ~~Calendar behavior issues:~~
+  - ~~Clicking "More details" opens Google Calendar instead of a workshop detail page.~~
 
 ##### 3. Equipment Booking & Management
 
-- Clicking "Book Equipment" button redirects users back to the Workshops page (even if they have the proper orientations).
+- ~~Clicking "Book Equipment" button redirects users back to the Workshops page (even if they have the proper orientations).~~
+  - ~~NOTE: For users not admin~~
 
-- Admin-specific issue:
-  - Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.
+- ~~Admin-specific issue:~~
+  - ~~Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.~~
+    - ~~NOTE: This is when we cancelled the occurrence (regular, it is the individual times. multiday is the whole workshop)~~
 
-- Grammar & UI:
-  - "My Equipments" / "All Equipments" should be "My Equipment" / "All Equipment."
-  - "My Equipment" and "All Equipment" share the same icon, making them hard to distinguish.
+- ~~Grammar & UI:~~
+  - ~~"My Equipments" / "All Equipments" should be "My Equipment" / "All Equipment."~~
+  - ~~"My Equipment" and "All Equipment" share the same icon, making them hard to distinguish.~~
 
 ##### 4. Membership Plans & Payments
 
-- Attempting to upgrade to a 24/7 membership if choosing a 3 month, 6 month or 1 year plan redirects users back to the Workshops page instead of processing payment page.
+- ~~Attempting to upgrade to a 24/7 membership if choosing a 3 month, 6 month or 1 year plan redirects users back to the Workshops page instead of processing payment page.~~
 
-- Grammar/UI
-  - For non-monthly subscriptions — Change "Every 3 Months" to 3 months so it is consistent with the 6 month and Yearly option.
+- ~~Grammar/UI~~
+  - ~~For non-monthly subscriptions — Change "Every 3 Months" to 3 months so it is consistent with the 6 month and Yearly option.~~
 
 ##### 5. Volunteer Features
 
-- Volunteer Opportunities page issues:
-  - "Email us" opens a blank tab instead of an email draft.
+- ~~Volunteer Opportunities page issues:~~
+  - ~~"Email us" opens a blank tab instead of an email draft.~~
 
 - Grammar issue in volunteer description (sentence appears incomplete).
+  - NOTE: TBA, more information
+  - FOR DEVELOPERS: Skip this
 
-- Volunteer hours tracking:
-  - Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?
-  - If hours are denied, a permanent "denied hours" notice remains with no clear way to resolve or clear it.
+- ~~Volunteer hours tracking:~~
+  - ~~Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?~~
+  - ~~If hours are denied, a permanent "denied hours" notice remains with no clear way to resolve or clear it.~~
 
-- Grammar/UI
-  - The tags for the volunteer opportunities look like buttons and people wanted to click them but couldn't. Maybe change to bullet points.
-  - Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.
+- ~~Grammar/UI~~
+  - ~~The tags for the volunteer opportunities look like buttons and people wanted to click them but couldn't. Maybe change to bullet points.~~
+     - ~~NOTE: Change it to not look like buttons~~
+  - ~~Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.~~
+    - ~~NOTE: Track volunter hours thing, add in profile~~
 
 ##### 6. Profile & User Account Management
 
-- Users cannot edit profile details (e.g., address, phone, email changes).
+- ~~Users cannot edit profile details (e.g., address, phone, email changes).~~
+  - ~~CHANGE: Phone number, password (just link it), emergency contact name phone email~~
 
 - ~~No option to upload or change a profile photo.~~
 - ~~Orientation history on the profile page displays full descriptions; a summary view (title, date/time, cost, completion status), or a lower character count for the description would be cleaner.~~
-- UI stuff
-  - ~~Would be nice if users can see if they are "vetted" for tier 4 access
-    - ex. In membership details there could be an additional status line that says "24/7 Vetting Completed" (Yes/No)~~
-    - Would also be nice to have a status for Volunteers (Active, Inactive)
+- ~~UI stuff~~
+  - ~~Would be nice if users can see if they are "vetted" for tier 4 access~~
+    - ~~ex. In membership details there could be an additional status line that says "24/7 Vetting Completed" (Yes/No)~~
+    - ~~Would also be nice to have a status for Volunteers (Active, Inactive)~~
+      - ~~NOTE: Add volunteer status if active or inactive~~
     - ~~If a users' membership is revoked, it isn't clear on the Membership Details (just shows up as Inactive)~~
 
 ##### 7. Navigation, Performance
 
-- Menu bar lag when switching between links.
+- ~~Menu bar lag when switching between links.~~
 
 ---
 
