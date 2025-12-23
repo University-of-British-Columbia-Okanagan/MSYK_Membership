@@ -1195,8 +1195,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ##### 6. Profile & User Account Management
 
-- Users cannot edit profile details (e.g., address, phone, email changes).
-  - CHANGE: Phone number, password (just link it), emergency contact name phone email
+- ~~Users cannot edit profile details (e.g., address, phone, email changes).~~
+  - ~~CHANGE: Phone number, password (just link it), emergency contact name phone email~~
 
 - ~~No option to upload or change a profile photo.~~
 - ~~Orientation history on the profile page displays full descriptions; a summary view (title, date/time, cost, completion status), or a lower character count for the description would be cleaner.~~
