@@ -1187,7 +1187,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?~~
   - ~~If hours are denied, a permanent "denied hours" notice remains with no clear way to resolve or clear it.~~
 
-- Grammar/UI
+- ~~Grammar/UI~~
   - ~~The tags for the volunteer opportunities look like buttons and people wanted to click them but couldn't. Maybe change to bullet points.~~
      - ~~NOTE: Change it to not look like buttons~~
   - ~~Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.~~
