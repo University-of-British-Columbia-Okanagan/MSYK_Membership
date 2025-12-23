@@ -1195,16 +1195,16 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ##### 6. Profile & User Account Management
 
-- Users cannot edit profile details (e.g., address, phone, email changes).
-  - CHANGE: Phone number, password (just link it), emergency contact name phone email
+- ~~Users cannot edit profile details (e.g., address, phone, email changes).~~
+  - ~~CHANGE: Phone number, password (just link it), emergency contact name phone email~~
 
 - ~~No option to upload or change a profile photo.~~
 - ~~Orientation history on the profile page displays full descriptions; a summary view (title, date/time, cost, completion status), or a lower character count for the description would be cleaner.~~
-- UI stuff
+- ~~UI stuff~~
   - ~~Would be nice if users can see if they are "vetted" for tier 4 access~~
     - ~~ex. In membership details there could be an additional status line that says "24/7 Vetting Completed" (Yes/No)~~
-    - Would also be nice to have a status for Volunteers (Active, Inactive)
-      - NOTE: Add volunteer status if active or inactive
+    - ~~Would also be nice to have a status for Volunteers (Active, Inactive)~~
+      - ~~NOTE: Add volunteer status if active or inactive~~
     - ~~If a users' membership is revoked, it isn't clear on the Membership Details (just shows up as Inactive)~~
 
 ##### 7. Navigation, Performance

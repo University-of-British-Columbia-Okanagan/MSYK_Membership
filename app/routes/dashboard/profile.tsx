@@ -8,6 +8,8 @@ import {
   logVolunteerHours,
   checkVolunteerHourOverlap,
   updateUserAvatar,
+  updateUserPhone,
+  updateEmergencyContact,
 } from "../../models/profile.server";
 import type { LoaderFunction } from "react-router-dom";
 import fs from "fs";
@@ -24,6 +26,11 @@ import {
   Download,
   Camera,
   X,
+  Phone,
+  User,
+  Edit,
+  Save,
+  Lock,
 } from "lucide-react";
 import {
   Select,
@@ -133,6 +140,60 @@ export async function action({ request }: { request: Request }) {
     } catch (error) {
       console.error("Error removing avatar:", error);
       return { error: "Failed to remove photo. Please try again." };
+    }
+  }
+
+  if (action === "updatePhone") {
+    const phone = formData.get("phone") as string;
+    if (!phone || phone.trim() === "") {
+      return { error: "Phone number is required" };
+    }
+    try {
+      await updateUserPhone(roleUser.userId, phone.trim());
+      return { success: "Phone number updated successfully!" };
+    } catch (error) {
+      console.error("Error updating phone:", error);
+      return { error: "Failed to update phone number. Please try again." };
+    }
+  }
+
+  if (action === "updateEmergencyContact") {
+    const emergencyContactName = formData.get("emergencyContactName") as string;
+    const emergencyContactPhone = formData.get(
+      "emergencyContactPhone"
+    ) as string;
+    const emergencyContactEmail = formData.get(
+      "emergencyContactEmail"
+    ) as string;
+
+    if (!emergencyContactName || emergencyContactName.trim() === "") {
+      return { error: "Emergency contact name is required" };
+    }
+    if (!emergencyContactPhone || emergencyContactPhone.trim() === "") {
+      return { error: "Emergency contact phone is required" };
+    }
+    if (!emergencyContactEmail || emergencyContactEmail.trim() === "") {
+      return { error: "Emergency contact email is required" };
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emergencyContactEmail.trim())) {
+      return { error: "Please enter a valid email address" };
+    }
+
+    try {
+      await updateEmergencyContact(
+        roleUser.userId,
+        emergencyContactName.trim(),
+        emergencyContactPhone.trim(),
+        emergencyContactEmail.trim()
+      );
+      return { success: "Emergency contact updated successfully!" };
+    } catch (error) {
+      console.error("Error updating emergency contact:", error);
+      return {
+        error: "Failed to update emergency contact. Please try again.",
+      };
     }
   }
 
@@ -262,6 +323,36 @@ export default function ProfilePage() {
     error?: string;
     avatarUrl?: string;
   }>();
+
+  const [isEditingPhone, setIsEditingPhone] = useState(false);
+  const [isEditingEmergencyContact, setIsEditingEmergencyContact] =
+    useState(false);
+  const [phoneValue, setPhoneValue] = useState(user?.phone || "");
+  const [emergencyContactNameValue, setEmergencyContactNameValue] = useState(
+    user?.emergencyContactName || ""
+  );
+  const [emergencyContactPhoneValue, setEmergencyContactPhoneValue] = useState(
+    user?.emergencyContactPhone || ""
+  );
+  const [emergencyContactEmailValue, setEmergencyContactEmailValue] = useState(
+    user?.emergencyContactEmail || ""
+  );
+
+  useEffect(() => {
+    if (user) {
+      setPhoneValue(user.phone || "");
+      setEmergencyContactNameValue(user.emergencyContactName || "");
+      setEmergencyContactPhoneValue(user.emergencyContactPhone || "");
+      setEmergencyContactEmailValue(user.emergencyContactEmail || "");
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (actionData?.success) {
+      setIsEditingPhone(false);
+      setIsEditingEmergencyContact(false);
+    }
+  }, [actionData]);
 
   // Avatar upload state
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
@@ -763,6 +854,12 @@ export default function ProfilePage() {
                           {user.has247Vetting ? "Yes" : "No"}
                         </span>
                       </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Volunteer Status</span>
+                        <span className="font-medium text-gray-900">
+                          {isActiveVolunteer ? "Active" : "Inactive"}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -823,6 +920,274 @@ export default function ProfilePage() {
                         </a>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Contact Information Section */}
+                <div className="border-t border-gray-200 pt-8 mt-8">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Phone className="h-5 w-5 text-indigo-500" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Contact Information
+                    </h3>
+                  </div>
+
+                  <div className="space-y-6">
+                    {/* Phone Number */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-medium text-gray-700">
+                          Phone Number
+                        </label>
+                        {!isEditingPhone ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingPhone(true)}
+                            className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                          >
+                            <Edit className="h-3 w-3" />
+                            Edit
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingPhone(false);
+                              setPhoneValue(user?.phone || "");
+                            }}
+                            className="text-sm text-gray-600 hover:text-gray-800"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                      {isEditingPhone ? (
+                        <Form method="post" className="space-y-3">
+                          <input
+                            type="hidden"
+                            name="_action"
+                            value="updatePhone"
+                          />
+                          <input
+                            type="tel"
+                            name="phone"
+                            value={phoneValue}
+                            onChange={(e) => setPhoneValue(e.target.value)}
+                            placeholder="Enter phone number"
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                          {actionData?.error &&
+                            actionData.error.includes("phone") && (
+                              <p className="text-sm text-red-600">
+                                {actionData.error}
+                              </p>
+                            )}
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsEditingPhone(false);
+                                setPhoneValue(user?.phone || "");
+                              }}
+                              className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-4 py-2 text-sm text-white bg-indigo-500 rounded-md hover:bg-indigo-600 flex items-center gap-2"
+                            >
+                              <Save className="h-3 w-3" />
+                              Save
+                            </button>
+                          </div>
+                        </Form>
+                      ) : (
+                        <p className="text-gray-900">{user?.phone || "Not set"}</p>
+                      )}
+                    </div>
+
+                    {/* Password */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="text-sm font-medium text-gray-700">
+                          Password
+                        </label>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-gray-600 text-sm">
+                          Change your password to keep your account secure
+                        </p>
+                        <a
+                          href="/passwordReset"
+                          className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                        >
+                          <Lock className="h-3 w-3" />
+                          Change Password
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Emergency Contact Section */}
+                <div className="border-t border-gray-200 pt-8 mt-8">
+                  <div className="flex items-center gap-2 mb-6">
+                    <User className="h-5 w-5 text-indigo-500" />
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Emergency Contact
+                    </h3>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm text-gray-600">
+                        Update your emergency contact information
+                      </p>
+                      {!isEditingEmergencyContact ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingEmergencyContact(true)}
+                          className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                        >
+                          <Edit className="h-3 w-3" />
+                          Edit
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingEmergencyContact(false);
+                            setEmergencyContactNameValue(
+                              user?.emergencyContactName || ""
+                            );
+                            setEmergencyContactPhoneValue(
+                              user?.emergencyContactPhone || ""
+                            );
+                            setEmergencyContactEmailValue(
+                              user?.emergencyContactEmail || ""
+                            );
+                          }}
+                          className="text-sm text-gray-600 hover:text-gray-800"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+
+                    {isEditingEmergencyContact ? (
+                      <Form method="post" className="space-y-4">
+                        <input
+                          type="hidden"
+                          name="_action"
+                          value="updateEmergencyContact"
+                        />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Contact Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            name="emergencyContactName"
+                            value={emergencyContactNameValue}
+                            onChange={(e) =>
+                              setEmergencyContactNameValue(e.target.value)
+                            }
+                            placeholder="Enter contact name"
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Contact Phone <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            name="emergencyContactPhone"
+                            value={emergencyContactPhoneValue}
+                            onChange={(e) =>
+                              setEmergencyContactPhoneValue(e.target.value)
+                            }
+                            placeholder="Enter contact phone"
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Contact Email <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="email"
+                            name="emergencyContactEmail"
+                            value={emergencyContactEmailValue}
+                            onChange={(e) =>
+                              setEmergencyContactEmailValue(e.target.value)
+                            }
+                            placeholder="Enter contact email"
+                            required
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        </div>
+                        {actionData?.error &&
+                          (actionData.error.includes("emergency") ||
+                            actionData.error.includes("email")) && (
+                            <p className="text-sm text-red-600">
+                              {actionData.error}
+                            </p>
+                          )}
+                        <div className="flex justify-end gap-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsEditingEmergencyContact(false);
+                              setEmergencyContactNameValue(
+                                user?.emergencyContactName || ""
+                              );
+                              setEmergencyContactPhoneValue(
+                                user?.emergencyContactPhone || ""
+                              );
+                              setEmergencyContactEmailValue(
+                                user?.emergencyContactEmail || ""
+                              );
+                            }}
+                            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 text-sm text-white bg-indigo-500 rounded-md hover:bg-indigo-600 flex items-center gap-2"
+                          >
+                            <Save className="h-3 w-3" />
+                            Save
+                          </button>
+                        </div>
+                      </Form>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Name:</span>
+                          <span className="text-sm font-medium text-gray-900">
+                            {user?.emergencyContactName || "Not set"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Phone:</span>
+                          <span className="text-sm font-medium text-gray-900">
+                            {user?.emergencyContactPhone || "Not set"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Email:</span>
+                          <span className="text-sm font-medium text-gray-900">
+                            {user?.emergencyContactEmail || "Not set"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
