@@ -1169,7 +1169,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ##### 4. Membership Plans & Payments
 
-- Attempting to upgrade to a 24/7 membership if choosing a 3 month, 6 month or 1 year plan redirects users back to the Workshops page instead of processing payment page.
+- ~~Attempting to upgrade to a 24/7 membership if choosing a 3 month, 6 month or 1 year plan redirects users back to the Workshops page instead of processing payment page.~~
 
 - ~~Grammar/UI~~
   - ~~For non-monthly subscriptions — Change "Every 3 Months" to 3 months so it is consistent with the 6 month and Yearly option.~~
