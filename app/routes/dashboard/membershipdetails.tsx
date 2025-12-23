@@ -111,13 +111,13 @@ export async function loader({
   }
 
   // Existing check: If user has non-monthly billing cycle
-  if (
-    userActiveMembership &&
-    userActiveMembership.billingCycle &&
-    userActiveMembership.billingCycle !== "monthly"
-  ) {
-    throw redirect(roleRedirect);
-  }
+  // if (
+  //   userActiveMembership &&
+  //   userActiveMembership.billingCycle &&
+  //   userActiveMembership.billingCycle !== "monthly"
+  // ) {
+  //   throw redirect(roleRedirect);
+  // }
 
   // Check if user already has a signed agreement for this membership (pending or active)
   const existingForm = await getUserMembershipForm(user.id, membershipId);
@@ -556,6 +556,24 @@ export default function MembershipDetails() {
                 </ul>
               </div>
 
+              {/* Warning for users with non-monthly billing trying to upgrade/downgrade */}
+              {userActiveMembership &&
+                userActiveMembership.billingCycle !== "monthly" && (
+                  <div className="mb-6 p-4 bg-red-50 border-2 border-red-300 rounded-lg">
+                    <p className="text-red-900 font-semibold mb-2">
+                      Cannot Upgrade or Downgrade
+                    </p>
+                    <p className="text-sm text-red-800">
+                      You are currently on a{" "}
+                      <strong>{userActiveMembership.billingCycle}</strong>{" "}
+                      billing cycle. You cannot upgrade or downgrade until your
+                      current billing period ends. Please cancel your membership
+                      and wait for it to expire before subscribing to a
+                      different plan.
+                    </p>
+                  </div>
+                )}
+
               {/* Billing Cycle Selection */}
               {(membershipPlan.price3Months ||
                 membershipPlan.price6Months ||
@@ -580,22 +598,43 @@ export default function MembershipDetails() {
                     )}
 
                   {/* Warning for non-monthly billing cycles when upgrading/downgrading */}
-                  {userActiveMembership &&
+                  {/* {userActiveMembership &&
                     userActiveMembership.billingCycle !== "monthly" && (
-                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                        <p className="text-sm text-gray-700">
-                          <strong>Note:</strong> You currently have a{" "}
-                          {userActiveMembership.billingCycle} billing cycle. To
-                          change plans, you must select{" "}
-                          <strong>monthly billing</strong> only. Other billing
-                          cycles are not available for upgrades or downgrades.
+                      <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded">
+                        <p className="text-sm text-red-800">
+                          <strong>Important:</strong> You are currently on a{" "}
+                          <strong>{userActiveMembership.billingCycle}</strong>{" "}
+                          billing cycle. You cannot upgrade or downgrade until
+                          your current billing period ends. Please cancel your
+                          membership and wait for it to expire before
+                          subscribing to a different plan.
+                        </p>
+                      </div>
+                    )} */}
+
+                  {/* Warning for monthly users upgrading/downgrading */}
+                  {userActiveMembership &&
+                    userActiveMembership.billingCycle === "monthly" && (
+                      <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded">
+                        <p className="text-sm text-amber-800">
+                          <strong>Important:</strong> When upgrading or
+                          downgrading your membership, you can only select{" "}
+                          <strong>monthly billing</strong>. Other billing cycles
+                          are not available for membership changes.
                         </p>
                       </div>
                     )}
 
                   <div className="space-y-3">
                     {/* Monthly Option */}
-                    <label className="flex items-center justify-between p-4 border-2 border-gray-300 rounded-lg cursor-pointer hover:border-indigo-500 transition-colors">
+                    <label
+                      className={`flex items-center justify-between p-4 border-2 rounded-lg ${
+                        userActiveMembership &&
+                        userActiveMembership.billingCycle !== "monthly"
+                          ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
+                          : "border-gray-300 cursor-pointer hover:border-indigo-500"
+                      } transition-colors`}
+                    >
                       <div className="flex items-center space-x-3">
                         <input
                           type="radio"
@@ -609,6 +648,12 @@ export default function MembershipDetails() {
                                 | "quarterly"
                                 | "semiannually"
                                 | "yearly"
+                            )
+                          }
+                          disabled={
+                            !!(
+                              userActiveMembership &&
+                              userActiveMembership.billingCycle !== "monthly"
                             )
                           }
                           className="w-4 h-4 text-indigo-600"
@@ -630,8 +675,7 @@ export default function MembershipDetails() {
                     {membershipPlan.price3Months && (
                       <label
                         className={`flex items-center justify-between p-4 border-2 rounded-lg ${
-                          userActiveMembership &&
-                          userActiveMembership.billingCycle !== "monthly"
+                          userActiveMembership
                             ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
                             : "border-gray-300 cursor-pointer hover:border-indigo-500"
                         } transition-colors`}
@@ -651,12 +695,7 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
-                            disabled={
-                              !!(
-                                userActiveMembership &&
-                                userActiveMembership.billingCycle !== "monthly"
-                              )
-                            }
+                            disabled={!!userActiveMembership}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
@@ -704,8 +743,7 @@ export default function MembershipDetails() {
                     {membershipPlan.price6Months && (
                       <label
                         className={`flex items-center justify-between p-4 border-2 rounded-lg ${
-                          userActiveMembership &&
-                          userActiveMembership.billingCycle !== "monthly"
+                          userActiveMembership
                             ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
                             : "border-gray-300 cursor-pointer hover:border-indigo-500"
                         } transition-colors`}
@@ -725,12 +763,7 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
-                            disabled={
-                              !!(
-                                userActiveMembership &&
-                                userActiveMembership.billingCycle !== "monthly"
-                              )
-                            }
+                            disabled={!!userActiveMembership}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
@@ -778,8 +811,7 @@ export default function MembershipDetails() {
                     {membershipPlan.priceYearly && (
                       <label
                         className={`flex items-center justify-between p-4 border-2 rounded-lg ${
-                          userActiveMembership &&
-                          userActiveMembership.billingCycle !== "monthly"
+                          userActiveMembership
                             ? "border-gray-200 bg-gray-100 cursor-not-allowed opacity-60"
                             : "border-gray-300 cursor-pointer hover:border-indigo-500"
                         } transition-colors`}
@@ -799,12 +831,7 @@ export default function MembershipDetails() {
                                   | "yearly"
                               )
                             }
-                            disabled={
-                              !!(
-                                userActiveMembership &&
-                                userActiveMembership.billingCycle !== "monthly"
-                              )
-                            }
+                            disabled={!!userActiveMembership}
                             className="w-4 h-4 text-indigo-600"
                           />
                           <div>
@@ -895,8 +922,14 @@ export default function MembershipDetails() {
                   <div className="space-y-4">
                     <Button
                       onClick={handleContinueWithExisting}
-                      disabled={loading}
-                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold"
+                      disabled={
+                        loading ||
+                        !!(
+                          userActiveMembership &&
+                          userActiveMembership.billingCycle !== "monthly"
+                        )
+                      }
+                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 px-4 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? "Processing..." : "Continue to Payment"}
                     </Button>
@@ -975,8 +1008,15 @@ export default function MembershipDetails() {
                     {/* Submit Button */}
                     <button
                       type="submit"
-                      disabled={loading || !agreementDocumentViewed}
-                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 px-4 rounded-lg disabled:opacity-50 transition-colors font-semibold"
+                      disabled={
+                        loading ||
+                        !agreementDocumentViewed ||
+                        !!(
+                          userActiveMembership &&
+                          userActiveMembership.billingCycle !== "monthly"
+                        )
+                      }
+                      className="w-full bg-indigo-500 hover:bg-indigo-600 text-white py-3 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold"
                     >
                       {loading ? "Processing..." : "Continue to Payment"}
                     </button>

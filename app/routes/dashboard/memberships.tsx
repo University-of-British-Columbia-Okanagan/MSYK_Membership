@@ -10,7 +10,10 @@ import {
   getMembershipPlanById,
 } from "~/models/membership.server";
 import { getUser } from "~/utils/session.server";
-import { sendMembershipCancellationEmail, checkPaymentMethodStatus } from "~/utils/email.server";
+import {
+  sendMembershipCancellationEmail,
+  checkPaymentMethodStatus,
+} from "~/utils/email.server";
 import { getRoleUser } from "~/utils/session.server";
 import { Link, redirect, useLoaderData } from "react-router";
 import { getUserById } from "~/models/user.server";
@@ -91,6 +94,15 @@ export async function loader({ request }: { request: Request }) {
 
   const isMembershipRevoked = userRecord?.membershipStatus === "revoked";
 
+  // Check if user has an ending membership (status "inactive" with future nextPaymentDate)
+  const now = new Date();
+  const hasEndingSubscription = userMemberships.some(
+    (m) =>
+      m.status === "inactive" &&
+      m.nextPaymentDate != null &&
+      new Date(m.nextPaymentDate) > now
+  );
+
   let highestActivePrice = 0;
   if (userMemberships.length > 0) {
     const activeMemberships = userMemberships.filter(
@@ -122,13 +134,15 @@ export async function loader({ request }: { request: Request }) {
     userRecord,
     hasCancelledSubscription,
     hasActiveSubscription,
+    hasEndingSubscription,
     highestActivePrice,
     highestCanceledPrice,
     isMembershipRevoked,
     membershipRevokedReason: userRecord?.membershipRevokedReason ?? null,
     membershipRevokedAt: userRecord?.membershipRevokedAt
       ? new Date(userRecord.membershipRevokedAt)
-      : null,  };
+      : null,
+  };
 }
 
 export async function action({ request }: { request: Request }) {
@@ -145,7 +159,9 @@ export async function action({ request }: { request: Request }) {
       try {
         const plan = await getMembershipPlanById(Number(planId));
         const user = await getUser(request);
-        const needsPaymentMethod = await checkPaymentMethodStatus(roleUser.userId);
+        const needsPaymentMethod = await checkPaymentMethodStatus(
+          roleUser.userId
+        );
         await sendMembershipCancellationEmail({
           userEmail: user!.email!,
           planTitle: plan?.title || "Membership",
@@ -208,6 +224,7 @@ export default function MembershipPage() {
     userRecord,
     hasCancelledSubscription,
     hasActiveSubscription,
+    hasEndingSubscription,
     highestActivePrice,
     isMembershipRevoked,
     membershipRevokedReason,
@@ -226,6 +243,7 @@ export default function MembershipPage() {
     } | null;
     hasCancelledSubscription: boolean;
     hasActiveSubscription: boolean;
+    hasEndingSubscription: boolean;
     highestActivePrice: number;
     highestCanceledPrice: number;
     isMembershipRevoked: boolean;
@@ -362,6 +380,7 @@ export default function MembershipPage() {
                   userRecord={userRecord}
                   hasActiveSubscription={hasActiveSubscription}
                   hasCancelledSubscription={hasCancelledSubscription}
+                  hasEndingSubscription={hasEndingSubscription}
                   highestActivePrice={highestActivePrice}
                   nextPaymentDate={membership?.nextPaymentDate}
                   membershipRecordId={membership?.id}
