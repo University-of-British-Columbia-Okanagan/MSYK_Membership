@@ -854,6 +854,12 @@ export default function ProfilePage() {
                           {user.has247Vetting ? "Yes" : "No"}
                         </span>
                       </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Volunteer Status</span>
+                        <span className="font-medium text-gray-900">
+                          {isActiveVolunteer ? "Active" : "Inactive"}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
