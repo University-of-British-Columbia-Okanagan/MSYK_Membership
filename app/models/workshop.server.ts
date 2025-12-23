@@ -1463,6 +1463,36 @@ export async function cancelWorkshopOccurrence(occurrenceId: number) {
     },
   });
 
+  // FREE UP EQUIPMENT SLOTS: Delete equipment bookings and reset slots for this occurrence
+  try {
+    // First, delete all equipment bookings associated with this occurrence
+    await db.equipmentBooking.deleteMany({
+      where: {
+        workshopId: occurrence.workshopId,
+        slot: {
+          workshopOccurrenceId: occurrenceId,
+        },
+      },
+    });
+
+    // Then, reset the equipment slots that were reserved for this occurrence
+    await db.equipmentSlot.updateMany({
+      where: {
+        workshopOccurrenceId: occurrenceId,
+      },
+      data: {
+        isBooked: false,
+        workshopOccurrenceId: null,
+      },
+    });
+  } catch (error) {
+    console.error(
+      `Failed to free equipment slots for cancelled occurrence ${occurrenceId}:`,
+      error
+    );
+    // Continue with cancellation even if equipment cleanup fails
+  }
+
   // Create cancellation records for all registered users
   const now = new Date();
 
