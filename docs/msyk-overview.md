@@ -1156,8 +1156,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 ##### 3. Equipment Booking & Management
 
-- Clicking "Book Equipment" button redirects users back to the Workshops page (even if they have the proper orientations).
-  - NOTE: For users not admin
+- ~~Clicking "Book Equipment" button redirects users back to the Workshops page (even if they have the proper orientations).~~
+  - ~~NOTE: For users not admin~~
 
 - Admin-specific issue:
   - Cancelled workshops do **not** remove the associated equipment booking slots in the equipment booking schedule.
