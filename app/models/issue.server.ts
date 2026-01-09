@@ -1,4 +1,13 @@
 import { db } from "../utils/db.server";
+import fs from "fs/promises";
+import path from "path";
+import crypto from "crypto";
+
+const UPLOAD_DIR = path.join(process.cwd(), "public/uploads/issues");
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_MIME_TYPES = ["image/png", "image/jpeg"];
+const ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg"];
+const MAX_SCREENSHOTS = 5;
 
 /**
  * Create a new issue report with optional screenshots
@@ -15,8 +24,26 @@ export async function createIssue(data: {
   description: string;
   priority: string;
   reportedById: number;
-  screenshotUrls?: string[];
+  screenshots?: File[];
 }) {
+  const screenshotUrls: string[] = [];
+  try {
+    if (data.screenshots?.length) {
+      if (data.screenshots.length > MAX_SCREENSHOTS) {
+        throw new Error(`You can upload a maximum of ${MAX_SCREENSHOTS} screenshots.`);
+      }
+      for (const file of data.screenshots) {
+        if (file instanceof File && file.size > 0) {
+          const url = await saveScreenshotToDisk(file);
+          screenshotUrls.push(url);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Error saving screenshots:", error);
+    throw error;
+  }
+
   try {
     const newIssue = await db.issue.create({
       data: {
@@ -27,10 +54,7 @@ export async function createIssue(data: {
           connect: { id: data.reportedById },
         },
         screenshots: {
-          create:
-            data.screenshotUrls?.map((url) => ({
-              url,
-            })) || [],
+          create: screenshotUrls.map((url) => ({ url })),
         },
       },
       include: {
@@ -94,4 +118,35 @@ export async function updateIssueStatus(issueId: number, newStatus: string) {
     console.error("Error updating issue status:", error);
     throw new Error("Failed to update issue status.");
   }
+}
+
+/**
+ * Save an uploaded screenshot image to local disk and return its public URL
+ * @param file The uploaded image file (must be an image and <= 5MB)
+ * @returns Publicly accessible URL of the saved screenshot (e.g., /uploads/issues/<filename>)
+ * @throws Error if the file type is invalid, the file is too large, or the file cannot be written to disk
+ */
+async function saveScreenshotToDisk(file: File): Promise<string> {
+  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+    throw new Error("Only PNG and JPEG images are allowed");
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error("File size exceeds 5MB");
+  }
+
+  const ext = path.extname(file.name).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    throw new Error("Invalid file extension");
+  }
+
+  await fs.mkdir(UPLOAD_DIR, { recursive: true });
+
+  const filename = `${crypto.randomUUID()}${ext}`;
+  const filepath = path.join(UPLOAD_DIR, filename);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await fs.writeFile(filepath, buffer);
+
+  return `/uploads/issues/${filename}`;
 }
