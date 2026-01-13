@@ -44,6 +44,7 @@ import { useNavigate } from "react-router";
 import * as fs from "fs";
 import * as path from "path";
 import { Badge } from "@/components/ui/badge";
+import PrerequisitesField from "~/components/ui/Dashboard/PrerequisitesField";
 
 export async function loader({
   request,
@@ -643,7 +644,7 @@ export default function EditEquipment() {
                   )}
                 />
 
-                <FormField
+                {/* <FormField
                   control={form.control}
                   name="workshopPrerequisites"
                   render={() => (
@@ -683,7 +684,32 @@ export default function EditEquipment() {
                       </div>
                     </FormItem>
                   )}
-                />
+                /> */}
+                {/* Workshop Prerequisites - EDITABLE */}
+                {/* Filter workshops to only show active orientations */}
+                {(() => {
+                  const activeOrientations = workshops.filter(
+                    (workshop) =>
+                      workshop.type.toLowerCase() === "orientation" &&
+                      Array.isArray(workshop.occurrences) &&
+                      workshop.occurrences.some(
+                        (o: any) => o.status === "active"
+                      )
+                  );
+
+                  return (
+                    <PrerequisitesField
+                      control={form.control}
+                      availableWorkshops={activeOrientations}
+                      selectedPrerequisites={selectedWorkshopPrerequisites}
+                      handlePrerequisiteSelect={
+                        handleWorkshopPrerequisiteSelect
+                      }
+                      removePrerequisite={removeWorkshopPrerequisite}
+                      error={actionData?.errors?.workshopPrerequisites}
+                    />
+                  );
+                })()}
 
                 {/* Hidden input for form submission */}
                 <input
