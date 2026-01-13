@@ -14,3 +14,7 @@ Dockerfile
 
 # Custom images
 public/images_custom
+
+# Uploaded issue screenshots
+public/uploads/issues/*
+!public/uploads/issues/.gitkeep

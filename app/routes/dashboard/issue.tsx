@@ -35,6 +35,11 @@ export async function action({ request }: { request: Request }) {
   const title = form.get("title") as string;
   const description = form.get("description") as string;
   const priority = form.get("severity") as string;
+  const screenshots = form.getAll("screenshots") as File[];
+  const validScreenshots = screenshots.filter(
+    (file) => file instanceof File && file.size > 0
+);
+
   // const screenshots = form.getAll("screenshots") as string[];
 
   if (!title || !description || !priority) {
@@ -47,16 +52,15 @@ export async function action({ request }: { request: Request }) {
       description,
       priority,
       reportedById: roleUser.userId,
-      //   screenshots, // TODO
+      screenshots: validScreenshots,
     });
     logger.info(`[User: ${roleUser?.userId ?? "unknown"}] New issue created`, {
       url: request.url,
     });
     return json({ success: true });
   } catch (err) {
-    logger.error(`Error creating new issue ${err}`, { url: request.url });
-    logger.error(err);
-    return json({ success: false, error: "Failed to submit issue." });
+    logger.warn(`Error creating new issue ${err}`, { url: request.url });
+    return json({ success: false, error: (err as Error).message || "Error submitting issue." });
   }
 }
 

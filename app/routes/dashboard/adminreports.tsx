@@ -1670,6 +1670,31 @@ export default function AdminReports() {
                                   )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
+                              {issue.screenshots?.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-xs font-medium text-muted-foreground mb-2">
+                                    Attached Screenshots
+                                  </p>
+
+                                  <div className="flex flex-wrap gap-3">
+                                    {issue.screenshots.map((shot) => (
+                                      <a
+                                        key={shot.id}
+                                        href={shot.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block"
+                                      >
+                                        <img
+                                          src={shot.url}
+                                          alt="Issue screenshot"
+                                          className="h-24 w-24 object-cover rounded-md border hover:scale-105 transition-transform"
+                                        />
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </Card>
