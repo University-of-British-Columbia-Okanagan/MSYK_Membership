@@ -64,6 +64,8 @@ A comprehensive membership management platform built with React Router, TypeScri
    - `DATABASE`: Your database name
    - `SCHEMA`: Database schema (typically `public`)
 
+   For Stripe integration, visit the [stripe dashboard](https://dashboard.stripe.com) and press `switch to live account` button on top right corner. Then copy the `STRIPE_SECRET_KEY` and `STRIPE_PUBLIC_KEY` for live enviornment into the `.env` file. This usually starts with `sk_live_` and `pk_live_` respectively. To return back to sandbox version, simply replace these API keys with the sandbox version which usually starts with `sk_test_` and `pk_test_` respectively.
+
 4. **Database migration**
    ```bash
    npx prisma generate --schema prisma/schema.prisma
