@@ -5931,22 +5931,72 @@ export default function AdminSettings() {
                               );
                             }
 
-                            // For user-initiated cancellations: Check if cancelled within 48 hours of registration
+                            // // For user-initiated cancellations: Check if cancelled within 48 hours of registration
+                            // const cancellationDate = new Date(
+                            //   cancellation.cancellationDate
+                            // );
+                            // const registrationDate = new Date(
+                            //   cancellation.registrationDate
+                            // );
+                            // // Calculate hours since registration
+                            // const hoursSinceRegistration =
+                            //   (cancellationDate.getTime() -
+                            //     registrationDate.getTime()) /
+                            //   (1000 * 60 * 60);
+                            // // Eligible if cancelled within 48 hours of registration
+                            // const isEligible = hoursSinceRegistration <= 48;
+
+                            // For user-initiated cancellations: Check if cancelled at least 48 hours before workshop start
                             const cancellationDate = new Date(
                               cancellation.cancellationDate
                             );
-                            const registrationDate = new Date(
-                              cancellation.registrationDate
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            let workshopStartDate: Date;
+
+                            if (
+                              isMultiDay &&
+                              cancellation.allOccurrences &&
+                              cancellation.allOccurrences.length > 0
+                            ) {
+                              // For multi-day workshops, find the earliest start date from all occurrences
+                              const earliestOccurrence =
+                                cancellation.allOccurrences.reduce(
+                                  (earliest: any, current: any) => {
+                                    const currentStart = new Date(
+                                      current.startDate
+                                    );
+                                    const earliestStart = new Date(
+                                      earliest.startDate
+                                    );
+                                    return currentStart < earliestStart
+                                      ? current
+                                      : earliest;
+                                  }
+                                );
+                              workshopStartDate = new Date(
+                                earliestOccurrence.startDate
+                              );
+                            } else {
+                              // For regular workshops, use the single occurrence start date
+                              workshopStartDate = new Date(
+                                cancellation.workshopOccurrence.startDate
+                              );
+                            }
+
+                            // Check if cancelled at least 2 days before the workshop start time
+                            const eligibleDate = new Date(
+                              workshopStartDate.getTime() -
+                                2 * 24 * 60 * 60 * 1000
                             );
-
-                            // Calculate hours since registration
-                            const hoursSinceRegistration =
-                              (cancellationDate.getTime() -
-                                registrationDate.getTime()) /
-                              (1000 * 60 * 60);
-
-                            // Eligible if cancelled within 48 hours of registration
-                            const isEligible = hoursSinceRegistration <= 48;
+                            const isEligible = cancellationDate <= eligibleDate;
 
                             return (
                               <div>
@@ -6119,22 +6169,72 @@ export default function AdminSettings() {
                               );
                             }
 
-                            // For user-initiated cancellations: Check if cancelled within 48 hours of registration
+                            // // For user-initiated cancellations: Check if cancelled within 48 hours of registration
+                            // const cancellationDate = new Date(
+                            //   cancellation.cancellationDate
+                            // );
+                            // const registrationDate = new Date(
+                            //   cancellation.registrationDate
+                            // );
+                            // // Calculate hours since registration
+                            // const hoursSinceRegistration =
+                            //   (cancellationDate.getTime() -
+                            //     registrationDate.getTime()) /
+                            //   (1000 * 60 * 60);
+                            // // Eligible if cancelled within 48 hours of registration
+                            // const isEligible = hoursSinceRegistration <= 48;
+
+                            // For user-initiated cancellations: Check if cancelled at least 48 hours before workshop start
                             const cancellationDate = new Date(
                               cancellation.cancellationDate
                             );
-                            const registrationDate = new Date(
-                              cancellation.registrationDate
+
+                            // Check if this is a multi-day workshop
+                            const isMultiDay =
+                              cancellation.workshop.type === "multi_day" ||
+                              (cancellation.workshopOccurrence.connectId !==
+                                null &&
+                                cancellation.workshopOccurrence.connectId !==
+                                  undefined);
+
+                            let workshopStartDate: Date;
+
+                            if (
+                              isMultiDay &&
+                              cancellation.allOccurrences &&
+                              cancellation.allOccurrences.length > 0
+                            ) {
+                              // For multi-day workshops, find the earliest start date from all occurrences
+                              const earliestOccurrence =
+                                cancellation.allOccurrences.reduce(
+                                  (earliest: any, current: any) => {
+                                    const currentStart = new Date(
+                                      current.startDate
+                                    );
+                                    const earliestStart = new Date(
+                                      earliest.startDate
+                                    );
+                                    return currentStart < earliestStart
+                                      ? current
+                                      : earliest;
+                                  }
+                                );
+                              workshopStartDate = new Date(
+                                earliestOccurrence.startDate
+                              );
+                            } else {
+                              // For regular workshops, use the single occurrence start date
+                              workshopStartDate = new Date(
+                                cancellation.workshopOccurrence.startDate
+                              );
+                            }
+
+                            // Check if cancelled at least 2 days before the workshop start time
+                            const eligibleDate = new Date(
+                              workshopStartDate.getTime() -
+                                2 * 24 * 60 * 60 * 1000
                             );
-
-                            // Calculate hours since registration
-                            const hoursSinceRegistration =
-                              (cancellationDate.getTime() -
-                                registrationDate.getTime()) /
-                              (1000 * 60 * 60);
-
-                            // Eligible if cancelled within 48 hours of registration
-                            const isEligible = hoursSinceRegistration <= 48;
+                            const isEligible = cancellationDate <= eligibleDate;
 
                             return (
                               <div>
