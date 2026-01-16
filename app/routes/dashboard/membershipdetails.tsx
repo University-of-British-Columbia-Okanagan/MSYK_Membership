@@ -86,7 +86,7 @@ export async function loader({
   // If user has ANY cancelled membership (including this one), redirect
   // Cancelled memberships should resubscribe via payment page directly, not sign new agreement
   const hasCancelledMembership = allUserMemberships.some(
-    (membership) => membership.status === "cancelled"
+    (membership) => membership.status === "cancelled",
   );
 
   if (hasCancelledMembership) {
@@ -190,7 +190,7 @@ export async function action({
     await createMembershipForm(
       user.id,
       membershipId,
-      rawValues.agreementSignature
+      rawValues.agreementSignature,
     );
 
     // Redirect to payment page
@@ -540,10 +540,10 @@ export default function MembershipDetails() {
                             <span className="text-indigo-500 mr-2">→</span>{" "}
                             {feature}
                           </li>
-                        )
+                        ),
                       )
                     : Object.values(
-                        membershipPlan.feature as Record<string, string>
+                        membershipPlan.feature as Record<string, string>,
                       ).map((feature, index) => (
                         <li
                           key={index}
@@ -647,7 +647,7 @@ export default function MembershipDetails() {
                                 | "monthly"
                                 | "quarterly"
                                 | "semiannually"
-                                | "yearly"
+                                | "yearly",
                             )
                           }
                           disabled={
@@ -692,7 +692,7 @@ export default function MembershipDetails() {
                                   | "monthly"
                                   | "quarterly"
                                   | "semiannually"
-                                  | "yearly"
+                                  | "yearly",
                               )
                             }
                             disabled={!!userActiveMembership}
@@ -760,7 +760,7 @@ export default function MembershipDetails() {
                                   | "monthly"
                                   | "quarterly"
                                   | "semiannually"
-                                  | "yearly"
+                                  | "yearly",
                               )
                             }
                             disabled={!!userActiveMembership}
@@ -828,7 +828,7 @@ export default function MembershipDetails() {
                                   | "monthly"
                                   | "quarterly"
                                   | "semiannually"
-                                  | "yearly"
+                                  | "yearly",
                               )
                             }
                             disabled={!!userActiveMembership}
@@ -954,8 +954,24 @@ export default function MembershipDetails() {
                         <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormDescription className="text-sm text-gray-600 mb-4">
-                        Please download, review, and digitally sign the
-                        membership agreement.
+                        <div className="font-semibold mb-2">
+                          To sign the Membership Agreement:
+                        </div>
+                        <ol className="list-decimal list-inside space-y-1 ml-2">
+                          <li>
+                            First click the "Download the Membership Agreement"
+                            button. You will see that you can now add a
+                            signature.
+                          </li>
+                          <li>
+                            Review the Membership Agreement file that downloads.
+                          </li>
+                          <li>
+                            Go back to the member platform page and sign the
+                            Signature area.
+                          </li>
+                          <li>Click the "Continue to Payment" button.</li>
+                        </ol>
                       </FormDescription>
 
                       <div className="mb-4">
