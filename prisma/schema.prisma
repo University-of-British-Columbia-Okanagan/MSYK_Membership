@@ -155,7 +155,7 @@ model Workshop {
   type               String // "workshop" or "orientation"
   imageUrl           String?
   hasPriceVariations Boolean  @default(false)
-  cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.")
+  cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.")
   registrationCutoff Int      @default(60) // Registration cut-off in minutes before the workshop starts
 
   // Relationships
