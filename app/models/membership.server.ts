@@ -324,6 +324,7 @@ export async function registerMembershipSubscription(
   isResubscription: boolean = false,
   paymentIntentId?: string,
   billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly",
+  autoRenew: boolean = true,
 ) {
   const userDetails = await db.user.findUnique({
     where: { id: userId },
@@ -368,6 +369,7 @@ export async function registerMembershipSubscription(
       data: {
         status: "active",
         nextPaymentDate: newNextPaymentDate,
+        autoRenew,
       },
     });
 
@@ -425,6 +427,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -439,6 +442,7 @@ export async function registerMembershipSubscription(
           nextPaymentDate: newNextPaymentDate,
           status: "active",
           billingCycle,
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -504,6 +508,7 @@ export async function registerMembershipSubscription(
           nextPaymentDate: newNextPaymentDate,
           status: "active",
           billingCycle: "monthly",
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -517,6 +522,7 @@ export async function registerMembershipSubscription(
           nextPaymentDate: newNextPaymentDate,
           status: "active",
           billingCycle: "monthly",
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -568,6 +574,7 @@ export async function registerMembershipSubscription(
         nextPaymentDate,
         status: "active",
         billingCycle,
+        autoRenew,
         ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
@@ -741,7 +748,7 @@ export async function getUserActiveMembership(userId: number) {
  */
 export function startMonthlyMembershipCheck() {
   // Run every day at midnight (adjust the cron expression as needed)
-  cron.schedule("0 0 * * *", async () => {
+  cron.schedule("* * * * *", async () => {
     console.log("Running monthly membership check...");
 
     try {
@@ -765,6 +772,7 @@ export function startMonthlyMembershipCheck() {
         where: {
           status: "active",
           nextPaymentDate: { gt: now, lte: reminderWindowEnd },
+          autoRenew: true,
         },
         include: { membershipPlan: true },
       });
@@ -913,6 +921,26 @@ export function startMonthlyMembershipCheck() {
           }
           await syncUserDoorAccess(user.id, { user });
         };
+
+        if (membership.status === "active" && membership.autoRenew === false) {
+          console.log(
+            `User ID: ${membership.userId} has auto-renew off; membership ${membership.id} set to inactive at term end.`,
+          );
+
+          await db.userMembership.update({
+            where: { id: membership.id },
+            data: { status: "inactive" },
+          });
+
+          await updateMembershipFormStatus(
+            membership.userId,
+            membership.membershipPlanId,
+            "inactive",
+          );
+
+          await syncUserRole();
+          continue;
+        }
 
         if (membership.status === "active") {
           const user = await ensureUser();
@@ -1210,6 +1238,8 @@ export async function registerMembershipSubscriptionWithForm(
   isDowngrade: boolean = false,
   isResubscription: boolean = false,
   paymentIntentId?: string,
+  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly",
+  autoRenew: boolean = true,
 ) {
   // First create the membership subscription
   const subscription = await registerMembershipSubscription(
@@ -1219,6 +1249,8 @@ export async function registerMembershipSubscriptionWithForm(
     isDowngrade,
     isResubscription,
     paymentIntentId,
+    billingCycle,
+    autoRenew,
   );
 
   // Activate the pending form (if it exists) and link it to the subscription
