@@ -95,6 +95,7 @@ export async function quickCheckout(
     upgradeFee?: number;
     variationId?: number;
     billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+    autoRenew?: boolean;
   }
 ) {
   const user = await db.user.findUnique({
@@ -106,6 +107,7 @@ export async function quickCheckout(
 
   let description = "";
   let price = 0;
+  let autoRenew = true;
   let metadata: Record<string, string> = {
     userId: userId.toString(),
   };
@@ -195,8 +197,10 @@ export async function quickCheckout(
 
         description = membershipPlan.title;
         const billingCycle = checkoutData.billingCycle || "monthly";
+        autoRenew = checkoutData.autoRenew ?? true;
         metadata.billingCycle = billingCycle;
         metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
+        metadata.autoRenew = String(autoRenew);
 
         // Default for brand-new membership purchase
         price = checkoutData.price || membershipPlan.price;
@@ -545,7 +549,8 @@ export async function quickCheckout(
                 | "monthly"
                 | "quarterly"
                 | "semiannually"
-                | "yearly"
+                | "yearly",
+              autoRenew
             );
           } catch (error) {
             if (
@@ -829,6 +834,12 @@ export async function createOrUpdatePaymentMethod(
  */
 export async function createCheckoutSession(request: Request) {
   const body = await request.json();
+  const autoRenew =
+    typeof body.autoRenew === "boolean"
+      ? body.autoRenew
+      : body.autoRenew === "false" || body.autoRenew === "0"
+        ? false
+        : true;
 
   // Check if user wants to use saved card
   if (body.useSavedCard && body.userId) {
@@ -860,6 +871,7 @@ export async function createCheckoutSession(request: Request) {
         currentMembershipId: body.currentMembershipId,
         upgradeFee: body.upgradeFee,
         billingCycle: body.billingCycle || "monthly",
+        autoRenew,
       };
     }
 
@@ -975,6 +987,7 @@ export async function createCheckoutSession(request: Request) {
           ? String(currentMembershipId)
           : null,
         billingCycle: billingCycle,
+        autoRenew: String(autoRenew),
       },
     });
     return new Response(JSON.stringify({ url: session.url }), {

@@ -98,6 +98,11 @@ export const loader: LoaderFunction = async ({ params, request }) => {
         | "semiannually"
         | "yearly"
         | null) || "monthly";
+    const autoRenewParam = url.searchParams.get("autoRenew");
+    const autoRenew =
+      autoRenewParam === null
+        ? true
+        : autoRenewParam !== "false" && autoRenewParam !== "0";
 
     let membershipPrice = membershipPlan.price;
     if (billingCycle === "quarterly" && membershipPlan.price3Months) {
@@ -214,6 +219,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       savedPaymentMethod,
       gstPercentage: parseFloat(gstPercentage),
       billingCycle,
+      autoRenew,
       changeNotAllowed,
       needsPayment,
     };
@@ -730,6 +736,7 @@ export default function Payment() {
     gstPercentage: number;
     selectedVariation?: any;
     billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+    autoRenew?: boolean;
     changeNotAllowed?: boolean;
     needsPayment?: boolean;
   };
@@ -762,6 +769,7 @@ export default function Payment() {
               membershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
               billingCycle: data.billingCycle || "monthly",
+              autoRenew: data.autoRenew ?? true,
             }),
           });
 
@@ -787,6 +795,7 @@ export default function Payment() {
               newMembershipPlanId: data.membershipPlan.id,
               userId: data.user.id,
               billingCycle: data.billingCycle || "monthly",
+              autoRenew: data.autoRenew ?? true,
             }),
           });
           const json = await res.json();
@@ -813,6 +822,7 @@ export default function Payment() {
               upgradeFee: data.upgradeFee,
               currentMembershipId: data.userActiveMembership?.id || null,
               billingCycle: data.billingCycle || "monthly",
+              autoRenew: data.autoRenew ?? true,
             }),
           });
           const resData = await response.json();
@@ -833,6 +843,7 @@ export default function Payment() {
                   newMembershipPlanId: data.membershipPlan.id,
                   userId: data.user.id,
                   billingCycle: data.billingCycle || "monthly",
+                  autoRenew: data.autoRenew ?? true,
                 }),
               });
               const j = await r.json();
@@ -975,6 +986,7 @@ export default function Payment() {
                     | "quarterly"
                     | "semiannually"
                     | "yearly") || "monthly",
+                autoRenew: data.autoRenew ?? true,
               }}
               itemName={data.membershipPlan.title}
               itemPrice={

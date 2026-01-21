@@ -33,6 +33,7 @@ interface QuickCheckoutProps {
     upgradeFee?: number;
     variationId?: number | null;
     billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+    autoRenew?: boolean;
   };
   itemName: string;
   itemPrice: number;
