@@ -553,18 +553,18 @@ export async function getEquipmentSlotsWithStatus(
   const equipment = await db.equipment.findMany({
     where: onlyAvailable ? { availability: true } : undefined,
     include: {
-      slots: {
-        include: {
-          bookings: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
+        slots: {
+          include: {
+            bookings: {
+              include: {
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                  },
                 },
               },
             },
-          },
           workshopOccurrence: {
             select: {
               workshop: {
@@ -636,7 +636,10 @@ export async function getEquipmentSlotsWithStatus(
         const dayKey = `${dayName} ${dayNumber}`;
 
         const bookedByMe = userId
-          ? slot.bookings?.some((booking) => booking.userId === userId)
+          ? slot.bookings?.some(
+              (booking) =>
+                booking.userId === userId && booking.status !== "cancelled",
+            )
           : false;
 
         // Get user data from the first booking for this slot (if any)
