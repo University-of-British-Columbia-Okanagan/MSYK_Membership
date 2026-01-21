@@ -85,6 +85,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Subscription Features:**
 - Multiple membership plans with flexible pricing
 - Billing cycles: monthly, quarterly (3 months), semiannually (6 months), yearly
+- Optional auto-renew toggle for all billing cycles (requires saved payment method)
 - Role level management tied to membership status
 - Membership agreement PDF generation and signing
 
@@ -99,10 +100,12 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 
 **Automated Billing:**
 - Daily cron job (`0 0 * * *`) processes due memberships
-- Monthly memberships auto-renew with saved payment method
-- Non-monthly memberships expire when due (no auto-renew)
-- Payment reminders sent 24 hours before charge
+- Auto-renew controlled by `autoRenew` flag (defaults to `true` for backward compatibility)
+- When `autoRenew=true`: Membership auto-renews with saved payment method at term end
+- When `autoRenew=false`: Membership expires at term end without charging, status set to "inactive"
+- Payment reminders sent 24 hours before charge (only for `autoRenew=true` memberships)
 - Missing payment method sets membership to "inactive" and sends notification
+- Auto-renew toggle disabled in UI when user has no saved payment method
 
 **Role Level Impact:**
 - Level 3: Active membership (standard plan)
@@ -364,20 +367,21 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ### Workflow 3: Membership Purchase
 
-**New Monthly Membership:**
+**New Membership:**
 1. User browses membership plans in `/dashboard/memberships`
 2. Selects plan and billing cycle (monthly/quarterly/semiannually/yearly)
 3. Reviews plan details and pricing
-4. Clicks "Subscribe"
-5. If payment method not saved: Redirected to Stripe Checkout
-6. If payment method saved: Quick checkout via saved card
-7. Payment processed with GST
-8. Membership subscription created with `nextPaymentDate` based on cycle
-9. Membership agreement form created (status: "pending")
-10. User signs membership agreement
-11. Form status updated to "active" and linked to subscription
-12. User role level updated (Level 3 or Level 4 based on plan)
-13. Confirmation email sent with plan details and next billing date
+4. Selects auto-renew preference (enabled by default if payment method exists, disabled if no payment method)
+5. Clicks "Subscribe"
+6. If payment method not saved: Redirected to Stripe Checkout
+7. If payment method saved: Quick checkout via saved card
+8. Payment processed with GST
+9. Membership subscription created with `nextPaymentDate` based on cycle and `autoRenew` flag
+10. Membership agreement form created (status: "pending")
+11. User signs membership agreement
+12. Form status updated to "active" and linked to subscription
+13. User role level updated (Level 3 or Level 4 based on plan)
+14. Confirmation email sent with plan details and next billing date
 
 **Key Dates:**
 - `date`: Subscription start date (now)
@@ -594,13 +598,17 @@ The `syncUserDoorAccess()` function is automatically called when:
 **Daily Process (runs at midnight):**
 1. System queries memberships with `nextPaymentDate <= now` and status "active", "ending", or "cancelled"
 2. For each due membership:
-   - **If status "active" and billing cycle "monthly":**
-     - Calculate charge amount (base price + GST)
+   - **If status "active" and `autoRenew=false`:**
+     - Set membership status to "inactive"
+     - Set form status to "inactive"
+     - Skip charging (membership expires at term end)
+   - **If status "active" and `autoRenew=true`:**
+     - Calculate charge amount (base price + GST based on billing cycle)
      - Retrieve saved payment method
      - If payment method exists:
        - Create Stripe payment intent with saved card
        - Charge user
-       - Update `nextPaymentDate` to next month
+       - Update `nextPaymentDate` based on billing cycle (monthly: +1 month, quarterly: +3 months, semiannually: +6 months, yearly: +1 year)
        - Store payment intent ID
      - If no payment method:
        - Set membership status to "inactive"
@@ -609,10 +617,8 @@ The `syncUserDoorAccess()` function is automatically called when:
    - **If status "ending" or "cancelled":**
      - Set status to "inactive"
      - Set form status to "inactive"
-   - **If billing cycle non-monthly:**
-     - Set status to "inactive" (no auto-renew)
 3. Update user role levels based on membership status
-4. Send payment reminders for memberships due within 24 hours
+4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`)
 
 **Role Level Updates:**
 - If active membership exists: Level 3 or Level 4 (based on plan and `allowLevel4`)
