@@ -26,12 +26,20 @@ export async function action({ request }: { request: Request }) {
       newMembershipPlanId,
       userId,
       billingCycle = "monthly",
+      autoRenew,
     }: {
       currentMembershipId: string;
       newMembershipPlanId: string;
       userId: string;
       billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+      autoRenew?: boolean | string;
     } = body;
+    const shouldAutoRenew =
+      typeof autoRenew === "boolean"
+        ? autoRenew
+        : autoRenew === "false" || autoRenew === "0"
+          ? false
+          : true;
 
     if (!currentMembershipId || !newMembershipPlanId || !userId) {
       return new Response(
@@ -78,7 +86,8 @@ export async function action({ request }: { request: Request }) {
           | "monthly"
           | "quarterly"
           | "semiannually"
-          | "yearly"
+          | "yearly",
+        shouldAutoRenew
       );
     } catch (error) {
       if (

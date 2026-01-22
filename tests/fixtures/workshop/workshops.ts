@@ -21,7 +21,7 @@ export const getWorkshopsFixture = [
     type: 'workshop',
     imageUrl: null,
     cancellationPolicy:
-      "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.",
+      "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
     registrationCutoff: 60,
     occurrences: [
         {
@@ -63,7 +63,7 @@ export const getWorkshopsFixture = [
     type: 'workshop',
     imageUrl: null,
     cancellationPolicy:
-      "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours of registration.",
+      "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
     registrationCutoff: 60,
     occurrences: [],
     status: 'past',

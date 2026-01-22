@@ -26,7 +26,7 @@ export async function getEquipmentById(equipmentId: number) {
 
     // Flatten prerequisite workshop IDs
     const prerequisites = equipment.prerequisites.map(
-      (p) => p.workshopPrerequisiteId
+      (p) => p.workshopPrerequisiteId,
     );
 
     return {
@@ -67,7 +67,7 @@ export async function getAvailableEquipment() {
             : eq.slots.every((slot) => slot.isBooked)
               ? "unavailable" // All slots taken
               : "available", // Some slots are free
-      }))
+      })),
     );
 }
 
@@ -85,7 +85,7 @@ export async function bookEquipment(
   startTime: string,
   endTime: string,
   paymentIntentId?: string,
-  options?: { suppressEmail?: boolean }
+  options?: { suppressEmail?: boolean },
 ) {
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
@@ -107,16 +107,32 @@ export async function bookEquipment(
   }
 
   if (user.roleLevel === 3) {
-    // Level 3 can't book on Monday (1) or Tuesday (2)
-    // if (day === 1 || day === 2) {
-    //   throw new Error(
-    //     "Level 3 members cannot book equipment on Monday or Tuesday."
-    //   );
-    // }
+    // Get the dynamic Level 3 booking schedule from admin settings
+    const level3Schedule = await getLevel3ScheduleRestrictions();
 
-    // Optional: Add specific hour restrictions if needed for DROP-IN HOURS
-    if (hour < 9 || hour >= 17) {
-      throw new Error("Level 3 members can only book between 9 AM and 5 PM.");
+    // Map day number to day name
+    const dayNames = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    const dayName = dayNames[day];
+    const dayRestriction = level3Schedule[dayName];
+
+    // Check if the day is closed
+    if (dayRestriction.closed) {
+      throw new Error(`Level 3 members cannot book equipment on ${dayName}.`);
+    }
+
+    // Check if the booking hour is within allowed hours for this day
+    if (hour < dayRestriction.start || hour >= dayRestriction.end) {
+      throw new Error(
+        `Level 3 members can only book between ${dayRestriction.start} AM and ${dayRestriction.end} PM on ${dayName}. Please contact support.`,
+      );
     }
   }
 
@@ -214,7 +230,7 @@ export async function bookEquipmentBulkByTimes(
   request: Request,
   equipmentId: number,
   times: Array<{ startTime: string; endTime: string }>,
-  paymentIntentId?: string
+  paymentIntentId?: string,
 ) {
   const userId = await getUserId(request);
   if (!userId) throw new Error("User is not authenticated.");
@@ -228,7 +244,7 @@ export async function bookEquipmentBulkByTimes(
       t.startTime,
       t.endTime,
       paymentIntentId,
-      { suppressEmail: true }
+      { suppressEmail: true },
     );
     bookings.push(booking);
   }
@@ -257,7 +273,7 @@ export async function bookEquipmentBulkByTimes(
   } catch (emailError) {
     console.error(
       "Failed to send bulk equipment confirmation email:",
-      emailError
+      emailError,
     );
   }
 
@@ -420,7 +436,7 @@ export async function addEquipment(data: {
 
 export async function createEquipmentSlot(
   equipmentId: number,
-  startTime: Date
+  startTime: Date,
 ) {
   // Ensure the equipment exists before creating a slot
   const equipment = await db.equipment.findUnique({
@@ -444,7 +460,7 @@ export async function createEquipmentSlot(
 export async function createEquipmentSlotForWorkshop(
   equipmentId: number,
   startTime: Date,
-  workshopId: number
+  workshopId: number,
 ) {
   const existingSlot = await db.equipmentSlot.findFirst({
     where: {
@@ -459,7 +475,7 @@ export async function createEquipmentSlotForWorkshop(
 
   if (existingSlot)
     throw new Error(
-      "This slot is either booked by a user or already assigned to a workshop."
+      "This slot is either booked by a user or already assigned to a workshop.",
     );
 
   return await db.equipmentSlot.updateMany({
@@ -532,23 +548,23 @@ export async function getAvailableEquipmentForAdmin() {
  */
 export async function getEquipmentSlotsWithStatus(
   userId?: number,
-  onlyAvailable: boolean = false
+  onlyAvailable: boolean = false,
 ) {
   const equipment = await db.equipment.findMany({
     where: onlyAvailable ? { availability: true } : undefined,
     include: {
-      slots: {
-        include: {
-          bookings: {
-            include: {
-              user: {
-                select: {
-                  firstName: true,
-                  lastName: true,
+        slots: {
+          include: {
+            bookings: {
+              include: {
+                user: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                  },
                 },
               },
             },
-          },
           workshopOccurrence: {
             select: {
               workshop: {
@@ -567,7 +583,7 @@ export async function getEquipmentSlotsWithStatus(
     // Get the equipment_visible_registrable_days setting
     const visibleDaysStr = await getAdminSetting(
       "equipment_visible_registrable_days",
-      "7"
+      "7",
     );
     const visibleDays = parseInt(visibleDaysStr, 10);
 
@@ -620,13 +636,16 @@ export async function getEquipmentSlotsWithStatus(
         const dayKey = `${dayName} ${dayNumber}`;
 
         const bookedByMe = userId
-          ? slot.bookings?.some((booking) => booking.userId === userId)
+          ? slot.bookings?.some(
+              (booking) =>
+                booking.userId === userId && booking.status !== "cancelled",
+            )
           : false;
 
         // Get user data from the first booking for this slot (if any)
         const userBooking = slot.bookings?.find(
           (booking) =>
-            booking.bookedFor === "user" || booking.bookedFor === undefined
+            booking.bookedFor === "user" || booking.bookedFor === undefined,
         );
         const userFirstName = userBooking?.user?.firstName || null;
         const userLastName = userBooking?.user?.lastName || null;
@@ -651,7 +670,7 @@ export async function getEquipmentSlotsWithStatus(
         price: eq.price,
         slotsByDay: fullSlots,
       };
-    })
+    }),
   );
 }
 
@@ -670,7 +689,7 @@ export async function updateEquipment(
     availability?: boolean;
     workshopPrerequisites?: number[];
     imageUrl?: string | null;
-  }
+  },
 ) {
   try {
     // Update equipment basic fields
@@ -737,7 +756,7 @@ export async function deleteEquipment(equipmentId: number) {
         const imagePath = path.join(
           process.cwd(),
           "public",
-          existingEquipment.imageUrl
+          existingEquipment.imageUrl,
         );
 
         // Check if file exists before trying to delete
@@ -747,7 +766,7 @@ export async function deleteEquipment(equipmentId: number) {
         }
       } catch (error) {
         console.warn(
-          `Could not delete equipment image: ${error}. Continuing with equipment deletion.`
+          `Could not delete equipment image: ${error}. Continuing with equipment deletion.`,
         );
         // Don't fail the deletion if we can't delete the image file
       }
@@ -906,7 +925,7 @@ export async function getCancelledEquipmentBookings() {
 export async function bulkBookEquipment(
   workshopId: number,
   slots: number[],
-  userId: number
+  userId: number,
 ) {
   // Filter out negative IDs (these are the temporary IDs for workshop dates)
   const validSlots = slots.filter((id) => id > 0);
@@ -928,7 +947,7 @@ export async function bulkBookEquipment(
   // Just log a warning and continue with available slots
   if (availableSlots.length !== validSlots.length) {
     console.warn(
-      `Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`
+      `Warning: Only ${availableSlots.length} of ${validSlots.length} requested slots are available. Proceeding with available slots.`,
     );
   }
 
@@ -962,8 +981,8 @@ export async function bulkBookEquipment(
           bookedFor: "workshop",
           workshopId: workshopId,
         },
-      })
-    )
+      }),
+    ),
   );
 
   return { count: bookings.length };
@@ -977,7 +996,7 @@ export async function bulkBookEquipment(
  */
 export async function setSlotAvailability(
   slotId: number,
-  isAvailable: boolean
+  isAvailable: boolean,
 ) {
   return await db.equipmentSlot.update({
     where: { id: slotId },
@@ -995,7 +1014,7 @@ export async function setSlotAvailability(
  */
 export async function getAvailableEquipmentSlotsForWorkshopRange(
   startDate: Date,
-  endDate: Date
+  endDate: Date,
 ) {
   console.log(" Fetching available equipment slots for workshop...");
   console.log("Workshop Date Range:", { startDate, endDate });
@@ -1072,7 +1091,7 @@ export async function getAllEquipmentWithBookings() {
  */
 export async function toggleEquipmentAvailability(
   equipmentId: number,
-  availability: boolean
+  availability: boolean,
 ) {
   return await db.equipment.update({
     where: { id: equipmentId },
@@ -1159,7 +1178,7 @@ export async function createEquipmentSlotsForOccurrence(
   equipmentId: number,
   startDate: Date,
   endDate: Date,
-  userId: number // Add userId parameter
+  userId: number, // Add userId parameter
 ) {
   try {
     // Get the workshop ID from the occurrence first
@@ -1205,7 +1224,7 @@ export async function createEquipmentSlotsForOccurrence(
             slotId = existingSlot.id;
           } else {
             console.warn(
-              `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`
+              `Slot already reserved for another workshop: Equipment ${equipmentId}, Time ${currentTime.toISOString()}`,
             );
             // Move to next slot
             currentTime.setTime(currentTime.getTime() + 30 * 60000);
@@ -1259,7 +1278,7 @@ export async function createEquipmentSlotsForOccurrence(
   } catch (error) {
     console.error(
       "Failed to create equipment slots for workshop occurrence:",
-      error
+      error,
     );
     throw new Error("Failed to create equipment slots for workshop occurrence");
   }
@@ -1274,7 +1293,7 @@ export async function createEquipmentSlotsForOccurrence(
  */
 export async function checkSlotAvailability(
   equipmentId: number,
-  startTime: Date
+  startTime: Date,
 ) {
   // Check if there's any existing slot that matches the criteria and is already booked
   const conflictingSlot = await db.equipmentSlot.findFirst({
@@ -1311,7 +1330,7 @@ export async function getAllEquipment() {
         totalSlots: eq.slots.length,
         bookedSlots: eq.slots.filter((slot) => slot.isBooked).length,
         status: eq.availability ? "available" : "unavailable", // Only based on availability field
-      }))
+      })),
     );
 }
 
@@ -1323,7 +1342,7 @@ export async function getAllEquipment() {
  */
 export async function getUserCompletedEquipmentPrerequisites(
   userId: number,
-  equipmentId: number
+  equipmentId: number,
 ) {
   if (!userId) return [];
 
@@ -1341,7 +1360,7 @@ export async function getUserCompletedEquipmentPrerequisites(
 
   // Get the list of prerequisite IDs
   const prerequisiteIds = equipment.prerequisites.map(
-    (p) => p.workshopPrerequisiteId
+    (p) => p.workshopPrerequisiteId,
   );
 
   // Find all workshop occurrences the user has completed successfully
@@ -1368,7 +1387,7 @@ export async function getUserCompletedEquipmentPrerequisites(
  */
 export async function hasUserCompletedEquipmentPrerequisites(
   userId: number,
-  equipmentId: number
+  equipmentId: number,
 ): Promise<boolean> {
   if (!userId) return false;
 
@@ -1386,15 +1405,15 @@ export async function hasUserCompletedEquipmentPrerequisites(
 
   const completedPrerequisites = await getUserCompletedEquipmentPrerequisites(
     userId,
-    equipmentId
+    equipmentId,
   );
   const requiredPrerequisites = equipment.prerequisites.map(
-    (p) => p.workshopPrerequisiteId
+    (p) => p.workshopPrerequisiteId,
   );
 
   // Check if user has completed all required prerequisites
   return requiredPrerequisites.every((reqId) =>
-    completedPrerequisites.includes(reqId)
+    completedPrerequisites.includes(reqId),
   );
 }
 
@@ -1427,7 +1446,7 @@ export async function createEquipmentCancellation({
 
   // Check eligibility for refund (2 days before earliest slot time)
   const earliestSlotTime = new Date(
-    Math.min(...cancelledSlotTimes.map((slot) => slot.startTime.getTime()))
+    Math.min(...cancelledSlotTimes.map((slot) => slot.startTime.getTime())),
   );
   const twoDaysFromNow = new Date();
   twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
@@ -1459,7 +1478,7 @@ export async function createEquipmentCancellation({
     // Calculate cumulative refunded slots from all previous cancellations
     const totalSlotsAlreadyRefunded = existingCancellations.reduce(
       (total, cancellation) => total + cancellation.slotsRefunded,
-      0
+      0,
     );
 
     // Store individual cancellation amount, not cumulative
@@ -1534,7 +1553,7 @@ export async function getAllEquipmentCancellations() {
  */
 export async function updateEquipmentCancellationResolved(
   cancellationId: number,
-  resolved: boolean
+  resolved: boolean,
 ) {
   return await db.equipmentCancelledBooking.update({
     where: { id: cancellationId },

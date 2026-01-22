@@ -65,14 +65,14 @@ export function AppSidebar() {
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <Calendar className="w-5 h-5" />
-            Events
+            Event Calendar
           </Link>
           <Link
             to="/dashboard/equipments"
             className="flex items-center gap-2 text-gray-700 hover:text-blue-500"
           >
             <Package className="w-5 h-5" />
-            All Equipments
+            All Equipment
           </Link>
           <Link
             to="/dashboard/myequipments"

@@ -19,7 +19,13 @@ export async function action({ request }: { request: Request }) {
     }
 
     const body = await request.json();
-    const { currentMembershipId, membershipPlanId, userId } = body;
+    const { currentMembershipId, membershipPlanId, userId, autoRenew } = body;
+    const shouldAutoRenew =
+      typeof autoRenew === "boolean"
+        ? autoRenew
+        : autoRenew === "false" || autoRenew === "0"
+          ? false
+          : true;
 
     try {
       let billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" =
@@ -49,7 +55,8 @@ export async function action({ request }: { request: Request }) {
           false, // Not a downgrade
           true, // Flag this as a resubscription
           undefined,
-          billingCycle
+          billingCycle,
+          shouldAutoRenew
         );
       } catch (error) {
         if (

@@ -35,7 +35,7 @@ interface MembershipPlanData {
 
 function addMonthsForCycle(
   date: Date,
-  cycle: "monthly" | "quarterly" | "semiannually" | "yearly"
+  cycle: "monthly" | "quarterly" | "semiannually" | "yearly",
 ): Date {
   const newDate = new Date(date);
   if (cycle === "yearly") {
@@ -67,18 +67,18 @@ export function calculateProratedUpgradeAmount(
   now: Date,
   nextPaymentDate: Date,
   oldMonthly: number,
-  newMonthly: number
+  newMonthly: number,
 ): number {
   if (newMonthly <= oldMonthly) return 0;
   const effectiveStart = new Date(nextPaymentDate);
   effectiveStart.setMonth(effectiveStart.getMonth() - 1);
   const totalMs = Math.max(
     0,
-    nextPaymentDate.getTime() - effectiveStart.getTime()
+    nextPaymentDate.getTime() - effectiveStart.getTime(),
   );
   const remainingMs = Math.max(
     0,
-    Math.min(nextPaymentDate.getTime() - now.getTime(), totalMs)
+    Math.min(nextPaymentDate.getTime() - now.getTime(), totalMs),
   );
   if (totalMs === 0 || remainingMs === 0) return 0;
   const delta = newMonthly - oldMonthly;
@@ -115,7 +115,7 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         acc[`Feature${index + 1}`] = feature;
         return acc;
       },
-      {} as Record<string, string>
+      {} as Record<string, string>,
     );
 
     const newPlan = await db.membershipPlan.create({
@@ -142,13 +142,97 @@ export async function addMembershipPlan(data: MembershipPlanData) {
  * @param planId The ID of the membership plan to delete
  * @returns Object with success status
  */
+/**
+ * Delete a membership plan (Admin only) and update user role levels
+ * @param planId The ID of the membership plan to delete
+ * @returns Object with success status
+ */
 export async function deleteMembershipPlan(planId: number) {
   try {
+    // First, get all users who have memberships for this plan
+    const affectedMemberships = await db.userMembership.findMany({
+      where: {
+        membershipPlanId: planId,
+      },
+      select: {
+        userId: true,
+      },
+    });
+
+    // Get unique user IDs
+    const affectedUserIds = [
+      ...new Set(affectedMemberships.map((m) => m.userId)),
+    ];
+
+    // Delete the membership plan (cascade will delete UserMembership records)
     await db.membershipPlan.delete({
       where: {
         id: planId,
       },
     });
+
+    // Update role levels for all affected users
+    for (const userId of affectedUserIds) {
+      // Check if user has passed any orientation
+      const passedOrientationCount = await db.userWorkshop.count({
+        where: {
+          userId,
+          result: { equals: "passed", mode: "insensitive" },
+          workshop: { type: { equals: "orientation", mode: "insensitive" } },
+        },
+      });
+
+      // Check if user has any OTHER active OR ending memberships
+      // "ending" memberships still grant access until their nextPaymentDate
+      const otherMemberships = await db.userMembership.findMany({
+        where: {
+          userId,
+          status: { in: ["active", "ending"] },
+        },
+        include: {
+          membershipPlan: true,
+        },
+      });
+
+      // Determine new role level
+      let newRoleLevel: number;
+      if (otherMemberships.length > 0) {
+        // User still has other active or ending memberships
+        const user = await db.user.findUnique({
+          where: { id: userId },
+          select: { allowLevel4: true },
+        });
+
+        // Check if any remaining membership requires admin permission
+        const hasAdminPermissionPlan = otherMemberships.some(
+          (m) => m.membershipPlan.needAdminPermission,
+        );
+
+        // Level 4 requires BOTH:
+        // 1. A membership plan with needAdminPermission: true
+        // 2. User has allowLevel4: true (granted by admin)
+        if (hasAdminPermissionPlan && user?.allowLevel4) {
+          newRoleLevel = 4;
+        } else {
+          // User has a membership but doesn't meet level 4 requirements
+          newRoleLevel = 3;
+        }
+      } else {
+        // No active or ending memberships remaining
+        // Set to level 2 if passed orientation, else level 1
+        newRoleLevel = passedOrientationCount > 0 ? 2 : 1;
+      }
+
+      // Update user's role level
+      await db.user.update({
+        where: { id: userId },
+        data: { roleLevel: newRoleLevel },
+      });
+
+      // Sync door access for the user
+      await syncUserDoorAccess(userId);
+    }
+
     return { success: true };
   } catch (error) {
     console.error("Error deleting membership plan:", error);
@@ -193,7 +277,7 @@ export async function updateMembershipPlan(
     // features: string[];
     features: Record<string, string>;
     needAdminPermission?: boolean;
-  }
+  },
 ) {
   return await db.membershipPlan.update({
     where: { id: planId },
@@ -239,7 +323,8 @@ export async function registerMembershipSubscription(
   isDowngrade: boolean = false, // Flag to indicate if this is a downgrade
   isResubscription: boolean = false,
   paymentIntentId?: string,
-  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly"
+  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly",
+  autoRenew: boolean = true,
 ) {
   const userDetails = await db.user.findUnique({
     where: { id: userId },
@@ -284,6 +369,7 @@ export async function registerMembershipSubscription(
       data: {
         status: "active",
         nextPaymentDate: newNextPaymentDate,
+        autoRenew,
       },
     });
 
@@ -291,7 +377,7 @@ export async function registerMembershipSubscription(
       userId,
       membershipPlanId,
       "active",
-      subscription.id
+      subscription.id,
     );
   } else if (isDowngrade && currentMembershipId) {
     console.log("hello world2");
@@ -319,7 +405,7 @@ export async function registerMembershipSubscription(
     await updateMembershipFormStatus(
       userId,
       currentMembership.membershipPlanId,
-      "ending"
+      "ending",
     );
 
     // 2) Find if there's already an "active" or "ending" record for this user/plan
@@ -341,6 +427,7 @@ export async function registerMembershipSubscription(
           date: startDate,
           nextPaymentDate: newNextPaymentDate,
           status: "active",
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -355,6 +442,7 @@ export async function registerMembershipSubscription(
           nextPaymentDate: newNextPaymentDate,
           status: "active",
           billingCycle,
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -365,7 +453,7 @@ export async function registerMembershipSubscription(
       userId,
       membershipPlanId,
       "active",
-      subscription.id
+      subscription.id,
     );
   } else if (currentMembershipId) {
     console.log("hello world3");
@@ -396,7 +484,7 @@ export async function registerMembershipSubscription(
     await updateMembershipFormStatus(
       userId,
       currentMembership.membershipPlanId,
-      "ending"
+      "ending",
     );
 
     // New upgraded membership becomes active immediately, keeps old nextPaymentDate
@@ -420,6 +508,7 @@ export async function registerMembershipSubscription(
           nextPaymentDate: newNextPaymentDate,
           status: "active",
           billingCycle: "monthly",
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -433,6 +522,7 @@ export async function registerMembershipSubscription(
           nextPaymentDate: newNextPaymentDate,
           status: "active",
           billingCycle: "monthly",
+          autoRenew,
           ...(paymentIntentId ? { paymentIntentId } : {}),
         },
       });
@@ -484,6 +574,7 @@ export async function registerMembershipSubscription(
         nextPaymentDate,
         status: "active",
         billingCycle,
+        autoRenew,
         ...(paymentIntentId ? { paymentIntentId } : {}),
       },
     });
@@ -545,7 +636,7 @@ export async function registerMembershipSubscription(
  */
 export async function cancelMembership(
   userId: number,
-  membershipPlanId: number
+  membershipPlanId: number,
 ) {
   // 1) Pick out the *currently active* subscription row only
   const activeRecord = await db.userMembership.findFirst({
@@ -681,6 +772,7 @@ export function startMonthlyMembershipCheck() {
         where: {
           status: "active",
           nextPaymentDate: { gt: now, lte: reminderWindowEnd },
+          autoRenew: true,
         },
         include: { membershipPlan: true },
       });
@@ -732,12 +824,12 @@ export function startMonthlyMembershipCheck() {
               !savedPayment?.stripePaymentMethodId,
           });
           console.log(
-            `✅ Sent payment reminder to user ${membership.userId} for ${membership.billingCycle} membership ($${chargeAmount.toFixed(2)})`
+            `✅ Sent payment reminder to user ${membership.userId} for ${membership.billingCycle} membership ($${chargeAmount.toFixed(2)})`,
           );
         } catch (emailErr) {
           console.error(
             `Failed to send membership payment reminder to user ${membership.userId}:`,
-            emailErr
+            emailErr,
           );
         }
       }
@@ -830,11 +922,31 @@ export function startMonthlyMembershipCheck() {
           await syncUserDoorAccess(user.id, { user });
         };
 
+        if (membership.status === "active" && membership.autoRenew === false) {
+          console.log(
+            `User ID: ${membership.userId} has auto-renew off; membership ${membership.id} set to inactive at term end.`,
+          );
+
+          await db.userMembership.update({
+            where: { id: membership.id },
+            data: { status: "inactive" },
+          });
+
+          await updateMembershipFormStatus(
+            membership.userId,
+            membership.membershipPlanId,
+            "inactive",
+          );
+
+          await syncUserRole();
+          continue;
+        }
+
         if (membership.status === "active") {
           const user = await ensureUser();
           if (!user) {
             console.error(
-              `No user found for ID ${membership.userId}, skipping`
+              `No user found for ID ${membership.userId}, skipping`,
             );
             continue;
           }
@@ -875,7 +987,7 @@ export function startMonthlyMembershipCheck() {
             !savedPayment?.stripePaymentMethodId
           ) {
             console.warn(
-              `User ${membership.userId} (${membership.billingCycle} cycle) has no saved payment info; membership ${membership.id} set to inactive.`
+              `User ${membership.userId} (${membership.billingCycle} cycle) has no saved payment info; membership ${membership.id} set to inactive.`,
             );
 
             await db.userMembership.update({
@@ -886,7 +998,7 @@ export function startMonthlyMembershipCheck() {
             await updateMembershipFormStatus(
               membership.userId,
               membership.membershipPlanId,
-              "inactive"
+              "inactive",
             );
 
             // Sync user role and door access for all billing cycles
@@ -899,12 +1011,12 @@ export function startMonthlyMembershipCheck() {
                 planTitle: membership.membershipPlan.title,
               });
               console.log(
-                `✅ Sent no payment method email to user ${membership.userId} for ${membership.billingCycle} membership`
+                `✅ Sent no payment method email to user ${membership.userId} for ${membership.billingCycle} membership`,
               );
             } catch (emailErr) {
               console.error(
                 `Failed to send missing payment method notice to user ${membership.userId}:`,
-                emailErr
+                emailErr,
               );
             }
 
@@ -936,7 +1048,7 @@ export function startMonthlyMembershipCheck() {
 
             if (pi.status === "succeeded") {
               console.log(
-                `✅ Payment intent succeeded for user ${membership.userId}, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`
+                `✅ Payment intent succeeded for user ${membership.userId}, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`,
               );
 
               const newNextPaymentDate = addMonthsForCycle(
@@ -945,7 +1057,7 @@ export function startMonthlyMembershipCheck() {
                   | "monthly"
                   | "quarterly"
                   | "semiannually"
-                  | "yearly"
+                  | "yearly",
               );
 
               await db.userMembership.update({
@@ -974,29 +1086,29 @@ export function startMonthlyMembershipCheck() {
                     | "yearly",
                 });
                 console.log(
-                  `✅ Sent payment success email to user ${membership.userId} for ${membership.billingCycle} membership`
+                  `✅ Sent payment success email to user ${membership.userId} for ${membership.billingCycle} membership`,
                 );
               } catch (emailErr) {
                 console.error(
                   `Failed to send payment success email to user ${membership.userId}:`,
-                  emailErr
+                  emailErr,
                 );
               }
             } else {
               console.log(
-                `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`
+                `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`,
               );
 
               if (pi.last_payment_error) {
                 console.error(
-                  `Payment error: ${JSON.stringify(pi.last_payment_error)}`
+                  `Payment error: ${JSON.stringify(pi.last_payment_error)}`,
                 );
               }
             }
           } catch (err: any) {
             console.error(
               `❌ Charge failed for user ${membership.userId}:`,
-              err.message
+              err.message,
             );
           }
 
@@ -1007,7 +1119,7 @@ export function startMonthlyMembershipCheck() {
         ) {
           // Process memberships with status "ending" or "cancelled".
           console.log(
-            `User ID: ${membership.userId} Current status ${membership.status} switched to inactive status.`
+            `User ID: ${membership.userId} Current status ${membership.status} switched to inactive status.`,
           );
           // Do not increment nextPaymentDate; instead, set status to inactive.
           await db.userMembership.update({
@@ -1019,7 +1131,7 @@ export function startMonthlyMembershipCheck() {
           await updateMembershipFormStatus(
             membership.userId,
             membership.membershipPlanId,
-            "inactive"
+            "inactive",
           );
 
           await syncUserRole();
@@ -1039,7 +1151,7 @@ export function startMonthlyMembershipCheck() {
  */
 export async function getUserMembershipForm(
   userId: number,
-  membershipPlanId: number
+  membershipPlanId: number,
 ) {
   return await db.userMembershipForm.findFirst({
     where: {
@@ -1063,7 +1175,7 @@ export async function getUserMembershipForm(
 export async function createMembershipForm(
   userId: number,
   membershipPlanId: number,
-  signatureData: string
+  signatureData: string,
 ) {
   // Get user info for PDF generation
   const user = await db.user.findUnique({
@@ -1089,12 +1201,12 @@ export async function createMembershipForm(
     ? await generateSignedMembershipAgreement247(
         user.firstName,
         user.lastName,
-        signatureData
+        signatureData,
       )
     : await generateSignedMembershipAgreement(
         user.firstName,
         user.lastName,
-        signatureData
+        signatureData,
       );
 
   // Create the form with the encrypted PDF stored in agreementSignature field
@@ -1125,7 +1237,9 @@ export async function registerMembershipSubscriptionWithForm(
   currentMembershipId: number | null = null,
   isDowngrade: boolean = false,
   isResubscription: boolean = false,
-  paymentIntentId?: string
+  paymentIntentId?: string,
+  billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly" = "monthly",
+  autoRenew: boolean = true,
 ) {
   // First create the membership subscription
   const subscription = await registerMembershipSubscription(
@@ -1134,7 +1248,9 @@ export async function registerMembershipSubscriptionWithForm(
     currentMembershipId,
     isDowngrade,
     isResubscription,
-    paymentIntentId
+    paymentIntentId,
+    billingCycle,
+    autoRenew,
   );
 
   // Activate the pending form (if it exists) and link it to the subscription
@@ -1153,7 +1269,7 @@ export async function registerMembershipSubscriptionWithForm(
 export async function activateMembershipForm(
   userId: number,
   membershipPlanId: number,
-  userMembershipId?: number
+  userMembershipId?: number,
 ) {
   await db.userMembershipForm.updateMany({
     where: {
@@ -1203,7 +1319,7 @@ export async function updateMembershipFormStatus(
   userId: number,
   membershipPlanId: number,
   newStatus: "active" | "pending" | "inactive" | "cancelled" | "ending",
-  userMembershipId?: number
+  userMembershipId?: number,
 ) {
   const updateData: any = {
     status: newStatus,
@@ -1246,7 +1362,7 @@ const REVOCABLE_STATUSES: string[] = ["active", "ending", "cancelled"];
  */
 export async function revokeUserMembershipByAdmin(
   userId: number,
-  reason: string
+  reason: string,
 ): Promise<RevokeMembershipResult> {
   const normalizedReason = reason?.trim();
   if (!normalizedReason) {
@@ -1291,7 +1407,7 @@ export async function revokeUserMembershipByAdmin(
       ...new Set(
         membershipsToRevoke
           .map((membership) => membership.membershipPlan?.title)
-          .filter((title): title is string => Boolean(title))
+          .filter((title): title is string => Boolean(title)),
       ),
     ];
 
@@ -1358,7 +1474,7 @@ export async function revokeUserMembershipByAdmin(
     } catch (error) {
       console.error(
         `Failed to send membership revocation email to user ${userId}:`,
-        error
+        error,
       );
     }
   }
@@ -1371,7 +1487,7 @@ export async function revokeUserMembershipByAdmin(
  * Remove a user's membership ban while keeping historical memberships revoked.
  */
 export async function unrevokeUserMembershipByAdmin(
-  userId: number
+  userId: number,
 ): Promise<UnrevokeMembershipResult> {
   const result = await db.$transaction(async (tx) => {
     const user = await tx.user.findUnique({
@@ -1422,7 +1538,7 @@ export async function unrevokeUserMembershipByAdmin(
     } catch (error) {
       console.error(
         `Failed to send membership unrevoked email to user ${userId}:`,
-        error
+        error,
       );
     }
   }
@@ -1438,7 +1554,7 @@ export async function unrevokeUserMembershipByAdmin(
  */
 export async function invalidateExistingMembershipForms(
   userId: number,
-  membershipPlanId: number
+  membershipPlanId: number,
 ) {
   return await db.userMembershipForm.updateMany({
     where: {
@@ -1463,7 +1579,7 @@ export async function invalidateExistingMembershipForms(
 async function generateSignedMembershipAgreement(
   firstName: string,
   lastName: string,
-  signatureDataURL: string
+  signatureDataURL: string,
 ): Promise<string> {
   try {
     // Read the membership agreement PDF template
@@ -1471,7 +1587,7 @@ async function generateSignedMembershipAgreement(
       process.cwd(),
       "public",
       "documents",
-      "msyk-membership-agreement.pdf"
+      "msyk-membership-agreement.pdf",
     );
 
     const existingPdfBytes = fs.readFileSync(templatePath);
@@ -1499,7 +1615,7 @@ async function generateSignedMembershipAgreement(
       try {
         const base64Data = signatureDataURL.split(",")[1];
         const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
-          c.charCodeAt(0)
+          c.charCodeAt(0),
         );
 
         const signatureImage = await pdfDoc.embedPng(signatureBytes);
@@ -1533,7 +1649,7 @@ async function generateSignedMembershipAgreement(
 
     const encryptedPdf = CryptoJS.AES.encrypt(
       pdfBase64,
-      encryptionKey
+      encryptionKey,
     ).toString();
 
     return encryptedPdf;
@@ -1554,7 +1670,7 @@ async function generateSignedMembershipAgreement(
 async function generateSignedMembershipAgreement247(
   firstName: string,
   lastName: string,
-  signatureDataURL: string
+  signatureDataURL: string,
 ): Promise<string> {
   try {
     // Read the 24/7 membership agreement PDF template
@@ -1562,7 +1678,7 @@ async function generateSignedMembershipAgreement247(
       process.cwd(),
       "public",
       "documents",
-      "msyk-membership-agreement-24-7.pdf"
+      "msyk-membership-agreement-24-7.pdf",
     );
 
     const existingPdfBytes = fs.readFileSync(templatePath);
@@ -1590,7 +1706,7 @@ async function generateSignedMembershipAgreement247(
       try {
         const base64Data = signatureDataURL.split(",")[1];
         const signatureBytes = Uint8Array.from(atob(base64Data), (c) =>
-          c.charCodeAt(0)
+          c.charCodeAt(0),
         );
 
         const signatureImage = await pdfDoc.embedPng(signatureBytes);
@@ -1624,7 +1740,7 @@ async function generateSignedMembershipAgreement247(
 
     const encryptedPdf = CryptoJS.AES.encrypt(
       pdfBase64,
-      encryptionKey
+      encryptionKey,
     ).toString();
 
     return encryptedPdf;
@@ -1671,7 +1787,7 @@ export function decryptMembershipAgreement(encryptedData: string): Buffer {
     }
     const decryptedBase64 = CryptoJS.AES.decrypt(
       encryptedData,
-      encryptionKey
+      encryptionKey,
     ).toString(CryptoJS.enc.Utf8);
     return Buffer.from(decryptedBase64, "base64");
   } catch (error) {

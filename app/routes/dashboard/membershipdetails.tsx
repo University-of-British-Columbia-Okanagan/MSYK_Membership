@@ -44,11 +44,17 @@ import {
   invalidateExistingMembershipForms,
   getUserActiveOrCancelledMemberships,
 } from "~/models/membership.server";
-import { getUserById } from "~/models/user.server";
+import { getSavedPaymentMethod, getUserById } from "~/models/user.server";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export async function loader({
   request,
@@ -73,6 +79,10 @@ export async function loader({
 
   const userActiveMembership = await getUserActiveMembership(user.id);
   const userRecord = await getUserById(user.id);
+  const savedPaymentMethod = await getSavedPaymentMethod(user.id);
+  const hasPaymentMethod =
+    !!savedPaymentMethod?.stripeCustomerId &&
+    !!savedPaymentMethod?.stripePaymentMethodId;
 
   const roleRedirect = !roleUser
     ? "/dashboard"
@@ -86,7 +96,7 @@ export async function loader({
   // If user has ANY cancelled membership (including this one), redirect
   // Cancelled memberships should resubscribe via payment page directly, not sign new agreement
   const hasCancelledMembership = allUserMemberships.some(
-    (membership) => membership.status === "cancelled"
+    (membership) => membership.status === "cancelled",
   );
 
   if (hasCancelledMembership) {
@@ -132,6 +142,7 @@ export async function loader({
     isMembershipRevoked: userRecord?.membershipStatus === "revoked",
     membershipRevokedReason: userRecord?.membershipRevokedReason ?? null,
     membershipRevokedAt: userRecord?.membershipRevokedAt ?? null,
+    hasPaymentMethod,
   };
 }
 
@@ -155,6 +166,11 @@ export async function action({
   const agreementSignature = formData.get("agreementSignature");
 
   const billingCycle = formData.get("billingCycle");
+  const autoRenewParam = formData.get("autoRenew");
+  const autoRenew =
+    autoRenewParam === null
+      ? true
+      : autoRenewParam !== "false" && autoRenewParam !== "0";
 
   const rawValues: Record<string, any> = Object.fromEntries(formData.entries());
 
@@ -190,7 +206,7 @@ export async function action({
     await createMembershipForm(
       user.id,
       membershipId,
-      rawValues.agreementSignature
+      rawValues.agreementSignature,
     );
 
     // Redirect to payment page
@@ -201,6 +217,7 @@ export async function action({
     if (billingCycle) {
       params.set("billingCycle", billingCycle.toString());
     }
+    params.set("autoRenew", autoRenew ? "true" : "false");
 
     // Add upgrade/downgrade query params if user has active membership
     if (userActiveMembership) {
@@ -391,6 +408,7 @@ export default function MembershipDetails() {
     isMembershipRevoked,
     membershipRevokedReason,
     membershipRevokedAt,
+    hasPaymentMethod,
   } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -400,6 +418,7 @@ export default function MembershipDetails() {
   const [selectedBillingCycle, setSelectedBillingCycle] = useState<
     "monthly" | "quarterly" | "semiannually" | "yearly"
   >("monthly");
+  const [autoRenew, setAutoRenew] = useState(hasPaymentMethod);
 
   const form = useForm<MembershipAgreementFormValues>({
     resolver: zodResolver(membershipAgreementSchema),
@@ -423,6 +442,7 @@ export default function MembershipDetails() {
     const form = event.currentTarget as HTMLFormElement;
     const formData = new FormData(form);
     formData.set("billingCycle", selectedBillingCycle);
+    formData.set("autoRenew", autoRenew ? "true" : "false");
     // Let the RouterForm handle the actual submission
   };
 
@@ -443,6 +463,7 @@ export default function MembershipDetails() {
 
     const params = new URLSearchParams();
     params.set("billingCycle", selectedBillingCycle);
+    params.set("autoRenew", autoRenew ? "true" : "false");
 
     // Add upgrade/downgrade query params if user has active membership
     if (userActiveMembership) {
@@ -540,10 +561,10 @@ export default function MembershipDetails() {
                             <span className="text-indigo-500 mr-2">→</span>{" "}
                             {feature}
                           </li>
-                        )
+                        ),
                       )
                     : Object.values(
-                        membershipPlan.feature as Record<string, string>
+                        membershipPlan.feature as Record<string, string>,
                       ).map((feature, index) => (
                         <li
                           key={index}
@@ -647,7 +668,7 @@ export default function MembershipDetails() {
                                 | "monthly"
                                 | "quarterly"
                                 | "semiannually"
-                                | "yearly"
+                                | "yearly",
                             )
                           }
                           disabled={
@@ -659,9 +680,8 @@ export default function MembershipDetails() {
                           className="w-4 h-4 text-indigo-600"
                         />
                         <div>
-                          <p className="font-semibold text-gray-900">Monthly</p>
-                          <p className="text-sm text-gray-600">
-                            Pay each month
+                          <p className="font-semibold text-gray-900">
+                            Every 1 Month
                           </p>
                         </div>
                       </div>
@@ -692,7 +712,7 @@ export default function MembershipDetails() {
                                   | "monthly"
                                   | "quarterly"
                                   | "semiannually"
-                                  | "yearly"
+                                  | "yearly",
                               )
                             }
                             disabled={!!userActiveMembership}
@@ -700,7 +720,7 @@ export default function MembershipDetails() {
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
-                              3 Months
+                              Every 3 Months
                             </p>
                             {((membershipPlan.price * 3 -
                               membershipPlan.price3Months) /
@@ -724,17 +744,10 @@ export default function MembershipDetails() {
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.price3Months.toFixed(2)}
                           </p>
-                          {((membershipPlan.price * 3 -
-                            membershipPlan.price3Months) /
-                            (membershipPlan.price * 3)) *
-                            100 >
-                            0 && (
-                            <p className="text-sm text-gray-600">
-                              (CA$
-                              {(membershipPlan.price3Months / 3).toFixed(2)}
-                              /mo)
-                            </p>
-                          )}
+                          <p className="text-sm text-gray-600">
+                            (CA${(membershipPlan.price3Months / 3).toFixed(2)}
+                            /mo)
+                          </p>
                         </div>
                       </label>
                     )}
@@ -760,7 +773,7 @@ export default function MembershipDetails() {
                                   | "monthly"
                                   | "quarterly"
                                   | "semiannually"
-                                  | "yearly"
+                                  | "yearly",
                               )
                             }
                             disabled={!!userActiveMembership}
@@ -792,17 +805,10 @@ export default function MembershipDetails() {
                           <p className="font-bold text-gray-900">
                             CA${membershipPlan.price6Months.toFixed(2)}
                           </p>
-                          {((membershipPlan.price * 3 -
-                            membershipPlan.price6Months) /
-                            (membershipPlan.price * 3)) *
-                            100 >
-                            0 && (
-                            <p className="text-sm text-gray-600">
-                              (CA$
-                              {(membershipPlan.price6Months / 6).toFixed(2)}
-                              /mo)
-                            </p>
-                          )}
+                          <p className="text-sm text-gray-600">
+                            (CA${(membershipPlan.price6Months / 6).toFixed(2)}
+                            /mo)
+                          </p>
                         </div>
                       </label>
                     )}
@@ -828,7 +834,7 @@ export default function MembershipDetails() {
                                   | "monthly"
                                   | "quarterly"
                                   | "semiannually"
-                                  | "yearly"
+                                  | "yearly",
                               )
                             }
                             disabled={!!userActiveMembership}
@@ -836,7 +842,7 @@ export default function MembershipDetails() {
                           />
                           <div>
                             <p className="font-semibold text-gray-900">
-                              Yearly
+                              Every 12 Months
                             </p>
                             {((membershipPlan.price * 12 -
                               membershipPlan.priceYearly) /
@@ -874,6 +880,41 @@ export default function MembershipDetails() {
                         </div>
                       </label>
                     )}
+                  </div>
+
+                  <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-start gap-3">
+                            <Checkbox
+                              checked={autoRenew}
+                              onCheckedChange={(value) =>
+                                setAutoRenew(value === true)
+                              }
+                              disabled={!hasPaymentMethod}
+                              className="mt-1 h-4 w-4 border-2 border-indigo-600 text-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white"
+                            />
+                            <span>
+                              <span className="text-sm font-semibold text-gray-900">
+                                Auto-renew at the end of the term
+                              </span>
+                              <span className="block text-sm text-gray-600">
+                                Turn this off to let your membership end after
+                                the selected term without charging again.
+                              </span>
+                            </span>
+                          </span>
+                        </TooltipTrigger>
+                        {!hasPaymentMethod && (
+                          <TooltipContent>
+                            <p>
+                              Add a payment method to use auto-renew.
+                            </p>
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
                 </div>
               )}
@@ -954,8 +995,24 @@ export default function MembershipDetails() {
                         <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormDescription className="text-sm text-gray-600 mb-4">
-                        Please download, review, and digitally sign the
-                        membership agreement.
+                        <div className="font-semibold mb-2">
+                          To sign the Membership Agreement:
+                        </div>
+                        <ol className="list-decimal list-inside space-y-1 ml-2">
+                          <li>
+                            First click the "Download the Membership Agreement"
+                            button. You will see that you can now add a
+                            signature.
+                          </li>
+                          <li>
+                            Review the Membership Agreement file that downloads.
+                          </li>
+                          <li>
+                            Go back to the member platform page and sign the
+                            Signature area.
+                          </li>
+                          <li>Click the "Continue to Payment" button.</li>
+                        </ol>
                       </FormDescription>
 
                       <div className="mb-4">
@@ -1003,6 +1060,11 @@ export default function MembershipDetails() {
                       type="hidden"
                       name="billingCycle"
                       value={selectedBillingCycle}
+                    />
+                    <input
+                      type="hidden"
+                      name="autoRenew"
+                      value={autoRenew ? "true" : "false"}
                     />
 
                     {/* Submit Button */}
