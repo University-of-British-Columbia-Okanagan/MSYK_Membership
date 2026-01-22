@@ -182,6 +182,10 @@ export async function loader({ request }: { request: Request }) {
           | "quarterly"
           | "semiannually"
           | "yearly") || "monthly";
+      const autoRenew =
+        metadata.autoRenew === undefined
+          ? true
+          : metadata.autoRenew !== "false" && metadata.autoRenew !== "0";
 
       // Register the membership subscription and get the created subscription
       let subscription;
@@ -193,7 +197,8 @@ export async function loader({ request }: { request: Request }) {
           false, // Not a downgrade
           false, // Not a resubscription
           paymentIntentId,
-          billingCycle
+          billingCycle,
+          autoRenew
         );
       } catch (error) {
         if (
