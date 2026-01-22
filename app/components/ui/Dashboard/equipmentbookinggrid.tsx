@@ -338,6 +338,17 @@ export default function EquipmentBookingGrid({
     const slotsPerDay: { [day: string]: number } = {};
     let totalSlots = 0;
 
+    // Include slots the user has already booked (from the grid data)
+    Object.entries(slotsByDay).forEach(([dayKey, daySlots]) => {
+      Object.values(daySlots).forEach((slotValue) => {
+        if (slotValue?.bookedByMe) {
+          slotsPerDay[dayKey] = (slotsPerDay[dayKey] || 0) + 1;
+          totalSlots += 1;
+        }
+      });
+    });
+
+    // Include slots selected in the current session
     for (const s of selectedSlots) {
       const [start] = s.split("|");
       const slotDate = new Date(start);
