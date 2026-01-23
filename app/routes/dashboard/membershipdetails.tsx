@@ -882,42 +882,41 @@ export default function MembershipDetails() {
                     )}
                   </div>
 
-                  <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="flex items-start gap-3">
-                            <Checkbox
-                              checked={autoRenew}
-                              onCheckedChange={(value) =>
-                                setAutoRenew(value === true)
-                              }
-                              disabled={!hasPaymentMethod}
-                              className="mt-1 h-4 w-4 border-2 border-indigo-600 text-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white"
-                            />
-                            <span>
-                              <span className="text-sm font-semibold text-gray-900">
-                                Auto-renew at the end of the term
-                              </span>
-                              <span className="block text-sm text-gray-600">
-                                Turn this off to let your membership end after
-                                the selected term without charging again.
-                              </span>
-                            </span>
-                          </span>
-                        </TooltipTrigger>
-                        {!hasPaymentMethod && (
-                          <TooltipContent>
-                            <p>
-                              Add a payment method to use auto-renew.
-                            </p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
                 </div>
               )}
+
+              <div className="mb-8 rounded-lg border border-gray-200 bg-white p-4">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="flex items-start gap-3">
+                        <Checkbox
+                          checked={autoRenew}
+                          onCheckedChange={(value) =>
+                            setAutoRenew(value === true)
+                          }
+                          disabled={!hasPaymentMethod}
+                          className="mt-1 h-4 w-4 border-2 border-indigo-600 text-indigo-600 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 data-[state=checked]:text-white"
+                        />
+                        <span>
+                          <span className="text-sm font-semibold text-gray-900">
+                            Auto-renew at the end of the term
+                          </span>
+                          <span className="block text-sm text-gray-600">
+                            Turn this off to let your membership end after the
+                            selected term without charging again.
+                          </span>
+                        </span>
+                      </span>
+                    </TooltipTrigger>
+                    {!hasPaymentMethod && (
+                      <TooltipContent>
+                        <p>Add a payment method to use auto-renew.</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
 
               {isMembershipRevoked ? (
                 <Alert
