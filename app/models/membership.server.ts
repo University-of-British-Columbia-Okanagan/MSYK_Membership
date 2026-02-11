@@ -1598,7 +1598,7 @@ async function generateSignedMembershipAgreement(
     // Embed font
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    const baseX = 75; // X position (left/right)
+    const baseX = 90; // X position (left/right)
 
     // Add name
     const fullName = `${firstName} ${lastName}`;
