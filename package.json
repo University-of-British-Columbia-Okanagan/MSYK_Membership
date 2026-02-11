@@ -108,5 +108,8 @@
     "vite": "^7.0.6",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.0.6"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   }
 }
