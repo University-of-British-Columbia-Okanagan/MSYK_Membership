@@ -105,6 +105,7 @@ class BrivoClient {
           Authorization: `Basic ${basicAuth}`,
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
+          "api-key": this.env.apiKey ?? ""
         },
         body: new URLSearchParams({
           grant_type: "password",
