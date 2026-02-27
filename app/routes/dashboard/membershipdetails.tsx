@@ -900,7 +900,7 @@ export default function MembershipDetails() {
                         />
                         <span>
                           <span className="text-sm font-semibold text-gray-900">
-                            Stop auto-renewal at the end of your membership term.
+                            Auto-renew at the end of the term
                           </span>
                           <span className="block text-sm text-gray-600">
                             Turn this off to let your membership end after the
