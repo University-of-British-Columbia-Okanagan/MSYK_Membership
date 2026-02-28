@@ -903,8 +903,7 @@ export default function MembershipDetails() {
                             Auto-renew at the end of the term
                           </span>
                           <span className="block text-sm text-gray-600">
-                            Turn this off to let your membership end after the
-                            selected term without charging again.
+                            Check this box if you want your membership to renew automatically at the end of the term. If you do not want your membership to auto-renew please leave this box blank. Please note: Memberships are non-refundable. The renewal term will be the same as your current subscription. (Ex. If you registered for a 3 month membership it will renew for another 3 months.)
                           </span>
                         </span>
                       </span>
