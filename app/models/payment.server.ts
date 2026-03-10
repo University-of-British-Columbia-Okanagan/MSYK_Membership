@@ -1326,7 +1326,7 @@ export async function createCheckoutSession(request: Request) {
         },
       ],
       success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.BASE_URL}dashboard/equipment`,
+      cancel_url: `${process.env.BASE_URL}dashboard/equipments`,
       metadata: {
         equipmentId: equipmentId.toString(),
         userId: userId.toString(),

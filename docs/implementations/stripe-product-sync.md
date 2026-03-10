@@ -325,7 +325,7 @@ For each payment type (workshop, equipment, membership), complete a full checkou
 
 - [ ] GST is calculated correctly and shown in the checkout total
 - [ ] Payment succeeds and lands on the correct success page
-- [ ] Cancel button returns to the correct page (workshops → `/dashboard/workshops`, equipment → `/dashboard/equipment`, membership → `/dashboard/memberships`)
+- [ ] Cancel button returns to the correct page (workshops → `/dashboard/workshops`, equipment → `/dashboard/equipments`, membership → `/dashboard/memberships`)
 - [ ] After payment, the registration/booking/membership is created correctly in the portal
 - [ ] The Stripe payment record includes the correct metadata (workshopId, userId, etc.)
 
@@ -360,41 +360,3 @@ For each payment type (workshop, equipment, membership), complete a full checkou
 5. Confirm checkout still works correctly
 6. Switch back to the original key and re-sync again to restore
 
----
-
-## Draft Client Email
-
-**Subject:** Portal Update — Product-Specific Stripe Discount Codes
-
-Hi [Client Name],
-
-Thanks for flagging this — it's a great point and totally solvable within the current Stripe setup.
-
-The reason discount codes currently apply to everything is that the portal's checkout flow doesn't link payments to named Stripe Products. Stripe's coupon restriction feature — which lets you limit a code to a specific workshop, membership plan, or equipment item — requires that connection to be in place.
-
-Here's what I'm planning to implement:
-
-**What gets linked to Stripe:**
-The system will automatically create a Stripe Product for each workshop, membership plan, and equipment item in the portal. Once that's in place, you can go into the Stripe dashboard, create a coupon, and restrict it to one or more specific products. Stripe enforces the restriction at checkout automatically.
-
-**Handling your existing data:**
-Since the portal already has workshops, memberships, and equipment that predate this feature, there's a one-time migration step. After the update is deployed, an admin clicks a "Sync All to Stripe" button in the Admin Settings page. This creates Stripe Products for every existing item in the portal and links them up. During the transition window before the sync is run, existing checkout flows continue to work exactly as they do today — nothing breaks. The sync is also safe to run multiple times with no duplicates created.
-
-**What you'll be able to do:**
-- Create a coupon restricted to a specific workshop (e.g. "Intro to Laser Cutting") → it only applies at that workshop's checkout
-- Create a coupon restricted to a specific membership plan → only works for that plan
-- Create a coupon restricted to a specific piece of equipment → only applies when booking that machine
-- Mix and match — a single coupon can be restricted to multiple products if needed
-
-**A couple of things worth knowing:**
-- Discount codes work through the Stripe-hosted checkout page. Users paying with a saved card (quick checkout) bypass this flow, so codes won't apply in that path — this is a Stripe limitation.
-- Coupons can target a specific workshop but not a specific price tier within that workshop (e.g. "Student pricing only"). All price tiers for a workshop share one Stripe Product. If per-tier targeting is important, that's possible but would be a larger change — let me know.
-
-**What doesn't change:**
-- The checkout experience for users looks and works the same
-- GST calculation and all existing payment logic is unchanged
-- All existing payment history and records are unaffected
-
-Let me know if you have questions or want to walk through any specific discount scenarios before I start.
-
-[Your Name]
