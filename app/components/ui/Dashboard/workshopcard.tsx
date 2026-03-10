@@ -248,7 +248,7 @@ export default function WorkshopCard({
                     ) {
                       fetcher.submit(
                         { workshopId: id, action: "delete" },
-                        { method: "post" }
+                        { method: "post", action: "/dashboard/admin" }
                       );
                     }
                   }}

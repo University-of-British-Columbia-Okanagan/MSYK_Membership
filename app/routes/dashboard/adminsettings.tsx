@@ -2026,6 +2026,196 @@ function EquipmentCancellationResolvedControl({
     </>
   );
 }
+function StripeSyncSection() {
+  const [syncStatus, setSyncStatus] = React.useState<{
+    workshops?: { total: number; synced: number };
+    membershipPlans?: { total: number; synced: number };
+    equipment?: { total: number; synced: number };
+  } | null>(null);
+  const [syncResult, setSyncResult] = React.useState<{
+    workshopsSynced?: number;
+    membershipPlansSynced?: number;
+    equipmentSynced?: number;
+    errors?: string[];
+  } | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [statusLoading, setStatusLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const fetchStatus = async () => {
+    setStatusLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "getSyncStatus");
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) setSyncStatus(data);
+      else setError(data.error);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  const runSync = async (actionType: "bulkSync" | "clearAndResync") => {
+    setLoading(true);
+    setSyncResult(null);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", actionType);
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) {
+        setSyncResult(data);
+        await fetchStatus();
+      } else {
+        setError(data.error ?? "Sync failed");
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Stripe Products</CardTitle>
+          <CardDescription>
+            Link portal items to Stripe Products so discount codes can be
+            restricted to specific workshops, membership plans, or equipment.
+            After syncing, create coupons in the Stripe dashboard and select
+            &quot;Apply to specific products&quot; to restrict them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Current sync status */}
+          <div className="rounded-md border p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Current Sync Status</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchStatus}
+                disabled={statusLoading}
+              >
+                {statusLoading ? "Refreshing…" : "Refresh"}
+              </Button>
+            </div>
+            {syncStatus ? (
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Workshops</p>
+                  <p className="font-mono">
+                    {syncStatus.workshops?.synced}/{syncStatus.workshops?.total} synced
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Membership Plans</p>
+                  <p className="font-mono">
+                    {syncStatus.membershipPlans?.synced}/{syncStatus.membershipPlans?.total} synced
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Equipment</p>
+                  <p className="font-mono">
+                    {syncStatus.equipment?.synced}/{syncStatus.equipment?.total} synced
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading status…</p>
+            )}
+          </div>
+
+          {/* Sync result */}
+          {syncResult && (
+            <Alert className="border-green-200 bg-green-50">
+              <AlertTitle className="text-green-800">Sync Complete</AlertTitle>
+              <AlertDescription className="text-green-700">
+                <p>
+                  {syncResult.workshopsSynced} workshop
+                  {syncResult.workshopsSynced !== 1 ? "s" : ""},{" "}
+                  {syncResult.membershipPlansSynced} membership plan
+                  {syncResult.membershipPlansSynced !== 1 ? "s" : ""},{" "}
+                  {syncResult.equipmentSynced} equipment item
+                  {syncResult.equipmentSynced !== 1 ? "s" : ""} synced.
+                </p>
+                {syncResult.errors && syncResult.errors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="font-medium text-amber-700">
+                      {syncResult.errors.length} item(s) failed:
+                    </p>
+                    <ul className="list-disc list-inside text-xs mt-1 space-y-1">
+                      {syncResult.errors.map((e, i) => (
+                        <li key={i}>{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Error */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              onClick={() => runSync("bulkSync")}
+              disabled={loading}
+              className="flex-1"
+            >
+              {loading ? "Syncing…" : "Sync All to Stripe"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "This will clear all stored Stripe Product IDs and re-create them. Use this when switching Stripe environments. Continue?"
+                  )
+                ) {
+                  runSync("clearAndResync");
+                }
+              }}
+              disabled={loading}
+              className="flex-1"
+            >
+              Clear &amp; Re-sync
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            <strong>Sync All to Stripe</strong> — creates Stripe Products for
+            any items that don&apos;t yet have one. Safe to run multiple times;
+            already-synced items are skipped.
+            <br />
+            <strong>Clear &amp; Re-sync</strong> — clears all stored Stripe
+            Product IDs and re-creates them from scratch. Use this only when
+            switching Stripe environments (e.g. test → live).
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function AdminSettings() {
   const {
     settings,
@@ -3470,6 +3660,12 @@ export default function AdminSettings() {
                     className="whitespace-nowrap"
                   >
                     Security & Access
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="stripeProducts"
+                    className="whitespace-nowrap"
+                  >
+                    Stripe Products
                   </TabsTrigger>
                   <TabsTrigger
                     value="placeholder"
@@ -7328,6 +7524,11 @@ export default function AdminSettings() {
                   </Card>
                 </div>
               </TabsContent>
+              {/* Stripe Products Tab */}
+              <TabsContent value="stripeProducts">
+                <StripeSyncSection />
+              </TabsContent>
+
               {/* Tabb Placeholder for Future Settings */}
               <TabsContent value="placeholder">
                 <Card>
