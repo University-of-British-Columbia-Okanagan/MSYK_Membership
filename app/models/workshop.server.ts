@@ -6,6 +6,10 @@ import {
   updateEventForOccurrence,
   deleteEventForOccurrence,
 } from "~/utils/googleCalendar.server";
+import {
+  syncWorkshopToStripe,
+  archiveStripeProduct,
+} from "~/services/stripe-sync.server";
 
 interface WorkshopData {
   name: string;
@@ -351,6 +355,11 @@ export async function addWorkshop(data: WorkshopData, request?: Request) {
         );
       }
     }
+
+    // Sync to Stripe (non-blocking)
+    syncWorkshopToStripe(newWorkshop.id).catch((err) =>
+      console.error(`[stripe-sync] addWorkshop sync failed:`, err)
+    );
 
     return { ...newWorkshop, occurrences };
   } catch (error: any) {
@@ -995,7 +1004,14 @@ export async function updateWorkshopWithOccurrences(
   }
 
   // 4) Return updated workshop
-  return db.workshop.findUnique({ where: { id: workshopId } });
+  const updated = await db.workshop.findUnique({ where: { id: workshopId } });
+
+  // Sync to Stripe (non-blocking)
+  syncWorkshopToStripe(workshopId).catch((err) =>
+    console.error(`[stripe-sync] updateWorkshopWithOccurrences sync failed:`, err)
+  );
+
+  return updated;
 }
 
 /**
@@ -1055,6 +1071,11 @@ export async function deleteWorkshop(workshopId: number) {
           // Continue with deletion even if Google Calendar deletion fails
         }
       }
+    }
+
+    // Archive the Stripe product before deletion
+    if (workshop.stripeProductId) {
+      await archiveStripeProduct(workshop.stripeProductId);
     }
 
     // Now delete the workshop (this will cascade delete occurrences)
@@ -1216,7 +1237,7 @@ export async function checkUserRegistration(
  */
 export async function duplicateWorkshop(workshopId: number) {
   try {
-    return await db.$transaction(async (prisma) => {
+    const result = await db.$transaction(async (prisma) => {
       // 1. Get original workshop with occurrences
       const originalWorkshop = await prisma.workshop.findUnique({
         where: { id: workshopId },
@@ -1322,6 +1343,15 @@ export async function duplicateWorkshop(workshopId: number) {
         include: { occurrences: true },
       });
     });
+
+    // Sync the new duplicate to Stripe (non-blocking)
+    if (result) {
+      syncWorkshopToStripe(result.id).catch((err) =>
+        console.error(`[stripe-sync] duplicateWorkshop sync failed:`, err)
+      );
+    }
+
+    return result;
   } catch (error) {
     console.error("Error duplicating workshop:", error);
     throw new Error("Failed to duplicate workshop");

@@ -968,10 +968,14 @@ export async function createCheckoutSession(request: Request) {
         {
           price_data: {
             currency: "cad",
-            product_data: {
-              name: membershipPlan.title,
-              description: `${membershipPlan.description || "Membership"} (Includes ${gstPercentage}% GST)`,
-            },
+            ...(membershipPlan.stripeProductId
+              ? { product: membershipPlan.stripeProductId }
+              : {
+                  product_data: {
+                    name: membershipPlan.title,
+                    description: `${membershipPlan.description || "Membership"} (Includes ${gstPercentage}% GST)`,
+                  },
+                }),
             unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
@@ -1095,12 +1099,14 @@ export async function createCheckoutSession(request: Request) {
         {
           price_data: {
             currency: "cad",
-            product_data: {
-              name: workshopDisplayName,
-              description: `${`Occurrence on ${new Date(
-                occurrence.startDate
-              ).toLocaleString()}`} (Includes ${gstPercentage}% GST)`,
-            },
+            ...(workshop.stripeProductId
+              ? { product: workshop.stripeProductId }
+              : {
+                  product_data: {
+                    name: workshopDisplayName,
+                    description: `Occurrence on ${new Date(occurrence.startDate).toLocaleString()} (Includes ${gstPercentage}% GST)`,
+                  },
+                }),
             unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
@@ -1235,10 +1241,14 @@ export async function createCheckoutSession(request: Request) {
         {
           price_data: {
             currency: "cad",
-            product_data: {
-              name: workshopDisplayName,
-              description: `${description} (Includes ${gstPercentage}% GST)`,
-            },
+            ...(workshop.stripeProductId
+              ? { product: workshop.stripeProductId }
+              : {
+                  product_data: {
+                    name: workshopDisplayName,
+                    description: `${description} (Includes ${gstPercentage}% GST)`,
+                  },
+                }),
             unit_amount: Math.round(priceWithGST * 100),
           },
           quantity: 1,
@@ -1288,6 +1298,12 @@ export async function createCheckoutSession(request: Request) {
     const gstRate = parseFloat(gstPercentage) / 100;
     const priceWithGST = price * (1 + gstRate);
 
+    // Fetch equipment for name and stripeProductId
+    const equipment = await db.equipment.findUnique({
+      where: { id: Number(equipmentId) },
+      select: { name: true, stripeProductId: true },
+    });
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -1296,10 +1312,14 @@ export async function createCheckoutSession(request: Request) {
         {
           price_data: {
             currency: "cad",
-            product_data: {
-              name: `Equipment Booking (ID: ${equipmentId})`,
-              description: `Booking for ${slotCount} slots (Includes ${gstPercentage}% GST)`,
-            },
+            ...(equipment?.stripeProductId
+              ? { product: equipment.stripeProductId }
+              : {
+                  product_data: {
+                    name: equipment?.name ?? `Equipment Booking (ID: ${equipmentId})`,
+                    description: `Booking for ${slotCount} slots (Includes ${gstPercentage}% GST)`,
+                  },
+                }),
             unit_amount: Math.round(priceWithGST * 100), // Price with GST included
           },
           quantity: 1,

@@ -3,6 +3,10 @@ import cron from "node-cron";
 import Stripe from "stripe";
 import { getAdminSetting } from "./admin.server";
 import {
+  syncMembershipPlanToStripe,
+  archiveStripeProduct,
+} from "~/services/stripe-sync.server";
+import {
   sendMembershipEndedNoPaymentMethodEmail,
   sendMembershipPaymentReminderEmail,
   sendMembershipRevokedEmail,
@@ -130,6 +134,12 @@ export async function addMembershipPlan(data: MembershipPlanData) {
         feature: featuresJson,
       },
     });
+
+    // Sync to Stripe (non-blocking)
+    syncMembershipPlanToStripe(newPlan.id).catch((err) =>
+      console.error(`[stripe-sync] addMembershipPlan sync failed:`, err)
+    );
+
     return newPlan;
   } catch (error) {
     console.error("Error adding membership plan:", error);
@@ -163,6 +173,12 @@ export async function deleteMembershipPlan(planId: number) {
     const affectedUserIds = [
       ...new Set(affectedMemberships.map((m) => m.userId)),
     ];
+
+    // Archive the Stripe product before deletion
+    const planToDelete = await db.membershipPlan.findUnique({ where: { id: planId } });
+    if (planToDelete?.stripeProductId) {
+      await archiveStripeProduct(planToDelete.stripeProductId);
+    }
 
     // Delete the membership plan (cascade will delete UserMembership records)
     await db.membershipPlan.delete({
@@ -279,7 +295,7 @@ export async function updateMembershipPlan(
     needAdminPermission?: boolean;
   },
 ) {
-  return await db.membershipPlan.update({
+  const updated = await db.membershipPlan.update({
     where: { id: planId },
     data: {
       title: data.title,
@@ -292,6 +308,13 @@ export async function updateMembershipPlan(
       needAdminPermission: data.needAdminPermission ?? false,
     },
   });
+
+  // Sync to Stripe (non-blocking)
+  syncMembershipPlanToStripe(planId).catch((err) =>
+    console.error(`[stripe-sync] updateMembershipPlan sync failed:`, err)
+  );
+
+  return updated;
 }
 
 /**

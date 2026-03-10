@@ -157,6 +157,7 @@ model Workshop {
   hasPriceVariations Boolean  @default(false)
   cancellationPolicy String   @default("Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.")
   registrationCutoff Int      @default(60) // Registration cut-off in minutes before the workshop starts
+  stripeProductId    String? // Stripe Product ID for coupon restrictions
 
   // Relationships
   occurrences           WorkshopOccurrence[] // Relationship to occurrences
@@ -195,14 +196,15 @@ model WorkshopOccurrence {
 }
 
 model Equipment {
-  id           Int                @id @default(autoincrement())
-  name         String
-  description  String?
-  price        Float
-  availability Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
-  imageUrl     String?
+  id              Int                @id @default(autoincrement())
+  name            String
+  description     String?
+  price           Float
+  availability    Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  imageUrl        String?
+  stripeProductId String? // Stripe Product ID for coupon restrictions
   slots        EquipmentSlot[]
   bookings     EquipmentBooking[]
 
@@ -353,6 +355,7 @@ model MembershipPlan {
   priceYearly         Float? // Price for yearly subscription
   needAdminPermission Boolean @default(false)
   feature             Json
+  stripeProductId     String? // Stripe Product ID for coupon restrictions
 
   userMemberships     UserMembership[]
   userMembershipForms UserMembershipForm[]
