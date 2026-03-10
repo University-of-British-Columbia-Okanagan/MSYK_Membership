@@ -142,6 +142,7 @@ export default [
   ),
   route("/api/brivo/status", "routes/api/brivo.status.tsx"),
   route("/api/brivo/provisioning", "routes/api/brivo.provisioning.tsx"),
+  route("/api/stripe-sync", "routes/api/stripe-sync.tsx"),
   route("/dashboard", "routes/dashboard/dashboardlayout.tsx"),
   route("/dashboard/volunteer", "routes/dashboard/volunteer.tsx"),
   route("/brivo/callback", "routes/brivo.callback.tsx"),

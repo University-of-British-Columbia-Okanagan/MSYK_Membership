@@ -531,16 +531,19 @@ export async function action({ request }: { request: Request }) {
           {
             price_data: {
               currency: "cad",
-              product_data: {
-                name: membershipPlan.title,
-                // ▼ use upgradeFee for description ▼
-                description:
-                  membershipPlan.description +
-                  (upgradeFee > 0
-                    ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
-                    : "") +
-                  ` (Includes ${gstPercentage}% GST)`,
-              },
+              ...(membershipPlan.stripeProductId
+                ? { product: membershipPlan.stripeProductId }
+                : {
+                    product_data: {
+                      name: membershipPlan.title,
+                      description:
+                        membershipPlan.description +
+                        (upgradeFee > 0
+                          ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
+                          : "") +
+                        ` (Includes ${gstPercentage}% GST)`,
+                    },
+                  }),
               unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
@@ -607,12 +610,14 @@ export async function action({ request }: { request: Request }) {
           {
             price_data: {
               currency: "cad",
-              product_data: {
-                name: workshopDisplayName,
-                description: `Occurrence on ${new Date(
-                  occurrence.startDate
-                ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
-              },
+              ...(workshop.stripeProductId
+                ? { product: workshop.stripeProductId }
+                : {
+                    product_data: {
+                      name: workshopDisplayName,
+                      description: `Occurrence on ${new Date(occurrence.startDate).toLocaleString()} (Includes ${gstPercentage}% GST)`,
+                    },
+                  }),
               unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,
@@ -675,12 +680,14 @@ export async function action({ request }: { request: Request }) {
           {
             price_data: {
               currency: "cad",
-              product_data: {
-                name: workshop.name,
-                description: `Occurrences starting on ${new Date(
-                  firstOccurrence.startDate
-                ).toLocaleString()} (Includes ${gstPercentage}% GST)`,
-              },
+              ...(workshop.stripeProductId
+                ? { product: workshop.stripeProductId }
+                : {
+                    product_data: {
+                      name: workshop.name,
+                      description: `Occurrences starting on ${new Date(firstOccurrence.startDate).toLocaleString()} (Includes ${gstPercentage}% GST)`,
+                    },
+                  }),
               unit_amount: Math.round(priceWithGST * 100), // Price with GST included
             },
             quantity: 1,

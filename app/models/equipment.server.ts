@@ -1,6 +1,10 @@
 import { db } from "../utils/db.server";
 import { getUserId } from "../utils/session.server";
 import { getAdminSetting } from "../models/admin.server";
+import {
+  syncEquipmentToStripe,
+  archiveStripeProduct,
+} from "~/services/stripe-sync.server";
 
 /**
  * Get equipment with prerequisites by ID
@@ -427,6 +431,11 @@ export async function addEquipment(data: {
       });
     }
 
+    // Sync to Stripe (non-blocking)
+    syncEquipmentToStripe(newEquipment.id).catch((err) =>
+      console.error(`[stripe-sync] addEquipment sync failed:`, err)
+    );
+
     return newEquipment;
   } catch (error) {
     console.error("Error adding equipment:", error);
@@ -722,6 +731,11 @@ export async function updateEquipment(
       }
     }
 
+    // Sync to Stripe (non-blocking)
+    syncEquipmentToStripe(equipmentId).catch((err) =>
+      console.error(`[stripe-sync] updateEquipment sync failed:`, err)
+    );
+
     return updatedEquipment;
   } catch (error) {
     console.error("Error updating equipment:", error);
@@ -772,6 +786,11 @@ export async function deleteEquipment(equipmentId: number) {
       }
     }
 
+    // Archive the Stripe product before deletion
+    if (existingEquipment.stripeProductId) {
+      await archiveStripeProduct(existingEquipment.stripeProductId);
+    }
+
     // Delete associated slots first (to prevent foreign key constraint issues)
     await db.equipmentSlot.deleteMany({
       where: { equipmentId },
@@ -811,6 +830,11 @@ export async function duplicateEquipment(equipmentId: number) {
         availability: existingEquipment.availability,
       },
     });
+
+    // Sync the new duplicate to Stripe (non-blocking)
+    syncEquipmentToStripe(duplicatedEquipment.id).catch((err) =>
+      console.error(`[stripe-sync] duplicateEquipment sync failed:`, err)
+    );
 
     return duplicatedEquipment;
   } catch (error) {
