@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   useNavigate,
   useLoaderData,
   useActionData,
+  useSubmit,
   Form,
 } from "react-router-dom";
 import type { ActionFunction, LoaderFunction } from "react-router-dom";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "../../components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "../../components/ui/Dashboard/adminsidebar";
@@ -39,64 +42,9 @@ export const loader: LoaderFunction = async ({ request }) => {
   const user = await getProfileDetails(request);
   const savedPaymentMethod = await getSavedPaymentMethod(parseInt(userId));
 
-  return { user, savedPaymentMethod, roleUser };
+  return { user, savedPaymentMethod, roleUser, stripePublicKey: process.env.STRIPE_PUBLIC_KEY };
 };
 
-const sanitizeDigits = (value: string) => value.replace(/\D/g, "");
-
-const isValidCardNumber = (value: string | null) => {
-  if (!value) return false;
-  const digits = sanitizeDigits(value);
-  if (digits.length < 13 || digits.length > 19) return false;
-  if (/^0+$/.test(digits)) return false;
-
-  let sum = 0;
-  let shouldDouble = false;
-  for (let i = digits.length - 1; i >= 0; i -= 1) {
-    let digit = parseInt(digits.charAt(i), 10);
-    if (Number.isNaN(digit)) return false;
-
-    if (shouldDouble) {
-      digit *= 2;
-      if (digit > 9) digit -= 9;
-    }
-
-    sum += digit;
-    shouldDouble = !shouldDouble;
-  }
-
-  return sum % 10 === 0;
-};
-
-const normalizeYear = (year: number) => {
-  if (year < 100) {
-    return 2000 + year;
-  }
-  return year;
-};
-
-const isExpiryInFuture = (monthStr: string | null, yearStr: string | null) => {
-  if (!monthStr || !yearStr) return false;
-  const month = parseInt(monthStr, 10);
-  let year = parseInt(yearStr, 10);
-  if (Number.isNaN(month) || Number.isNaN(year)) return false;
-  if (month < 1 || month > 12) return false;
-  year = normalizeYear(year);
-
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth() + 1;
-
-  if (year > currentYear) return true;
-  if (year < currentYear) return false;
-  return month >= currentMonth;
-};
-
-const isValidCvc = (value: string | null) => {
-  if (!value) return false;
-  const trimmed = value.trim();
-  return /^\d{3,4}$/.test(trimmed);
-};
 
 // Action - Handle form submission and card deletion
 export const action: ActionFunction = async ({ request }) => {
@@ -125,11 +73,8 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   // Handle card addition/update
+  const stripeToken = formData.get("stripeToken") as string;
   const cardholderName = formData.get("cardholderName") as string;
-  const cardNumber = formData.get("cardNumber") as string;
-  const expiryMonth = formData.get("expiryMonth") as string;
-  const expiryYear = formData.get("expiryYear") as string;
-  const cvc = formData.get("cvc") as string;
   const billingAddressLine1 = formData.get("billingAddressLine1") as string;
   const billingAddressLine2 =
     (formData.get("billingAddressLine2") as string) || null;
@@ -142,28 +87,13 @@ export const action: ActionFunction = async ({ request }) => {
   // Basic validation
   const errors: Record<string, string> = {};
 
+  if (!stripeToken) errors.form = "Card details are required";
   if (!email) {
     errors.email = "Email is required";
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = "Please enter a valid email address";
   }
-
   if (!cardholderName) errors.cardholderName = "Cardholder name is required";
-  if (!cardNumber) {
-    errors.cardNumber = "Card number is required";
-  } else if (!isValidCardNumber(cardNumber)) {
-    errors.cardNumber = "Enter a valid card number";
-  }
-  if (!expiryMonth || !expiryYear) {
-    errors.expiry = "Expiry date is required";
-  } else if (!isExpiryInFuture(expiryMonth, expiryYear)) {
-    errors.expiry = "Card has expired";
-  }
-  if (!cvc) {
-    errors.cvc = "CVC is required";
-  } else if (!isValidCvc(cvc)) {
-    errors.cvc = "CVC must be 3 or 4 digits";
-  }
   if (!billingAddressLine1)
     errors.billingAddressLine1 = "Billing address is required";
   if (!billingCity) errors.billingCity = "City is required";
@@ -177,11 +107,8 @@ export const action: ActionFunction = async ({ request }) => {
 
   try {
     await createOrUpdatePaymentMethod(parseInt(userId), {
+      stripeToken,
       cardholderName,
-      cardNumber,
-      expiryMonth,
-      expiryYear,
-      cvc,
       billingAddressLine1,
       billingAddressLine2,
       billingCity,
@@ -208,7 +135,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 };
 
-export default function PaymentInformationPage() {
+function PaymentInformationInner() {
   const navigate = useNavigate();
   const loaderData = useLoaderData<{
     user: any;
@@ -218,6 +145,7 @@ export default function PaymentInformationPage() {
       roleName: string;
       userId: number;
     } | null;
+    stripePublicKey?: string;
     error?: string;
   }>();
   const actionData = useActionData<{
@@ -227,15 +155,18 @@ export default function PaymentInformationPage() {
     deleted?: boolean;
   }>();
   const { user, savedPaymentMethod, roleUser } = loaderData;
+  const stripe = useStripe();
+  const elements = useElements();
+  const submit = useSubmit();
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [cardElementError, setCardElementError] = useState<string | undefined>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const computedBillingCountry =
     actionData?.values?.billingCountry ||
     savedPaymentMethod?.billingCountry ||
     "";
   const [billingCountry, setBillingCountry] = useState(computedBillingCountry);
-  const [cardNumberError, setCardNumberError] = useState<string | undefined>();
-  const [cvcError, setCvcError] = useState<string | undefined>();
   useEffect(() => {
     setBillingCountry(computedBillingCountry);
   }, [computedBillingCountry]);
@@ -275,29 +206,39 @@ export default function PaymentInformationPage() {
     }
   }, [actionData, showSuccessMessage, navigate]);
 
-  // Credit card input formatting
-  const formatCardNumber = (value: string) => {
-    const v = value.replace(/\s+/g, "").replace(/[^0-9]/gi, "");
-    const matches = v.match(/\d{4,16}/g);
-    const match = (matches && matches[0]) || "";
-    const parts = [];
-
-    for (let i = 0; i < match.length; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-
-    if (parts.length) {
-      return parts.join(" ");
-    }
-
-    return value;
-  };
-
-  const cardNumberInlineError =
-    cardNumberError || actionData?.errors?.cardNumber;
-  const cvcInlineError = cvcError || actionData?.errors?.cvc;
-
   const isEditMode = !!savedPaymentMethod;
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) return;
+
+    setIsSubmitting(true);
+    setCardElementError(undefined);
+
+    const formData = new FormData(e.currentTarget);
+    const { token, error } = await stripe.createToken(cardElement, {
+      name: formData.get("cardholderName") as string,
+      address_line1: formData.get("billingAddressLine1") as string,
+      address_line2: (formData.get("billingAddressLine2") as string) || undefined,
+      address_city: formData.get("billingCity") as string,
+      address_state: formData.get("billingState") as string,
+      address_zip: formData.get("billingZip") as string,
+      address_country: formData.get("billingCountry") as string,
+    });
+
+    if (error) {
+      setCardElementError(error.message);
+      setIsSubmitting(false);
+      return;
+    }
+
+    formData.set("stripeToken", token.id);
+    submit(formData, { method: "post" });
+    setIsSubmitting(false);
+  };
 
   return (
     <SidebarProvider>
@@ -511,7 +452,7 @@ export default function PaymentInformationPage() {
                 </div>
 
                 <div className="p-6">
-                  <Form method="post" noValidate>
+                  <form onSubmit={handleSubmit} noValidate>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Card Details Section */}
                       <div className="space-y-6 md:col-span-2">
@@ -574,199 +515,37 @@ export default function PaymentInformationPage() {
                         </div>
 
                         <div>
-                          <label
-                            htmlFor="cardNumber"
-                            className="block text-sm font-medium text-gray-700 mb-1"
-                          >
-                            Card Number
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Card Details
                           </label>
-                          <div className="relative">
-                            <input
-                              type="text"
-                              id="cardNumber"
-                              name="cardNumber"
-                              className={`w-full px-3 py-2 border rounded-md ${
-                                cardNumberInlineError
-                                  ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                  : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                              }`}
-                              placeholder="1234 5678 9012 3456"
-                              maxLength={19}
-                              defaultValue={
-                                actionData?.values?.cardNumber
-                                  ? formatCardNumber(actionData.values.cardNumber)
-                                  : ""
-                              }
-                              onChange={(event) => {
-                                const formatted = formatCardNumber(
-                                  event.target.value
-                                );
-                                if (formatted !== event.target.value) {
-                                  event.target.value = formatted;
-                                }
-                                if (cardNumberError) {
-                                  setCardNumberError(undefined);
-                                }
+                          <div
+                            className={`w-full px-3 py-3 border rounded-md bg-white ${
+                              cardElementError
+                                ? "border-red-300"
+                                : "border-gray-300"
+                            }`}
+                          >
+                            <CardElement
+                              options={{
+                                style: {
+                                  base: {
+                                    fontSize: "14px",
+                                    color: "#374151",
+                                    "::placeholder": { color: "#9ca3af" },
+                                  },
+                                  invalid: { color: "#ef4444" },
+                                },
                               }}
-                              onBlur={(event) => {
-                                const digits = sanitizeDigits(event.target.value);
-                                if (!digits) {
-                                  setCardNumberError(undefined);
-                                  return;
-                                }
-                                if (!isValidCardNumber(event.target.value)) {
-                                  setCardNumberError("Enter a valid card number");
-                                } else {
-                                  setCardNumberError(undefined);
-                                }
+                              onChange={(e) => {
+                                setCardElementError(e.error?.message);
                               }}
                             />
-                            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                              <Lock className="h-4 w-4 text-gray-400" />
-                            </div>
                           </div>
-                          {cardNumberInlineError && (
+                          {cardElementError && (
                             <p className="mt-1 text-sm text-red-600">
-                              {cardNumberInlineError}
+                              {cardElementError}
                             </p>
                           )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <label
-                              htmlFor="expiryDate"
-                              className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                              Expiry Date
-                            </label>
-                            <div className="grid grid-cols-2 gap-2">
-                              <select
-                                id="expiryMonth"
-                                name="expiryMonth"
-                                className={`w-full px-3 py-2 border rounded-md ${
-                                  actionData?.errors?.expiry
-                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                                }`}
-                                defaultValue={
-                                  actionData?.values?.expiryMonth ||
-                                  (savedPaymentMethod?.cardExpiry || "").split(
-                                    "/"
-                                  )[0] ||
-                                  ""
-                                }
-                              >
-                                <option value="">MM</option>
-                                {Array.from({ length: 12 }, (_, i) => {
-                                  const month = (i + 1)
-                                    .toString()
-                                    .padStart(2, "0");
-                                  return (
-                                    <option key={month} value={month}>
-                                      {month}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <select
-                                id="expiryYear"
-                                name="expiryYear"
-                                className={`w-full px-3 py-2 border rounded-md ${
-                                  actionData?.errors?.expiry
-                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                                }`}
-                                defaultValue={
-                                  actionData?.values?.expiryYear ||
-                                  (savedPaymentMethod?.cardExpiry || "").split(
-                                    "/"
-                                  )[1]
-                                    ? `20${
-                                        (
-                                          savedPaymentMethod?.cardExpiry || ""
-                                        ).split("/")[1]
-                                      }`
-                                    : ""
-                                }
-                              >
-                                <option value="">YY</option>
-                                {Array.from({ length: 10 }, (_, i) => {
-                                  const year = (
-                                    new Date().getFullYear() + i
-                                  ).toString();
-                                  return (
-                                    <option key={year} value={year}>
-                                      {year}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </div>
-                            {actionData?.errors?.expiry && (
-                              <p className="mt-1 text-sm text-red-600">
-                                {actionData.errors.expiry}
-                              </p>
-                            )}
-                          </div>
-                          <div>
-                            <label
-                              htmlFor="cvc"
-                              className="block text-sm font-medium text-gray-700 mb-1"
-                            >
-                              CVC / CVV
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                id="cvc"
-                                name="cvc"
-                                className={`w-full px-3 py-2 border rounded-md ${
-                                  cvcInlineError
-                                    ? "border-red-300 focus:ring-red-500 focus:border-red-500"
-                                    : "border-gray-300 focus:ring-indigo-500 focus:border-indigo-500"
-                                }`}
-                                placeholder="123"
-                                maxLength={4}
-                                defaultValue={
-                                  actionData?.values?.cvc
-                                    ? sanitizeDigits(actionData.values.cvc).slice(0, 4)
-                                    : ""
-                                }
-                                onChange={(event) => {
-                                  const digits = sanitizeDigits(
-                                    event.target.value
-                                  ).slice(0, 4);
-                                  if (digits !== event.target.value) {
-                                    event.target.value = digits;
-                                  }
-                                  if (cvcError) {
-                                    setCvcError(undefined);
-                                  }
-                                }}
-                                onBlur={(event) => {
-                                  const digits = sanitizeDigits(event.target.value);
-                                  if (!digits) {
-                                    setCvcError(undefined);
-                                    return;
-                                  }
-                                  if (!isValidCvc(digits)) {
-                                    setCvcError("CVC must be 3 or 4 digits");
-                                  } else {
-                                    setCvcError(undefined);
-                                  }
-                                }}
-                              />
-                              <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                                <Lock className="h-4 w-4 text-gray-400" />
-                              </div>
-                            </div>
-                            {cvcInlineError && (
-                              <p className="mt-1 text-sm text-red-600">
-                                {cvcInlineError}
-                              </p>
-                            )}
-                          </div>
                         </div>
                       </div>
 
@@ -959,12 +738,13 @@ export default function PaymentInformationPage() {
                       </button>
                       <button
                         type="submit"
-                        className="bg-indigo-500 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        disabled={isSubmitting || !stripe}
+                        className="bg-indigo-500 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Save Payment Method
+                        {isSubmitting ? "Saving..." : "Save Payment Method"}
                       </button>
                     </div>
-                  </Form>
+                  </form>
                 </div>
               </div>
             )}
@@ -1012,5 +792,19 @@ export default function PaymentInformationPage() {
         </main>
       </div>
     </SidebarProvider>
+  );
+}
+
+export default function PaymentInformationPage() {
+  const loaderData = useLoaderData<{ stripePublicKey?: string }>();
+  const stripePromise = useMemo(
+    () => loadStripe(loaderData.stripePublicKey || ""),
+    [loaderData.stripePublicKey]
+  );
+
+  return (
+    <Elements stripe={stripePromise}>
+      <PaymentInformationInner />
+    </Elements>
   );
 }
