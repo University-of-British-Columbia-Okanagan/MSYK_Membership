@@ -18,7 +18,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
 import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import {
   Collapsible,
@@ -91,7 +90,7 @@ export async function action({ request }: Route.ActionArgs) {
     return redirect(`/login?redirect=${encodeURIComponent(redirectParam)}`);
   }
 
-  return { success: true, user: result };
+  return redirect("/login?registered=true");
 }
 
 interface FormErrors {
@@ -122,7 +121,7 @@ const DigitalSignaturePad: React.FC<{
   onChange: (value: string | null) => void;
   error?: string;
   disabled?: boolean;
-}> = ({ value, onChange, error, disabled = false }) => {
+}> = ({ onChange, error, disabled = false }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
@@ -392,33 +391,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
 
         {/* Content area */}
         <div className="px-8 pb-8">
-          {actionData?.success && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-800 font-medium">
-                ✓ Registration successful!
-              </p>
-              <div className="mt-2">
-                <p className="text-sm text-gray-600">
-                  You can now{" "}
-                  <a
-                    href="/login"
-                    className="text-indigo-600
-                    hover:text-indigo-700 font-medium"
-                  >
-                    login here
-                  </a>{" "}
-                  or{" "}
-                  <a
-                    href="/dashboard"
-                    className="text-indigo-600
-                    hover:text-indigo-700 font-medium"
-                  >
-                    view the portal as guest
-                  </a>
-                </p>
-              </div>
-            </div>
-          )}
           {hasErrors && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-800 font-medium">
