@@ -42,6 +42,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Session validation on protected routes
 - Automatic session invalidation on password change or tampering
 - Secure cookie-based session management (3-hour expiry for security on shared/public computers)
+- Case-insensitive email lookups — login, password reset, and access card provisioning all match emails regardless of capitalisation; new registrations are stored lowercase
 
 **Key Files:**
 - `app/utils/session.server.ts` - Session creation, validation, logout
