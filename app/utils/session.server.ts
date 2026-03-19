@@ -216,7 +216,7 @@ export async function register(rawValues: Record<string, any>) {
       data: {
         firstName: data.firstName,
         lastName: data.lastName,
-        email: data.email,
+        email: data.email.toLowerCase(),
         password: hashedPassword,
         phone: data.phone || "",
         dateOfBirth: data.dateOfBirth,
@@ -290,8 +290,8 @@ export async function login(rawValues: Record<string, any>) {
 
   const data = parsed.data;
 
-  const user = await db.user.findUnique({
-    where: { email: data.email },
+  const user = await db.user.findFirst({
+    where: { email: { equals: data.email, mode: "insensitive" } },
     select: {
       id: true,
       email: true,
@@ -497,8 +497,8 @@ export async function getRoleUser(request: Request) {
 export async function findUserByEmail(email: string) {
   if (!email) return null;
 
-  const user = await db.user.findUnique({
-    where: { email },
+  const user = await db.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
     select: {
       id: true,
       email: true,
@@ -520,8 +520,15 @@ export async function updateUserPassword(email: string, password: string) {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  const existing = await db.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+    select: { id: true },
+  });
+
+  if (!existing) return null;
+
   const user = await db.user.update({
-    where: { email },
+    where: { id: existing.id },
     data: { password: hashedPassword },
     select: {
       id: true,

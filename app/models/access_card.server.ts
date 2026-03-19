@@ -95,8 +95,8 @@ export async function updateAccessCard(
 
   if (userEmail) {
     // Try to find user by email
-    const user = await db.user.findUnique({
-      where: { email: userEmail },
+    const user = await db.user.findFirst({
+      where: { email: { equals: userEmail, mode: "insensitive" } },
       select: { id: true },
     });
 
