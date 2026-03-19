@@ -337,10 +337,11 @@ The `syncUserDoorAccess()` function is automatically called when:
 5. Waiver PDF generated and encrypted (if signature provided)
 6. User record created in database
 7. Registration confirmation email sent
-8. User redirected to `/login`
-9. User enters email and password
-10. Session created with userId and password hash stored in cookie
-11. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
+8. User redirected to `/login?registered=true`
+9. Login page displays green "Registration successful!" confirmation banner
+10. User enters email and password
+11. Session created with userId and password hash stored in cookie
+12. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
 - Email uniqueness check
