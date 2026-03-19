@@ -264,7 +264,7 @@ const form = useForm<FormValues>({
 ### Required Environment Variables
 Required in `.env`:
 - `DATABASE_URL`: PostgreSQL connection string (format: `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA`)
-- `SESSION_SECRET`: Cookie encryption key (30-day session expiry)
+- `SESSION_SECRET`: Cookie encryption key (3-hour session expiry)
 - `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`: Stripe API keys
   - **Live**: `sk_live_...` and `pk_live_...` for production
   - **Test**: `sk_test_...` and `pk_test_...` for development

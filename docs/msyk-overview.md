@@ -41,7 +41,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Email/password login with session cookie storage
 - Session validation on protected routes
 - Automatic session invalidation on password change or tampering
-- Secure cookie-based session management (30-day expiry)
+- Secure cookie-based session management (3-hour expiry for security on shared/public computers)
 
 **Key Files:**
 - `app/utils/session.server.ts` - Session creation, validation, logout
@@ -340,7 +340,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 8. User redirected to `/login?registered=true`
 9. Login page displays green "Registration successful!" confirmation banner
 10. User enters email and password
-11. Session created with userId and password hash stored in cookie
+11. Session created with userId, password hash, and loginTime stored in cookie
 12. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
