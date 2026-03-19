@@ -45,7 +45,7 @@ export async function action({ request }: { request: Request }) {
       if (!email) throw new Response("Invalid Request", {status: 419,});
       const user = await findUserByEmail(email);
       if (!user) throw new Response("User with this email does not exists", {status: 404,});
-      await sendResetEmail(email);
+      await sendResetEmail(user.email);
       return new Response("Reset email sent", { status: 200 });
   }
 }

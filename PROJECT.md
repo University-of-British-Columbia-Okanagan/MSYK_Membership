@@ -223,6 +223,7 @@ const form = useForm<FormValues>({
 2. `requireAuth()` helper checks session and redirects if needed
 3. User data loaded in loaders, not stored in session (session contains only userId)
 4. Role checks happen at route level and in business logic
+5. All email lookups (login, password reset, access card provisioning) use case-insensitive matching (`mode: "insensitive"` in Prisma); new registrations store emails as lowercase
 
 ### Waiver Generation
 - Template PDF in `public/documents/msyk-waiver-template.pdf`
