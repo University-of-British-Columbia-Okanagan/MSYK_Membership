@@ -334,7 +334,7 @@ const storage = createCookieSessionStorage({
     secrets: [sessionSecret],
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: 60 * 60 * 3, // 3 hours
     httpOnly: true,
   },
 });
@@ -357,7 +357,14 @@ export async function getUserId(request: Request) {
   const session = await getUserSession(request);
   const userId = session.get("userId");
   const userPassword = session.get("userPassword");
+  const loginTime = session.get("loginTime");
   if (!userId || typeof userId !== "string" || !userPassword) {
+    await logout(request);
+    return null;
+  }
+
+  const SESSION_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours
+  if (!loginTime || Date.now() - Number(loginTime) > SESSION_DURATION_MS) {
     await logout(request);
     return null;
   }
@@ -441,6 +448,7 @@ export async function createUserSession(
   const session = await storage.getSession();
   session.set("userId", userId.toString());
   session.set("userPassword", password);
+  session.set("loginTime", Date.now().toString());
   return redirect(redirectTo, {
     headers: {
       "Set-Cookie": await storage.commitSession(session),
