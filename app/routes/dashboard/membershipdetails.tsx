@@ -447,11 +447,7 @@ export default function MembershipDetails() {
   };
 
   const downloadAgreement = () => {
-    // Create download link for the agreement PDF
-    const link = document.createElement("a");
-    link.href = `/documents/${agreementDocument}.pdf`;
-    link.download = `${agreementDocument}.pdf`;
-    link.click();
+    window.open(`/documents/${agreementDocument}.pdf`, "_blank");
     setAgreementDocumentViewed(true);
   };
 
