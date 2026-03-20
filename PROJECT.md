@@ -240,11 +240,11 @@ const form = useForm<FormValues>({
 - Workshop cancellation confirmation
 - Equipment booking confirmation
 - Equipment cancellation confirmation
-- Membership confirmation
+- Membership confirmation (includes auto-renew status)
 - Membership payment reminder (24 hours before charge, only for auto-renew enabled)
 - Membership downgrade notification
 - Membership cancellation notification
-- Membership resubscription confirmation
+- Membership resubscription confirmation (includes auto-renew status)
 - Membership ended (no payment method)
 - Membership revocation notification (admin action)
 - Password reset link (JWT token, 1-hour expiration)

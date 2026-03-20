@@ -617,6 +617,7 @@ export async function quickCheckout(
                 nextBillingDate:
                   billingCycle === "monthly" ? nextBillingDate : undefined,
                 needsPaymentMethod,
+                autoRenew,
               });
             }
           } catch (emailError) {

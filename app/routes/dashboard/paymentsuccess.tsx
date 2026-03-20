@@ -261,6 +261,7 @@ export async function loader({ request }: { request: Request }) {
                 : membershipPlan.price,
             nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
             needsPaymentMethod,
+            autoRenew,
           });
         }
       } catch (emailConfirmationFailedError) {

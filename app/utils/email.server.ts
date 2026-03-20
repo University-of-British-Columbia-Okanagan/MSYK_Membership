@@ -572,6 +572,7 @@ export async function sendMembershipConfirmationEmail(params: {
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
   needsPaymentMethod?: boolean;
+  autoRenew?: boolean;
 }): Promise<void> {
   const {
     userEmail,
@@ -585,6 +586,7 @@ export async function sendMembershipConfirmationEmail(params: {
     billingCycle,
     planPrice,
     needsPaymentMethod,
+    autoRenew,
   } = params;
 
   const gstLine =
@@ -617,6 +619,11 @@ export async function sendMembershipConfirmationEmail(params: {
   const accessHours = needAdminPermission ? "24/7" : "Open Hours";
   const accessInfo = `\nAccess Hours:\n${accessHours}`;
 
+  const autoRenewLine =
+    autoRenew === false
+      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+
   const parts = [
     `Welcome to your new membership: "${planTitle}"!`,
     `Your membership subscription has been confirmed.`,
@@ -626,6 +633,7 @@ export async function sendMembershipConfirmationEmail(params: {
     `Features included:`,
     featuresList,
     accessInfo,
+    autoRenewLine,
     `Thank you for joining Makerspace YK! We're excited to have you as a member.`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean);
@@ -806,6 +814,7 @@ export async function sendMembershipResubscribeEmail(params: {
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
   needsPaymentMethod?: boolean;
+  autoRenew?: boolean;
 }): Promise<void> {
   const {
     userEmail,
@@ -815,6 +824,7 @@ export async function sendMembershipResubscribeEmail(params: {
     billingCycle,
     planPrice,
     needsPaymentMethod,
+    autoRenew,
   } = params;
   const cycleLabel =
     billingCycle === "quarterly"
@@ -833,10 +843,16 @@ export async function sendMembershipResubscribeEmail(params: {
     billingCycle === "monthly" && nextBillingDate
       ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}`
       : undefined;
+  const autoRenewLine =
+    autoRenew === false
+      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+
   const parts = [
     `Your membership has been reactivated: "${planTitle}".`,
     priceLine,
     nextLine,
+    autoRenewLine,
     `Welcome back to Makerspace YK!`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean) as string[];
