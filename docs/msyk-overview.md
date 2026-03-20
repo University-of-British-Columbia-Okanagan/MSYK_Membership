@@ -224,11 +224,11 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Workshop cancellation confirmation
 - Equipment booking confirmation
 - Equipment cancellation confirmation
-- Membership confirmation
+- Membership confirmation (includes auto-renew status)
 - Membership payment reminder (24 hours before charge)
 - Membership downgrade notification
 - Membership cancellation notification
-- Membership resubscription confirmation
+- Membership resubscription confirmation (includes auto-renew status)
 - Membership ended (no payment method)
 - Password reset link
 
@@ -820,7 +820,7 @@ The acceptance criteria are organized into three categories:
 | AC37 | Payment Method Storage | Stripe customer created; payment method attached; payment method set as default; details stored in `UserPaymentInformation` | `tests/models/payment.server.test.ts` |
 | AC38 | Workshop Confirmation Email | Email sent with workshop name, date/time, location, pricing, ICS attachment, Google Calendar links | `tests/utils/email.server.test.ts` |
 | AC39 | Equipment Confirmation Email | Email sent with equipment name, time slot(s), price | `tests/utils/email.server.test.ts` |
-| AC40 | Membership Confirmation Email | Email sent with plan title, description, price, billing cycle, next billing date, features, access hours, payment method reminder | `tests/utils/email.server.test.ts` |
+| AC40 | Membership Confirmation Email | Email sent with plan title, description, price, billing cycle, next billing date, features, access hours, auto-renew status, payment method reminder | `tests/utils/email.server.test.ts` |
 | AC41 | Membership Payment Reminder Email | Email sent with plan title, next payment date, amount due, payment method reminder | `tests/utils/email.server.test.ts` |
 | AC42 | GST Percentage Setting | Setting stored in `AdminSettings`; GST applied to all future payments; GST metadata included in payment intents | `tests/models/admin.server.test.ts` |
 | AC43 | Workshop Visibility Days | Setting stored in `AdminSettings`; workshops only visible if within visibility window; past workshops hidden | `tests/models/admin.server.test.ts` |
