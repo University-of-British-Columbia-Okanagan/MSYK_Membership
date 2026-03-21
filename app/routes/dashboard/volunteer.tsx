@@ -1,4 +1,4 @@
-import { useLoaderData } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import AppSidebar from "~/components/ui/Dashboard/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
 import { getRoleUser } from "~/utils/session.server";
+import { checkActiveVolunteerStatus } from "~/models/profile.server";
 import {
   Mail,
   MapPin,
@@ -23,16 +24,19 @@ import {
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
-  return { roleUser };
+  const isActiveVolunteer =
+    roleUser?.userId ? await checkActiveVolunteerStatus(roleUser.userId) : false;
+  return { roleUser, isActiveVolunteer };
 }
 
 export default function VolunteerPage() {
-  const { roleUser } = useLoaderData<{
+  const { roleUser, isActiveVolunteer } = useLoaderData<{
     roleUser: {
       roleId: number;
       roleName: string;
       userId: number;
     } | null;
+    isActiveVolunteer: boolean;
   }>();
 
   const volunteerRoles = [
@@ -153,12 +157,27 @@ export default function VolunteerPage() {
                     Track Your Volunteer Hours
                   </h3>
                 </div>
-                <p className="text-blue-800 leading-relaxed">
-                  Once you become a volunteer, you'll be able to log and track
-                  your volunteer hours directly in your profile. This helps us
-                  recognize your contributions and provides you with a record of
-                  your community service for personal or professional use.
-                </p>
+                {isActiveVolunteer ? (
+                  <p className="text-blue-800 leading-relaxed">
+                    You are an active volunteer! Want to log your hours? Go to
+                    your{" "}
+                    <Link
+                      to="/dashboard/profile"
+                      className="font-semibold underline hover:text-blue-600"
+                    >
+                      Profile page
+                    </Link>{" "}
+                    and scroll down to the "Volunteer Hours" section. You can
+                    log your hours there and see your volunteer history!
+                  </p>
+                ) : (
+                  <p className="text-blue-800 leading-relaxed">
+                    Once you become a volunteer, you'll be able to log and track
+                    your volunteer hours directly in your profile. This helps us
+                    recognize your contributions and provides you with a record
+                    of your community service for personal or professional use.
+                  </p>
+                )}
               </div>
 
               {/* Contact Information Cards */}
