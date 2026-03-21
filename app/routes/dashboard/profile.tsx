@@ -846,6 +846,35 @@ export default function ProfilePage() {
                           {user.billingCycle ?? "N/A"}
                         </span>
                       </div>
+                      {user.cardLast4 === "N/A" &&
+                        user.membershipStatus &&
+                        user.membershipStatus !== "inactive" && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">
+                              Subscription Expires
+                            </span>
+                            <span className="font-medium text-gray-900">
+                              {user.nextBillingDate
+                                ? new Date(
+                                    user.nextBillingDate
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })
+                                : "N/A"}
+                            </span>
+                          </div>
+                        )}
+                      {user.membershipStatus &&
+                        user.membershipStatus !== "inactive" && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">Auto-Renewal</span>
+                            <span className="font-medium text-gray-900">
+                              {user.autoRenew ? "On" : "Off"}
+                            </span>
+                          </div>
+                        )}
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">
                           24/7 Vetting Completed
@@ -885,7 +914,11 @@ export default function ProfilePage() {
                             </div>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Billing Date</span>
+                            <span className="text-gray-600">
+                              {user.autoRenew
+                                ? "Membership Auto-Renewal Date"
+                                : "Subscription Expires"}
+                            </span>
                             <span className="font-medium text-gray-900">
                               {user.nextBillingDate
                                 ? new Date(
@@ -905,7 +938,7 @@ export default function ProfilePage() {
                             No payment method on file
                           </p>
                           <p className="text-gray-500 mb-6 text-sm text-center">
-                            Add a payment method to enable automatic billing
+                            Add a payment method to enable membership auto-renewal
                           </p>
                         </div>
                       )}
