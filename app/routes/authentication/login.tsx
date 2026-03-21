@@ -159,7 +159,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 </Button>
 
                 <div className="text-center mt-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[15px] text-gray-600">
                     Forgot your password?{" "}
                     <a
                       href="/passwordReset"
@@ -171,7 +171,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 </div>
 
                 <div className="text-center mt-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[15px] text-gray-600">
                     Don't have an account?{" "}
                     <a
                       href="/register"
@@ -183,7 +183,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 </div>
 
                 <div className="text-center mb-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[15px] text-gray-600">
                     View the portal as a guest?{" "}
                     <a
                       href="/dashboard"
