@@ -57,6 +57,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Emergency contact information collection
 - Digital waiver signature capture and encrypted PDF generation
 - Automated registration confirmation email
+- Mobile-friendly date of birth entry via three separate Month / Day / Year dropdowns (replaces `<input type="date">` which renders poorly on mobile)
 
 **Waiver Process:**
 - Signature captured as base64 image
