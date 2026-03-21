@@ -1195,6 +1195,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 - ~~Volunteer hours tracking:~~
   - ~~Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?~~
+    - The "End Date" date picker has been removed from the volunteer hours log form. Users now enter: Start Date, Start Time, End Time. The end date is automatically derived from the start date. Server-side same-day validation remains in place.
   - ~~If hours are denied, a permanent "denied hours" notice remains with no clear way to resolve or clear it.~~
 
 - ~~Grammar/UI~~

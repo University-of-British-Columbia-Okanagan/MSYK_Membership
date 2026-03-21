@@ -1598,7 +1598,15 @@ export default function ProfilePage() {
                           name="startTime"
                           value={startTime}
                         />
-                        <input type="hidden" name="endTime" value={endTime} />
+                        <input
+                          type="hidden"
+                          name="endTime"
+                          value={
+                            startTime && endTime
+                              ? `${startTime.split("T")[0]}T${endTime}`
+                              : ""
+                          }
+                        />
                         <input
                           type="hidden"
                           name="isResubmission"
@@ -1606,159 +1614,139 @@ export default function ProfilePage() {
                         />
 
                         <div className="space-y-4">
-                          {/* Start Time and End Time Row */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Date · Start Time · End Time — 3-column row */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Date */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Date <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                value={
+                                  startTime ? startTime.split("T")[0] : ""
+                                }
+                                onChange={(e) => {
+                                  const currentTime = startTime
+                                    ? startTime.split("T")[1]
+                                    : "09:00";
+                                  setStartTime(
+                                    `${e.target.value}T${currentTime}`
+                                  );
+                                  // clear end time when date changes
+                                  setEndTime("");
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+
                             {/* Start Time */}
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Start Time{" "}
                                 <span className="text-red-500">*</span>
                               </label>
-                              <div className="space-y-2">
-                                <input
-                                  type="date"
-                                  value={
-                                    startTime ? startTime.split("T")[0] : ""
+                              <Select
+                                value={
+                                  startTime
+                                    ? startTime.split("T")[1]?.substring(0, 5)
+                                    : ""
+                                }
+                                onValueChange={(newTime) => {
+                                  const date = startTime
+                                    ? startTime.split("T")[0]
+                                    : "";
+                                  if (date) {
+                                    setStartTime(`${date}T${newTime}`);
                                   }
-                                  onChange={(e) => {
-                                    const currentTime = startTime
-                                      ? startTime.split("T")[1]
-                                      : "09:00";
-                                    setStartTime(
-                                      `${e.target.value}T${currentTime}`
-                                    );
-                                  }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <Select
-                                  value={
-                                    startTime
-                                      ? startTime.split("T")[1]?.substring(0, 5)
-                                      : ""
-                                  }
-                                  onValueChange={(newTime) => {
-                                    const date = startTime
-                                      ? startTime.split("T")[0]
-                                      : "";
-                                    if (date) {
-                                      setStartTime(`${date}T${newTime}`);
+                                }}
+                                disabled={
+                                  !startTime || !startTime.includes("T")
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue
+                                    placeholder={
+                                      !startTime || !startTime.includes("T")
+                                        ? "Select date first"
+                                        : "Select time"
                                     }
-                                  }}
-                                  disabled={
-                                    !startTime || !startTime.includes("T")
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue
-                                      placeholder={
-                                        !startTime || !startTime.includes("T")
-                                          ? "Select date first"
-                                          : "Select time"
-                                      }
-                                    >
-                                      {startTime && startTime.includes("T")
-                                        ? startTime
-                                            .split("T")[1]
-                                            ?.substring(0, 5)
-                                        : ""}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-64 overflow-y-auto">
-                                    {Array.from({ length: 60 }, (_, i) => {
-                                      const totalMinutes = 9 * 60 + i * 15;
-                                      if (totalMinutes > 23 * 60 + 45)
-                                        return null;
-                                      const hour = Math.floor(
-                                        totalMinutes / 60
-                                      );
-                                      const minute = totalMinutes % 60;
-                                      const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-                                      return (
-                                        <SelectItem
-                                          key={timeString}
-                                          value={timeString}
-                                          className="data-[state=checked]:bg-white"
-                                        >
-                                          {timeString}
-                                        </SelectItem>
-                                      );
-                                    }).filter(Boolean)}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                                  >
+                                    {startTime && startTime.includes("T")
+                                      ? startTime
+                                          .split("T")[1]
+                                          ?.substring(0, 5)
+                                      : ""}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64 overflow-y-auto">
+                                  {Array.from({ length: 60 }, (_, i) => {
+                                    const totalMinutes = 9 * 60 + i * 15;
+                                    if (totalMinutes > 23 * 60 + 45)
+                                      return null;
+                                    const hour = Math.floor(totalMinutes / 60);
+                                    const minute = totalMinutes % 60;
+                                    const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+                                    return (
+                                      <SelectItem
+                                        key={timeString}
+                                        value={timeString}
+                                        className="data-[state=checked]:bg-white"
+                                      >
+                                        {timeString}
+                                      </SelectItem>
+                                    );
+                                  }).filter(Boolean)}
+                                </SelectContent>
+                              </Select>
                             </div>
 
                             {/* End Time */}
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
-                                End Time <span className="text-red-500">*</span>
+                                End Time{" "}
+                                <span className="text-red-500">*</span>
                               </label>
-                              <div className="space-y-2">
-                                <input
-                                  type="date"
-                                  value={endTime ? endTime.split("T")[0] : ""}
-                                  onChange={(e) => {
-                                    const currentTime = endTime
-                                      ? endTime.split("T")[1]
-                                      : "09:00";
-                                    setEndTime(
-                                      `${e.target.value}T${currentTime}`
-                                    );
-                                  }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <Select
-                                  value={
-                                    endTime
-                                      ? endTime.split("T")[1]?.substring(0, 5)
-                                      : ""
-                                  }
-                                  onValueChange={(newTime) => {
-                                    const date = endTime
-                                      ? endTime.split("T")[0]
-                                      : "";
-                                    if (date) {
-                                      setEndTime(`${date}T${newTime}`);
+                              <Select
+                                value={endTime}
+                                onValueChange={(newTime) =>
+                                  setEndTime(newTime)
+                                }
+                                disabled={
+                                  !startTime || !startTime.includes("T")
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue
+                                    placeholder={
+                                      !startTime || !startTime.includes("T")
+                                        ? "Select date first"
+                                        : "Select time"
                                     }
-                                  }}
-                                  disabled={!endTime || !endTime.includes("T")}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue
-                                      placeholder={
-                                        !endTime || !endTime.includes("T")
-                                          ? "Select date first"
-                                          : "Select time"
-                                      }
-                                    >
-                                      {endTime && endTime.includes("T")
-                                        ? endTime.split("T")[1]?.substring(0, 5)
-                                        : ""}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-64 overflow-y-auto">
-                                    {Array.from({ length: 60 }, (_, i) => {
-                                      const totalMinutes = 9 * 60 + i * 15;
-                                      if (totalMinutes > 23 * 60 + 45)
-                                        return null;
-                                      const hour = Math.floor(
-                                        totalMinutes / 60
-                                      );
-                                      const minute = totalMinutes % 60;
-                                      const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-                                      return (
-                                        <SelectItem
-                                          key={timeString}
-                                          value={timeString}
-                                          className="data-[state=checked]:bg-white"
-                                        >
-                                          {timeString}
-                                        </SelectItem>
-                                      );
-                                    }).filter(Boolean)}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                                  >
+                                    {endTime}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64 overflow-y-auto">
+                                  {Array.from({ length: 60 }, (_, i) => {
+                                    const totalMinutes = 9 * 60 + i * 15;
+                                    if (totalMinutes > 23 * 60 + 45)
+                                      return null;
+                                    const hour = Math.floor(totalMinutes / 60);
+                                    const minute = totalMinutes % 60;
+                                    const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+                                    return (
+                                      <SelectItem
+                                        key={timeString}
+                                        value={timeString}
+                                        className="data-[state=checked]:bg-white"
+                                      >
+                                        {timeString}
+                                      </SelectItem>
+                                    );
+                                  }).filter(Boolean)}
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
 
