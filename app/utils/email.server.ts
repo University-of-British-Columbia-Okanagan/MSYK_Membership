@@ -589,10 +589,6 @@ export async function sendMembershipConfirmationEmail(params: {
     autoRenew,
   } = params;
 
-  const gstLine =
-    typeof gstPercentage === "number"
-      ? ` (includes ${gstPercentage}% GST)`
-      : "";
   const showNextLine = billingCycle === "monthly" && nextBillingDate;
   const nextLine = showNextLine
     ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}`
@@ -609,6 +605,14 @@ export async function sendMembershipConfirmationEmail(params: {
   const cycleLine = billingCycle ? `\nBilling cycle: ${cycleLabel}` : "";
   const selectedPrice =
     typeof planPrice === "number" ? planPrice : monthlyPrice;
+
+  const gstRate = typeof gstPercentage === "number" ? gstPercentage / 100 : 0;
+  const priceWithGST = selectedPrice * (1 + gstRate);
+  const gstAmount = priceWithGST - selectedPrice;
+  const gstLine =
+    typeof gstPercentage === "number"
+      ? ` (Includes $${gstAmount.toFixed(2)} GST)`
+      : "";
 
   // Format features list
   const featuresList = Object.values(features)
@@ -629,7 +633,7 @@ export async function sendMembershipConfirmationEmail(params: {
     `Your membership subscription has been confirmed.`,
     `Plan Details:`,
     `Description: ${planDescription}`,
-    `Price: $${selectedPrice.toFixed(2)}${gstLine}${cycleLine}${nextLine}`,
+    `Price: $${priceWithGST.toFixed(2)}${gstLine}${cycleLine}${nextLine}`,
     `Features included:`,
     featuresList,
     accessInfo,

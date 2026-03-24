@@ -169,7 +169,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 
 ### Payment Integration
 - **Stripe:** Primary payment processor with two checkout methods:
-  - **Stripe Checkout Session**: Full payment flow with card input (for new customers)
+  - **Stripe Checkout Session**: Full payment flow with card input (for new customers); billing cycle price (monthly/quarterly/semiannual/yearly) is applied server-side in `createCheckoutSession`
   - **Quick Checkout**: One-click purchases using saved payment method
 - **Payment Methods:** Stored via Stripe customer IDs, retrieved with `getSavedPaymentMethod()`
 - **Security:** Card details stored encrypted in `UserPaymentInformation`
@@ -183,6 +183,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
   - GST calculated and included in all payment amounts
   - GST metadata stored in Stripe payment intents
   - Receipt includes GST breakdown
+  - Membership confirmation emails show GST-inclusive price with breakdown (e.g. `$136.50 (Includes $6.50 GST)`)
 - **Webhooks:** Handle subscription lifecycle events
 - **Refunds:** Automated refund processing for workshop/equipment cancellations within policy window
 
