@@ -25,6 +25,7 @@ import {
 } from "~/utils/email.server";
 import { getUserById } from "~/models/user.server";
 import { getEquipmentById } from "~/models/equipment.server";
+import { getAdminSetting } from "~/models/admin.server";
 import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
@@ -243,6 +244,7 @@ export async function loader({ request }: { request: Request }) {
           }
 
           const needsPaymentMethod = await checkPaymentMethodStatus(parseInt(userId));
+          const gstSetting = await getAdminSetting("gst_percentage", "5");
           await sendMembershipConfirmationEmail({
             userEmail: user.email,
             planTitle: membershipPlan.title,
@@ -262,6 +264,7 @@ export async function loader({ request }: { request: Request }) {
             nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
             needsPaymentMethod,
             autoRenew,
+            gstPercentage: parseFloat(gstSetting),
           });
         }
       } catch (emailConfirmationFailedError) {
