@@ -196,7 +196,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 ### 7. Payment Processing
 
 **Payment Methods:**
-- **Stripe Checkout Session**: Full payment flow with card input
+- **Stripe Checkout Session**: Full payment flow with card input; billing cycle price (monthly/quarterly/semiannual/yearly) applied server-side
 - **Quick Checkout**: Saved payment method for one-click purchases
 - Payment method storage (Stripe Customer + Payment Method)
 
@@ -205,6 +205,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - GST calculated and included in all payment amounts
 - GST metadata stored in Stripe payment intents
 - Receipt includes GST breakdown
+- Membership confirmation emails show GST-inclusive price with breakdown (e.g. `$136.50 (Includes $6.50 GST)`)
 
 **Payment Types:**
 - Workshop registration (single or multi-day)
