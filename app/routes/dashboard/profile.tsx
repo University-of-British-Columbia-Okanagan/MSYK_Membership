@@ -1,5 +1,5 @@
 import React from "react";
-import { useLoaderData, Form, useActionData } from "react-router-dom";
+import { useLoaderData, Form, useActionData, useFetcher } from "react-router-dom";
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   getProfileDetails,
@@ -11,6 +11,7 @@ import {
   updateUserPhone,
   updateEmergencyContact,
 } from "../../models/profile.server";
+import { updateMembershipAutoRenew } from "~/models/membership.server";
 import type { LoaderFunction } from "react-router-dom";
 import fs from "fs";
 import path from "path";
@@ -197,6 +198,17 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (action === "updateAutoRenew") {
+    const autoRenew = formData.get("autoRenew") === "true";
+    try {
+      await updateMembershipAutoRenew(roleUser.userId, autoRenew);
+      return { success: autoRenew ? "Auto-renewal enabled." : "Auto-renewal disabled." };
+    } catch (error) {
+      console.error("Error updating auto-renew:", error);
+      return { error: "Failed to update auto-renewal setting. Please try again." };
+    }
+  }
+
   // Check if user is still an active volunteer
   const isActiveVolunteer = await checkActiveVolunteerStatus(roleUser.userId);
   if (!isActiveVolunteer) {
@@ -323,6 +335,17 @@ export default function ProfilePage() {
     error?: string;
     avatarUrl?: string;
   }>();
+
+  const autoRenewFetcher = useFetcher<{ success?: string; error?: string }>();
+  // Derive optimistic value from in-flight form data (React Router recommended pattern)
+  const hasPaymentMethod = Boolean(user?.cardLast4 && user.cardLast4 !== "N/A");
+  const pendingAutoRenew = autoRenewFetcher.formData
+    ? autoRenewFetcher.formData.get("autoRenew") === "true"
+    : null;
+  // Without a payment method, auto-renewal can't actually work — treat as off
+  const effectiveAutoRenew = hasPaymentMethod
+    ? (pendingAutoRenew !== null ? pendingAutoRenew : (user?.autoRenew ?? false))
+    : false;
 
   const [isEditingPhone, setIsEditingPhone] = useState(false);
   const [isEditingEmergencyContact, setIsEditingEmergencyContact] =
@@ -868,11 +891,45 @@ export default function ProfilePage() {
                         )}
                       {user.membershipStatus &&
                         user.membershipStatus !== "inactive" && (
-                          <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Auto-Renewal</span>
-                            <span className="font-medium text-gray-900">
-                              {user.autoRenew ? "On" : "Off"}
-                            </span>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600">Auto-Renewal</span>
+                              {hasPaymentMethod ? (
+                                <autoRenewFetcher.Form method="post">
+                                  <input type="hidden" name="_action" value="updateAutoRenew" />
+                                  <input type="hidden" name="autoRenew" value={effectiveAutoRenew ? "false" : "true"} />
+                                  <button
+                                    type="submit"
+                                    disabled={autoRenewFetcher.state !== "idle"}
+
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                                      effectiveAutoRenew ? "bg-indigo-500" : "bg-gray-300"
+                                    } disabled:opacity-60`}
+                                    aria-label={effectiveAutoRenew ? "Disable auto-renewal" : "Enable auto-renewal"}
+                                  >
+                                    <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                        effectiveAutoRenew ? "translate-x-6" : "translate-x-1"
+                                      }`}
+                                    />
+                                  </button>
+                                </autoRenewFetcher.Form>
+                              ) : (
+                                <span className="font-medium text-gray-900">
+                                  {effectiveAutoRenew ? "On" : "Off"}
+                                </span>
+                              )}
+                            </div>
+                            {!effectiveAutoRenew && user.membershipStatus === "active" && hasPaymentMethod && (
+                              <p className="text-xs text-amber-600 bg-amber-50 rounded p-2">
+                                Auto-renewal is off. Your membership will expire at the end of the current billing period. To enable, toggle the switch above.
+                              </p>
+                            )}
+                            {!hasPaymentMethod ? (
+                              <p className="text-xs text-gray-500">
+                                Add a payment method above to enable auto-renewal.
+                              </p>
+                            ) : null}
                           </div>
                         )}
                       <div className="flex justify-between items-center">
@@ -915,7 +972,7 @@ export default function ProfilePage() {
                           </div>
                           <div className="flex justify-between items-center">
                             <span className="text-gray-600">
-                              {user.autoRenew
+                              {effectiveAutoRenew
                                 ? "Membership Auto-Renewal Date"
                                 : "Subscription Expires"}
                             </span>
@@ -931,6 +988,11 @@ export default function ProfilePage() {
                                 : "N/A"}
                             </span>
                           </div>
+                          {effectiveAutoRenew && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              To stop auto-renewal, toggle it off in the Membership Details section, or remove your payment method below.
+                            </p>
+                          )}
                         </>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-4">
