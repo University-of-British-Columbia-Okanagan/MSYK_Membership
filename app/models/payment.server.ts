@@ -690,6 +690,12 @@ export async function deletePaymentMethod(userId: number) {
       where: { userId },
     });
 
+    // Disable auto-renew on any active membership since there's no payment method
+    await db.userMembership.updateMany({
+      where: { userId, status: { in: ["active", "ending", "cancelled"] } },
+      data: { autoRenew: false },
+    });
+
     return { success: true, deleted: true };
   } catch (error: any) {
     console.error("Failed to delete payment method:", error);
