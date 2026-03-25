@@ -107,7 +107,9 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - When `autoRenew=false`: Membership expires at term end without charging, status set to "inactive"
 - Payment reminders sent 24 hours before charge (only for `autoRenew=true` memberships)
 - Missing payment method sets membership to "inactive" and sends notification
-- Auto-renew toggle disabled in UI when user has no saved payment method
+- Auto-renew can be toggled on/off from the Profile page while a membership is active (requires saved payment method)
+- Removing a payment method automatically sets `autoRenew=false` on all active memberships
+- UI always treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
 
 **Role Level Impact:**
 - Level 3: Active membership (standard plan)
@@ -856,7 +858,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC10 | **Password Reset** Token Validation | Click reset link from email; enter new password; submit form | Password reset form displayed; password updated; redirect to login page | `N/A` | `N/A`
 | AC11 | **Password Reset** Expired Token | Request password reset; wait more than 1 hour; click reset link from email | Error message displayed; redirect to password reset request page | `N/A` | `N/A`
 | AC12 | **Password Reset** Invalid Token | Modify reset token in URL; attempt to access password reset page | Error message displayed; redirect to password reset request page | `N/A` | `N/A`
-| ---- | Showcase Membership Details in **Profile** | Subscribe/Cancel/End Membership | Shows details of membership if subscribed with status active, shows details of membership if cancelled with status cancelled, shows no details of membership with status inactive. Membership Details box shows: Status, Plan, Billing Cycle, Auto-Renewal (On/Off), 24/7 Vetting Completed, Volunteer Status. When no payment method on file, also shows Subscription Expires date in the Membership Details box. Payment Information box shows: Membership Auto-Renewal Date (when auto-renew on + has payment method) or Subscription Expires (when auto-renew off + has payment method) | `N/A` | `11/09/2025`
+| ---- | Showcase Membership Details in **Profile** | Subscribe/Cancel/End Membership | Shows details of membership if subscribed with status active, shows details of membership if cancelled with status cancelled, shows no details of membership with status inactive. Membership Details box shows: Status, Plan, Billing Cycle, Auto-Renewal (interactive toggle when payment method on file, read-only "Off" when no payment method), 24/7 Vetting Completed, Volunteer Status. Toggling auto-renew off shows amber warning that membership will expire at end of billing period. When auto-renew is off with payment method, shows amber notice with option to re-enable via toggle. When no payment method, shows grey note to add one. Payment Information box shows: Membership Auto-Renewal Date (when auto-renew on + has payment method) or Subscription Expires (when auto-renew off or no payment method) | `N/A` | `11/09/2025`
 | ---- | Add Payment Information in **Profile** | Add payment method | Shows payment information of card if added. When no payment method on file, prompt reads "Add a payment method to enable membership auto-renewal" | `N/A` | `11/09/2025`
 | ---- | Payment Method Validation in **Profile** | Validate all fields when inputting the payment method | If all fields validated, add the payment method | `N/A` | `11/09/2025`
 | ---- | Update Payment Method in **Profile** | Update payment method by pressing update payment button and by removing the current one and adding one | Able to remove current payment method and add a new one if you want | `N/A` | `11/09/2025`

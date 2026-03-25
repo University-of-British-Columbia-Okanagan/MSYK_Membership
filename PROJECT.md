@@ -149,7 +149,9 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 - **Auto-Renew:** Configurable per subscription (defaults to `true` for backward compatibility)
   - When `autoRenew=true`: Membership auto-renews with saved payment method at term end
   - When `autoRenew=false`: Membership expires at term end without charging
-  - Auto-renew toggle disabled in UI when user has no saved payment method
+  - Toggle on Profile page allows members to enable/disable auto-renew on an active membership (requires payment method)
+  - Removing a payment method automatically sets `autoRenew=false` on all active memberships
+  - UI treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
 - **Automated Processing:** Daily cron job at midnight (`0 0 * * *`) processes due memberships
   - Payment reminders sent 24 hours before charge (only for auto-renew enabled)
   - Missing payment method sets membership to "inactive" and sends notification
