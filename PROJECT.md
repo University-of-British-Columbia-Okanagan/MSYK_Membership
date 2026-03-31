@@ -149,7 +149,9 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 - **Auto-Renew:** Configurable per subscription (defaults to `true` for backward compatibility)
   - When `autoRenew=true`: Membership auto-renews with saved payment method at term end
   - When `autoRenew=false`: Membership expires at term end without charging
-  - Auto-renew toggle disabled in UI when user has no saved payment method
+  - Toggle on Profile page allows members to enable/disable auto-renew on an active membership (requires payment method)
+  - Removing a payment method automatically sets `autoRenew=false` on all active memberships
+  - UI treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
 - **Automated Processing:** Daily cron job at midnight (`0 0 * * *`) processes due memberships
   - Payment reminders sent 24 hours before charge (only for auto-renew enabled)
   - Missing payment method sets membership to "inactive" and sends notification
@@ -169,7 +171,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 
 ### Payment Integration
 - **Stripe:** Primary payment processor with two checkout methods:
-  - **Stripe Checkout Session**: Full payment flow with card input (for new customers)
+  - **Stripe Checkout Session**: Full payment flow with card input (for new customers); billing cycle price (monthly/quarterly/semiannual/yearly) is applied server-side in `createCheckoutSession`
   - **Quick Checkout**: One-click purchases using saved payment method
 - **Payment Methods:** Stored via Stripe customer IDs, retrieved with `getSavedPaymentMethod()`
 - **Security:** Card details stored encrypted in `UserPaymentInformation`
@@ -183,6 +185,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
   - GST calculated and included in all payment amounts
   - GST metadata stored in Stripe payment intents
   - Receipt includes GST breakdown
+  - Membership confirmation emails show GST-inclusive price with breakdown (e.g. `$136.50 (Includes $6.50 GST)`)
 - **Webhooks:** Handle subscription lifecycle events
 - **Refunds:** Automated refund processing for workshop/equipment cancellations within policy window
 
@@ -223,6 +226,7 @@ const form = useForm<FormValues>({
 2. `requireAuth()` helper checks session and redirects if needed
 3. User data loaded in loaders, not stored in session (session contains only userId)
 4. Role checks happen at route level and in business logic
+5. All email lookups (login, password reset, access card provisioning) use case-insensitive matching (`mode: "insensitive"` in Prisma); new registrations store emails as lowercase
 
 ### Waiver Generation
 - Template PDF in `public/documents/msyk-waiver-template.pdf`
@@ -239,11 +243,11 @@ const form = useForm<FormValues>({
 - Workshop cancellation confirmation
 - Equipment booking confirmation
 - Equipment cancellation confirmation
-- Membership confirmation
+- Membership confirmation (includes auto-renew status)
 - Membership payment reminder (24 hours before charge, only for auto-renew enabled)
 - Membership downgrade notification
 - Membership cancellation notification
-- Membership resubscription confirmation
+- Membership resubscription confirmation (includes auto-renew status)
 - Membership ended (no payment method)
 - Membership revocation notification (admin action)
 - Password reset link (JWT token, 1-hour expiration)
@@ -264,7 +268,7 @@ const form = useForm<FormValues>({
 ### Required Environment Variables
 Required in `.env`:
 - `DATABASE_URL`: PostgreSQL connection string (format: `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA`)
-- `SESSION_SECRET`: Cookie encryption key (30-day session expiry)
+- `SESSION_SECRET`: Cookie encryption key (3-hour session expiry)
 - `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`: Stripe API keys
   - **Live**: `sk_live_...` and `pk_live_...` for production
   - **Test**: `sk_test_...` and `pk_test_...` for development

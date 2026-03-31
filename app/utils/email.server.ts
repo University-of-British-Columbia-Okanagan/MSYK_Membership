@@ -572,6 +572,7 @@ export async function sendMembershipConfirmationEmail(params: {
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
   needsPaymentMethod?: boolean;
+  autoRenew?: boolean;
 }): Promise<void> {
   const {
     userEmail,
@@ -585,12 +586,9 @@ export async function sendMembershipConfirmationEmail(params: {
     billingCycle,
     planPrice,
     needsPaymentMethod,
+    autoRenew,
   } = params;
 
-  const gstLine =
-    typeof gstPercentage === "number"
-      ? ` (includes ${gstPercentage}% GST)`
-      : "";
   const showNextLine = billingCycle === "monthly" && nextBillingDate;
   const nextLine = showNextLine
     ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}`
@@ -608,6 +606,14 @@ export async function sendMembershipConfirmationEmail(params: {
   const selectedPrice =
     typeof planPrice === "number" ? planPrice : monthlyPrice;
 
+  const gstRate = typeof gstPercentage === "number" ? gstPercentage / 100 : 0;
+  const priceWithGST = selectedPrice * (1 + gstRate);
+  const gstAmount = priceWithGST - selectedPrice;
+  const gstLine =
+    typeof gstPercentage === "number"
+      ? ` (Includes $${gstAmount.toFixed(2)} GST)`
+      : "";
+
   // Format features list
   const featuresList = Object.values(features)
     .filter((feature) => feature && feature.trim() !== "")
@@ -617,15 +623,21 @@ export async function sendMembershipConfirmationEmail(params: {
   const accessHours = needAdminPermission ? "24/7" : "Open Hours";
   const accessInfo = `\nAccess Hours:\n${accessHours}`;
 
+  const autoRenewLine =
+    autoRenew === false
+      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+
   const parts = [
     `Welcome to your new membership: "${planTitle}"!`,
     `Your membership subscription has been confirmed.`,
     `Plan Details:`,
     `Description: ${planDescription}`,
-    `Price: $${selectedPrice.toFixed(2)}${gstLine}${cycleLine}${nextLine}`,
+    `Price: $${priceWithGST.toFixed(2)}${gstLine}${cycleLine}${nextLine}`,
     `Features included:`,
     featuresList,
     accessInfo,
+    autoRenewLine,
     `Thank you for joining Makerspace YK! We're excited to have you as a member.`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean);
@@ -806,6 +818,7 @@ export async function sendMembershipResubscribeEmail(params: {
   billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
   planPrice?: number;
   needsPaymentMethod?: boolean;
+  autoRenew?: boolean;
 }): Promise<void> {
   const {
     userEmail,
@@ -815,6 +828,7 @@ export async function sendMembershipResubscribeEmail(params: {
     billingCycle,
     planPrice,
     needsPaymentMethod,
+    autoRenew,
   } = params;
   const cycleLabel =
     billingCycle === "quarterly"
@@ -833,10 +847,16 @@ export async function sendMembershipResubscribeEmail(params: {
     billingCycle === "monthly" && nextBillingDate
       ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}`
       : undefined;
+  const autoRenewLine =
+    autoRenew === false
+      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+
   const parts = [
     `Your membership has been reactivated: "${planTitle}".`,
     priceLine,
     nextLine,
+    autoRenewLine,
     `Welcome back to Makerspace YK!`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean) as string[];

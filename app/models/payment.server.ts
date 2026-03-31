@@ -598,6 +598,7 @@ export async function quickCheckout(
               }
 
               const needsPaymentMethod = await checkPaymentMethodStatus(userId);
+              const gstSetting = await getAdminSetting("gst_percentage", "5");
               await sendMembershipConfirmationEmail({
                 userEmail: user.email,
                 planTitle: membershipPlan.title,
@@ -617,6 +618,8 @@ export async function quickCheckout(
                 nextBillingDate:
                   billingCycle === "monthly" ? nextBillingDate : undefined,
                 needsPaymentMethod,
+                autoRenew,
+                gstPercentage: parseFloat(gstSetting),
               });
             }
           } catch (emailError) {
@@ -685,6 +688,12 @@ export async function deletePaymentMethod(userId: number) {
     // Remove from database
     await db.userPaymentInformation.deleteMany({
       where: { userId },
+    });
+
+    // Disable auto-renew on any active membership since there's no payment method
+    await db.userMembership.updateMany({
+      where: { userId, status: { in: ["active", "ending", "cancelled"] } },
+      data: { autoRenew: false },
     });
 
     return { success: true, deleted: true };
@@ -917,7 +926,17 @@ export async function createCheckoutSession(request: Request) {
     }
 
     // Compute server-side proration when upgrading from an existing monthly plan
-    let chargeAmount = Number(membershipPlan.price);
+    let chargeAmount: number;
+    if (billingCycle === "quarterly" && membershipPlan.price3Months) {
+      chargeAmount = Number(membershipPlan.price3Months);
+    } else if (billingCycle === "semiannually" && membershipPlan.price6Months) {
+      chargeAmount = Number(membershipPlan.price6Months);
+    } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
+      chargeAmount = Number(membershipPlan.priceYearly);
+    } else {
+      chargeAmount = Number(membershipPlan.price);
+    }
+
     if (currentMembershipId) {
       const current = await db.userMembership.findUnique({
         where: { id: Number(currentMembershipId) },

@@ -1,5 +1,5 @@
 import React from "react";
-import { useLoaderData, Form, useActionData } from "react-router-dom";
+import { useLoaderData, Form, useActionData, useFetcher } from "react-router-dom";
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   getProfileDetails,
@@ -11,6 +11,7 @@ import {
   updateUserPhone,
   updateEmergencyContact,
 } from "../../models/profile.server";
+import { updateMembershipAutoRenew } from "~/models/membership.server";
 import type { LoaderFunction } from "react-router-dom";
 import fs from "fs";
 import path from "path";
@@ -197,6 +198,17 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
+  if (action === "updateAutoRenew") {
+    const autoRenew = formData.get("autoRenew") === "true";
+    try {
+      await updateMembershipAutoRenew(roleUser.userId, autoRenew);
+      return { success: autoRenew ? "Auto-renewal enabled." : "Auto-renewal disabled." };
+    } catch (error) {
+      console.error("Error updating auto-renew:", error);
+      return { error: "Failed to update auto-renewal setting. Please try again." };
+    }
+  }
+
   // Check if user is still an active volunteer
   const isActiveVolunteer = await checkActiveVolunteerStatus(roleUser.userId);
   if (!isActiveVolunteer) {
@@ -323,6 +335,17 @@ export default function ProfilePage() {
     error?: string;
     avatarUrl?: string;
   }>();
+
+  const autoRenewFetcher = useFetcher<{ success?: string; error?: string }>();
+  // Derive optimistic value from in-flight form data (React Router recommended pattern)
+  const hasPaymentMethod = Boolean(user?.cardLast4 && user.cardLast4 !== "N/A");
+  const pendingAutoRenew = autoRenewFetcher.formData
+    ? autoRenewFetcher.formData.get("autoRenew") === "true"
+    : null;
+  // Without a payment method, auto-renewal can't actually work — treat as off
+  const effectiveAutoRenew = hasPaymentMethod
+    ? (pendingAutoRenew !== null ? pendingAutoRenew : (user?.autoRenew ?? false))
+    : false;
 
   const [isEditingPhone, setIsEditingPhone] = useState(false);
   const [isEditingEmergencyContact, setIsEditingEmergencyContact] =
@@ -846,6 +869,69 @@ export default function ProfilePage() {
                           {user.billingCycle ?? "N/A"}
                         </span>
                       </div>
+                      {user.cardLast4 === "N/A" &&
+                        user.membershipStatus &&
+                        user.membershipStatus !== "inactive" && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">
+                              Subscription Expires
+                            </span>
+                            <span className="font-medium text-gray-900">
+                              {user.nextBillingDate
+                                ? new Date(
+                                    user.nextBillingDate
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })
+                                : "N/A"}
+                            </span>
+                          </div>
+                        )}
+                      {user.membershipStatus &&
+                        user.membershipStatus !== "inactive" && (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600">Auto-Renewal</span>
+                              {hasPaymentMethod ? (
+                                <autoRenewFetcher.Form method="post">
+                                  <input type="hidden" name="_action" value="updateAutoRenew" />
+                                  <input type="hidden" name="autoRenew" value={effectiveAutoRenew ? "false" : "true"} />
+                                  <button
+                                    type="submit"
+                                    disabled={autoRenewFetcher.state !== "idle"}
+
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                                      effectiveAutoRenew ? "bg-indigo-500" : "bg-gray-300"
+                                    } disabled:opacity-60`}
+                                    aria-label={effectiveAutoRenew ? "Disable auto-renewal" : "Enable auto-renewal"}
+                                  >
+                                    <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                                        effectiveAutoRenew ? "translate-x-6" : "translate-x-1"
+                                      }`}
+                                    />
+                                  </button>
+                                </autoRenewFetcher.Form>
+                              ) : (
+                                <span className="font-medium text-gray-900">
+                                  {effectiveAutoRenew ? "On" : "Off"}
+                                </span>
+                              )}
+                            </div>
+                            {!effectiveAutoRenew && user.membershipStatus === "active" && hasPaymentMethod && (
+                              <p className="text-xs text-amber-600 bg-amber-50 rounded p-2">
+                                Auto-renewal is off. Your membership will expire at the end of the current billing period. To enable, toggle the switch above.
+                              </p>
+                            )}
+                            {!hasPaymentMethod ? (
+                              <p className="text-xs text-gray-500">
+                                Add a payment method above to enable auto-renewal.
+                              </p>
+                            ) : null}
+                          </div>
+                        )}
                       <div className="flex justify-between items-center">
                         <span className="text-gray-600">
                           24/7 Vetting Completed
@@ -885,7 +971,11 @@ export default function ProfilePage() {
                             </div>
                           </div>
                           <div className="flex justify-between items-center">
-                            <span className="text-gray-600">Billing Date</span>
+                            <span className="text-gray-600">
+                              {effectiveAutoRenew
+                                ? "Membership Auto-Renewal Date"
+                                : "Subscription Expires"}
+                            </span>
                             <span className="font-medium text-gray-900">
                               {user.nextBillingDate
                                 ? new Date(
@@ -898,6 +988,11 @@ export default function ProfilePage() {
                                 : "N/A"}
                             </span>
                           </div>
+                          {effectiveAutoRenew && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              To stop auto-renewal, toggle it off in the Membership Details section, or remove your payment method below.
+                            </p>
+                          )}
                         </>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-4">
@@ -905,7 +1000,7 @@ export default function ProfilePage() {
                             No payment method on file
                           </p>
                           <p className="text-gray-500 mb-6 text-sm text-center">
-                            Add a payment method to enable automatic billing
+                            Add a payment method to enable membership auto-renewal
                           </p>
                         </div>
                       )}
@@ -1565,7 +1660,15 @@ export default function ProfilePage() {
                           name="startTime"
                           value={startTime}
                         />
-                        <input type="hidden" name="endTime" value={endTime} />
+                        <input
+                          type="hidden"
+                          name="endTime"
+                          value={
+                            startTime && endTime
+                              ? `${startTime.split("T")[0]}T${endTime}`
+                              : ""
+                          }
+                        />
                         <input
                           type="hidden"
                           name="isResubmission"
@@ -1573,159 +1676,139 @@ export default function ProfilePage() {
                         />
 
                         <div className="space-y-4">
-                          {/* Start Time and End Time Row */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Date · Start Time · End Time — 3-column row */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Date */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Date <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="date"
+                                value={
+                                  startTime ? startTime.split("T")[0] : ""
+                                }
+                                onChange={(e) => {
+                                  const currentTime = startTime
+                                    ? startTime.split("T")[1]
+                                    : "09:00";
+                                  setStartTime(
+                                    `${e.target.value}T${currentTime}`
+                                  );
+                                  // clear end time when date changes
+                                  setEndTime("");
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+
                             {/* Start Time */}
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
                                 Start Time{" "}
                                 <span className="text-red-500">*</span>
                               </label>
-                              <div className="space-y-2">
-                                <input
-                                  type="date"
-                                  value={
-                                    startTime ? startTime.split("T")[0] : ""
+                              <Select
+                                value={
+                                  startTime
+                                    ? startTime.split("T")[1]?.substring(0, 5)
+                                    : ""
+                                }
+                                onValueChange={(newTime) => {
+                                  const date = startTime
+                                    ? startTime.split("T")[0]
+                                    : "";
+                                  if (date) {
+                                    setStartTime(`${date}T${newTime}`);
                                   }
-                                  onChange={(e) => {
-                                    const currentTime = startTime
-                                      ? startTime.split("T")[1]
-                                      : "09:00";
-                                    setStartTime(
-                                      `${e.target.value}T${currentTime}`
-                                    );
-                                  }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <Select
-                                  value={
-                                    startTime
-                                      ? startTime.split("T")[1]?.substring(0, 5)
-                                      : ""
-                                  }
-                                  onValueChange={(newTime) => {
-                                    const date = startTime
-                                      ? startTime.split("T")[0]
-                                      : "";
-                                    if (date) {
-                                      setStartTime(`${date}T${newTime}`);
+                                }}
+                                disabled={
+                                  !startTime || !startTime.includes("T")
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue
+                                    placeholder={
+                                      !startTime || !startTime.includes("T")
+                                        ? "Select date first"
+                                        : "Select time"
                                     }
-                                  }}
-                                  disabled={
-                                    !startTime || !startTime.includes("T")
-                                  }
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue
-                                      placeholder={
-                                        !startTime || !startTime.includes("T")
-                                          ? "Select date first"
-                                          : "Select time"
-                                      }
-                                    >
-                                      {startTime && startTime.includes("T")
-                                        ? startTime
-                                            .split("T")[1]
-                                            ?.substring(0, 5)
-                                        : ""}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-64 overflow-y-auto">
-                                    {Array.from({ length: 60 }, (_, i) => {
-                                      const totalMinutes = 9 * 60 + i * 15;
-                                      if (totalMinutes > 23 * 60 + 45)
-                                        return null;
-                                      const hour = Math.floor(
-                                        totalMinutes / 60
-                                      );
-                                      const minute = totalMinutes % 60;
-                                      const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-                                      return (
-                                        <SelectItem
-                                          key={timeString}
-                                          value={timeString}
-                                          className="data-[state=checked]:bg-white"
-                                        >
-                                          {timeString}
-                                        </SelectItem>
-                                      );
-                                    }).filter(Boolean)}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                                  >
+                                    {startTime && startTime.includes("T")
+                                      ? startTime
+                                          .split("T")[1]
+                                          ?.substring(0, 5)
+                                      : ""}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64 overflow-y-auto">
+                                  {Array.from({ length: 60 }, (_, i) => {
+                                    const totalMinutes = 9 * 60 + i * 15;
+                                    if (totalMinutes > 23 * 60 + 45)
+                                      return null;
+                                    const hour = Math.floor(totalMinutes / 60);
+                                    const minute = totalMinutes % 60;
+                                    const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+                                    return (
+                                      <SelectItem
+                                        key={timeString}
+                                        value={timeString}
+                                        className="data-[state=checked]:bg-white"
+                                      >
+                                        {timeString}
+                                      </SelectItem>
+                                    );
+                                  }).filter(Boolean)}
+                                </SelectContent>
+                              </Select>
                             </div>
 
                             {/* End Time */}
                             <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">
-                                End Time <span className="text-red-500">*</span>
+                                End Time{" "}
+                                <span className="text-red-500">*</span>
                               </label>
-                              <div className="space-y-2">
-                                <input
-                                  type="date"
-                                  value={endTime ? endTime.split("T")[0] : ""}
-                                  onChange={(e) => {
-                                    const currentTime = endTime
-                                      ? endTime.split("T")[1]
-                                      : "09:00";
-                                    setEndTime(
-                                      `${e.target.value}T${currentTime}`
-                                    );
-                                  }}
-                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                                />
-                                <Select
-                                  value={
-                                    endTime
-                                      ? endTime.split("T")[1]?.substring(0, 5)
-                                      : ""
-                                  }
-                                  onValueChange={(newTime) => {
-                                    const date = endTime
-                                      ? endTime.split("T")[0]
-                                      : "";
-                                    if (date) {
-                                      setEndTime(`${date}T${newTime}`);
+                              <Select
+                                value={endTime}
+                                onValueChange={(newTime) =>
+                                  setEndTime(newTime)
+                                }
+                                disabled={
+                                  !startTime || !startTime.includes("T")
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue
+                                    placeholder={
+                                      !startTime || !startTime.includes("T")
+                                        ? "Select date first"
+                                        : "Select time"
                                     }
-                                  }}
-                                  disabled={!endTime || !endTime.includes("T")}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue
-                                      placeholder={
-                                        !endTime || !endTime.includes("T")
-                                          ? "Select date first"
-                                          : "Select time"
-                                      }
-                                    >
-                                      {endTime && endTime.includes("T")
-                                        ? endTime.split("T")[1]?.substring(0, 5)
-                                        : ""}
-                                    </SelectValue>
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-64 overflow-y-auto">
-                                    {Array.from({ length: 60 }, (_, i) => {
-                                      const totalMinutes = 9 * 60 + i * 15;
-                                      if (totalMinutes > 23 * 60 + 45)
-                                        return null;
-                                      const hour = Math.floor(
-                                        totalMinutes / 60
-                                      );
-                                      const minute = totalMinutes % 60;
-                                      const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-                                      return (
-                                        <SelectItem
-                                          key={timeString}
-                                          value={timeString}
-                                          className="data-[state=checked]:bg-white"
-                                        >
-                                          {timeString}
-                                        </SelectItem>
-                                      );
-                                    }).filter(Boolean)}
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                                  >
+                                    {endTime}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-64 overflow-y-auto">
+                                  {Array.from({ length: 60 }, (_, i) => {
+                                    const totalMinutes = 9 * 60 + i * 15;
+                                    if (totalMinutes > 23 * 60 + 45)
+                                      return null;
+                                    const hour = Math.floor(totalMinutes / 60);
+                                    const minute = totalMinutes % 60;
+                                    const timeString = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+                                    return (
+                                      <SelectItem
+                                        key={timeString}
+                                        value={timeString}
+                                        className="data-[state=checked]:bg-white"
+                                      >
+                                        {timeString}
+                                      </SelectItem>
+                                    );
+                                  }).filter(Boolean)}
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
 

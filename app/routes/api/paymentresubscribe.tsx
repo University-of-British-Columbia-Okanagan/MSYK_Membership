@@ -98,6 +98,7 @@ export async function action({ request }: { request: Request }) {
               : plan?.price,
           nextBillingDate: billingCycle === "monthly" ? nextBillingDate : undefined,
           needsPaymentMethod,
+          autoRenew: shouldAutoRenew,
         });
       } catch {
         // non-blocking

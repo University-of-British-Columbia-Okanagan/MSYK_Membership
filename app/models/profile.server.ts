@@ -13,6 +13,7 @@ export type UserProfileData = {
   billingCycle: string | null;
   membershipStatus: string | null;
   nextBillingDate: string | null;
+  autoRenew: boolean | null;
   cardLast4: string;
   waiverSignature: string | null;
   has247Vetting: boolean;
@@ -140,6 +141,7 @@ export async function getProfileDetails(request: Request) {
   const displayTitle = showPlanDetails ? (membership?.membershipPlan.title ?? "None") : "None";
   const displayBillingCycle = showPlanDetails ? billingCycleLabel : null;
   const displayNextBillingDate = showPlanDetails ? (membership?.nextPaymentDate ?? null) : null;
+  const displayAutoRenew = showPlanDetails ? (membership?.autoRenew ?? null) : null;
 
   return {
     name: `${user.firstName} ${user.lastName}`,
@@ -153,6 +155,7 @@ export async function getProfileDetails(request: Request) {
     billingCycle: displayBillingCycle,
     membershipStatus: finalStatus,
     nextBillingDate: displayNextBillingDate,
+    autoRenew: displayAutoRenew,
     cardLast4: payment?.cardLast4 ?? "N/A",
     waiverSignature: user.waiverSignature,
     userMembershipForms: user.userMembershipForms,

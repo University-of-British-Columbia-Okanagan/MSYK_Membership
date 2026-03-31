@@ -216,7 +216,7 @@ export async function register(rawValues: Record<string, any>) {
       data: {
         firstName: data.firstName,
         lastName: data.lastName,
-        email: data.email,
+        email: data.email.toLowerCase(),
         password: hashedPassword,
         phone: data.phone || "",
         dateOfBirth: data.dateOfBirth,
@@ -290,8 +290,8 @@ export async function login(rawValues: Record<string, any>) {
 
   const data = parsed.data;
 
-  const user = await db.user.findUnique({
-    where: { email: data.email },
+  const user = await db.user.findFirst({
+    where: { email: { equals: data.email, mode: "insensitive" } },
     select: {
       id: true,
       email: true,
@@ -334,7 +334,7 @@ const storage = createCookieSessionStorage({
     secrets: [sessionSecret],
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: 60 * 60 * 3, // 3 hours
     httpOnly: true,
   },
 });
@@ -357,7 +357,14 @@ export async function getUserId(request: Request) {
   const session = await getUserSession(request);
   const userId = session.get("userId");
   const userPassword = session.get("userPassword");
+  const loginTime = session.get("loginTime");
   if (!userId || typeof userId !== "string" || !userPassword) {
+    await logout(request);
+    return null;
+  }
+
+  const SESSION_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours
+  if (!loginTime || Date.now() - Number(loginTime) > SESSION_DURATION_MS) {
     await logout(request);
     return null;
   }
@@ -441,6 +448,7 @@ export async function createUserSession(
   const session = await storage.getSession();
   session.set("userId", userId.toString());
   session.set("userPassword", password);
+  session.set("loginTime", Date.now().toString());
   return redirect(redirectTo, {
     headers: {
       "Set-Cookie": await storage.commitSession(session),
@@ -489,8 +497,8 @@ export async function getRoleUser(request: Request) {
 export async function findUserByEmail(email: string) {
   if (!email) return null;
 
-  const user = await db.user.findUnique({
-    where: { email },
+  const user = await db.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
     select: {
       id: true,
       email: true,
@@ -512,8 +520,15 @@ export async function updateUserPassword(email: string, password: string) {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  const existing = await db.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+    select: { id: true },
+  });
+
+  if (!existing) return null;
+
   const user = await db.user.update({
-    where: { email },
+    where: { id: existing.id },
     data: { password: hashedPassword },
     select: {
       id: true,
