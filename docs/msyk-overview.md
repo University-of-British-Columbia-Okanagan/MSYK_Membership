@@ -1208,6 +1208,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.~~
     - ~~NOTE: Track volunter hours thing, add in profile~~
     - When the user's volunteer status is "active", the "Track Your Volunteer Hours" box on the Volunteer page now shows: "You are an active volunteer! Want to log your hours? Go to your Profile page and scroll down to the 'Volunteer Hours' section." with a direct link to the Profile page. Non-volunteers continue to see the original sign-up prompt.
+    - The "You are an active volunteer!" line is styled with large bold text (`text-2xl font-extrabold`) to stand out visually; the supporting instructions below it are bumped to `text-lg` for improved readability.
 
 ##### 6. Profile & User Account Management
 
