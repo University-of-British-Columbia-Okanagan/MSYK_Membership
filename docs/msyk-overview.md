@@ -279,8 +279,15 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Access log tracking (equipment/door entries and exits)
 - Permission-based access control
 
+**Admin — Access Provisioning search:**
+- Admins can search for an access card by **Card UUID** or by **User Email**
+- Email search uses `getAccessCardByEmail()` (case-insensitive) and returns all cards linked to that user
+- If a user has **one card**, it loads directly into the card details view
+- If a user has **multiple cards**, a picker list is shown (card UUID + last-updated timestamp); selecting one loads its full details
+- Single-card path and UUID path share the same card details/edit UI
+
 **Key Files:**
-- `app/models/access_card.server.ts` - Card management
+- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `updateAccessCard`)
 - `app/models/accessLog.server.ts` - Log tracking
 - `app/routes/brivo.callback.tsx` - Access system webhook
 
