@@ -1,5 +1,6 @@
 import { db } from "../utils/db.server";
 import Stripe from "stripe";
+import cron from "node-cron";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -636,5 +637,82 @@ export async function removeUserAdmin(targetUserId: number, actingUserId: number
   return db.user.update({
     where: { id: targetUserId },
     data: { roleUserId: userRoleId },
+  });
+}
+
+/**
+ * Start the role level correction cron job
+ * Runs every 15 seconds to ensure all users have the correct role level based on:
+ * - Level 1: Registered user only
+ * - Level 2: Registered + completed orientation
+ * - Level 3: Registered + completed orientation + active membership
+ * - Level 4: Registered + completed orientation + active membership with needAdminPermission + allowLevel4 flag
+ */
+export function startRoleLevelSyncCron() {
+  cron.schedule("*/15 * * * * *", async () => {
+    try {
+      const users = await db.user.findMany({
+        select: {
+          id: true,
+          roleLevel: true,
+          allowLevel4: true,
+          userWorkshops: {
+            where: {
+              result: { equals: "passed", mode: "insensitive" },
+              workshop: { type: { equals: "orientation", mode: "insensitive" } },
+            },
+            select: { id: true },
+          },
+          userMemberships: {
+            where: {
+              status: { in: ["active", "ending", "cancelled"] },
+            },
+            select: {
+              membershipPlan: {
+                select: { needAdminPermission: true },
+              },
+            },
+          },
+        },
+      });
+
+      for (const user of users) {
+        const hasCompletedOrientation = user.userWorkshops.length > 0;
+        const activeMemberships = user.userMemberships;
+        const hasActiveMembership = activeMemberships.length > 0;
+        const hasAdminPermissionPlan = activeMemberships.some(
+          (m) => m.membershipPlan.needAdminPermission,
+        );
+
+        let correctLevel: number;
+        if (
+          hasCompletedOrientation &&
+          hasActiveMembership &&
+          hasAdminPermissionPlan &&
+          user.allowLevel4
+        ) {
+          correctLevel = 4;
+        } else if (hasCompletedOrientation && hasActiveMembership) {
+          correctLevel = 3;
+        } else if (hasCompletedOrientation) {
+          correctLevel = 2;
+        } else {
+          correctLevel = 1;
+        }
+
+        if (correctLevel !== user.roleLevel) {
+          await db.user.update({
+            where: { id: user.id },
+            data: { roleLevel: correctLevel },
+          });
+          await syncUserDoorAccess(user.id);
+          console.log(
+            `[RoleLevelSync] User ${user.id}: corrected ${user.roleLevel} → ${correctLevel}`,
+          );
+        }
+      }
+    } catch (error) {
+      console.error("[RoleLevelSync] Error during role level sync:", error);
+    }
   });
 }

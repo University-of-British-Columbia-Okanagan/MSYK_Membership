@@ -544,7 +544,8 @@ Most backend models are located in the `~/models/` directory and follow the nami
 - `getMembershipPlans()`: Available subscription options
 - `addMembershipPlan()`: Admin plan creation and configuration
 - `updateMembershipPlan()`: Plan modification and feature updates
-- `startMonthlyMembershipCheck()`: Automated subscription processing
+- `startMonthlyMembershipCheck()`: Automated subscription processing (daily at midnight)
+- `startRoleLevelSyncCron()`: Role level correction cron, runs every 15 seconds (`app/models/user.server.ts`)
 
 #### Administrative Controls (`admin.server.ts`)
 **Responsibilities:**

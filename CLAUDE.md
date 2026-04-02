@@ -52,7 +52,7 @@ prisma/
 - **Alias**: `~` points to `app/` directory
 - **Database**: PostgreSQL with Prisma ORM
 - **Stripe**: Live keys start with `sk_live_`/`pk_live_`, test with `sk_test_`/`pk_test_`
-- **Role Levels**: Dynamically calculated (1=basic, 2=orientation, 3=membership, 4=advanced+flag)
+- **Role Levels**: Strict AND chain (1=registered only, 2=+orientation, 3=+active membership, 4=+needAdminPermission plan+allowLevel4); corrected every 15s by `startRoleLevelSyncCron()` in `app/models/user.server.ts`
 
 ---
 
