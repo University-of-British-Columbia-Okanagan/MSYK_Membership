@@ -11,10 +11,11 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - **Admin**: Administrative privileges with full system access
 
 **Access Levels (Role Levels 1-4):**
-- **Level 1**: Basic user (registered, no orientation)
-- **Level 2**: Completed orientation(s)
-- **Level 3**: Active membership (standard)
-- **Level 4**: Advanced membership with special permissions (`allowLevel4` flag required)
+- **Level 1**: Registered user only (no orientation completed)
+- **Level 2**: Registered + completed orientation (no active membership)
+- **Level 3**: Registered + completed orientation + active membership
+- **Level 4**: Registered + completed orientation + active membership with `needAdminPermission` plan + `allowLevel4` flag
+- All conditions are strict AND chains — e.g. active membership without orientation = Level 1, not Level 3
 
 **Special Permissions:**
 - `allowLevel4`: Boolean flag enabling Level 4 access for advanced equipment (requires membership plan with `needAdminPermission`)
@@ -101,7 +102,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - **Resubscription**: Reactivates cancelled membership without payment
 
 **Automated Billing:**
-- Daily cron job (`0 0 * * *`) processes due memberships
+- Daily cron job (`0 0 * * *`) via `startMonthlyMembershipCheck()` processes due memberships
 - Auto-renew controlled by `autoRenew` flag (defaults to `true` for backward compatibility)
 - When `autoRenew=true`: Membership auto-renews with saved payment method at term end
 - When `autoRenew=false`: Membership expires at term end without charging, status set to "inactive"
@@ -279,8 +280,15 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Access log tracking (equipment/door entries and exits)
 - Permission-based access control
 
+**Admin — Access Provisioning search:**
+- Admins can search for an access card by **Card UUID** or by **User Email**
+- Email search uses `getAccessCardByEmail()` (case-insensitive) and returns all cards linked to that user
+- If a user has **one card**, it loads directly into the card details view
+- If a user has **multiple cards**, a picker list is shown (card UUID + last-updated timestamp); selecting one loads its full details
+- Single-card path and UUID path share the same card details/edit UI
+
 **Key Files:**
-- `app/models/access_card.server.ts` - Card management
+- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `updateAccessCard`)
 - `app/models/accessLog.server.ts` - Log tracking
 - `app/routes/brivo.callback.tsx` - Access system webhook
 
@@ -310,6 +318,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 - Admin revokes membership (`revokeUserMembershipByAdmin()`)
 - Admin unrevokes membership (`unrevokeUserMembershipByAdmin()`)
 - Automated billing cron updates role levels (`startMonthlyMembershipCheck()`)
+- Role level sync cron corrects any incorrect levels every 15 seconds (`startRoleLevelSyncCron()`)
 - Membership refund is processed (`refundMembershipSubscription()`)
 
 **Error Handling:**
@@ -627,8 +636,11 @@ The `syncUserDoorAccess()` function is automatically called when:
 4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`)
 
 **Role Level Updates:**
-- If active membership exists: Level 3 or Level 4 (based on plan and `allowLevel4`)
-- If no active membership: Level 2 (if orientation completed) or Level 1
+- If active membership exists and plan has `needAdminPermission` and user has `allowLevel4`: Level 4
+- If active membership exists (standard plan): Level 3
+- If no active membership but orientation completed: Level 2
+- If no orientation completed: Level 1
+- A separate role level sync cron (`startRoleLevelSyncCron()`) runs every 15 seconds to catch and correct any drift
 
 ### Workflow 15: Google Calendar Integration (Optional)
 
@@ -1208,6 +1220,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.~~
     - ~~NOTE: Track volunter hours thing, add in profile~~
     - When the user's volunteer status is "active", the "Track Your Volunteer Hours" box on the Volunteer page now shows: "You are an active volunteer! Want to log your hours? Go to your Profile page and scroll down to the 'Volunteer Hours' section." with a direct link to the Profile page. Non-volunteers continue to see the original sign-up prompt.
+    - The "You are an active volunteer!" line is styled with large bold text (`text-2xl font-extrabold`) to stand out visually; the supporting instructions below it are bumped to `text-lg` for improved readability.
 
 ##### 6. Profile & User Account Management
 

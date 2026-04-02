@@ -158,18 +158,22 @@ export default function VolunteerPage() {
                   </h3>
                 </div>
                 {isActiveVolunteer ? (
-                  <p className="text-blue-800 leading-relaxed">
-                    You are an active volunteer! Want to log your hours? Go to
-                    your{" "}
-                    <Link
-                      to="/dashboard/profile"
-                      className="font-semibold underline hover:text-blue-600"
-                    >
-                      Profile page
-                    </Link>{" "}
-                    and scroll down to the "Volunteer Hours" section. You can
-                    log your hours there and see your volunteer history!
-                  </p>
+                  <div className="text-center">
+                    <p className="text-2xl font-extrabold text-blue-900 mb-3 tracking-tight">
+                      You are an active volunteer!
+                    </p>
+                    <p className="text-lg text-blue-800 leading-relaxed">
+                      Want to log your hours? Go to your{" "}
+                      <Link
+                        to="/dashboard/profile"
+                        className="font-semibold underline hover:text-blue-600"
+                      >
+                        Profile page
+                      </Link>{" "}
+                      and scroll down to the "Volunteer Hours" section. You can
+                      log your hours there and see your volunteer history!
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-blue-800 leading-relaxed">
                     Once you become a volunteer, you'll be able to log and track

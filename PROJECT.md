@@ -94,14 +94,16 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 ### Role-Based Access Control (RBAC)
 - **Roles:** User (roleUserId: 1) and Admin (roleUserId: 2)
 - **Role Levels:** Dynamically calculated based on user's membership and workshop completion status:
-  - **Level 1**: Basic user (registered, no orientation completed)
-  - **Level 2**: Completed orientation(s) but no active membership
-  - **Level 3**: Active membership (standard plans)
-  - **Level 4**: Active membership with `needAdminPermission` plan + admin-granted `allowLevel4` flag
+  - **Level 1**: Registered user only (no orientation completed)
+  - **Level 2**: Registered + completed orientation (no active membership)
+  - **Level 3**: Registered + completed orientation + active membership
+  - **Level 4**: Registered + completed orientation + active membership with `needAdminPermission` plan + admin-granted `allowLevel4` flag
+  - All conditions are strict AND chains — e.g. active membership without orientation = Level 1, not Level 3
 - **Special Flag:** `allowLevel4` - Boolean flag that must be explicitly granted by admin for Level 4 access
 - **Access Requirements:** Most equipment requires Level 3+, some require Level 4 with the flag
 - Role checks are enforced in loaders/actions and at the model layer
 - Role levels are automatically recalculated on membership changes, workshop completion, or admin actions
+- **Role Level Sync Cron:** Runs every 15 seconds (`*/15 * * * * *`) via `startRoleLevelSyncCron()` in `app/models/user.server.ts` — corrects any incorrect role levels across all users in a single batched DB query
 
 ### Workshop System Architecture
 **Workshop Offer Pattern:** Workshops use an `offerId` to group occurrences:
@@ -152,7 +154,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
   - Toggle on Profile page allows members to enable/disable auto-renew on an active membership (requires payment method)
   - Removing a payment method automatically sets `autoRenew=false` on all active memberships
   - UI treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
-- **Automated Processing:** Daily cron job at midnight (`0 0 * * *`) processes due memberships
+- **Automated Processing:** Daily cron job at midnight (`0 0 * * *`) via `startMonthlyMembershipCheck()` processes due memberships
   - Payment reminders sent 24 hours before charge (only for auto-renew enabled)
   - Missing payment method sets membership to "inactive" and sends notification
 - **Changes:** Support upgrade/downgrade with prorated billing (monthly→monthly only)
