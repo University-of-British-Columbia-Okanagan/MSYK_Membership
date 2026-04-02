@@ -11,7 +11,14 @@ import('./app/models/workshop.server.ts').then(module => {
   module.startWorkshopOccurrenceStatusUpdate();
   console.log('🚀 Started workshop status update');
 }).catch(err => console.error('Error loading workshop cron:', err));
+
+import('./app/models/user.server.ts').then(module => {
+  module.startRoleLevelSyncCron();
+  console.log('🚀 Started role level sync');
+}).catch(err => console.error('Error loading role level sync cron:', err));
+
 " &
 
 # Start the main application
 exec npm run start
+
