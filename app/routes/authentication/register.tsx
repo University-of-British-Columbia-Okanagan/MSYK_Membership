@@ -18,7 +18,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import type { Route } from "./+types/register";
 import { register, getUser } from "~/utils/session.server";
 import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info, ChevronDown, ChevronUp } from "lucide-react";
 import {
   Collapsible,
@@ -91,7 +90,7 @@ export async function action({ request }: Route.ActionArgs) {
     return redirect(`/login?redirect=${encodeURIComponent(redirectParam)}`);
   }
 
-  return { success: true, user: result };
+  return redirect("/login?registered=true");
 }
 
 interface FormErrors {
@@ -122,7 +121,7 @@ const DigitalSignaturePad: React.FC<{
   onChange: (value: string | null) => void;
   error?: string;
   disabled?: boolean;
-}> = ({ value, onChange, error, disabled = false }) => {
+}> = ({ onChange, error, disabled = false }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
@@ -304,6 +303,10 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
   const [showOperationsNotice, setShowOperationsNotice] = useState(false);
   const [showWaiverNotice, setShowWaiverNotice] = useState(false);
 
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobDay, setDobDay] = useState("");
+  const [dobYear, setDobYear] = useState("");
+
   const handleSubmission = () => {
     setLoading(true);
   };
@@ -392,33 +395,6 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
 
         {/* Content area */}
         <div className="px-8 pb-8">
-          {actionData?.success && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-sm text-green-800 font-medium">
-                ✓ Registration successful!
-              </p>
-              <div className="mt-2">
-                <p className="text-sm text-gray-600">
-                  You can now{" "}
-                  <a
-                    href="/login"
-                    className="text-indigo-600
-                    hover:text-indigo-700 font-medium"
-                  >
-                    login here
-                  </a>{" "}
-                  or{" "}
-                  <a
-                    href="/dashboard"
-                    className="text-indigo-600
-                    hover:text-indigo-700 font-medium"
-                  >
-                    view the portal as guest
-                  </a>
-                </p>
-              </div>
-            </div>
-          )}
           {hasErrors && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-800 font-medium">
@@ -559,11 +535,84 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                           Date of Birth <span className="text-red-500">*</span>
                         </FormLabel>
                         <FormControl>
-                          <input
-                            type="date"
-                            {...field}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          />
+                          <div className="grid grid-cols-3 gap-2">
+                            {/* Hidden input carries the value for form submission and react-hook-form tracking */}
+                            <input
+                              type="hidden"
+                              name={field.name}
+                              value={field.value || ""}
+                              ref={field.ref}
+                            />
+                            {/* Month */}
+                            <select
+                              value={dobMonth}
+                              onChange={(e) => {
+                                const m = e.target.value;
+                                setDobMonth(m);
+                                if (m && dobDay && dobYear) {
+                                  field.onChange(`${dobYear}-${m}-${dobDay}`);
+                                } else {
+                                  field.onChange("");
+                                }
+                              }}
+                              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            >
+                              <option value="">Month</option>
+                              {[
+                                "January","February","March","April","May","June",
+                                "July","August","September","October","November","December",
+                              ].map((name, i) => (
+                                <option key={name} value={String(i + 1).padStart(2, "0")}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                            {/* Day */}
+                            <select
+                              value={dobDay}
+                              onChange={(e) => {
+                                const d = e.target.value;
+                                setDobDay(d);
+                                if (dobMonth && d && dobYear) {
+                                  field.onChange(`${dobYear}-${dobMonth}-${d}`);
+                                } else {
+                                  field.onChange("");
+                                }
+                              }}
+                              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            >
+                              <option value="">Day</option>
+                              {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                                <option key={d} value={String(d).padStart(2, "0")}>
+                                  {d}
+                                </option>
+                              ))}
+                            </select>
+                            {/* Year */}
+                            <select
+                              value={dobYear}
+                              onChange={(e) => {
+                                const y = e.target.value;
+                                setDobYear(y);
+                                if (dobMonth && dobDay && y) {
+                                  field.onChange(`${y}-${dobMonth}-${dobDay}`);
+                                } else {
+                                  field.onChange("");
+                                }
+                              }}
+                              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            >
+                              <option value="">Year</option>
+                              {Array.from(
+                                { length: new Date().getFullYear() - 1900 + 1 },
+                                (_, i) => new Date().getFullYear() - i
+                              ).map((y) => (
+                                <option key={y} value={String(y)}>
+                                  {y}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </FormControl>
                         <FormMessage />
                         {showMinorError && (

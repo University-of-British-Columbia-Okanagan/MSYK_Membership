@@ -94,14 +94,16 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 ### Role-Based Access Control (RBAC)
 - **Roles:** User (roleUserId: 1) and Admin (roleUserId: 2)
 - **Role Levels:** Dynamically calculated based on user's membership and workshop completion status:
-  - **Level 1**: Basic user (registered, no orientation completed)
-  - **Level 2**: Completed orientation(s) but no active membership
-  - **Level 3**: Active membership (standard plans)
-  - **Level 4**: Active membership with `needAdminPermission` plan + admin-granted `allowLevel4` flag
+  - **Level 1**: Registered user only (no orientation completed)
+  - **Level 2**: Registered + completed orientation (no active membership)
+  - **Level 3**: Registered + completed orientation + active membership
+  - **Level 4**: Registered + completed orientation + active membership with `needAdminPermission` plan + admin-granted `allowLevel4` flag
+  - All conditions are strict AND chains — e.g. active membership without orientation = Level 1, not Level 3
 - **Special Flag:** `allowLevel4` - Boolean flag that must be explicitly granted by admin for Level 4 access
 - **Access Requirements:** Most equipment requires Level 3+, some require Level 4 with the flag
 - Role checks are enforced in loaders/actions and at the model layer
 - Role levels are automatically recalculated on membership changes, workshop completion, or admin actions
+- **Role Level Sync Cron:** Runs every 15 seconds (`*/15 * * * * *`) via `startRoleLevelSyncCron()` in `app/models/user.server.ts` — corrects any incorrect role levels across all users in a single batched DB query
 
 ### Workshop System Architecture
 **Workshop Offer Pattern:** Workshops use an `offerId` to group occurrences:
@@ -149,8 +151,10 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 - **Auto-Renew:** Configurable per subscription (defaults to `true` for backward compatibility)
   - When `autoRenew=true`: Membership auto-renews with saved payment method at term end
   - When `autoRenew=false`: Membership expires at term end without charging
-  - Auto-renew toggle disabled in UI when user has no saved payment method
-- **Automated Processing:** Daily cron job at midnight (`0 0 * * *`) processes due memberships
+  - Toggle on Profile page allows members to enable/disable auto-renew on an active membership (requires payment method)
+  - Removing a payment method automatically sets `autoRenew=false` on all active memberships
+  - UI treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
+- **Automated Processing:** Daily cron job at midnight (`0 0 * * *`) via `startMonthlyMembershipCheck()` processes due memberships
   - Payment reminders sent 24 hours before charge (only for auto-renew enabled)
   - Missing payment method sets membership to "inactive" and sends notification
 - **Changes:** Support upgrade/downgrade with prorated billing (monthly→monthly only)
@@ -169,7 +173,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 
 ### Payment Integration
 - **Stripe:** Primary payment processor with two checkout methods:
-  - **Stripe Checkout Session**: Full payment flow with card input (for new customers)
+  - **Stripe Checkout Session**: Full payment flow with card input (for new customers); billing cycle price (monthly/quarterly/semiannual/yearly) is applied server-side in `createCheckoutSession`
   - **Quick Checkout**: One-click purchases using saved payment method
 - **Payment Methods:** Stored via Stripe customer IDs, retrieved with `getSavedPaymentMethod()`
 - **Security:** Card details stored encrypted in `UserPaymentInformation`
@@ -183,6 +187,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
   - GST calculated and included in all payment amounts
   - GST metadata stored in Stripe payment intents
   - Receipt includes GST breakdown
+  - Membership confirmation emails show GST-inclusive price with breakdown (e.g. `$136.50 (Includes $6.50 GST)`)
 - **Webhooks:** Handle subscription lifecycle events
 - **Refunds:** Automated refund processing for workshop/equipment cancellations within policy window
 
@@ -223,6 +228,7 @@ const form = useForm<FormValues>({
 2. `requireAuth()` helper checks session and redirects if needed
 3. User data loaded in loaders, not stored in session (session contains only userId)
 4. Role checks happen at route level and in business logic
+5. All email lookups (login, password reset, access card provisioning) use case-insensitive matching (`mode: "insensitive"` in Prisma); new registrations store emails as lowercase
 
 ### Waiver Generation
 - Template PDF in `public/documents/msyk-waiver-template.pdf`
@@ -239,11 +245,11 @@ const form = useForm<FormValues>({
 - Workshop cancellation confirmation
 - Equipment booking confirmation
 - Equipment cancellation confirmation
-- Membership confirmation
+- Membership confirmation (includes auto-renew status)
 - Membership payment reminder (24 hours before charge, only for auto-renew enabled)
 - Membership downgrade notification
 - Membership cancellation notification
-- Membership resubscription confirmation
+- Membership resubscription confirmation (includes auto-renew status)
 - Membership ended (no payment method)
 - Membership revocation notification (admin action)
 - Password reset link (JWT token, 1-hour expiration)
@@ -264,7 +270,7 @@ const form = useForm<FormValues>({
 ### Required Environment Variables
 Required in `.env`:
 - `DATABASE_URL`: PostgreSQL connection string (format: `postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA`)
-- `SESSION_SECRET`: Cookie encryption key (30-day session expiry)
+- `SESSION_SECRET`: Cookie encryption key (3-hour session expiry)
 - `STRIPE_SECRET_KEY`, `STRIPE_PUBLIC_KEY`: Stripe API keys
   - **Live**: `sk_live_...` and `pk_live_...` for production
   - **Test**: `sk_test_...` and `pk_test_...` for development

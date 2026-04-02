@@ -715,6 +715,28 @@ export async function cancelMembership(
 }
 
 /**
+ * Update the autoRenew setting on a user's active membership
+ */
+export async function updateMembershipAutoRenew(
+  userId: number,
+  autoRenew: boolean
+) {
+  const activeRecord = await db.userMembership.findFirst({
+    where: { userId, status: { in: ["active", "cancelled"] } },
+    orderBy: { date: "desc" },
+  });
+
+  if (!activeRecord) {
+    throw new Error("No active membership found");
+  }
+
+  return db.userMembership.update({
+    where: { id: activeRecord.id },
+    data: { autoRenew },
+  });
+}
+
+/**
  * Get all membership records for a specific user
  * @param userId The ID of the user whose memberships to retrieve
  * @returns Array of user membership records

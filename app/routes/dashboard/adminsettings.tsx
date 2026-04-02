@@ -116,6 +116,7 @@ import {
 import {
   AccessCard,
   getAccessCardByUUID,
+  getAccessCardByEmail,
   updateAccessCard,
 } from "~/models/access_card.server";
 import { json } from "@remix-run/node";
@@ -968,6 +969,41 @@ export async function action({ request }: { request: Request }) {
         ? "Fetched Access Card Details successfully"
         : "No card found — showing unassigned card",
       accessCardExists: !!accessCard,
+    };
+  }
+  if (actionType === "getAccessCardByEmail") {
+    const searchEmail = formData.get("searchEmail") as string;
+    if (!searchEmail) {
+      return {
+        success: false,
+        message: "Please enter an email address.",
+      };
+    }
+
+    const accessCards = await getAccessCardByEmail(searchEmail.trim());
+
+    if (accessCards.length === 0) {
+      return {
+        success: false,
+        message: "No access card found for that email.",
+      };
+    }
+
+    // If exactly one card, return it directly as the active card
+    if (accessCards.length === 1) {
+      return {
+        success: true,
+        accessCard: accessCards[0],
+        message: "Fetched Access Card Details successfully",
+        accessCardExists: true,
+      };
+    }
+
+    // Multiple cards — return the list so admin can pick one
+    return {
+      success: true,
+      accessCards,
+      message: `Found ${accessCards.length} cards for that email. Select one below.`,
     };
   }
   if (actionType === "updateAccessCard") {
@@ -2406,6 +2442,7 @@ export default function AdminSettings() {
     message?: string;
     token?: string;
     accessCard?: AccessCard | null;
+    accessCards?: AccessCard[];
     accessCardExists?: boolean;
   }>();
 
@@ -2684,6 +2721,8 @@ export default function AdminSettings() {
   const [selectedEquipment, setSelectedEquipment] = useState("");
   const [deviceTag, setDeviceTag] = useState("");
   const [cardUUID, setCardUUID] = useState("");
+  const [searchEmail, setSearchEmail] = useState("");
+  const [emailSearchResults, setEmailSearchResults] = useState<AccessCard[]>([]);
   const [email, setEmail] = useState(actionData?.accessCard?.userEmail || "");
   const [permissions, setPermissions] = useState<number[]>(
     actionData?.accessCard?.permissions || []
@@ -2982,6 +3021,15 @@ export default function AdminSettings() {
       setPermissions(actionData.accessCard.permissions || []);
     }
   }, [actionData?.accessCard?.id]);
+
+  // Sync multi-card email search results
+  React.useEffect(() => {
+    if (actionData?.accessCards) {
+      setEmailSearchResults(actionData.accessCards);
+    } else {
+      setEmailSearchResults([]);
+    }
+  }, [actionData?.accessCards]);
 
   // Helper function to calculate total hours from volunteer hour entries
   const calculateTotalHours = (hours: any[]) => {
@@ -3552,6 +3600,17 @@ export default function AdminSettings() {
     formData.append("actionType", "generateAccessToken");
     formData.append("selectedEquipment", selectedEquipment);
     formData.append("deviceTag", deviceTag);
+
+    submit(formData, { method: "post" });
+  };
+
+  // Search access card by email
+  const handleSearchCardByEmail = () => {
+    if (!searchEmail.trim()) return;
+
+    const formData = new FormData();
+    formData.append("actionType", "getAccessCardByEmail");
+    formData.append("searchEmail", searchEmail.trim());
 
     submit(formData, { method: "post" });
   };
@@ -7309,7 +7368,7 @@ export default function AdminSettings() {
                             />
                           </div>
 
-                          {/* Search Button */}
+                          {/* Search by UUID Button */}
                           <Button
                             onClick={handleSearchCard}
                             className="bg-indigo-500 hover:bg-indigo-600 text-white"
@@ -7317,6 +7376,68 @@ export default function AdminSettings() {
                             Search
                           </Button>
                         </div>
+
+                        {/* Divider */}
+                        <div className="flex items-center gap-3 my-4">
+                          <div className="flex-1 border-t border-gray-300" />
+                          <span className="text-sm text-gray-400">or search by email</span>
+                          <div className="flex-1 border-t border-gray-300" />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                          {/* Email Input */}
+                          <div className="space-y-2">
+                            <Label htmlFor="searchEmail">User Email</Label>
+                            <Input
+                              id="searchEmail"
+                              type="email"
+                              placeholder="Enter user email"
+                              value={searchEmail}
+                              onChange={(e) => setSearchEmail(e.target.value)}
+                              className="bg-white"
+                            />
+                          </div>
+
+                          {/* Search by Email Button */}
+                          <Button
+                            onClick={handleSearchCardByEmail}
+                            className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                          >
+                            Search
+                          </Button>
+                        </div>
+
+                        {/* Multiple cards picker */}
+                        {emailSearchResults.length > 1 && (
+                          <div className="mt-4 border-t pt-4">
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              Multiple cards found — select one to view details:
+                            </p>
+                            <div className="flex flex-col gap-2">
+                              {emailSearchResults.map((card) => (
+                                <button
+                                  key={card.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setEmailSearchResults([]);
+                                    setCardUUID(card.id);
+                                    const formData = new FormData();
+                                    formData.append("actionType", "getAccessCardInfo");
+                                    formData.append("cardUUID", card.id);
+                                    submit(formData, { method: "post" });
+                                  }}
+                                  className="text-left px-4 py-2 rounded-md border border-gray-200 bg-white hover:bg-indigo-50 hover:border-indigo-300 text-sm text-gray-800 transition-colors"
+                                >
+                                  <span className="font-mono font-medium">{card.id}</span>
+                                  <span className="ml-3 text-gray-500">
+                                    Last updated:{" "}
+                                    {new Date(card.updatedAt).toLocaleString()}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Card Info Display */}
                         {actionData?.accessCard && (

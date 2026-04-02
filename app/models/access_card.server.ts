@@ -95,8 +95,8 @@ export async function updateAccessCard(
 
   if (userEmail) {
     // Try to find user by email
-    const user = await db.user.findUnique({
-      where: { email: userEmail },
+    const user = await db.user.findFirst({
+      where: { email: { equals: userEmail, mode: "insensitive" } },
       select: { id: true },
     });
 
@@ -128,6 +128,36 @@ export async function updateAccessCard(
       brivoMobilePassId: extras?.brivoMobilePassId ?? null,
     },
   });
+}
+
+export async function getAccessCardByEmail(email: string): Promise<AccessCard[]> {
+  const accessCards = await db.accessCard.findMany({
+    where: {
+      user: { email: { equals: email, mode: "insensitive" } },
+    },
+    include: {
+      user: {
+        select: {
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return accessCards.map((accessCard) => ({
+    id: accessCard.id,
+    userId: accessCard.userId,
+    userFirstName: accessCard.user?.firstName ?? null,
+    userLastName: accessCard.user?.lastName ?? null,
+    userEmail: accessCard.user?.email ?? null,
+    registeredAt: accessCard.created_at,
+    updatedAt: accessCard.updated_at,
+    permissions: accessCard.permissions,
+    brivoCredentialId: accessCard.brivoCredentialId,
+    brivoMobilePassId: accessCard.brivoMobilePassId,
+  }));
 }
 
 export async function getUserIdByAccessCard(accessCardId: string) {

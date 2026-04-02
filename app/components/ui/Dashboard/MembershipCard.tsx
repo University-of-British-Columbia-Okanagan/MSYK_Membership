@@ -230,26 +230,26 @@ export default function MembershipCard({
             </p>
           </div>
 
-          <div className="space-y-2 text-sm">
+          <div className="divide-y divide-gray-300 text-sm">
             {/* Monthly */}
-            <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-gray-200">
-              <span className="text-gray-700 font-medium">Monthly</span>
-              <span className="text-gray-900 font-bold">
+            <div className="flex items-center justify-between py-3 px-1">
+              <span className="text-gray-600">Monthly</span>
+              <span className="text-gray-900 font-semibold">
                 ${price.toFixed(2)}/mo
               </span>
             </div>
 
             {/* Quarterly */}
             {price3Months && price3Months > 0 && (
-              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-200">
-                <span className="text-gray-700 font-medium">3 Months</span>
+              <div className="flex items-center justify-between py-3 px-1">
+                <span className="text-gray-600">3 Months</span>
                 <div className="text-right">
-                  <span className="text-gray-900 font-bold">
+                  <span className="text-gray-900 font-semibold">
                     ${price3Months.toFixed(2)}
                   </span>
                   {Number(calculateSavings(price3Months, 3).savingsPercent) >
                     0 && (
-                    <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+                    <div className="text-xs text-green-600 font-medium">
                       Save {calculateSavings(price3Months, 3).savingsPercent}%
                     </div>
                   )}
@@ -259,15 +259,15 @@ export default function MembershipCard({
 
             {/* 6 Months */}
             {price6Months && price6Months > 0 && (
-              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-200">
-                <span className="text-gray-700 font-medium">6 Months</span>
+              <div className="flex items-center justify-between py-3 px-1">
+                <span className="text-gray-600">6 Months</span>
                 <div className="text-right">
-                  <span className="text-gray-900 font-bold">
+                  <span className="text-gray-900 font-semibold">
                     ${price6Months.toFixed(2)}
                   </span>
                   {Number(calculateSavings(price6Months, 6).savingsPercent) >
                     0 && (
-                    <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+                    <div className="text-xs text-green-600 font-medium">
                       Save {calculateSavings(price6Months, 6).savingsPercent}%
                     </div>
                   )}
@@ -277,17 +277,15 @@ export default function MembershipCard({
 
             {/* Yearly */}
             {priceYearly && priceYearly > 0 && (
-              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-md border border-green-300">
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-700 font-medium">Yearly</span>
-                </div>
+              <div className="flex items-center justify-between py-3 px-1">
+                <span className="text-gray-600">Yearly</span>
                 <div className="text-right">
-                  <span className="text-gray-900 font-bold">
+                  <span className="text-gray-900 font-semibold">
                     ${priceYearly.toFixed(2)}
                   </span>
                   {Number(calculateSavings(priceYearly, 12).savingsPercent) >
                     0 && (
-                    <div className="text-sm text-green-600 dark:text-green-400 font-medium">
+                    <div className="text-xs text-green-600 font-medium">
                       Save {calculateSavings(priceYearly, 12).savingsPercent}%
                     </div>
                   )}

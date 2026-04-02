@@ -12,7 +12,9 @@ import GenericFormField from "~/components/ui/Dashboard/GenericFormField";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
-  return { user };
+  const url = new URL(request.url);
+  const registered = url.searchParams.get("registered") === "true";
+  return { user, registered };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -49,6 +51,7 @@ interface ActionData {
 export default function Login({ actionData }: { actionData?: ActionData }) {
   const loaderData = useLoaderData<{
     user: { id: number; email: string } | null;
+    registered: boolean;
   }>();
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -58,7 +61,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
     },
   });
 
-  const { user } = loaderData;
+  const { user, registered } = loaderData;
   const [loading, setLoading] = useState(false);
   const formRef = useRef<HTMLFormElement | null>(null);
 
@@ -111,6 +114,13 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
           </div>
         ) : (
           <>
+            {registered && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800 font-medium">
+                  ✓ Registration successful! You can now log in below.
+                </p>
+              </div>
+            )}
             {hasErrors && (
               <div className="mb-4 text-sm text-red-600 bg-red-100 border border-red-400 rounded p-2">
                 Invalid email or password. Please try again.
@@ -149,7 +159,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 </Button>
 
                 <div className="text-center mt-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[15px] text-gray-600">
                     Forgot your password?{" "}
                     <a
                       href="/passwordReset"
@@ -161,7 +171,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 </div>
 
                 <div className="text-center mt-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[15px] text-gray-600">
                     Don't have an account?{" "}
                     <a
                       href="/register"
@@ -173,7 +183,7 @@ export default function Login({ actionData }: { actionData?: ActionData }) {
                 </div>
 
                 <div className="text-center mb-4">
-                  <p className="text-sm text-gray-600">
+                  <p className="text-[15px] text-gray-600">
                     View the portal as a guest?{" "}
                     <a
                       href="/dashboard"

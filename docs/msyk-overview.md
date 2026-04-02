@@ -11,10 +11,11 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - **Admin**: Administrative privileges with full system access
 
 **Access Levels (Role Levels 1-4):**
-- **Level 1**: Basic user (registered, no orientation)
-- **Level 2**: Completed orientation(s)
-- **Level 3**: Active membership (standard)
-- **Level 4**: Advanced membership with special permissions (`allowLevel4` flag required)
+- **Level 1**: Registered user only (no orientation completed)
+- **Level 2**: Registered + completed orientation (no active membership)
+- **Level 3**: Registered + completed orientation + active membership
+- **Level 4**: Registered + completed orientation + active membership with `needAdminPermission` plan + `allowLevel4` flag
+- All conditions are strict AND chains — e.g. active membership without orientation = Level 1, not Level 3
 
 **Special Permissions:**
 - `allowLevel4`: Boolean flag enabling Level 4 access for advanced equipment (requires membership plan with `needAdminPermission`)
@@ -41,7 +42,8 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Email/password login with session cookie storage
 - Session validation on protected routes
 - Automatic session invalidation on password change or tampering
-- Secure cookie-based session management (30-day expiry)
+- Secure cookie-based session management (3-hour expiry for security on shared/public computers)
+- Case-insensitive email lookups — login, password reset, and access card provisioning all match emails regardless of capitalisation; new registrations are stored lowercase
 
 **Key Files:**
 - `app/utils/session.server.ts` - Session creation, validation, logout
@@ -56,6 +58,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Emergency contact information collection
 - Digital waiver signature capture and encrypted PDF generation
 - Automated registration confirmation email
+- Mobile-friendly date of birth entry via three separate Month / Day / Year dropdowns (replaces `<input type="date">` which renders poorly on mobile)
 
 **Waiver Process:**
 - Signature captured as base64 image
@@ -99,13 +102,15 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - **Resubscription**: Reactivates cancelled membership without payment
 
 **Automated Billing:**
-- Daily cron job (`0 0 * * *`) processes due memberships
+- Daily cron job (`0 0 * * *`) via `startMonthlyMembershipCheck()` processes due memberships
 - Auto-renew controlled by `autoRenew` flag (defaults to `true` for backward compatibility)
 - When `autoRenew=true`: Membership auto-renews with saved payment method at term end
 - When `autoRenew=false`: Membership expires at term end without charging, status set to "inactive"
 - Payment reminders sent 24 hours before charge (only for `autoRenew=true` memberships)
 - Missing payment method sets membership to "inactive" and sends notification
-- Auto-renew toggle disabled in UI when user has no saved payment method
+- Auto-renew can be toggled on/off from the Profile page while a membership is active (requires saved payment method)
+- Removing a payment method automatically sets `autoRenew=false` on all active memberships
+- UI always treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
 
 **Role Level Impact:**
 - Level 3: Active membership (standard plan)
@@ -194,7 +199,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 ### 7. Payment Processing
 
 **Payment Methods:**
-- **Stripe Checkout Session**: Full payment flow with card input
+- **Stripe Checkout Session**: Full payment flow with card input; billing cycle price (monthly/quarterly/semiannual/yearly) applied server-side
 - **Quick Checkout**: Saved payment method for one-click purchases
 - Payment method storage (Stripe Customer + Payment Method)
 
@@ -203,6 +208,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - GST calculated and included in all payment amounts
 - GST metadata stored in Stripe payment intents
 - Receipt includes GST breakdown
+- Membership confirmation emails show GST-inclusive price with breakdown (e.g. `$136.50 (Includes $6.50 GST)`)
 
 **Payment Types:**
 - Workshop registration (single or multi-day)
@@ -223,11 +229,11 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Workshop cancellation confirmation
 - Equipment booking confirmation
 - Equipment cancellation confirmation
-- Membership confirmation
+- Membership confirmation (includes auto-renew status)
 - Membership payment reminder (24 hours before charge)
 - Membership downgrade notification
 - Membership cancellation notification
-- Membership resubscription confirmation
+- Membership resubscription confirmation (includes auto-renew status)
 - Membership ended (no payment method)
 - Password reset link
 
@@ -274,8 +280,15 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Access log tracking (equipment/door entries and exits)
 - Permission-based access control
 
+**Admin — Access Provisioning search:**
+- Admins can search for an access card by **Card UUID** or by **User Email**
+- Email search uses `getAccessCardByEmail()` (case-insensitive) and returns all cards linked to that user
+- If a user has **one card**, it loads directly into the card details view
+- If a user has **multiple cards**, a picker list is shown (card UUID + last-updated timestamp); selecting one loads its full details
+- Single-card path and UUID path share the same card details/edit UI
+
 **Key Files:**
-- `app/models/access_card.server.ts` - Card management
+- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `updateAccessCard`)
 - `app/models/accessLog.server.ts` - Log tracking
 - `app/routes/brivo.callback.tsx` - Access system webhook
 
@@ -305,6 +318,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 - Admin revokes membership (`revokeUserMembershipByAdmin()`)
 - Admin unrevokes membership (`unrevokeUserMembershipByAdmin()`)
 - Automated billing cron updates role levels (`startMonthlyMembershipCheck()`)
+- Role level sync cron corrects any incorrect levels every 15 seconds (`startRoleLevelSyncCron()`)
 - Membership refund is processed (`refundMembershipSubscription()`)
 
 **Error Handling:**
@@ -337,10 +351,11 @@ The `syncUserDoorAccess()` function is automatically called when:
 5. Waiver PDF generated and encrypted (if signature provided)
 6. User record created in database
 7. Registration confirmation email sent
-8. User redirected to `/login`
-9. User enters email and password
-10. Session created with userId and password hash stored in cookie
-11. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
+8. User redirected to `/login?registered=true`
+9. Login page displays green "Registration successful!" confirmation banner
+10. User enters email and password
+11. Session created with userId, password hash, and loginTime stored in cookie
+12. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
 - Email uniqueness check
@@ -621,8 +636,11 @@ The `syncUserDoorAccess()` function is automatically called when:
 4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`)
 
 **Role Level Updates:**
-- If active membership exists: Level 3 or Level 4 (based on plan and `allowLevel4`)
-- If no active membership: Level 2 (if orientation completed) or Level 1
+- If active membership exists and plan has `needAdminPermission` and user has `allowLevel4`: Level 4
+- If active membership exists (standard plan): Level 3
+- If no active membership but orientation completed: Level 2
+- If no orientation completed: Level 1
+- A separate role level sync cron (`startRoleLevelSyncCron()`) runs every 15 seconds to catch and correct any drift
 
 ### Workflow 15: Google Calendar Integration (Optional)
 
@@ -818,7 +836,7 @@ The acceptance criteria are organized into three categories:
 | AC37 | Payment Method Storage | Stripe customer created; payment method attached; payment method set as default; details stored in `UserPaymentInformation` | `tests/models/payment.server.test.ts` |
 | AC38 | Workshop Confirmation Email | Email sent with workshop name, date/time, location, pricing, ICS attachment, Google Calendar links | `tests/utils/email.server.test.ts` |
 | AC39 | Equipment Confirmation Email | Email sent with equipment name, time slot(s), price | `tests/utils/email.server.test.ts` |
-| AC40 | Membership Confirmation Email | Email sent with plan title, description, price, billing cycle, next billing date, features, access hours, payment method reminder | `tests/utils/email.server.test.ts` |
+| AC40 | Membership Confirmation Email | Email sent with plan title, description, price, billing cycle, next billing date, features, access hours, auto-renew status, payment method reminder | `tests/utils/email.server.test.ts` |
 | AC41 | Membership Payment Reminder Email | Email sent with plan title, next payment date, amount due, payment method reminder | `tests/utils/email.server.test.ts` |
 | AC42 | GST Percentage Setting | Setting stored in `AdminSettings`; GST applied to all future payments; GST metadata included in payment intents | `tests/models/admin.server.test.ts` |
 | AC43 | Workshop Visibility Days | Setting stored in `AdminSettings`; workshops only visible if within visibility window; past workshops hidden | `tests/models/admin.server.test.ts` |
@@ -852,8 +870,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC10 | **Password Reset** Token Validation | Click reset link from email; enter new password; submit form | Password reset form displayed; password updated; redirect to login page | `N/A` | `N/A`
 | AC11 | **Password Reset** Expired Token | Request password reset; wait more than 1 hour; click reset link from email | Error message displayed; redirect to password reset request page | `N/A` | `N/A`
 | AC12 | **Password Reset** Invalid Token | Modify reset token in URL; attempt to access password reset page | Error message displayed; redirect to password reset request page | `N/A` | `N/A`
-| ---- | Showcase Membership Details in **Profile** | Subscribe/Cancel/End Membership | Shows details of membership if subscribed with status active, shows details of membership if cancelled with status cancelled, shows no details of membership with status inactive | `N/A` | `11/09/2025`
-| ---- | Add Payment Information in **Profile** | Add payment method | Shows payment information of card if added | `N/A` | `11/09/2025`
+| ---- | Showcase Membership Details in **Profile** | Subscribe/Cancel/End Membership | Shows details of membership if subscribed with status active, shows details of membership if cancelled with status cancelled, shows no details of membership with status inactive. Membership Details box shows: Status, Plan, Billing Cycle, Auto-Renewal (interactive toggle when payment method on file, read-only "Off" when no payment method), 24/7 Vetting Completed, Volunteer Status. Toggling auto-renew off shows amber warning that membership will expire at end of billing period. When auto-renew is off with payment method, shows amber notice with option to re-enable via toggle. When no payment method, shows grey note to add one. Payment Information box shows: Membership Auto-Renewal Date (when auto-renew on + has payment method) or Subscription Expires (when auto-renew off or no payment method) | `N/A` | `11/09/2025`
+| ---- | Add Payment Information in **Profile** | Add payment method | Shows payment information of card if added. When no payment method on file, prompt reads "Add a payment method to enable membership auto-renewal" | `N/A` | `11/09/2025`
 | ---- | Payment Method Validation in **Profile** | Validate all fields when inputting the payment method | If all fields validated, add the payment method | `N/A` | `11/09/2025`
 | ---- | Update Payment Method in **Profile** | Update payment method by pressing update payment button and by removing the current one and adding one | Able to remove current payment method and add a new one if you want | `N/A` | `11/09/2025`
 | ---- | Orientation History in **Profile** | Register for an orientation and pass | Should show all orientations a person has registered for and passes with the price variation and workshop type? | `N/A` | `TODO/TOFIX`
@@ -1193,6 +1211,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 - ~~Volunteer hours tracking:~~
   - ~~Requires both a start and end date, which is redundant since volunteer shifts typically occur on a single day. Maybe the end date box can be hidden?~~
+    - The "End Date" date picker has been removed from the volunteer hours log form. Users now enter: Start Date, Start Time, End Time. The end date is automatically derived from the start date. Server-side same-day validation remains in place.
   - ~~If hours are denied, a permanent "denied hours" notice remains with no clear way to resolve or clear it.~~
 
 - ~~Grammar/UI~~
@@ -1200,6 +1219,8 @@ The following acceptance criteria should be manually tested by QA in the applica
      - ~~NOTE: Change it to not look like buttons~~
   - ~~Once a volunteer is recognized by an admin (the admin clicks the checkbox) it is confusing that there is no change on the volunteer page.~~
     - ~~NOTE: Track volunter hours thing, add in profile~~
+    - When the user's volunteer status is "active", the "Track Your Volunteer Hours" box on the Volunteer page now shows: "You are an active volunteer! Want to log your hours? Go to your Profile page and scroll down to the 'Volunteer Hours' section." with a direct link to the Profile page. Non-volunteers continue to see the original sign-up prompt.
+    - The "You are an active volunteer!" line is styled with large bold text (`text-2xl font-extrabold`) to stand out visually; the supporting instructions below it are bumped to `text-lg` for improved readability.
 
 ##### 6. Profile & User Account Management
 
