@@ -295,15 +295,17 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 ### 11. Brivo Access Control Integration
 
 **Features:**
-- Automatic door access provisioning for Level 4 members (roleLevel >= 4)
-- Requires active membership and non-revoked status
-- Brivo person record creation/updates
+- Brivo person record creation/updates for eligible users
 - Access group assignment based on role level
 - Mobile pass credential generation
-- Automatic access revocation on membership cancellation/revocation
+- Automatic Brivo access revocation when user no longer qualifies (active membership + roleLevel >= 4 + not revoked)
 - Webhook-based access event logging (enter/exit/denied)
 
-**Access Requirements:**
+**Important: Two Separate Systems**
+- **Brivo** — controls the actual physical door lock. Sync is gated by: active membership, non-revoked status, and roleLevel >= 4.
+- **ESP32 + local access cards** — used for sign-in/out logging and equipment access. Every user receives a fob at orientation; the fob is permanent once assigned. Local `accessCard.permissions` are **admin-managed only** and are never auto-modified by `syncUserDoorAccess()`.
+
+**Brivo Access Requirements (for Brivo sync only):**
 - Active membership subscription
 - Membership status not "revoked"
 - Role level 4 (requiresDoorPermission)
@@ -686,15 +688,16 @@ The `syncUserDoorAccess()` function is automatically called when:
 2. User has `allowLevel4` flag set to true
 3. User role level updated to 4
 4. `syncUserDoorAccess()` called automatically
-5. System checks: active membership + roleLevel >= 4 + not revoked
+5. System checks (Brivo only): active membership + roleLevel >= 4 + not revoked
 6. Brivo person record created/updated (firstName, lastName, email, phone)
 7. User assigned to Brivo access groups (from `brivo_access_group_level4` setting)
 8. Mobile pass credential created and invitation sent to user email
 9. `brivoPersonId` and `brivoMobilePassId` stored in database
-10. Access card permissions updated to include door permission (ID: 0)
-11. Sync timestamp and status recorded
+10. Sync timestamp and status recorded
 
-**Validation Points:**
+**Note:** Local ESP32 access card permissions (fob) are NOT modified by this workflow. Fobs are assigned at orientation and managed manually by admins.
+
+**Validation Points (Brivo only):**
 - Active membership must exist
 - User must not have revoked membership status
 - Role level must be 4 or higher
@@ -705,14 +708,13 @@ The `syncUserDoorAccess()` function is automatically called when:
 1. User cancels membership OR admin revokes membership
 2. Membership status changes or role level drops below 4
 3. `syncUserDoorAccess()` called automatically
-4. System determines user no longer qualifies for door access
+4. System determines user no longer qualifies for Brivo door access
 5. User removed from all Brivo access groups
 6. Mobile pass revoked in Brivo
-7. Access card door permission removed (permission ID 0)
-8. `brivoMobilePassId` cleared from access cards
-9. Sync timestamp updated
+7. `brivoMobilePassId` cleared from access cards
+8. Sync timestamp updated
 
-**Note:** Access revocation occurs immediately when user no longer meets requirements, regardless of membership cancellation timing.
+**Note:** Only Brivo access is revoked automatically. Local ESP32 fob permissions are admin-managed and are never auto-revoked by any sync trigger.
 
 ### Workflow 18: Brivo Access Event Webhook
 
@@ -843,7 +845,7 @@ The acceptance criteria are organized into three categories:
 | AC44 | Equipment Visibility Days | Setting stored in `AdminSettings`; equipment slots only visible if within visibility window | `tests/models/admin.server.test.ts` |
 | AC45 | Google Calendar Connection | OAuth flow completed; refresh token encrypted with AES; encrypted token stored; calendar ID stored; system can create/update/delete events | `tests/utils/googleCalendar.server.test.ts` |
 | AC49 | Brivo Door Access Provisioning | User with Level 4 role and active membership gets Brivo person created, assigned to groups, mobile pass generated | `tests/services/access-control-sync.server.test.ts` |
-| AC50 | Brivo Door Access Revocation | User loses Level 4 access; Brivo groups revoked, mobile pass cancelled, door permission removed | `tests/services/access-control-sync.server.test.ts` |
+| AC50 | Brivo Door Access Revocation | User loses Level 4 access; Brivo groups revoked, mobile pass cancelled; local fob permissions unchanged (admin-managed) | `tests/services/access-control-sync.server.test.ts` |
 | AC51 | Brivo Webhook Signature Verification | Webhook with valid/invalid signature handled correctly | `tests/routes/brivo.callback.test.ts` |
 | AC52 | Brivo Access Event Logging | Access events (enter/exit/denied) logged correctly with card ID and user ID | `tests/routes/brivo.callback.test.ts` |
 
