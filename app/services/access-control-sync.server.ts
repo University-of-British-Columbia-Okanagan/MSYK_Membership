@@ -1,4 +1,4 @@
-import { DOOR_PERMISSION_ID, getBrivoGroupsForRole, requiresDoorPermission } from "~/config/access-control";
+import { /* DOOR_PERMISSION_ID, */ getBrivoGroupsForRole, requiresDoorPermission } from "~/config/access-control";
 import { logger } from "~/logging/logger";
 import { brivoClient } from "~/services/brivo.server";
 import { db } from "~/utils/db.server";
@@ -21,51 +21,39 @@ type SyncOptions = {
   };
 };
 
-function mergeDoorPermission(
-  current: number[],
-  shouldHaveDoor: boolean,
-): number[] {
-  const hasDoor = current.includes(DOOR_PERMISSION_ID);
-
-  if (shouldHaveDoor && !hasDoor) {
-    return [...current, DOOR_PERMISSION_ID];
-  }
-
-  if (!shouldHaveDoor && hasDoor) {
-    return current.filter((perm) => perm !== DOOR_PERMISSION_ID);
-  }
-
-  return current;
-}
-
-async function syncAccessCards(userId: number, shouldHaveDoor: boolean) {
-  const accessCardModel = (db as any).accessCard;
-  if (!accessCardModel?.findMany || !accessCardModel?.update) {
-    return;
-  }
-
-  type AccessCardRecord = { id: string; permissions: number[] };
-
-  const cards = (await accessCardModel.findMany({
-    where: { userId },
-    select: { id: true, permissions: true },
-  })) as AccessCardRecord[];
-
-  await Promise.all(
-    cards.map(async (card) => {
-      const nextPermissions = mergeDoorPermission(card.permissions, shouldHaveDoor);
-      const changed =
-        nextPermissions.length !== card.permissions.length ||
-        nextPermissions.some((perm, index) => perm !== card.permissions[index]);
-      if (!changed) return;
-
-      await accessCardModel.update({
-        where: { id: card.id },
-        data: { permissions: nextPermissions },
-      });
-    }),
-  );
-}
+// Removed: local door permission sync (syncAccessCards + mergeDoorPermission).
+// The ESP32 access card permissions (DOOR_PERMISSION_ID) are admin-managed and
+// should not be auto-revoked by membership/role syncs. Brivo handles actual door access.
+//
+// function mergeDoorPermission(current: number[], shouldHaveDoor: boolean): number[] {
+//   const hasDoor = current.includes(DOOR_PERMISSION_ID);
+//   if (shouldHaveDoor && !hasDoor) return [...current, DOOR_PERMISSION_ID];
+//   if (!shouldHaveDoor && hasDoor) return current.filter((perm) => perm !== DOOR_PERMISSION_ID);
+//   return current;
+// }
+//
+// async function syncAccessCards(userId: number, shouldHaveDoor: boolean) {
+//   const accessCardModel = (db as any).accessCard;
+//   if (!accessCardModel?.findMany || !accessCardModel?.update) return;
+//   type AccessCardRecord = { id: string; permissions: number[] };
+//   const cards = (await accessCardModel.findMany({
+//     where: { userId },
+//     select: { id: true, permissions: true },
+//   })) as AccessCardRecord[];
+//   await Promise.all(
+//     cards.map(async (card) => {
+//       const nextPermissions = mergeDoorPermission(card.permissions, shouldHaveDoor);
+//       const changed =
+//         nextPermissions.length !== card.permissions.length ||
+//         nextPermissions.some((perm, index) => perm !== card.permissions[index]);
+//       if (!changed) return;
+//       await accessCardModel.update({
+//         where: { id: card.id },
+//         data: { permissions: nextPermissions },
+//       });
+//     }),
+//   );
+// }
 
 async function getAllConfiguredGroups(): Promise<string[]> {
   return getBrivoGroupsForRole(4);
@@ -112,7 +100,7 @@ export async function syncUserDoorAccess(userId: number, options?: SyncOptions) 
     user.membershipStatus !== "revoked" &&
     requiresDoorPermission(user.roleLevel);
 
-  await syncAccessCards(userId, shouldHaveDoor);
+  // await syncAccessCards(userId, shouldHaveDoor);
 
   if (!brivoClient.isEnabled()) {
     if (shouldHaveDoor) {

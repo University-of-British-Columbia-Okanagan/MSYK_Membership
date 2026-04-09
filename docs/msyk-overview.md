@@ -223,46 +223,71 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 
 ### 8. Email Notifications
 
-**Transactional Emails (via Mailgun):**
-- Registration confirmation
-- Workshop registration confirmation (with ICS calendar attachment)
-- Workshop cancellation confirmation
-- Equipment booking confirmation
-- Equipment cancellation confirmation
-- Membership confirmation (includes auto-renew status)
-- Membership payment reminder (24 hours before charge)
-- Membership downgrade notification
-- Membership cancellation notification
-- Membership resubscription confirmation (includes auto-renew status)
-- Membership ended (no payment method)
-- Password reset link
+**Transactional Emails (via Mailgun — all in `app/utils/email.server.ts`):**
+- Registration confirmation (`sendRegistrationConfirmationEmail`)
+- Password reset link (`sendResetEmail`) — JWT token, 1-hour expiration
+- Workshop registration confirmation (`sendWorkshopConfirmationEmail`) — with ICS calendar attachment
+- Workshop cancellation confirmation (`sendWorkshopCancellationEmail`)
+- Workshop price variation cancelled — single (`sendWorkshopPriceVariationCancellationEmail`)
+- Workshop price variation cancelled — multi-day (`sendWorkshopPriceVariationCancellationEmailMultiDay`)
+- Workshop occurrence cancelled by admin — single (`sendWorkshopOccurrenceCancellationEmail`)
+- Workshop occurrence cancelled by admin — multi-day (`sendWorkshopOccurrenceCancellationEmailMultiDay`)
+- Equipment booking confirmation — single slot (`sendEquipmentConfirmationEmail`)
+- Equipment booking confirmation — bulk (`sendEquipmentBulkConfirmationEmail`)
+- Equipment booking cancellation (`sendEquipmentCancellationEmail`)
+- Membership subscription confirmation (`sendMembershipConfirmationEmail`) — includes auto-renew status, GST breakdown
+- Membership payment reminder 24h before charge (`sendMembershipPaymentReminderEmail`) — `autoRenew=true` only
+- Membership payment success (`sendMembershipPaymentSuccessEmail`) — recurring charge confirmation
+- Membership downgrade notification (`sendMembershipDowngradeEmail`)
+- Membership cancellation confirmation (`sendMembershipCancellationEmail`)
+- Membership resubscription confirmation (`sendMembershipResubscribeEmail`) — includes auto-renew status
+- Membership ended — no payment method (`sendMembershipEndedNoPaymentMethodEmail`)
+- Membership revoked by admin (`sendMembershipRevokedEmail`) — includes custom revocation reason
+- Membership unrevoked by admin (`sendMembershipUnrevokedEmail`)
 
 **Email Features:**
-- HTML and plain text versions
-- ICS calendar attachments for workshop events
-- Google Calendar links for multi-day workshops
+- HTML and plain text versions for all emails
+- ICS calendar attachments for workshop registration confirmation
+- Google Calendar event links for multi-day workshops
+- Custom messages for admin-triggered emails (revocation reason)
 
 **Key Files:**
 - `app/utils/email.server.ts` - All email composition and sending
 
 ### 9. Admin Settings
 
-**Configurable Settings:**
-- GST percentage (default: 5%)
-- Workshop visibility days (how far in advance workshops appear)
-- Equipment visibility days (booking window)
-- Google Calendar ID and timezone (for event creation)
-- Google OAuth refresh token (encrypted storage)
-- Brivo access group for Level 4 members (`brivo_access_group_level4`)
+**Configurable Settings (stored in `AdminSettings` key-value table):**
+- GST percentage (key: `gst_percentage`, default: `"5"`)
+- Workshop visibility days (key: `workshop_visibility_days`, default: `"60"`)
+- Equipment visibility days (key: `equipment_visibility_days`)
+- Past workshop history days (key: `past_workshop_visibility`, default: `"180"`)
+- Google Calendar ID (key: `google_calendar_id`)
+- Google Calendar timezone (key: `google_calendar_timezone`, default: `"America/Yellowknife"`)
+- Google OAuth refresh token — AES-encrypted (key: `google_oauth_refresh_token_enc`)
+- Brivo access group for Level 4 members (key: `brivo_access_group_level4`) — comma-separated group IDs
+- Planned closures
+
+**Admin Settings Tabs:**
+- **General** — GST, visibility windows, planned closures
+- **Google Calendar** — Connect/disconnect via OAuth, select calendar from dropdown
+- **Brivo** — Access group configuration, webhook management (create/delete), user sync status and retry
+- **Stripe Products** — Bulk sync all workshops/membership plans/equipment to Stripe; "Clear & Re-sync" for environment switching; sync count display per category
+
+**Stripe Products Tab (Implemented):**
+- Links each item to a Stripe Product via `stripeProductId` — enables coupon restrictions to specific items
+- "Sync All to Stripe" — creates Stripe Products for all unlinked items (safe to run multiple times)
+- "Clear & Re-sync" — clears all `stripeProductId` values and re-creates Products (required when switching Stripe test/live environments)
+- Auto-sync hooks run non-blocking from model create/update/delete functions
+- API endpoint: `POST /api/stripe-sync` (actions: `bulkSync`, `clearAndResync`, `getSyncStatus`)
 
 **Brivo Configuration:**
-- Brivo access group for Level 4 members (`brivo_access_group_level4`) - Comma-separated list of group IDs
+- Brivo access group for Level 4 members (`brivo_access_group_level4`) — Comma-separated list of group IDs
 - Webhook subscription management (create/delete event subscriptions)
 - User sync status display and retry functionality
 - Integration status indicator (shows if Brivo credentials are configured)
 
 **Admin Functions:**
-- User management (role assignment, `allowLevel4` flag)
+- User management (role assignment, `allowLevel4` flag, membership revocation/unrevocation)
 - Workshop CRUD operations
 - Equipment CRUD operations
 - Membership plan management
@@ -270,8 +295,9 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Issue tracking and resolution
 
 **Key Files:**
-- `app/models/admin.server.ts` - Settings management
-- `app/routes/dashboard/admin/settings.tsx` - Admin settings UI
+- `app/models/admin.server.ts` — `getAdminSetting`, `updateAdminSetting`, `getGoogleCalendarConfig`, `clearGoogleCalendarAuth`, `getPlannedClosures`, `updatePlannedClosures`
+- `app/routes/dashboard/adminsettings.tsx` — Admin settings UI (tabbed)
+- `app/routes/api/stripe-sync.tsx` — Stripe Product sync API endpoint
 
 ### 10. Access Cards & Logs (Optional)
 
@@ -295,15 +321,17 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 ### 11. Brivo Access Control Integration
 
 **Features:**
-- Automatic door access provisioning for Level 4 members (roleLevel >= 4)
-- Requires active membership and non-revoked status
-- Brivo person record creation/updates
+- Brivo person record creation/updates for eligible users
 - Access group assignment based on role level
 - Mobile pass credential generation
-- Automatic access revocation on membership cancellation/revocation
+- Automatic Brivo access revocation when user no longer qualifies (active membership + roleLevel >= 4 + not revoked)
 - Webhook-based access event logging (enter/exit/denied)
 
-**Access Requirements:**
+**Important: Two Separate Systems**
+- **Brivo** — controls the actual physical door lock. Sync is gated by: active membership, non-revoked status, and roleLevel >= 4.
+- **ESP32 + local access cards** — used for sign-in/out logging and equipment access. Every user receives a fob at orientation; the fob is permanent once assigned. Local `accessCard.permissions` are **admin-managed only** and are never auto-modified by `syncUserDoorAccess()`.
+
+**Brivo Access Requirements (for Brivo sync only):**
 - Active membership subscription
 - Membership status not "revoked"
 - Role level 4 (requiresDoorPermission)
@@ -330,9 +358,31 @@ The `syncUserDoorAccess()` function is automatically called when:
 **Key Files:**
 - `app/services/brivo.server.ts` - Brivo API client (OAuth, person management, groups, mobile passes)
 - `app/services/access-control-sync.server.ts` - Door access synchronization logic
-- `app/config/access-control.ts` - Door permission configuration
+- `app/config/access-control.ts` - `DOOR_PERMISSION_ID = 0`, `requiresDoorPermission()`, `getBrivoGroupsForRole()`
 - `app/routes/brivo.callback.tsx` - Webhook endpoint for access events
-- `app/models/access_card.server.ts` - Access card management with Brivo credential IDs
+- `app/models/access_card.server.ts` - `getAccessCardByUUID`, `getAccessCardByEmail`, `getAccessCardByBrivoCredentialId`, `updateAccessCard`
+
+### 12. Stripe Product Sync
+
+**Purpose:** Automatically links every Workshop, MembershipPlan, and Equipment to a named Stripe Product, enabling Stripe coupons to be restricted to specific portal items.
+
+**Features:**
+- `stripeProductId String?` field on `Workshop`, `MembershipPlan`, and `Equipment` models
+- Auto-sync on create/update: `syncWorkshopToStripe()`, `syncMembershipPlanToStripe()`, `syncEquipmentToStripe()`
+- Auto-archive on delete: `archiveStripeProduct()` — Stripe Products cannot be hard-deleted if prior payments exist
+- Bulk sync for existing data: `bulkSyncToStripe()` — safe to run multiple times (skips already-synced items)
+- Checkout sessions reference `price_data.product` when `stripeProductId` is set; fallback to `price_data.product_data` inline if not
+- Each Stripe Product carries metadata: `{ portal_type: "workshop"|"membership"|"equipment", portal_id: "N" }`
+
+**Admin UI (Admin Settings → Stripe Products tab):**
+- Sync All to Stripe button with per-category success counts
+- Clear & Re-sync button — clears all `stripeProductId` values and re-syncs (required when switching Stripe environments)
+- Integration status display
+
+**Key Files:**
+- `app/services/stripe-sync.server.ts` — All Stripe sync/archive logic
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
+- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Products tab
 
 ---
 
@@ -686,15 +736,16 @@ The `syncUserDoorAccess()` function is automatically called when:
 2. User has `allowLevel4` flag set to true
 3. User role level updated to 4
 4. `syncUserDoorAccess()` called automatically
-5. System checks: active membership + roleLevel >= 4 + not revoked
+5. System checks (Brivo only): active membership + roleLevel >= 4 + not revoked
 6. Brivo person record created/updated (firstName, lastName, email, phone)
 7. User assigned to Brivo access groups (from `brivo_access_group_level4` setting)
 8. Mobile pass credential created and invitation sent to user email
 9. `brivoPersonId` and `brivoMobilePassId` stored in database
-10. Access card permissions updated to include door permission (ID: 0)
-11. Sync timestamp and status recorded
+10. Sync timestamp and status recorded
 
-**Validation Points:**
+**Note:** Local ESP32 access card permissions (fob) are NOT modified by this workflow. Fobs are assigned at orientation and managed manually by admins.
+
+**Validation Points (Brivo only):**
 - Active membership must exist
 - User must not have revoked membership status
 - Role level must be 4 or higher
@@ -705,14 +756,13 @@ The `syncUserDoorAccess()` function is automatically called when:
 1. User cancels membership OR admin revokes membership
 2. Membership status changes or role level drops below 4
 3. `syncUserDoorAccess()` called automatically
-4. System determines user no longer qualifies for door access
+4. System determines user no longer qualifies for Brivo door access
 5. User removed from all Brivo access groups
 6. Mobile pass revoked in Brivo
-7. Access card door permission removed (permission ID 0)
-8. `brivoMobilePassId` cleared from access cards
-9. Sync timestamp updated
+7. `brivoMobilePassId` cleared from access cards
+8. Sync timestamp updated
 
-**Note:** Access revocation occurs immediately when user no longer meets requirements, regardless of membership cancellation timing.
+**Note:** Only Brivo access is revoked automatically. Local ESP32 fob permissions are admin-managed and are never auto-revoked by any sync trigger.
 
 ### Workflow 18: Brivo Access Event Webhook
 
@@ -731,6 +781,50 @@ The `syncUserDoorAccess()` function is automatically called when:
 - Returns 401 if signature missing or invalid
 - Returns 400 if payload cannot be parsed
 - Unknown credentials are logged and ignored (returns 200)
+
+### Workflow 19: Stripe Product Sync
+
+**Purpose:** Links each Workshop, MembershipPlan, and Equipment to a named Stripe Product, enabling Stripe coupons to be restricted to specific items.
+
+**Auto-Sync on Create/Update:**
+1. Admin creates or updates a workshop, membership plan, or equipment item
+2. Model function calls the corresponding sync function non-blocking (`.catch()`)
+3. If item has no `stripeProductId` → new Stripe Product created, ID saved to DB
+4. If item already has `stripeProductId` → existing Stripe Product name/description updated
+5. Checkout sessions use `price_data.product` when `stripeProductId` is set
+
+**Auto-Archive on Delete:**
+1. Admin deletes a workshop, membership plan, or equipment item
+2. Model function calls `archiveStripeProduct(stripeProductId)` non-blocking
+3. Stripe Product marked `active: false` (archived, not deleted — Stripe cannot delete products with payment history)
+
+**Bulk Sync (for Existing Data):**
+1. Admin navigates to Admin Settings → Stripe Products tab
+2. Clicks "Sync All to Stripe"
+3. `POST /api/stripe-sync` called with action `bulkSync`
+4. System loops through all workshops, membership plans, and equipment
+5. Creates Stripe Products for any items with `stripeProductId = null`
+6. Skips items already synced (idempotent — safe to run multiple times)
+7. Returns counts: workshops synced, plans synced, equipment synced
+
+**Clear & Re-sync (Environment Switch):**
+1. Admin switches Stripe keys in `.env` (e.g. test → live)
+2. All stored `stripeProductId` values are now invalid for the new account
+3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Products tab
+4. `POST /api/stripe-sync` called with action `clearAndResync`
+5. All `stripeProductId` values in DB cleared to `null`
+6. Full bulk sync runs against the new Stripe account
+7. New Product IDs stored
+
+**Key Files:**
+- `app/services/stripe-sync.server.ts` — `syncWorkshopToStripe`, `syncMembershipPlanToStripe`, `syncEquipmentToStripe`, `archiveStripeProduct`, `bulkSyncToStripe`
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
+- `app/routes/dashboard/adminsettings.tsx` — Stripe Products tab UI
+
+**Known Limitations:**
+- Per-variation coupon targeting not supported (all price variations share one Stripe Product)
+- Quick checkout (saved card / PaymentIntent path) does not support Stripe promotion codes — Stripe limitation
+- `stripeProductId` values are Stripe account-specific; must Clear & Re-sync when switching environments
 
 ---
 
@@ -814,7 +908,7 @@ The acceptance criteria are organized into three categories:
 
 | AC Number | Test Case | Description | Recommended Test File |
 |-----------|-----------|-------------|----------------------|
-| AC1 | Valid Login | Session cookie created with `userId` and `userPassword`; user redirected to appropriate dashboard; session persists for 30 days | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
+| AC1 | Valid Login | Session cookie created with `userId` and `loginTime`; user redirected to appropriate dashboard; session expires after 3 hours | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
 | AC2 | Invalid Credentials | Error message displayed; no session created; user remains on login page | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
 | AC3 | Session Invalidation | User password changed externally; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
 | AC4 | Tampered Session Cookie | Session cookie modified or expired; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
@@ -843,7 +937,7 @@ The acceptance criteria are organized into three categories:
 | AC44 | Equipment Visibility Days | Setting stored in `AdminSettings`; equipment slots only visible if within visibility window | `tests/models/admin.server.test.ts` |
 | AC45 | Google Calendar Connection | OAuth flow completed; refresh token encrypted with AES; encrypted token stored; calendar ID stored; system can create/update/delete events | `tests/utils/googleCalendar.server.test.ts` |
 | AC49 | Brivo Door Access Provisioning | User with Level 4 role and active membership gets Brivo person created, assigned to groups, mobile pass generated | `tests/services/access-control-sync.server.test.ts` |
-| AC50 | Brivo Door Access Revocation | User loses Level 4 access; Brivo groups revoked, mobile pass cancelled, door permission removed | `tests/services/access-control-sync.server.test.ts` |
+| AC50 | Brivo Door Access Revocation | User loses Level 4 access; Brivo groups revoked, mobile pass cancelled; local fob permissions unchanged (admin-managed) | `tests/services/access-control-sync.server.test.ts` |
 | AC51 | Brivo Webhook Signature Verification | Webhook with valid/invalid signature handled correctly | `tests/routes/brivo.callback.test.ts` |
 | AC52 | Brivo Access Event Logging | Access events (enter/exit/denied) logged correctly with card ID and user ID | `tests/routes/brivo.callback.test.ts` |
 
@@ -855,7 +949,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 | AC Number | Test Case | Manual Testing Steps | Expected Results | Jest Test File | Last Manually Tested |
 |-----------|-----------|----------------------|------------------|----------------|----------------------|
-| AC1 | Valid **Login** | Navigate to `/login`; enter valid email and password | Session cookie created; redirect to appropriate dashboard (user/admin); session persists across browser sessions (30 days) | `N/A` | `11/09/2025`
+| AC1 | Valid **Login** | Navigate to `/login`; enter valid email and password | Session cookie created; redirect to appropriate dashboard (user/admin); session expires after 3 hours of inactivity | `N/A` | `11/09/2025`
 | AC2 | **Login** Invalid Credentials | Navigate to `/login`; enter incorrect email or password | Error message displayed; no session created; user remains on login page | `N/A` | `11/09/2025`
 | AC3 | **Session** Invalidation | Login as user; change password externally (via admin or database); attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC4 | Tampered **Session** Cookie | Login as user; modify session cookie in browser dev tools; attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
