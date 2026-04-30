@@ -59,16 +59,18 @@ prisma/
 ### Critical Notes
 - **Server-side code**: Use `*.server.ts` naming convention
 - **Routing**: File-based from `app/routes/` with loaders/actions; configured in `app/routes.ts`
-- **Alias**: `~` points to `app/` directory
+- **Aliases**: `~` and `@` both point to `app/` directory (configured in `vite.config.ts`)
 - **Database**: PostgreSQL with Prisma ORM; Stripe API version `2025-02-24.acacia`
-- **Stripe**: Live keys start with `sk_live_`/`pk_live_`, test with `sk_test_`/`pk_test_`
+- **Stripe**: Live keys start with `sk_live_`/`pk_live_`, test with `sk_test_`/`pk_test_`; env vars are `STRIPE_SECRET_KEY` and `STRIPE_PUBLIC_KEY`
 - **Stripe Products**: `stripeProductId` on Workshop, MembershipPlan, Equipment — auto-synced via `app/services/stripe-sync.server.ts`; bulk sync via `/api/stripe-sync` admin endpoint
 - **Role Levels**: Strict AND chain (1=registered only, 2=+orientation, 3=+active membership, 4=+needAdminPermission plan+allowLevel4); corrected every 15s by `startRoleLevelSyncCron()` in `app/models/user.server.ts`
-- **Cron Jobs**: Three background jobs — role level sync (15s), membership billing (midnight daily), workshop occurrence status update (1s interval)
+- **Cron Jobs**: Three background jobs started in `entry.server.ts` — role level sync (every 15s via node-cron), membership billing (midnight daily via node-cron), workshop occurrence status update (every 1s via setInterval)
 - **Door Access**: Two separate systems — Brivo (physical door lock, Level 4 only, auto-sync) and ESP32+local fobs (sign-in/out logging, admin-managed, never auto-modified by syncs)
-- **Logging**: Winston logger at `app/logging/logger.ts` → writes to `logs/error.log` and `logs/all_logs.log`
-- **Session**: 3-hour cookie expiry; `loginTime` stored and validated on every request
+- **Logging**: Winston logger at `app/logging/logger.ts` → writes to `logs/error.log` and `logs/all_logs.log`; development also logs to console
+- **Session**: 3-hour cookie `maxAge`; `loginTime` stored in session and validated on every request via `getUserId()`
 - **Emails**: Case-insensitive lookups everywhere (`mode: "insensitive"`); new registrations stored lowercase
+- **JWT_SECRET**: Required env var for password reset tokens (1-hour JWT expiry)
+- **AdminSettings key for equipment visibility**: `equipment_visible_registrable_days` (not `equipment_visibility_days`)
 
 ---
 

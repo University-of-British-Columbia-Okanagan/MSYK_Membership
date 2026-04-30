@@ -116,7 +116,7 @@ prisma/
 ```
 
 ### Routing Convention
-React Router 7 uses file-based routing configured in `app/routes.ts`. Routes export `loader` functions for data fetching and `action` functions for mutations. The `~` alias points to the `app/` directory.
+React Router 7 uses file-based routing configured in `app/routes.ts`. Routes export `loader` functions for data fetching and `action` functions for mutations. Both `~` and `@` aliases point to the `app/` directory (configured in `vite.config.ts` and `tsconfig.json`).
 
 ### Server-Side Code Convention
 All server-side code uses the `*.server.ts` naming convention. These files:
@@ -141,15 +141,15 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 - **Role Level Sync Cron:** `startRoleLevelSyncCron()` in `app/models/user.server.ts` — runs every 15 seconds (`*/15 * * * * *`), corrects any drift across all users in a single batched DB query
 
 ### Cron Jobs
-Three background jobs run automatically when the server starts:
+Three background jobs are started from `entry.server.ts` (the server process, run by `npm run dev:server`). They start automatically when the server starts:
 
 | Job | Function | Schedule | File |
 |-----|----------|----------|------|
-| Role level sync | `startRoleLevelSyncCron()` | Every 15 seconds | `app/models/user.server.ts` |
-| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight (`0 0 * * *`) | `app/models/membership.server.ts` |
+| Role level sync | `startRoleLevelSyncCron()` | Every 15 seconds (node-cron `*/15 * * * * *`) | `app/models/user.server.ts` |
+| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight (node-cron `0 0 * * *`) | `app/models/membership.server.ts` |
 | Workshop status update | `startWorkshopOccurrenceStatusUpdate()` | Every 1 second (setInterval) | `app/models/workshop.server.ts` |
 
-The workshop status job runs immediately on startup and keeps `WorkshopOccurrence.status` up-to-date (open/closed/cancelled) as time passes.
+The workshop status job runs immediately on startup and then every 1 second, keeping `WorkshopOccurrence.status` up-to-date as time passes.
 
 ### Workshop System Architecture
 **Workshop Offer Pattern:** Workshops use an `offerId` to group occurrences:
@@ -279,12 +279,13 @@ Key-value configuration storage for system-wide settings:
 |-----|---------|-------------|
 | `gst_percentage` | `"5"` | GST percentage for all payments |
 | `workshop_visibility_days` | `"60"` | How far in advance workshops are visible |
-| `equipment_visibility_days` | — | Equipment booking window in days |
+| `equipment_visible_registrable_days` | `"7"` | Equipment booking window in days |
 | `past_workshop_visibility` | `"180"` | Days of past workshop history to show |
 | `google_calendar_id` | `""` | Selected Google Calendar ID |
 | `google_calendar_timezone` | `"America/Yellowknife"` | Timezone for Google Calendar events |
 | `google_oauth_refresh_token_enc` | `""` | AES-encrypted Google OAuth refresh token |
 | `brivo_access_group_level4` | `""` | Comma-separated Brivo group IDs for Level 4 access |
+| `planned_closures` | `""` | JSON array of planned closure periods (managed via `getPlannedClosures`/`updatePlannedClosures`) |
 
 **Planned Closures:** Also stored in AdminSettings via `getPlannedClosures()` / `updatePlannedClosures()`.
 
@@ -379,6 +380,7 @@ STRIPE_SECRET_KEY=       # Stripe secret key (sk_live_... or sk_test_...)
 STRIPE_PUBLIC_KEY=       # Stripe publishable key (pk_live_... or pk_test_...)
 BASE_URL=                # Application base URL (dev: http://localhost:5173)
 WAIVER_ENCRYPTION_KEY=   # AES key for waiver PDF encryption
+JWT_SECRET=              # Secret for password reset JWT tokens (1-hour expiry)
 
 MAILGUN_API_KEY=         # Mailgun API key
 MAILGUN_DOMAIN=          # Mailgun sending domain
@@ -394,8 +396,13 @@ GOOGLE_OAUTH_REDIRECT_URI=   # OAuth callback URL
 GOOGLE_OAUTH_ENCRYPTION_KEY= # AES key for storing OAuth refresh token (min 32 chars)
 
 # Brivo Door Access Control
-BRIVO_API_KEY=
-BRIVO_API_URL=
+BRIVO_CLIENT_ID=             # Brivo OAuth2 client ID
+BRIVO_CLIENT_SECRET=         # Brivo OAuth2 client secret
+BRIVO_USERNAME=              # Brivo account username (for password grant)
+BRIVO_PASSWORD=              # Brivo account password (for password grant)
+BRIVO_API_KEY=               # Brivo API key (sent as api-key header)
+BRIVO_BASE_URL=              # Brivo API base URL (default: https://api.brivo.com)
+BRIVO_AUTH_BASE_URL=         # Brivo OAuth base URL (default: https://auth.brivo.com)
 BRIVO_WEBHOOK_SECRET=        # HMAC secret for webhook signature verification
 BRIVO_ACCESS_GROUP_LEVEL4=   # Fallback if not set in AdminSettings (comma-separated group IDs)
 ```
@@ -439,6 +446,10 @@ BRIVO_ACCESS_GROUP_LEVEL4=   # Fallback if not set in AdminSettings (comma-separ
 - Admin can retry sync from Admin Settings UI
 - Graceful degradation when Brivo not configured (warnings logged, no errors thrown)
 - Webhook signature verification via HMAC SHA256 (`BRIVO_WEBHOOK_SECRET`)
+
+**Required Brivo Env Vars (all must be set for Brivo to be enabled; missing any disables integration gracefully):**
+`BRIVO_CLIENT_ID`, `BRIVO_CLIENT_SECRET`, `BRIVO_USERNAME`, `BRIVO_PASSWORD`, `BRIVO_API_KEY`
+Optional: `BRIVO_BASE_URL` (default: `https://api.brivo.com`), `BRIVO_AUTH_BASE_URL` (default: `https://auth.brivo.com`), `BRIVO_WEBHOOK_SECRET`, `BRIVO_ACCESS_GROUP_LEVEL4`
 
 **Key Files:**
 - `app/services/brivo.server.ts` — Brivo API client (OAuth, person management, groups, mobile passes)
