@@ -61,6 +61,9 @@ A comprehensive membership management platform built with React Router 7, TypeSc
    # Document encryption
    WAIVER_ENCRYPTION_KEY=
 
+   # JWT (for password reset tokens)
+   JWT_SECRET=
+
    # Email (Mailgun)
    MAILGUN_API_KEY=
    MAILGUN_DOMAIN=
@@ -75,11 +78,16 @@ A comprehensive membership management platform built with React Router 7, TypeSc
    GOOGLE_OAUTH_REDIRECT_URI=
    GOOGLE_OAUTH_ENCRYPTION_KEY=  # Must be at least 32 characters
 
-   # Brivo Door Access Control
+   # Brivo Door Access Control (all five required for Brivo to activate)
+   BRIVO_CLIENT_ID=
+   BRIVO_CLIENT_SECRET=
+   BRIVO_USERNAME=
+   BRIVO_PASSWORD=
    BRIVO_API_KEY=
-   BRIVO_API_URL=
-   BRIVO_WEBHOOK_SECRET=
-   BRIVO_ACCESS_GROUP_LEVEL4=    # Comma-separated Brivo group IDs (fallback)
+   BRIVO_BASE_URL=              # Optional; default: https://api.brivo.com
+   BRIVO_AUTH_BASE_URL=         # Optional; default: https://auth.brivo.com
+   BRIVO_WEBHOOK_SECRET=        # Optional; for webhook signature verification
+   BRIVO_ACCESS_GROUP_LEVEL4=   # Optional; comma-separated Brivo group IDs (fallback)
    ```
 
    For Stripe: visit the [Stripe dashboard](https://dashboard.stripe.com) to get API keys. Use `sk_live_`/`pk_live_` for production and `sk_test_`/`pk_test_` for development.
