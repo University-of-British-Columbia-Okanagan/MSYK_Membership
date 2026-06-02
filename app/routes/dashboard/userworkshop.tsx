@@ -114,6 +114,12 @@ export default function WorkshopUsers() {
 
   const [searchUser, setSearchUser] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [resultFilter, setResultFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortBy, setSortBy] = useState<
+    "lastName" | "firstName" | "occurrenceDate" | "registrationDate"
+  >("lastName");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   // Determine the workshop name and type
   const workshopName =
@@ -164,19 +170,67 @@ export default function WorkshopUsers() {
     return Array.from(groups.values());
   }, [registrations]);
 
-  // Filter by user name
+  // Determine a group's effective result for filtering purposes
+  const getGroupEffectiveResult = (group: GroupedRegistration): string => {
+    const results = group.registrations.map((r) => r.result);
+    if (results.every((r) => r === "cancelled")) return "cancelled";
+    const nonCancelled = results.filter((r) => r !== "cancelled");
+    if (nonCancelled.length === 0) return "cancelled";
+    if (nonCancelled.some((r) => r === "failed")) return "failed";
+    if (nonCancelled.every((r) => r === "passed")) return "passed";
+    return "pending";
+  };
+
+  // Filter by user name, result, and occurrence date
   const filteredGroups = useMemo(() => {
     return groupedRegistrations.filter((group) => {
       const userName =
         `${group.userFirstName} ${group.userLastName}`.toLowerCase();
-      return searchUser === "" || userName.includes(searchUser.toLowerCase());
-    });
-  }, [groupedRegistrations, searchUser]);
+      if (searchUser !== "" && !userName.includes(searchUser.toLowerCase()))
+        return false;
 
-  // Sort by user ID
+      if (resultFilter !== "all") {
+        if (getGroupEffectiveResult(group) !== resultFilter) return false;
+      }
+
+      if (dateFilter) {
+        const hasMatchingDate = group.registrations.some((reg) => {
+          const d = new Date(reg.occurrence.startDate);
+          const occDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          return occDateStr === dateFilter;
+        });
+        if (!hasMatchingDate) return false;
+      }
+
+      return true;
+    });
+  }, [groupedRegistrations, searchUser, resultFilter, dateFilter]);
+
+  // Sort by selected field and direction
   const sortedGroups = useMemo(() => {
-    return filteredGroups.slice().sort((a, b) => a.userId - b.userId);
-  }, [filteredGroups]);
+    return filteredGroups.slice().sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "occurrenceDate") {
+        cmp =
+          new Date(a.registrations[0].occurrence.startDate).getTime() -
+          new Date(b.registrations[0].occurrence.startDate).getTime();
+      } else if (sortBy === "registrationDate") {
+        cmp =
+          new Date(a.registrations[0].date as string).getTime() -
+          new Date(b.registrations[0].date as string).getTime();
+      } else if (sortBy === "firstName") {
+        cmp =
+          a.userFirstName.localeCompare(b.userFirstName) ||
+          a.userLastName.localeCompare(b.userLastName);
+      } else {
+        // lastName (default)
+        cmp =
+          a.userLastName.localeCompare(b.userLastName) ||
+          a.userFirstName.localeCompare(b.userFirstName);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filteredGroups, sortBy, sortDir]);
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => {
@@ -283,6 +337,105 @@ export default function WorkshopUsers() {
             </TooltipProvider>
           </div>
 
+          {/* Filter / Sort Controls */}
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            {/* Result filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                Result:
+              </span>
+              <Select value={resultFilter} onValueChange={setResultFilter}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Results</SelectItem>
+                  <SelectItem value="passed">Passed</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date filter (occurrence date) */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                Date:
+              </span>
+              <Input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-40"
+              />
+              {dateFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDateFilter("")}
+                  className="h-8 px-2 text-gray-500"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                Sort:
+              </span>
+              <Select
+                value={sortBy}
+                onValueChange={(v) =>
+                  setSortBy(
+                    v as "lastName" | "firstName" | "occurrenceDate" | "registrationDate"
+                  )
+                }
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lastName">Last Name (A–Z)</SelectItem>
+                  <SelectItem value="firstName">First Name (A–Z)</SelectItem>
+                  <SelectItem value="registrationDate">
+                    Registration Date
+                  </SelectItem>
+                  <SelectItem value="occurrenceDate">
+                    Occurrence Date(s)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+                }
+                className="h-8 px-2 text-gray-500"
+              >
+                {sortDir === "asc" ? "↑ Asc" : "↓ Desc"}
+              </Button>
+            </div>
+
+            {/* Clear all filters */}
+            {(resultFilter !== "all" || dateFilter) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setResultFilter("all");
+                  setDateFilter("");
+                }}
+                className="h-8 text-gray-500"
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+
           {/* Grouped Registrations Table */}
           <div className="border rounded-lg overflow-hidden">
             <table className="w-full">
@@ -307,7 +460,7 @@ export default function WorkshopUsers() {
                     Registration Date
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                    Dates
+                    Occurrence Date(s)
                   </th>
                 </tr>
               </thead>
@@ -318,7 +471,9 @@ export default function WorkshopUsers() {
                       colSpan={7}
                       className="px-4 py-8 text-center text-gray-500"
                     >
-                      No users registered for this workshop
+                      {groupedRegistrations.length === 0
+                        ? "No users registered for this workshop"
+                        : "No users match the current filters"}
                     </td>
                   </tr>
                 ) : (
