@@ -156,11 +156,11 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Automatic registration confirmation email with ICS attachment
 - Multi-day workshops linked via `connectId`
 
-**Cancellation:**
-- Cancellation within 48 hours: Full refund eligibility
-- Registration removed from database
-- Stripe refund processed
-- Cancellation confirmation email sent
+**Cancellation (user-initiated):**
+- Refund eligible if cancelled at least 48 hours before the workshop start time (checked in Admin Settings → Cancelled Events tab)
+- Registration marked as `"cancelled"` in DB; audit record created in `WorkshopCancelledRegistration` with `cancelledByAdmin: false`
+- Stripe refund processed separately (not automatic on cancellation)
+- Cancellation confirmation email sent (`sendWorkshopCancellationEmail`)
 
 **Admin — Workshop Registrations Page (`/dashboard/admin/workshop/:workshopId/users`):**
 - Lists all users registered for a specific workshop or orientation
@@ -169,12 +169,13 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - **Sort**: last name (A–Z), first name (A–Z), registration date, or occurrence date(s); direction toggleable
 - Multi-day workshops group all days per user into one expandable row; per-day results shown on expand; all filters operate on the group's effective result (e.g. a user is "passed" only when all days pass)
 - Works identically for orientation and regular workshop types, single-day and multi-day, with or without price variations
+- **Cancel Registration** (kebab menu ⋮ per row): admin can cancel any individual user's registration regardless of result state (pending/passed/failed); multi-day cancels all sessions together; sends `sendAdminWorkshopCancellationEmail` to the user; creates `WorkshopCancelledRegistration` record with `cancelledByAdmin: true` (always shows as refund-eligible in Cancelled Events)
 
 **Key Files:**
-- `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration
+- `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration; `cancelUserWorkshopRegistration` and `cancelMultiDayWorkshopRegistration` accept optional `cancelledByAdmin` param (default `false`)
 - `app/models/payment.server.ts` - Workshop payment and refund processing
 - `app/routes/dashboard/workshops.tsx` - Workshop browsing and registration
-- `app/routes/dashboard/userworkshop.tsx` - Per-workshop registrations list with result/date filters and sort
+- `app/routes/dashboard/userworkshop.tsx` - Per-workshop registrations list with result/date filters, sort, and admin cancel action
 
 ### 6. Equipment Booking System
 
@@ -236,7 +237,8 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Registration confirmation (`sendRegistrationConfirmationEmail`)
 - Password reset link (`sendResetEmail`) — JWT token, 1-hour expiration
 - Workshop registration confirmation (`sendWorkshopConfirmationEmail`) — with ICS calendar attachment
-- Workshop cancellation confirmation (`sendWorkshopCancellationEmail`)
+- Workshop cancellation confirmation — user-initiated (`sendWorkshopCancellationEmail`)
+- Workshop cancellation notification — admin-initiated (`sendAdminWorkshopCancellationEmail`; distinct subject and wording: "cancelled by an administrator")
 - Workshop price variation cancelled — single (`sendWorkshopPriceVariationCancellationEmail`)
 - Workshop price variation cancelled — multi-day (`sendWorkshopPriceVariationCancellationEmailMultiDay`)
 - Workshop occurrence cancelled by admin — single (`sendWorkshopOccurrenceCancellationEmail`)

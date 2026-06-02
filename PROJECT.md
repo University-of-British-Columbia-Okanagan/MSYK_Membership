@@ -170,7 +170,7 @@ The workshop status job runs immediately on startup and then every 1 second, kee
 - **Cutoff Time**: 60 minutes before workshop start (configurable per-workshop via `registrationCutoff`)
 - **Capacity**: Tracked per occurrence or across multi-day series
 - **Price Variations**: `WorkshopPriceVariation` records with individual capacity limits
-- **Cancellation Policy**: Full refund if cancelled within 48 hours of registration (default policy text stored on `Workshop` model)
+- **Cancellation Policy**: Refund eligible if cancelled at least 48 hours before the workshop start time (policy text stored in `Workshop.cancellationPolicy`; eligibility checked in Cancelled Events tab in Admin Settings)
 
 **Google Calendar Integration (Optional):**
 - When configured, workshop create/edit/delete automatically creates/updates/deletes Google Calendar events
@@ -341,7 +341,8 @@ logger.error("Operation failed", { error, userId, context });
 | `sendRegistrationConfirmationEmail` | New user registration |
 | `sendResetEmail` | Password reset request |
 | `sendWorkshopConfirmationEmail` | Workshop registration (with ICS attachment) |
-| `sendWorkshopCancellationEmail` | Workshop registration cancelled |
+| `sendWorkshopCancellationEmail` | Workshop registration cancelled by user |
+| `sendAdminWorkshopCancellationEmail` | Workshop registration cancelled by admin (distinct wording: "cancelled by an administrator") |
 | `sendWorkshopPriceVariationCancellationEmail` | Price variation cancelled (single) |
 | `sendWorkshopPriceVariationCancellationEmailMultiDay` | Price variation cancelled (multi-day) |
 | `sendWorkshopOccurrenceCancellationEmail` | Occurrence cancelled by admin (single) |
@@ -527,7 +528,7 @@ Optional: `BRIVO_BASE_URL` (default: `https://api.brivo.com`), `BRIVO_AUTH_BASE_
 | `/dashboard/accessusage` | `routes/dashboard/accessusage.tsx` |
 | `/dashboard/admin/users` | `routes/dashboard/allusersregistered.tsx` |
 | `/dashboard/admin/workshop/users` | `routes/dashboard/alluserworkshop.tsx` |
-| `/dashboard/admin/workshop/:workshopId/users` | `routes/dashboard/userworkshop.tsx` |
+| `/dashboard/admin/workshop/:workshopId/users` | `routes/dashboard/userworkshop.tsx` — loader + action; action handles `adminCancelRegistration` |
 | `/dashboard/allequipmentbooking` | `routes/dashboard/allequipmentbooking.tsx` |
 | `/dashboard/admin/settings` | `routes/dashboard/adminsettings.tsx` |
 | `/dashboard/admin/reports` | `routes/dashboard/adminreports.tsx` |

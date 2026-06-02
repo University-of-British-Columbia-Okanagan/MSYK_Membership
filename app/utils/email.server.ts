@@ -522,6 +522,55 @@ export async function sendWorkshopCancellationEmail(params: {
   });
 }
 
+export async function sendAdminWorkshopCancellationEmail(params: {
+  userEmail: string;
+  workshopName: string;
+  startDate?: Date;
+  endDate?: Date;
+  sessions?: Array<{ startDate: Date; endDate: Date }>;
+  basePrice?: number;
+  priceVariation?: {
+    name: string;
+    description?: string | null;
+    price: number;
+  } | null;
+}): Promise<void> {
+  const { userEmail, workshopName, startDate, endDate, sessions, basePrice, priceVariation } = params;
+
+  const pricingLines: string[] = [];
+  if (priceVariation) {
+    pricingLines.push(`Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`);
+    if (priceVariation.description) {
+      pricingLines.push(`Details: ${priceVariation.description}`);
+    }
+  } else if (typeof basePrice === "number") {
+    pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
+  }
+
+  let detailsBlock = "";
+  if (sessions && sessions.length > 0) {
+    const lines = sessions
+      .map((s, idx) => `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`)
+      .join("\n");
+    detailsBlock = sessions.length > 1 ? `Sessions cancelled:\n${lines}` : `Session cancelled:\n${lines}`;
+  } else if (startDate && endDate) {
+    detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
+  }
+
+  const parts = [
+    `Your registration for "${workshopName}" has been cancelled by an administrator.`,
+    detailsBlock,
+    pricingLines.join("\n"),
+    `If you have any questions about this cancellation, please contact us.`,
+  ].filter(Boolean);
+
+  await sendMail({
+    to: userEmail,
+    subject: `Registration cancelled: ${workshopName}`,
+    text: parts.join("\n\n"),
+  });
+}
+
 export async function sendEquipmentCancellationEmail(params: {
   userEmail: string;
   equipmentName: string;
