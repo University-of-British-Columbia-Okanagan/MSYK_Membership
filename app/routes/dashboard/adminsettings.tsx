@@ -6286,7 +6286,8 @@ export default function AdminSettings() {
                                     <TooltipContent>
                                       <p>
                                         Cancelled by admin: Cancelled price
-                                        variation or cancelled occurrence(s)
+                                        variation, cancelled occurrence(s), or
+                                        cancelled individual registration
                                       </p>
                                     </TooltipContent>
                                   </Tooltip>
@@ -6524,7 +6525,8 @@ export default function AdminSettings() {
                                     <TooltipContent>
                                       <p>
                                         Cancelled by admin: Cancelled price
-                                        variation or cancelled occurrence(s)
+                                        variation, cancelled occurrence(s), or
+                                        cancelled individual registration
                                       </p>
                                     </TooltipContent>
                                   </Tooltip>
