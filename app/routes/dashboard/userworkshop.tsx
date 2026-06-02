@@ -4,7 +4,15 @@ import { getRoleUser } from "~/utils/session.server";
 import {
   getUserWorkshopRegistrationsByWorkshopId,
   getWorkshopById,
+  cancelUserWorkshopRegistration,
+  cancelMultiDayWorkshopRegistration,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
+  getUserWorkshopRegistrationInfo,
 } from "~/models/workshop.server";
+import { getUserById } from "~/models/user.server";
+import { sendAdminWorkshopCancellationEmail } from "~/utils/email.server";
+import { logger } from "~/logging/logger";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
@@ -21,6 +29,13 @@ import {
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal } from "lucide-react";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -32,6 +47,7 @@ interface Registration {
   result: string;
   status: string;
   date: string | Date;
+  paymentIntentId?: string | null;
   user: { id: number; firstName: string; lastName: string; email: string };
   occurrence: {
     id: number;
@@ -101,6 +117,90 @@ export async function loader({
     await getUserWorkshopRegistrationsByWorkshopId(workshopId);
 
   return { roleUser, registrations };
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { workshopId: string };
+}) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser?.userId) return redirect("/login");
+  if (roleUser.roleName.toLowerCase() !== "admin") return redirect("/dashboard/user");
+
+  const formData = await request.formData();
+  const actionType = formData.get("actionType") as string;
+
+  if (actionType === "adminCancelRegistration") {
+    const targetUserId = Number(formData.get("userId"));
+    const workshopId = Number(params.workshopId);
+    const isMultiDay = formData.get("isMultiDay") === "true";
+    const occurrenceId = formData.get("occurrenceId") ? Number(formData.get("occurrenceId")) : undefined;
+    const connectId = formData.get("connectId") ? Number(formData.get("connectId")) : undefined;
+
+    try {
+      const [workshop, targetUser] = await Promise.all([
+        getWorkshopById(workshopId),
+        getUserById(targetUserId),
+      ]);
+
+      if (!targetUser) throw new Error("User not found");
+      if (!workshop) throw new Error("Workshop not found");
+
+      if (isMultiDay && connectId) {
+        const occurrences = await getWorkshopOccurrencesByConnectId(workshopId, connectId);
+
+        const regInfo = await getUserWorkshopRegistrationInfo(targetUserId, workshopId);
+        const priceVariationForEmail = regInfo?.priceVariation
+          ? { name: regInfo.priceVariation.name, description: regInfo.priceVariation.description, price: regInfo.priceVariation.price }
+          : null;
+
+        await cancelMultiDayWorkshopRegistration({ workshopId, connectId, userId: targetUserId, cancelledByAdmin: true });
+
+        const sessions = occurrences.map((occ) => ({
+          startDate: new Date(occ.startDate),
+          endDate: new Date(occ.endDate),
+        }));
+
+        sendAdminWorkshopCancellationEmail({
+          userEmail: targetUser.email,
+          workshopName: workshop.name,
+          sessions,
+          basePrice: workshop.price,
+          priceVariation: priceVariationForEmail,
+        }).catch((err) => logger.error(`Failed to send admin cancellation email: ${err}`, { url: request.url }));
+
+      } else if (occurrenceId) {
+        const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+
+        const regInfo = await getUserWorkshopRegistrationInfo(targetUserId, workshopId);
+        const priceVariationForEmail = regInfo?.priceVariation
+          ? { name: regInfo.priceVariation.name, description: regInfo.priceVariation.description, price: regInfo.priceVariation.price }
+          : null;
+
+        await cancelUserWorkshopRegistration({ workshopId, occurrenceId, userId: targetUserId, cancelledByAdmin: true });
+
+        sendAdminWorkshopCancellationEmail({
+          userEmail: targetUser.email,
+          workshopName: workshop.name,
+          startDate: new Date(occurrence.startDate),
+          endDate: new Date(occurrence.endDate),
+          basePrice: workshop.price,
+          priceVariation: priceVariationForEmail,
+        }).catch((err) => logger.error(`Failed to send admin cancellation email: ${err}`, { url: request.url }));
+      }
+
+      logger.info(`Admin ${roleUser.userId} cancelled registration for user ${targetUserId} in workshop ${workshopId}`, { url: request.url });
+      return { success: true, cancelled: true };
+    } catch (error) {
+      logger.error(`Error admin-cancelling registration: ${error}`, { url: request.url });
+      return { error: "Failed to cancel registration" };
+    }
+  }
+
+  return { error: "Unknown action" };
 }
 
 export default function WorkshopUsers() {
@@ -242,6 +342,20 @@ export default function WorkshopUsers() {
       }
       return newSet;
     });
+  };
+
+  const handleAdminCancelRegistration = async (group: GroupedRegistration) => {
+    const formData = new FormData();
+    formData.append("actionType", "adminCancelRegistration");
+    formData.append("userId", String(group.userId));
+    formData.append("isMultiDay", String(group.isMultiDay));
+    if (group.isMultiDay && group.connectId !== null) {
+      formData.append("connectId", String(group.connectId));
+    } else {
+      formData.append("occurrenceId", String(group.registrations[0].occurrence.id));
+    }
+    await fetch(window.location.pathname, { method: "POST", body: formData });
+    window.location.reload();
   };
 
   const handlePassAll = async () => {
@@ -437,8 +551,8 @@ export default function WorkshopUsers() {
           </div>
 
           {/* Grouped Registrations Table */}
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full">
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[700px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
@@ -450,17 +564,20 @@ export default function WorkshopUsers() {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                     Email
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 hidden md:table-cell">
                     Price Variation
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                     Result
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 hidden md:table-cell">
                     Registration Date
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                     Occurrence Date(s)
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 sticky right-0 bg-gray-50 border-l border-gray-200">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -468,7 +585,7 @@ export default function WorkshopUsers() {
                 {sortedGroups.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-4 py-8 text-center text-gray-500"
                     >
                       {groupedRegistrations.length === 0
@@ -483,7 +600,7 @@ export default function WorkshopUsers() {
                     const firstReg = group.registrations[0];
 
                     return (
-                      <tr key={groupKey} className="hover:bg-gray-50">
+                      <tr key={groupKey} className="hover:bg-gray-50 group">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             {group.isMultiDay && (
@@ -503,7 +620,7 @@ export default function WorkshopUsers() {
                         </td>
                         <td className="px-4 py-3">{group.userLastName}</td>
                         <td className="px-4 py-3 text-sm">{group.userEmail}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden md:table-cell">
                           {group.priceVariation
                             ? `${group.priceVariation.name} ($${group.priceVariation.price})`
                             : "N/A"}
@@ -548,7 +665,7 @@ export default function WorkshopUsers() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden md:table-cell">
                           {firstReg.date
                             ? new Date(firstReg.date).toLocaleString()
                             : "N/A"}
@@ -606,6 +723,36 @@ export default function WorkshopUsers() {
                               ).toLocaleString()}
                             </div>
                           )}
+                        </td>
+                        <td className="px-4 py-3 sticky right-0 bg-white group-hover:bg-gray-50 border-l border-gray-200">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {getGroupEffectiveResult(group) !== "cancelled" ? (
+                                <>
+                                  <ConfirmButton
+                                    confirmTitle="Cancel Registration"
+                                    confirmDescription={
+                                      group.isMultiDay
+                                        ? `Cancel ${group.userFirstName} ${group.userLastName}'s registration for all ${group.registrations.length} session(s)? A cancellation email will be sent to them.`
+                                        : `Cancel ${group.userFirstName} ${group.userLastName}'s registration? A cancellation email will be sent to them.`
+                                    }
+                                    onConfirm={() => handleAdminCancelRegistration(group)}
+                                    buttonLabel="Cancel Registration"
+                                    buttonClassName="w-full justify-start px-2 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 bg-transparent border-0 shadow-none font-normal rounded-sm h-auto"
+                                  />
+                                </>
+                              ) : (
+                                <DropdownMenuItem disabled className="text-gray-400">
+                                  Registration cancelled
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </td>
                       </tr>
                     );
