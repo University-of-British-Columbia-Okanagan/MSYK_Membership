@@ -26,7 +26,7 @@ npm run dev                           # Start dev server (localhost:5173)
 npm run typecheck                     # Type check + generate React Router types
 npx prisma generate --schema prisma/schema.prisma  # Generate Prisma client
 npx prisma migrate dev                # Run migrations
-npx tsx seed.ts                       # Seed database
+npx tsx seed.ts                       # Seed database (NODE_ENV=development only)
 npx prisma studio                     # Open database GUI
 npm test                              # Run Jest tests
 ```

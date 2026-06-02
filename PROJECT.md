@@ -368,7 +368,9 @@ logger.error("Operation failed", { error, userId, context });
 - Jest configured for unit testing
 - Test files in `tests/` directory
 - Key test files: `tests/models/membership.server.test.ts`, `tests/models/membership.cron.test.ts`, `tests/models/workshop.registration.test.ts`, `tests/models/workshop.capacity.test.ts`
-- Seed script (`seed.ts`) provides consistent test data
+- Seed script (`seed.ts`) provides consistent test data; **requires `NODE_ENV=development`** — exits immediately otherwise. Occurrence dates are relative to `now` (e.g. `addDays(now, 7)`) so workshops always appear upcoming regardless of when the seed runs.
+- Additional test data scripts in `test-scripts/`:
+  - `seed-orientation-registrations.ts` — populates any workshop with 20 test users across 5 past sessions with varied results (passed/failed/pending/cancelled) and optional price variations; supports multi-day via `--days=N`. Run: `npx tsx test-scripts/seed-orientation-registrations.ts [workshopId|name] [--days=N]`
 
 ## Environment Variables & Configuration
 

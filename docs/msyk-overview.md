@@ -162,10 +162,19 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Stripe refund processed
 - Cancellation confirmation email sent
 
+**Admin — Workshop Registrations Page (`/dashboard/admin/workshop/:workshopId/users`):**
+- Lists all users registered for a specific workshop or orientation
+- **Result filter**: show only passed / failed / pending / cancelled registrations
+- **Date filter**: filter by occurrence date — e.g. select a date to see everyone who attended an orientation session that day, then use "Pass All" to pass the whole cohort
+- **Sort**: last name (A–Z), first name (A–Z), registration date, or occurrence date(s); direction toggleable
+- Multi-day workshops group all days per user into one expandable row; per-day results shown on expand; all filters operate on the group's effective result (e.g. a user is "passed" only when all days pass)
+- Works identically for orientation and regular workshop types, single-day and multi-day, with or without price variations
+
 **Key Files:**
 - `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration
 - `app/models/payment.server.ts` - Workshop payment and refund processing
 - `app/routes/dashboard/workshops.tsx` - Workshop browsing and registration
+- `app/routes/dashboard/userworkshop.tsx` - Per-workshop registrations list with result/date filters and sort
 
 ### 6. Equipment Booking System
 

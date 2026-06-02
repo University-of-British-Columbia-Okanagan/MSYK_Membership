@@ -2,8 +2,14 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
-// Run npx tsx seed.ts
+// Run npx tsx seed.ts (only in development)
 async function main() {
+  const env = process.env.NODE_ENV;
+  if (env !== "development") {
+    console.error(`Seed aborted: NODE_ENV is "${env}". Only runs in development.`);
+    process.exit(1);
+  }
+
   await prisma.adminSettings.deleteMany();
   await prisma.userMembership.deleteMany();
   await prisma.user.deleteMany();
@@ -124,64 +130,159 @@ async function main() {
     data: [
       {
         name: "Laser Cutting Basics",
-        description: "Learn how to use a laser cutter safely.",
+        description:
+          "Learn how to use the laser cutter safely and effectively. We'll cover material selection, design file preparation, and machine operation.",
         price: 30.0,
-        location: "Makerspace YK",
-        capacity: 15,
+        location: "Makerspace YK — Digital Lab",
+        capacity: 8,
         type: "workshop",
+        cancellationPolicy:
+          "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
+        registrationCutoff: 60,
       },
       {
-        name: "Pottery Workshop",
-        description: "Hands-on pottery techniques for beginners.",
-        price: 35.0,
+        name: "3D Printing Fundamentals",
+        description:
+          "Get hands-on with FDM 3D printing. Learn slicer software, print settings, and how to troubleshoot common issues.",
+        price: 25.0,
+        location: "Makerspace YK — Digital Lab",
+        capacity: 10,
+        type: "workshop",
+        cancellationPolicy:
+          "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
+        registrationCutoff: 60,
+      },
+      {
+        name: "Introduction to Woodworking",
+        description:
+          "A beginner-friendly workshop covering basic hand tools, power tool safety, and a guided small project build.",
+        price: 40.0,
+        location: "Makerspace YK — Shopspace",
+        capacity: 6,
+        type: "workshop",
+        cancellationPolicy:
+          "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
+        registrationCutoff: 60,
+      },
+      {
+        name: "General Orientation",
+        description:
+          "Required orientation for all new members. Covers safety rules, facility tour, tool overview, and membership access levels.",
+        price: 0.0,
         location: "Makerspace YK",
         capacity: 20,
-        type: "workshop",
+        type: "orientation",
+        cancellationPolicy:
+          "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
+        registrationCutoff: 30,
       },
       {
-        name: "Knitting for Beginners",
-        description: "Learn the basics of knitting.",
-        price: 22.0,
-        location: "Makerspace YK",
-        capacity: 25,
+        name: "Shopspace Orientation",
+        description:
+          "Required orientation for members who want to access the woodshop. Covers table saw, band saw, and other shop equipment.",
+        price: 0.0,
+        location: "Makerspace YK — Shopspace",
+        capacity: 8,
         type: "orientation",
+        cancellationPolicy:
+          "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
+        registrationCutoff: 30,
+      },
+      {
+        name: "Soldering & Electronics Basics",
+        description:
+          "Learn to solder, read basic circuits, and assemble a small take-home electronics project.",
+        price: 20.0,
+        location: "Makerspace YK — Hackspace",
+        capacity: 12,
+        type: "workshop",
+        cancellationPolicy:
+          "Can't make it? Email info@makerspaceyk.com. Full refunds are only available if canceled within 48 hours before the scheduled start time of the workshop/orientation.",
+        registrationCutoff: 60,
       },
     ],
   });
 
+  const addDays = (date: Date, days: number) => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  };
+
   const baseOccurrencesData = [
+    // Laser Cutting — two upcoming sessions
     {
-      workshopId: 1, // Laser Cutting
-      startDate: new Date("2025-02-10T10:00:00Z"),
-      endDate: new Date("2025-02-10T12:00:00Z"),
+      workshopId: 1,
+      startDate: addDays(now, 7),
+      endDate: addDays(now, 7),
     },
     {
-      workshopId: 1, // Laser Cutting again
-      startDate: new Date("2025-03-17T10:00:00Z"),
-      endDate: new Date("2025-03-17T12:00:00Z"),
+      workshopId: 1,
+      startDate: addDays(now, 21),
+      endDate: addDays(now, 21),
+    },
+    // 3D Printing — upcoming session
+    {
+      workshopId: 2,
+      startDate: addDays(now, 10),
+      endDate: addDays(now, 10),
+    },
+    // Woodworking — upcoming session
+    {
+      workshopId: 3,
+      startDate: addDays(now, 14),
+      endDate: addDays(now, 14),
+    },
+    // General Orientation — two upcoming sessions
+    {
+      workshopId: 4,
+      startDate: addDays(now, 5),
+      endDate: addDays(now, 5),
     },
     {
-      workshopId: 2, // Pottery
-      startDate: new Date("2025-09-10T14:00:00Z"),
-      endDate: new Date("2025-09-10T16:00:00Z"),
+      workshopId: 4,
+      startDate: addDays(now, 19),
+      endDate: addDays(now, 19),
+    },
+    // Shopspace Orientation — upcoming session
+    {
+      workshopId: 5,
+      startDate: addDays(now, 12),
+      endDate: addDays(now, 12),
+    },
+    // Soldering — upcoming session
+    {
+      workshopId: 6,
+      startDate: addDays(now, 28),
+      endDate: addDays(now, 28),
+    },
+    // Past occurrences (for "past events" section)
+    {
+      workshopId: 1,
+      startDate: addDays(now, -30),
+      endDate: addDays(now, -30),
     },
     {
-      workshopId: 3, // Knitting
-      startDate: new Date("2025-09-10T10:00:00Z"),
-      endDate: new Date("2025-09-10T12:00:00Z"),
+      workshopId: 2,
+      startDate: addDays(now, -14),
+      endDate: addDays(now, -14),
     },
   ];
 
-  // Map over each occurrence to set status based on startDate
+  // Set start/end times: each occurrence is 2 hours; past ones explicitly past status
   const workshopOccurrencesData = baseOccurrencesData.map((occ) => {
-    const isFuture = occ.startDate > now;
+    const start = new Date(occ.startDate);
+    start.setHours(10, 0, 0, 0);
+    const end = new Date(occ.endDate);
+    end.setHours(12, 0, 0, 0);
     return {
-      ...occ,
-      status: isFuture ? "active" : "past",
+      workshopId: occ.workshopId,
+      startDate: start,
+      endDate: end,
+      status: start > now ? "active" : "past",
     };
   });
 
-  // Now insert them into the database
   await prisma.workshopOccurrence.createMany({
     data: workshopOccurrencesData,
   });
