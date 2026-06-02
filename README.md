@@ -196,6 +196,7 @@ After login, users are redirected to role-appropriate dashboards:
   - **Date filter** — show only users who attended on a specific occurrence date (useful for bulk-passing an orientation session)
   - **Sort** — by last name, first name, registration date, or occurrence date(s); ascending or descending
   - Multi-day workshops show a collapsible row with per-day results; all filters work across both single-day and multi-day workshops
+  - **Cancel Registration** — kebab menu (⋮) per row lets admins cancel any individual user's registration; works for all workshop types (single-day, multi-day, with/without price variations); sends a distinct admin-cancellation email to the user; creates a `WorkshopCancelledRegistration` audit record with `cancelledByAdmin: true` (always shows as "Yes" in Cancelled Events tab)
 - Cancel workshop occurrences and price variations
 
 **Equipment Administration:**
