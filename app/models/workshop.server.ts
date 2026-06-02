@@ -2075,10 +2075,12 @@ export async function cancelUserWorkshopRegistration({
   workshopId,
   occurrenceId,
   userId,
+  cancelledByAdmin = false,
 }: {
   workshopId: number;
   occurrenceId: number;
   userId: number;
+  cancelledByAdmin?: boolean;
 }) {
   // First, get the original registration to capture the registration date and price variation
   const existingRegistration = await db.userWorkshop.findFirst({
@@ -2118,7 +2120,7 @@ export async function cancelUserWorkshopRegistration({
     registrationDate: existingRegistration.date,
     cancellationDate: new Date(),
     paymentIntentId: existingRegistration.paymentIntentId,
-    cancelledByAdmin: false, // User-initiated cancellation
+    cancelledByAdmin,
   });
 
   return updateResult;
@@ -2137,10 +2139,12 @@ export async function cancelMultiDayWorkshopRegistration({
   workshopId,
   connectId,
   userId,
+  cancelledByAdmin = false,
 }: {
   workshopId: number;
   connectId: number;
   userId: number;
+  cancelledByAdmin?: boolean;
 }) {
   // Get all occurrences for this multi-day workshop
   const occurrences = await getWorkshopOccurrencesByConnectId(
@@ -2192,7 +2196,7 @@ export async function cancelMultiDayWorkshopRegistration({
     registrationDate: firstRegistration.date,
     cancellationDate: new Date(),
     paymentIntentId: firstRegistration.paymentIntentId,
-    cancelledByAdmin: false, // User-initiated cancellation
+    cancelledByAdmin,
   });
 
   return updateResult;
