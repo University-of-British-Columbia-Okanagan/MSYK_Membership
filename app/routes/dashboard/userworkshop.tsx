@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, redirect, useParams, Link, useRevalidator } from "react-router";
+import { useLoaderData, redirect, useParams, useRevalidator } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import {
   getUserWorkshopRegistrationsByWorkshopId,
@@ -9,9 +9,14 @@ import {
   getWorkshopOccurrence,
   getWorkshopOccurrencesByConnectId,
   getUserWorkshopRegistrationInfo,
+  getActiveOccurrencesForWorkshop,
+  moveUserWorkshopRegistration,
 } from "~/models/workshop.server";
 import { getUserById } from "~/models/user.server";
-import { sendAdminWorkshopCancellationEmail } from "~/utils/email.server";
+import {
+  sendAdminWorkshopCancellationEmail,
+  sendAdminWorkshopMoveEmail,
+} from "~/utils/email.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
@@ -34,6 +39,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { MoreHorizontal } from "lucide-react";
 import {
   Tooltip,
@@ -59,6 +71,21 @@ interface Registration {
   priceVariation?: { id: number; name: string; price: number } | null;
 }
 
+interface OccurrenceSummary {
+  id: number;
+  startDate: string;
+  endDate: string;
+  totalRegistrations: number;
+  variationCounts: Record<number, number>;
+}
+
+interface WorkshopOccurrencesData {
+  workshopCapacity: number;
+  hasPriceVariations: boolean;
+  priceVariations: { id: number; name: string; capacity: number }[];
+  occurrences: OccurrenceSummary[];
+}
+
 interface LoaderData {
   roleUser: {
     roleId: number;
@@ -66,6 +93,7 @@ interface LoaderData {
     userId: number;
   };
   registrations: Registration[];
+  workshopOccurrences: WorkshopOccurrencesData;
 }
 
 interface GroupedRegistration {
@@ -90,33 +118,31 @@ export async function loader({
 }) {
   const roleUser = await getRoleUser(request);
 
-  // Check if user is logged in
   if (!roleUser || !roleUser.userId) {
     return redirect("/login");
   }
 
-  // Check if user is admin
   if (roleUser.roleName.toLowerCase() !== "admin") {
     return redirect("/dashboard/user");
   }
 
   const workshopId = Number(params.workshopId);
 
-  // Check if workshop exists
   try {
     const workshop = await getWorkshopById(workshopId);
     if (!workshop) {
       return redirect("/dashboard/admin");
     }
   } catch (error) {
-    // Workshop doesn't exist, redirect to admin dashboard
     return redirect("/dashboard/admin");
   }
 
-  const registrations =
-    await getUserWorkshopRegistrationsByWorkshopId(workshopId);
+  const [registrations, workshopOccurrences] = await Promise.all([
+    getUserWorkshopRegistrationsByWorkshopId(workshopId),
+    getActiveOccurrencesForWorkshop(workshopId),
+  ]);
 
-  return { roleUser, registrations };
+  return { roleUser, registrations, workshopOccurrences };
 }
 
 export async function action({
@@ -200,11 +226,63 @@ export async function action({
     }
   }
 
+  if (actionType === "moveRegistration") {
+    const targetUserId = Number(formData.get("userId"));
+    const workshopId = Number(params.workshopId);
+    const fromOccurrenceId = Number(formData.get("fromOccurrenceId"));
+    const toOccurrenceId = Number(formData.get("toOccurrenceId"));
+
+    try {
+      const [workshop, targetUser] = await Promise.all([
+        getWorkshopById(workshopId),
+        getUserById(targetUserId),
+      ]);
+
+      if (!targetUser) throw new Error("User not found");
+      if (!workshop) throw new Error("Workshop not found");
+
+      const [fromOccurrence, toOccurrence] = await Promise.all([
+        getWorkshopOccurrence(workshopId, fromOccurrenceId),
+        getWorkshopOccurrence(workshopId, toOccurrenceId),
+      ]);
+
+      // moveUserWorkshopRegistration returns the source registration's priceVariation
+      // directly, avoiding the unfiltered getUserWorkshopRegistrationInfo lookup
+      const moveResult = await moveUserWorkshopRegistration({
+        userId: targetUserId,
+        workshopId,
+        fromOccurrenceId,
+        toOccurrenceId,
+      });
+
+      sendAdminWorkshopMoveEmail({
+        userEmail: targetUser.email,
+        workshopName: workshop.name,
+        fromStartDate: new Date(fromOccurrence.startDate),
+        fromEndDate: new Date(fromOccurrence.endDate),
+        toStartDate: new Date(toOccurrence.startDate),
+        toEndDate: new Date(toOccurrence.endDate),
+        basePrice: workshop.price,
+        priceVariation: moveResult.priceVariation,
+      }).catch((err) => logger.error(`Failed to send move email: ${err}`, { url: request.url }));
+
+      logger.info(
+        `Admin ${roleUser.userId} moved user ${targetUserId} from occurrence ${fromOccurrenceId} to ${toOccurrenceId} in workshop ${workshopId}`,
+        { url: request.url }
+      );
+      return { success: true, moved: true };
+    } catch (error) {
+      logger.error(`Error moving registration: ${error}`, { url: request.url });
+      const message = error instanceof Error ? error.message : "Failed to move registration";
+      return { error: message };
+    }
+  }
+
   return { error: "Unknown action" };
 }
 
 export default function WorkshopUsers() {
-  const { roleUser, registrations } = useLoaderData<LoaderData>();
+  const { roleUser, registrations, workshopOccurrences } = useLoaderData<LoaderData>();
   const { workshopId } = useParams();
   const { revalidate } = useRevalidator();
 
@@ -223,7 +301,12 @@ export default function WorkshopUsers() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [cancelError, setCancelError] = useState<string | null>(null);
 
-  // Determine the workshop name and type
+  // Move dialog state
+  const [moveGroup, setMoveGroup] = useState<GroupedRegistration | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState<string>("");
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
+
   const workshopName =
     registrations.length > 0 && registrations[0].workshop
       ? registrations[0].workshop.name
@@ -236,7 +319,38 @@ export default function WorkshopUsers() {
 
   const isOrientation = workshopType.toLowerCase() === "orientation";
 
-  // Group registrations by user and connectId
+  // Build a set of actively-registered occurrences per user (for move dialog filtering)
+  const activeOccurrencesByUser = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    registrations.forEach((reg) => {
+      if (reg.result !== "cancelled") {
+        if (!map.has(reg.user.id)) map.set(reg.user.id, new Set());
+        map.get(reg.user.id)!.add(reg.occurrence.id);
+      }
+    });
+    return map;
+  }, [registrations]);
+
+  // Given a group, return the occurrences the user can be moved to
+  const getAvailableTargetOccurrences = (group: GroupedRegistration): OccurrenceSummary[] => {
+    const fromOccurrenceId = group.registrations[0].occurrence.id;
+    const userOccurrences = activeOccurrencesByUser.get(group.userId) ?? new Set<number>();
+
+    return workshopOccurrences.occurrences.filter((occ) => {
+      if (occ.id === fromOccurrenceId) return false;
+      if (userOccurrences.has(occ.id)) return false;
+      if (occ.totalRegistrations >= workshopOccurrences.workshopCapacity) return false;
+      if (group.priceVariation) {
+        const varCap =
+          workshopOccurrences.priceVariations.find((v) => v.id === group.priceVariation!.id)
+            ?.capacity ?? 0;
+        const varCount = occ.variationCounts[group.priceVariation.id] ?? 0;
+        if (varCount >= varCap) return false;
+      }
+      return true;
+    });
+  };
+
   const groupedRegistrations = useMemo(() => {
     const groups = new Map<string, GroupedRegistration>();
 
@@ -263,7 +377,6 @@ export default function WorkshopUsers() {
       const group = groups.get(key)!;
       group.registrations.push(reg);
 
-      // Check if all registrations in group are passed
       if (reg.result !== "passed") {
         group.allPassed = false;
       }
@@ -272,7 +385,6 @@ export default function WorkshopUsers() {
     return Array.from(groups.values());
   }, [registrations]);
 
-  // Determine a group's effective result for filtering purposes
   const getGroupEffectiveResult = (group: GroupedRegistration): string => {
     const results = group.registrations.map((r) => r.result);
     if (results.every((r) => r === "cancelled")) return "cancelled";
@@ -283,7 +395,6 @@ export default function WorkshopUsers() {
     return "pending";
   };
 
-  // Filter by user name, result, and occurrence date
   const filteredGroups = useMemo(() => {
     return groupedRegistrations.filter((group) => {
       const userName =
@@ -308,7 +419,6 @@ export default function WorkshopUsers() {
     });
   }, [groupedRegistrations, searchUser, resultFilter, dateFilter]);
 
-  // Sort by selected field and direction
   const sortedGroups = useMemo(() => {
     return filteredGroups.slice().sort((a, b) => {
       let cmp = 0;
@@ -325,7 +435,6 @@ export default function WorkshopUsers() {
           a.userFirstName.localeCompare(b.userFirstName) ||
           a.userLastName.localeCompare(b.userLastName);
       } else {
-        // lastName (default)
         cmp =
           a.userLastName.localeCompare(b.userLastName) ||
           a.userFirstName.localeCompare(b.userFirstName);
@@ -378,8 +487,46 @@ export default function WorkshopUsers() {
     revalidate();
   };
 
+  const handleMoveRegistration = async () => {
+    if (!moveGroup || !moveTargetId) return;
+    setMoveError(null);
+    setMoveLoading(true);
+
+    const formData = new FormData();
+    formData.append("actionType", "moveRegistration");
+    formData.append("userId", String(moveGroup.userId));
+    formData.append("fromOccurrenceId", String(moveGroup.registrations[0].occurrence.id));
+    formData.append("toOccurrenceId", moveTargetId);
+
+    try {
+      const res = await fetch(window.location.pathname, { method: "POST", body: formData });
+      try {
+        const data = await res.json();
+        if (data?.error) {
+          setMoveError(data.error);
+          setMoveLoading(false);
+          return;
+        }
+      } catch {
+        if (!res.ok) {
+          setMoveError("An error occurred. Please try again.");
+          setMoveLoading(false);
+          return;
+        }
+      }
+    } catch {
+      setMoveError("Network error. Please try again.");
+      setMoveLoading(false);
+      return;
+    }
+
+    setMoveLoading(false);
+    setMoveGroup(null);
+    setMoveTargetId("");
+    revalidate();
+  };
+
   const handlePassAll = async () => {
-    // Only pass registrations that have status "pending"
     const registrationIds = sortedGroups.flatMap((group) =>
       group.registrations
         .filter((reg) => reg.result === "pending")
@@ -400,7 +547,6 @@ export default function WorkshopUsers() {
     group: GroupedRegistration,
     newResult: string
   ) => {
-    // Get all registration IDs in the group
     const registrationIds = group.registrations.map((reg) => reg.id);
 
     const formData = new FormData();
@@ -414,6 +560,11 @@ export default function WorkshopUsers() {
     });
     window.location.reload();
   };
+
+  // Available occurrences for the currently-open move dialog
+  const moveAvailableOccurrences = moveGroup
+    ? getAvailableTargetOccurrences(moveGroup)
+    : [];
 
   return (
     <SidebarProvider>
@@ -473,7 +624,6 @@ export default function WorkshopUsers() {
 
           {/* Filter / Sort Controls */}
           <div className="flex flex-wrap items-center gap-3 mb-6">
-            {/* Result filter */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">
                 Result:
@@ -492,7 +642,6 @@ export default function WorkshopUsers() {
               </Select>
             </div>
 
-            {/* Date filter (occurrence date) */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">
                 Date:
@@ -515,7 +664,6 @@ export default function WorkshopUsers() {
               )}
             </div>
 
-            {/* Sort */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 whitespace-nowrap">
                 Sort:
@@ -554,7 +702,6 @@ export default function WorkshopUsers() {
               </Button>
             </div>
 
-            {/* Clear all filters */}
             {(resultFilter !== "all" || dateFilter) && (
               <Button
                 variant="ghost"
@@ -624,6 +771,12 @@ export default function WorkshopUsers() {
                     const groupKey = `${group.userId}-${group.connectId || group.registrations[0].occurrence.id}`;
                     const isExpanded = expandedGroups.has(groupKey);
                     const firstReg = group.registrations[0];
+                    const effectiveResult = getGroupEffectiveResult(group);
+                    const isActive = effectiveResult !== "cancelled";
+                    const canMove =
+                      isActive &&
+                      !group.isMultiDay &&
+                      getAvailableTargetOccurrences(group).length > 0;
 
                     return (
                       <tr key={groupKey} className="hover:bg-gray-50 group">
@@ -758,8 +911,19 @@ export default function WorkshopUsers() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {getGroupEffectiveResult(group) !== "cancelled" ? (
+                              {isActive ? (
                                 <>
+                                  {canMove && (
+                                    <DropdownMenuItem
+                                      onSelect={() => {
+                                        setMoveGroup(group);
+                                        setMoveTargetId("");
+                                        setMoveError(null);
+                                      }}
+                                    >
+                                      Move to Different Date
+                                    </DropdownMenuItem>
+                                  )}
                                   <ConfirmButton
                                     confirmTitle="Cancel Registration"
                                     confirmDescription={
@@ -787,6 +951,102 @@ export default function WorkshopUsers() {
               </tbody>
             </table>
           </div>
+
+          {/* Move Registration Dialog */}
+          <Dialog
+            open={moveGroup !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setMoveGroup(null);
+                setMoveTargetId("");
+                setMoveError(null);
+              }
+            }}
+          >
+            <DialogContent className="w-[calc(100%-2rem)] sm:w-full mx-auto sm:max-w-lg rounded-lg overflow-visible">
+              <DialogHeader>
+                <DialogTitle>
+                  Move {moveGroup?.userFirstName} {moveGroup?.userLastName}&apos;s Registration
+                </DialogTitle>
+              </DialogHeader>
+
+              {moveGroup && (
+                <div className="space-y-4 py-2">
+                  <div className="rounded-md bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700 space-y-1">
+                    <div>
+                      <span className="font-medium">Current date: </span>
+                      {new Date(
+                        moveGroup.registrations[0].occurrence.startDate
+                      ).toLocaleString()}{" "}
+                      &ndash;{" "}
+                      {new Date(
+                        moveGroup.registrations[0].occurrence.endDate
+                      ).toLocaleString()}
+                    </div>
+                    {moveGroup.priceVariation && (
+                      <div>
+                        <span className="font-medium">Pricing option: </span>
+                        {moveGroup.priceVariation.name} (${moveGroup.priceVariation.price})
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700">
+                      Move to
+                    </label>
+                    {moveAvailableOccurrences.length === 0 ? (
+                      <p className="text-sm text-gray-500 mt-1">
+                        No available dates to move this registration to.
+                      </p>
+                    ) : (
+                      <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a date…" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[200] max-h-60 overflow-y-auto">
+                          {moveAvailableOccurrences.map((occ) => {
+                            const spotsLeft =
+                              workshopOccurrences.workshopCapacity - occ.totalRegistrations;
+                            return (
+                              <SelectItem key={occ.id} value={String(occ.id)}>
+                                {new Date(occ.startDate).toLocaleString()} &ndash;{" "}
+                                {new Date(occ.endDate).toLocaleString()}
+                                {" "}({spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left)
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  {moveError && (
+                    <p className="text-sm text-red-600">{moveError}</p>
+                  )}
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setMoveGroup(null);
+                    setMoveTargetId("");
+                    setMoveError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleMoveRegistration}
+                  disabled={!moveTargetId || moveLoading || moveAvailableOccurrences.length === 0}
+                >
+                  {moveLoading ? "Moving…" : "Move Registration"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </main>
       </div>
     </SidebarProvider>
