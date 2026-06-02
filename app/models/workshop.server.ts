@@ -2611,7 +2611,9 @@ export async function checkWorkshopCapacity(
         occurrences: {
           where: { id: occurrenceId },
           include: {
-            userWorkshops: true,
+            userWorkshops: {
+              where: { result: { not: "cancelled" } },
+            },
           },
         },
       },
@@ -2773,7 +2775,9 @@ export async function checkMultiDayWorkshopCapacity(
         occurrences: {
           where: { connectId },
           include: {
-            userWorkshops: true,
+            userWorkshops: {
+              where: { result: { not: "cancelled" } },
+            },
           },
         },
       },
