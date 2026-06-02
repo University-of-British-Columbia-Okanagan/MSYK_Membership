@@ -2740,6 +2740,7 @@ export default function AdminSettings() {
 
   // User table filters
   const [adminStatusFilter, setAdminStatusFilter] = useState<string[]>([]);
+  const [roleLevelFilter, setRoleLevelFilter] = useState<number[]>([]);
   const [membershipFilter, setMembershipFilter] = useState<string[]>([]);
   const [doorAccessFilter, setDoorAccessFilter] = useState<string[]>([]);
 
@@ -3100,10 +3101,21 @@ export default function AdminSettings() {
         if (!adminStatusFilter.includes(userAdminStatus)) return false;
       }
 
-      // Membership filter
+      // Role Level filter
+      if (roleLevelFilter.length > 0) {
+        if (!roleLevelFilter.includes(user.roleLevel)) return false;
+      }
+
+      // Membership filter — classifies by actual paid subscription status
       if (membershipFilter.length > 0) {
-        const userMembershipStatus =
-          user.membershipStatus === "revoked" ? "Revoked" : "Active";
+        let userMembershipStatus: string;
+        if (user.membershipStatus === "revoked") {
+          userMembershipStatus = "Access Revoked";
+        } else if (user.hasRevocableMembership) {
+          userMembershipStatus = "Active Subscription";
+        } else {
+          userMembershipStatus = "No Subscription";
+        }
         if (!membershipFilter.includes(userMembershipStatus)) return false;
       }
 
@@ -3130,7 +3142,7 @@ export default function AdminSettings() {
 
       return true;
     });
-  }, [users, adminStatusFilter, membershipFilter, doorAccessFilter]);
+  }, [users, adminStatusFilter, roleLevelFilter, membershipFilter, doorAccessFilter]);
 
   // Get unique values for filter options
   const adminStatusOptions = useMemo(() => {
@@ -3143,14 +3155,28 @@ export default function AdminSettings() {
   }, [users]);
 
   const membershipOptions = useMemo(() => {
-    const revoked = users.filter(
+    const accessRevoked = users.filter(
       (u) => u.membershipStatus === "revoked"
     ).length;
-    const active = users.length - revoked;
+    const activeSubscription = users.filter(
+      (u) => u.membershipStatus !== "revoked" && u.hasRevocableMembership
+    ).length;
+    const noSubscription = users.filter(
+      (u) => u.membershipStatus !== "revoked" && !u.hasRevocableMembership
+    ).length;
     return [
-      { value: "Revoked", count: revoked },
-      { value: "Active", count: active },
+      { value: "Active Subscription", count: activeSubscription },
+      { value: "No Subscription", count: noSubscription },
+      { value: "Access Revoked", count: accessRevoked },
     ];
+  }, [users]);
+
+  const roleLevelOptions = useMemo(() => {
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+    users.forEach((u) => {
+      if (u.roleLevel >= 1 && u.roleLevel <= 4) counts[u.roleLevel]++;
+    });
+    return [1, 2, 3, 4].map((level) => ({ value: level, count: counts[level] }));
   }, [users]);
 
   const doorAccessOptions = useMemo(() => {
@@ -3232,11 +3258,11 @@ export default function AdminSettings() {
     {
       header: "Role Level",
       id: "roleLevel",
+      accessorFn: (row) => row.roleLevel,
       cell: ({ row }: { row: { original: UserRow } }) => (
         <RoleControl user={row.original} />
       ),
       size: 200,
-      enableSorting: false,
     },
     {
       header: "Admin Status",
@@ -3257,16 +3283,21 @@ export default function AdminSettings() {
     {
       header: "Membership",
       id: "membership",
-      accessorFn: (row) =>
-        row.membershipStatus === "revoked" ? "Revoked" : "Active",
+      accessorFn: (row) => {
+        if (row.membershipStatus === "revoked") return "Access Revoked";
+        if (row.hasRevocableMembership) return "Active Subscription";
+        return "No Subscription";
+      },
       cell: ({ row }: { row: { original: UserRow } }) => (
         <MembershipControl user={row.original} />
       ),
       size: 200,
       enableSorting: false,
       filterFn: (row, id, value) => {
-        const status =
-          row.original.membershipStatus === "revoked" ? "Revoked" : "Active";
+        let status: string;
+        if (row.original.membershipStatus === "revoked") status = "Access Revoked";
+        else if (row.original.hasRevocableMembership) status = "Active Subscription";
+        else status = "No Subscription";
         return value.includes(status);
       },
     },
@@ -4259,6 +4290,83 @@ export default function AdminSettings() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setAdminStatusFilter([])}
+                                className="w-full"
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+
+                      {/* Role Level Filter */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline">
+                            <FilterIcon
+                              className="-ms-1 opacity-60"
+                              size={16}
+                              aria-hidden="true"
+                            />
+                            Role Level
+                            {roleLevelFilter.length > 0 && (
+                              <span className="-me-1 inline-flex h-5 max-h-full items-center rounded border bg-background px-1 font-[inherit] text-[0.625rem] font-medium text-muted-foreground/70">
+                                {roleLevelFilter.length}
+                              </span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-auto min-w-36 p-3"
+                          align="start"
+                        >
+                          <div className="space-y-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Filter by Role Level
+                            </div>
+                            <div className="space-y-3">
+                              {roleLevelOptions.map((option) => (
+                                <div
+                                  key={option.value}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Checkbox
+                                    id={`role-level-${option.value}`}
+                                    checked={roleLevelFilter.includes(
+                                      option.value
+                                    )}
+                                    onCheckedChange={(checked: boolean) => {
+                                      if (checked) {
+                                        setRoleLevelFilter([
+                                          ...roleLevelFilter,
+                                          option.value,
+                                        ]);
+                                      } else {
+                                        setRoleLevelFilter(
+                                          roleLevelFilter.filter(
+                                            (f) => f !== option.value
+                                          )
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <Label
+                                    htmlFor={`role-level-${option.value}`}
+                                    className="flex grow justify-between gap-2 font-normal cursor-pointer"
+                                  >
+                                    Level {option.value}{" "}
+                                    <span className="ms-2 text-xs text-muted-foreground">
+                                      {option.count}
+                                    </span>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                            {roleLevelFilter.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setRoleLevelFilter([])}
                                 className="w-full"
                               >
                                 Clear
