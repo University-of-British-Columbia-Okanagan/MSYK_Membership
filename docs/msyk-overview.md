@@ -295,6 +295,19 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - User sync status display and retry functionality
 - Integration status indicator (shows if Brivo credentials are configured)
 
+**User Management Table (Admin Settings → User Settings tab):**
+- Lists all registered users with columns: First Name, Last Name, Training Card User Number, Email, Phone Number, Role Level, Admin Status, Membership, Door Access
+- **Admin Status filter**: show only Admins or non-admins
+- **Role Level filter**: filter to users at specific role level(s) (1, 2, 3, or 4); each option shows the live count of users at that level
+- **Membership filter**: filter by paid subscription status — three mutually exclusive categories:
+  - `"Active Subscription"` — access not revoked AND has at least one `UserMembership` record with status `active`, `ending`, or `cancelled`
+  - `"No Subscription"` — access not revoked AND no active membership record on file (registered but never subscribed)
+  - `"Access Revoked"` — `membershipStatus === "revoked"` (admin manually revoked, regardless of subscription records)
+- **Door Access filter**: filter by Brivo provisioning status (Disabled, Provisioned, Checking, Registered, Pending Sync, Sync Error)
+- **Name/email search**: global search across first name, last name, and email
+- **Role Level column**: sortable ascending/descending by clicking the column header
+- All active filters are ANDed — a user must satisfy every selected filter to appear
+
 **Admin Functions:**
 - User management (role assignment, `allowLevel4` flag, membership revocation/unrevocation)
 - Workshop CRUD operations
@@ -1160,7 +1173,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Events:** Delete All Occurrences to Multi-day Workshop/Orientation With Price Variation; Occurrence Showcase in Google Calendar | Go to edit workshop and then /dashboard/events | When admin deletes all occurrences, the deleted occurrences should not show up anymore (if no one has registered since you cannot add dates anymore if a user has registered) but you must add at least one occurrence or more and those occurrence added will show on the calendar with Name, Location, Description, Pricing Options, Type, Capacity, That it is Part of a Multi-day Series, Register Link (in localhost or prod website) | `NA` | `TODO/TOFIX`
 | ---- | **Admin Settings:** Workshop Past Workshop Visibility | Go to admin settings | Workshops that have ALL days past the N days, where N is the value of Past Workshop Visibility will not show in the workshop past events. If at least one of the workshops are not past the N days, then it will show | `NA` | `12/05/2025`
 | ---- | **Admin Settings:** Workshop Registration Cutoffs | Go to admin settings | Be able to set the registration cutoff for workshops. For regular workshop, it is based on the individual date. For multi-day workshops, it is based on the first date in the multi-day set | `NA` | `12/05/2025`
-| ---- | **Admin Settings:** User Managment Filters | Go to admin settings | Be able to filter users by admin status, membership, and door access | `NA` | `12/05/2025`
+| ---- | **Admin Settings:** User Managment Filters | Go to admin settings | Be able to filter users by admin status, role level, membership, and door access; membership options are "Active Subscription" (allowed + has active membership record), "No Subscription" (allowed + no membership record), and "Access Revoked" (revoked by admin); role level filter shows counts per level (1–4); all filters are ANDed | `NA` | `06/01/2026`
+| ---- | **Admin Settings:** User Management Role Level Sort | Go to admin settings | The Role Level column should be sortable ascending/descending by clicking the column header | `NA` | `06/01/2026`
 | ---- | **Admin Settings:** User Managment Filter by First or Last Name | Go to admin settings | Be able to filter users by first or last name | `NA` | `12/05/2025`
 | ---- | **Admin Settings:** User Managment Filter by Toggle Columns View | Go to admin settings | Be able to toggle columns using Views | `NA` | `12/05/2025`
 | ---- | **Admin Settings:** User Managment Allow Level 4 | Go to admin settings | Be able to allow level 4 for a user once they are level >= 3 | `NA` | `12/05/2025`
