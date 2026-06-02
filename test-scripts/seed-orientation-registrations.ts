@@ -1,5 +1,5 @@
 /**
- * scripts/seed-orientation-registrations.ts
+ * test-scripts/seed-orientation-registrations.ts
  *
  * Seeds realistic test registrations for ANY workshop — orientation or regular,
  * single-day or multi-day, with or without price variations.
@@ -22,10 +22,10 @@
  *
  * Usage
  * ─────
- *   npx tsx scripts/seed-orientation-registrations.ts               # first orientation
- *   npx tsx scripts/seed-orientation-registrations.ts 5             # by workshop ID
- *   npx tsx scripts/seed-orientation-registrations.ts "Shopspace"   # by name (partial)
- *   npx tsx scripts/seed-orientation-registrations.ts 5 --days=3    # 3-day sessions
+ *   npx tsx test-scripts/seed-orientation-registrations.ts               # first orientation
+ *   npx tsx test-scripts/seed-orientation-registrations.ts 5             # by workshop ID
+ *   npx tsx test-scripts/seed-orientation-registrations.ts "Shopspace"   # by name (partial)
+ *   npx tsx test-scripts/seed-orientation-registrations.ts 5 --days=3    # 3-day sessions
  */
 
 import { PrismaClient } from "@prisma/client";
