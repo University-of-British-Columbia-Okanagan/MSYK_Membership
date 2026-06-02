@@ -1540,3 +1540,48 @@ export async function sendWorkshopOccurrenceCancellationEmailMultiDay(params: {
     html: htmlBody,
   });
 }
+
+export async function sendAdminWorkshopMoveEmail(params: {
+  userEmail: string;
+  workshopName: string;
+  fromStartDate: Date;
+  fromEndDate: Date;
+  toStartDate: Date;
+  toEndDate: Date;
+  priceVariation?: { name: string; description?: string | null; price: number } | null;
+  basePrice?: number;
+}): Promise<void> {
+  const {
+    userEmail,
+    workshopName,
+    fromStartDate,
+    fromEndDate,
+    toStartDate,
+    toEndDate,
+    priceVariation,
+    basePrice,
+  } = params;
+
+  const pricingLines: string[] = [];
+  if (priceVariation) {
+    pricingLines.push(
+      `Pricing option: ${priceVariation.name} - $${priceVariation.price.toFixed(2)}`
+    );
+  } else if (typeof basePrice === "number") {
+    pricingLines.push(`Price: $${basePrice.toFixed(2)}`);
+  }
+
+  const parts = [
+    `Your registration for "${workshopName}" has been moved to a new date by an administrator.`,
+    `Previous date: ${new Date(fromStartDate).toLocaleString()} - ${new Date(fromEndDate).toLocaleString()}`,
+    `New date: ${new Date(toStartDate).toLocaleString()} - ${new Date(toEndDate).toLocaleString()}`,
+    pricingLines.join("\n"),
+    `If you have any questions about this change, please contact us.`,
+  ].filter(Boolean);
+
+  await sendMail({
+    to: userEmail,
+    subject: `Registration date updated: ${workshopName}`,
+    text: parts.join("\n\n"),
+  });
+}

@@ -233,7 +233,7 @@ async function main() {
         name: "Workshop — Regular Single-Day with Price Variations",
         description:
           "A single-day workshop with tiered pricing. Members pay a reduced rate; non-members pay standard pricing.",
-        price: 0.0,
+        price: -1,
         location: "Makerspace YK — Hackspace",
         capacity: 12,
         type: "workshop",
@@ -247,7 +247,7 @@ async function main() {
         name: "Workshop — Multi-Day with Price Variations",
         description:
           "A multi-day workshop spanning three sessions with tiered member/non-member pricing.",
-        price: 0.0,
+        price: -1,
         location: "Makerspace YK — Digital Lab",
         capacity: 10,
         type: "workshop",
@@ -287,7 +287,7 @@ async function main() {
         name: "Orientation — Regular Single-Day with Price Variations",
         description:
           "A single-day orientation with tiered pricing. Students pay a reduced fee; standard pricing otherwise.",
-        price: 0.0,
+        price: -1,
         location: "Makerspace YK — Shopspace",
         capacity: 12,
         type: "orientation",
@@ -301,7 +301,7 @@ async function main() {
         name: "Orientation — Multi-Day with Price Variations",
         description:
           "A two-day orientation with tiered student/standard pricing. Both days required.",
-        price: 0.0,
+        price: -1,
         location: "Makerspace YK",
         capacity: 15,
         type: "orientation",

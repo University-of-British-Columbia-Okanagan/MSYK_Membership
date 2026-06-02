@@ -3793,3 +3793,135 @@ export async function getUserWorkshopsWithRegistrationDetails(userId: number) {
 
   return workshops;
 }
+
+export async function getActiveOccurrencesForWorkshop(workshopId: number) {
+  const workshop = await db.workshop.findUnique({
+    where: { id: workshopId },
+    select: {
+      capacity: true,
+      hasPriceVariations: true,
+      priceVariations: {
+        where: { status: "active" },
+        select: { id: true, name: true, capacity: true },
+      },
+    },
+  });
+
+  if (!workshop) throw new Error("Workshop not found");
+
+  const occurrences = await db.workshopOccurrence.findMany({
+    where: {
+      workshopId,
+      status: "active",
+      connectId: null,
+    },
+    include: {
+      userWorkshops: {
+        where: { result: { not: "cancelled" } },
+        select: { id: true, priceVariationId: true },
+      },
+    },
+    orderBy: { startDate: "asc" },
+  });
+
+  return {
+    workshopCapacity: workshop.capacity,
+    hasPriceVariations: workshop.hasPriceVariations,
+    priceVariations: workshop.priceVariations,
+    occurrences: occurrences.map((occ) => ({
+      id: occ.id,
+      startDate: occ.startDate,
+      endDate: occ.endDate,
+      totalRegistrations: occ.userWorkshops.length,
+      variationCounts: workshop.priceVariations.reduce(
+        (acc, v) => {
+          acc[v.id] = occ.userWorkshops.filter(
+            (uw) => uw.priceVariationId === v.id
+          ).length;
+          return acc;
+        },
+        {} as Record<number, number>
+      ),
+    })),
+  };
+}
+
+export async function moveUserWorkshopRegistration({
+  userId,
+  workshopId,
+  fromOccurrenceId,
+  toOccurrenceId,
+}: {
+  userId: number;
+  workshopId: number;
+  fromOccurrenceId: number;
+  toOccurrenceId: number;
+}) {
+  if (fromOccurrenceId === toOccurrenceId) {
+    throw new Error("Source and target occurrence must be different");
+  }
+
+  const sourceReg = await db.userWorkshop.findFirst({
+    where: {
+      userId,
+      workshopId,
+      occurrenceId: fromOccurrenceId,
+      result: { not: "cancelled" },
+    },
+    include: { priceVariation: true },
+  });
+  if (!sourceReg) throw new Error("No active registration found for the source occurrence");
+
+  const targetOccurrence = await db.workshopOccurrence.findFirst({
+    where: { id: toOccurrenceId, workshopId },
+  });
+  if (!targetOccurrence) throw new Error("Target occurrence not found for this workshop");
+  if (targetOccurrence.status !== "active") throw new Error("Target occurrence is not available");
+  if (targetOccurrence.connectId !== null) throw new Error("Cannot move to a multi-day occurrence");
+
+  const existingTargetReg = await db.userWorkshop.findFirst({
+    where: { userId, occurrenceId: toOccurrenceId },
+  });
+  if (existingTargetReg && existingTargetReg.result !== "cancelled") {
+    throw new Error("User is already registered for the target occurrence");
+  }
+
+  const capacityCheck = await checkWorkshopCapacity(
+    workshopId,
+    toOccurrenceId,
+    sourceReg.priceVariationId
+  );
+  if (!capacityCheck.hasCapacity) {
+    if (capacityCheck.reason === "workshop_full") {
+      throw new Error("The target occurrence is full");
+    } else if (capacityCheck.reason === "variation_full") {
+      throw new Error(
+        `The "${capacityCheck.variationName}" pricing option is full for that date`
+      );
+    }
+  }
+
+  await db.$transaction(async (tx) => {
+    if (existingTargetReg) {
+      await tx.userWorkshop.delete({ where: { id: existingTargetReg.id } });
+    }
+    await tx.userWorkshop.update({
+      where: { id: sourceReg.id },
+      data: { occurrenceId: toOccurrenceId },
+    });
+  });
+
+  return {
+    fromOccurrenceId,
+    toOccurrenceId,
+    priceVariationId: sourceReg.priceVariationId,
+    paymentIntentId: sourceReg.paymentIntentId,
+    priceVariation: sourceReg.priceVariation
+      ? {
+          name: sourceReg.priceVariation.name,
+          description: sourceReg.priceVariation.description,
+          price: sourceReg.priceVariation.price,
+        }
+      : null,
+  };
+}
