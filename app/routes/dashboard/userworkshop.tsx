@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, redirect, useParams, Link } from "react-router";
+import { useLoaderData, redirect, useParams, Link, useRevalidator } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import {
   getUserWorkshopRegistrationsByWorkshopId,
@@ -206,6 +206,7 @@ export async function action({
 export default function WorkshopUsers() {
   const { roleUser, registrations } = useLoaderData<LoaderData>();
   const { workshopId } = useParams();
+  const { revalidate } = useRevalidator();
 
   const isAdmin =
     roleUser &&
@@ -220,6 +221,7 @@ export default function WorkshopUsers() {
     "lastName" | "firstName" | "occurrenceDate" | "registrationDate"
   >("lastName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // Determine the workshop name and type
   const workshopName =
@@ -345,6 +347,7 @@ export default function WorkshopUsers() {
   };
 
   const handleAdminCancelRegistration = async (group: GroupedRegistration) => {
+    setCancelError(null);
     const formData = new FormData();
     formData.append("actionType", "adminCancelRegistration");
     formData.append("userId", String(group.userId));
@@ -354,8 +357,25 @@ export default function WorkshopUsers() {
     } else {
       formData.append("occurrenceId", String(group.registrations[0].occurrence.id));
     }
-    await fetch(window.location.pathname, { method: "POST", body: formData });
-    window.location.reload();
+    try {
+      const res = await fetch(window.location.pathname, { method: "POST", body: formData });
+      try {
+        const data = await res.json();
+        if (data?.error) {
+          setCancelError(data.error);
+          return;
+        }
+      } catch {
+        if (!res.ok) {
+          setCancelError("An error occurred. Please try again.");
+          return;
+        }
+      }
+    } catch {
+      setCancelError("Network error. Please try again.");
+      return;
+    }
+    revalidate();
   };
 
   const handlePassAll = async () => {
@@ -549,6 +569,12 @@ export default function WorkshopUsers() {
               </Button>
             )}
           </div>
+
+          {cancelError && (
+            <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {cancelError}
+            </div>
+          )}
 
           {/* Grouped Registrations Table */}
           <div className="border rounded-lg overflow-x-auto">
