@@ -170,7 +170,7 @@ The workshop status job runs immediately on startup and then every 1 second, kee
 - **Cutoff Time**: 60 minutes before workshop start (configurable per-workshop via `registrationCutoff`)
 - **Capacity**: Tracked per occurrence or across multi-day series
 - **Price Variations**: `WorkshopPriceVariation` records with individual capacity limits
-- **Cancellation Policy**: Refund eligible if cancelled at least 48 hours before the workshop start time (policy text stored in `Workshop.cancellationPolicy`; eligibility checked in Cancelled Events tab in Admin Settings)
+- **Cancellation Policy**: Refund eligible if cancelled at least 48 hours before the workshop start time (eligibility checked in Cancelled Events tab in Admin Settings). The policy text is hardcoded in `app/routes/dashboard/workshopdetails.tsx` — the `Workshop.cancellationPolicy` DB field exists but is no longer rendered in the UI
 
 **Google Calendar Integration (Optional):**
 - When configured, workshop create/edit/delete automatically creates/updates/deletes Google Calendar events
