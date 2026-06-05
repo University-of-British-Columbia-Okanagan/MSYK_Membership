@@ -1,10 +1,23 @@
 import { useState, useMemo } from "react";
-import { useLoaderData, redirect, useParams, Link } from "react-router";
+import { useLoaderData, redirect, useParams, useRevalidator } from "react-router";
 import { getRoleUser } from "~/utils/session.server";
 import {
   getUserWorkshopRegistrationsByWorkshopId,
   getWorkshopById,
+  cancelUserWorkshopRegistration,
+  cancelMultiDayWorkshopRegistration,
+  getWorkshopOccurrence,
+  getWorkshopOccurrencesByConnectId,
+  getUserWorkshopRegistrationInfo,
+  getActiveOccurrencesForWorkshop,
+  moveUserWorkshopRegistration,
 } from "~/models/workshop.server";
+import { getUserById } from "~/models/user.server";
+import {
+  sendAdminWorkshopCancellationEmail,
+  sendAdminWorkshopMoveEmail,
+} from "~/utils/email.server";
+import { logger } from "~/logging/logger";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import AppSidebar from "~/components/ui/Dashboard/sidebar";
@@ -21,6 +34,20 @@ import {
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { MoreHorizontal } from "lucide-react";
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -32,6 +59,7 @@ interface Registration {
   result: string;
   status: string;
   date: string | Date;
+  paymentIntentId?: string | null;
   user: { id: number; firstName: string; lastName: string; email: string };
   occurrence: {
     id: number;
@@ -43,6 +71,21 @@ interface Registration {
   priceVariation?: { id: number; name: string; price: number } | null;
 }
 
+interface OccurrenceSummary {
+  id: number;
+  startDate: string;
+  endDate: string;
+  totalRegistrations: number;
+  variationCounts: Record<number, number>;
+}
+
+interface WorkshopOccurrencesData {
+  workshopCapacity: number;
+  hasPriceVariations: boolean;
+  priceVariations: { id: number; name: string; capacity: number }[];
+  occurrences: OccurrenceSummary[];
+}
+
 interface LoaderData {
   roleUser: {
     roleId: number;
@@ -50,6 +93,7 @@ interface LoaderData {
     userId: number;
   };
   registrations: Registration[];
+  workshopOccurrences: WorkshopOccurrencesData;
 }
 
 interface GroupedRegistration {
@@ -74,38 +118,173 @@ export async function loader({
 }) {
   const roleUser = await getRoleUser(request);
 
-  // Check if user is logged in
   if (!roleUser || !roleUser.userId) {
     return redirect("/login");
   }
 
-  // Check if user is admin
   if (roleUser.roleName.toLowerCase() !== "admin") {
     return redirect("/dashboard/user");
   }
 
   const workshopId = Number(params.workshopId);
 
-  // Check if workshop exists
   try {
     const workshop = await getWorkshopById(workshopId);
     if (!workshop) {
       return redirect("/dashboard/admin");
     }
   } catch (error) {
-    // Workshop doesn't exist, redirect to admin dashboard
     return redirect("/dashboard/admin");
   }
 
-  const registrations =
-    await getUserWorkshopRegistrationsByWorkshopId(workshopId);
+  const [registrations, workshopOccurrences] = await Promise.all([
+    getUserWorkshopRegistrationsByWorkshopId(workshopId),
+    getActiveOccurrencesForWorkshop(workshopId),
+  ]);
 
-  return { roleUser, registrations };
+  return { roleUser, registrations, workshopOccurrences };
+}
+
+export async function action({
+  request,
+  params,
+}: {
+  request: Request;
+  params: { workshopId: string };
+}) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser?.userId) return redirect("/login");
+  if (roleUser.roleName.toLowerCase() !== "admin") return redirect("/dashboard/user");
+
+  const formData = await request.formData();
+  const actionType = formData.get("actionType") as string;
+
+  if (actionType === "adminCancelRegistration") {
+    const targetUserId = Number(formData.get("userId"));
+    const workshopId = Number(params.workshopId);
+    const isMultiDay = formData.get("isMultiDay") === "true";
+    const occurrenceId = formData.get("occurrenceId") ? Number(formData.get("occurrenceId")) : undefined;
+    const connectId = formData.get("connectId") ? Number(formData.get("connectId")) : undefined;
+
+    try {
+      const [workshop, targetUser] = await Promise.all([
+        getWorkshopById(workshopId),
+        getUserById(targetUserId),
+      ]);
+
+      if (!targetUser) throw new Error("User not found");
+      if (!workshop) throw new Error("Workshop not found");
+
+      if (isMultiDay && connectId) {
+        const occurrences = await getWorkshopOccurrencesByConnectId(workshopId, connectId);
+
+        const regInfo = await getUserWorkshopRegistrationInfo(targetUserId, workshopId);
+        const priceVariationForEmail = regInfo?.priceVariation
+          ? { name: regInfo.priceVariation.name, description: regInfo.priceVariation.description, price: regInfo.priceVariation.price }
+          : null;
+
+        await cancelMultiDayWorkshopRegistration({ workshopId, connectId, userId: targetUserId, cancelledByAdmin: true });
+
+        const sessions = occurrences.map((occ) => ({
+          startDate: new Date(occ.startDate),
+          endDate: new Date(occ.endDate),
+        }));
+
+        sendAdminWorkshopCancellationEmail({
+          userEmail: targetUser.email,
+          workshopName: workshop.name,
+          sessions,
+          basePrice: workshop.price,
+          priceVariation: priceVariationForEmail,
+        }).catch((err) => logger.error(`Failed to send admin cancellation email: ${err}`, { url: request.url }));
+
+      } else if (occurrenceId) {
+        const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
+
+        const regInfo = await getUserWorkshopRegistrationInfo(targetUserId, workshopId);
+        const priceVariationForEmail = regInfo?.priceVariation
+          ? { name: regInfo.priceVariation.name, description: regInfo.priceVariation.description, price: regInfo.priceVariation.price }
+          : null;
+
+        await cancelUserWorkshopRegistration({ workshopId, occurrenceId, userId: targetUserId, cancelledByAdmin: true });
+
+        sendAdminWorkshopCancellationEmail({
+          userEmail: targetUser.email,
+          workshopName: workshop.name,
+          startDate: new Date(occurrence.startDate),
+          endDate: new Date(occurrence.endDate),
+          basePrice: workshop.price,
+          priceVariation: priceVariationForEmail,
+        }).catch((err) => logger.error(`Failed to send admin cancellation email: ${err}`, { url: request.url }));
+      }
+
+      logger.info(`Admin ${roleUser.userId} cancelled registration for user ${targetUserId} in workshop ${workshopId}`, { url: request.url });
+      return { success: true, cancelled: true };
+    } catch (error) {
+      logger.error(`Error admin-cancelling registration: ${error}`, { url: request.url });
+      return { error: "Failed to cancel registration" };
+    }
+  }
+
+  if (actionType === "moveRegistration") {
+    const targetUserId = Number(formData.get("userId"));
+    const workshopId = Number(params.workshopId);
+    const fromOccurrenceId = Number(formData.get("fromOccurrenceId"));
+    const toOccurrenceId = Number(formData.get("toOccurrenceId"));
+
+    try {
+      const [workshop, targetUser] = await Promise.all([
+        getWorkshopById(workshopId),
+        getUserById(targetUserId),
+      ]);
+
+      if (!targetUser) throw new Error("User not found");
+      if (!workshop) throw new Error("Workshop not found");
+
+      const [fromOccurrence, toOccurrence] = await Promise.all([
+        getWorkshopOccurrence(workshopId, fromOccurrenceId),
+        getWorkshopOccurrence(workshopId, toOccurrenceId),
+      ]);
+
+      // moveUserWorkshopRegistration returns the source registration's priceVariation
+      // directly, avoiding the unfiltered getUserWorkshopRegistrationInfo lookup
+      const moveResult = await moveUserWorkshopRegistration({
+        userId: targetUserId,
+        workshopId,
+        fromOccurrenceId,
+        toOccurrenceId,
+      });
+
+      sendAdminWorkshopMoveEmail({
+        userEmail: targetUser.email,
+        workshopName: workshop.name,
+        fromStartDate: new Date(fromOccurrence.startDate),
+        fromEndDate: new Date(fromOccurrence.endDate),
+        toStartDate: new Date(toOccurrence.startDate),
+        toEndDate: new Date(toOccurrence.endDate),
+        basePrice: workshop.price,
+        priceVariation: moveResult.priceVariation,
+      }).catch((err) => logger.error(`Failed to send move email: ${err}`, { url: request.url }));
+
+      logger.info(
+        `Admin ${roleUser.userId} moved user ${targetUserId} from occurrence ${fromOccurrenceId} to ${toOccurrenceId} in workshop ${workshopId}`,
+        { url: request.url }
+      );
+      return { success: true, moved: true };
+    } catch (error) {
+      logger.error(`Error moving registration: ${error}`, { url: request.url });
+      const message = error instanceof Error ? error.message : "Failed to move registration";
+      return { error: message };
+    }
+  }
+
+  return { error: "Unknown action" };
 }
 
 export default function WorkshopUsers() {
-  const { roleUser, registrations } = useLoaderData<LoaderData>();
+  const { roleUser, registrations, workshopOccurrences } = useLoaderData<LoaderData>();
   const { workshopId } = useParams();
+  const { revalidate } = useRevalidator();
 
   const isAdmin =
     roleUser &&
@@ -114,8 +293,20 @@ export default function WorkshopUsers() {
 
   const [searchUser, setSearchUser] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [resultFilter, setResultFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortBy, setSortBy] = useState<
+    "lastName" | "firstName" | "occurrenceDate" | "registrationDate"
+  >("lastName");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
-  // Determine the workshop name and type
+  // Move dialog state
+  const [moveGroup, setMoveGroup] = useState<GroupedRegistration | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState<string>("");
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moveLoading, setMoveLoading] = useState(false);
+
   const workshopName =
     registrations.length > 0 && registrations[0].workshop
       ? registrations[0].workshop.name
@@ -128,7 +319,38 @@ export default function WorkshopUsers() {
 
   const isOrientation = workshopType.toLowerCase() === "orientation";
 
-  // Group registrations by user and connectId
+  // Build a set of actively-registered occurrences per user (for move dialog filtering)
+  const activeOccurrencesByUser = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    registrations.forEach((reg) => {
+      if (reg.result !== "cancelled") {
+        if (!map.has(reg.user.id)) map.set(reg.user.id, new Set());
+        map.get(reg.user.id)!.add(reg.occurrence.id);
+      }
+    });
+    return map;
+  }, [registrations]);
+
+  // Given a group, return the occurrences the user can be moved to
+  const getAvailableTargetOccurrences = (group: GroupedRegistration): OccurrenceSummary[] => {
+    const fromOccurrenceId = group.registrations[0].occurrence.id;
+    const userOccurrences = activeOccurrencesByUser.get(group.userId) ?? new Set<number>();
+
+    return workshopOccurrences.occurrences.filter((occ) => {
+      if (occ.id === fromOccurrenceId) return false;
+      if (userOccurrences.has(occ.id)) return false;
+      if (occ.totalRegistrations >= workshopOccurrences.workshopCapacity) return false;
+      if (group.priceVariation) {
+        const varCap =
+          workshopOccurrences.priceVariations.find((v) => v.id === group.priceVariation!.id)
+            ?.capacity ?? 0;
+        const varCount = occ.variationCounts[group.priceVariation.id] ?? 0;
+        if (varCount >= varCap) return false;
+      }
+      return true;
+    });
+  };
+
   const groupedRegistrations = useMemo(() => {
     const groups = new Map<string, GroupedRegistration>();
 
@@ -155,7 +377,6 @@ export default function WorkshopUsers() {
       const group = groups.get(key)!;
       group.registrations.push(reg);
 
-      // Check if all registrations in group are passed
       if (reg.result !== "passed") {
         group.allPassed = false;
       }
@@ -164,19 +385,63 @@ export default function WorkshopUsers() {
     return Array.from(groups.values());
   }, [registrations]);
 
-  // Filter by user name
+  const getGroupEffectiveResult = (group: GroupedRegistration): string => {
+    const results = group.registrations.map((r) => r.result);
+    if (results.every((r) => r === "cancelled")) return "cancelled";
+    const nonCancelled = results.filter((r) => r !== "cancelled");
+    if (nonCancelled.length === 0) return "cancelled";
+    if (nonCancelled.some((r) => r === "failed")) return "failed";
+    if (nonCancelled.every((r) => r === "passed")) return "passed";
+    return "pending";
+  };
+
   const filteredGroups = useMemo(() => {
     return groupedRegistrations.filter((group) => {
       const userName =
         `${group.userFirstName} ${group.userLastName}`.toLowerCase();
-      return searchUser === "" || userName.includes(searchUser.toLowerCase());
-    });
-  }, [groupedRegistrations, searchUser]);
+      if (searchUser !== "" && !userName.includes(searchUser.toLowerCase()))
+        return false;
 
-  // Sort by user ID
+      if (resultFilter !== "all") {
+        if (getGroupEffectiveResult(group) !== resultFilter) return false;
+      }
+
+      if (dateFilter) {
+        const hasMatchingDate = group.registrations.some((reg) => {
+          const d = new Date(reg.occurrence.startDate);
+          const occDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          return occDateStr === dateFilter;
+        });
+        if (!hasMatchingDate) return false;
+      }
+
+      return true;
+    });
+  }, [groupedRegistrations, searchUser, resultFilter, dateFilter]);
+
   const sortedGroups = useMemo(() => {
-    return filteredGroups.slice().sort((a, b) => a.userId - b.userId);
-  }, [filteredGroups]);
+    return filteredGroups.slice().sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "occurrenceDate") {
+        cmp =
+          new Date(a.registrations[0].occurrence.startDate).getTime() -
+          new Date(b.registrations[0].occurrence.startDate).getTime();
+      } else if (sortBy === "registrationDate") {
+        cmp =
+          new Date(a.registrations[0].date as string).getTime() -
+          new Date(b.registrations[0].date as string).getTime();
+      } else if (sortBy === "firstName") {
+        cmp =
+          a.userFirstName.localeCompare(b.userFirstName) ||
+          a.userLastName.localeCompare(b.userLastName);
+      } else {
+        cmp =
+          a.userLastName.localeCompare(b.userLastName) ||
+          a.userFirstName.localeCompare(b.userFirstName);
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [filteredGroups, sortBy, sortDir]);
 
   const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => {
@@ -190,8 +455,78 @@ export default function WorkshopUsers() {
     });
   };
 
+  const handleAdminCancelRegistration = async (group: GroupedRegistration) => {
+    setCancelError(null);
+    const formData = new FormData();
+    formData.append("actionType", "adminCancelRegistration");
+    formData.append("userId", String(group.userId));
+    formData.append("isMultiDay", String(group.isMultiDay));
+    if (group.isMultiDay && group.connectId !== null) {
+      formData.append("connectId", String(group.connectId));
+    } else {
+      formData.append("occurrenceId", String(group.registrations[0].occurrence.id));
+    }
+    try {
+      const res = await fetch(window.location.pathname, { method: "POST", body: formData });
+      try {
+        const data = await res.json();
+        if (data?.error) {
+          setCancelError(data.error);
+          return;
+        }
+      } catch {
+        if (!res.ok) {
+          setCancelError("An error occurred. Please try again.");
+          return;
+        }
+      }
+    } catch {
+      setCancelError("Network error. Please try again.");
+      return;
+    }
+    revalidate();
+  };
+
+  const handleMoveRegistration = async () => {
+    if (!moveGroup || !moveTargetId) return;
+    setMoveError(null);
+    setMoveLoading(true);
+
+    const formData = new FormData();
+    formData.append("actionType", "moveRegistration");
+    formData.append("userId", String(moveGroup.userId));
+    formData.append("fromOccurrenceId", String(moveGroup.registrations[0].occurrence.id));
+    formData.append("toOccurrenceId", moveTargetId);
+
+    try {
+      const res = await fetch(window.location.pathname, { method: "POST", body: formData });
+      try {
+        const data = await res.json();
+        if (data?.error) {
+          setMoveError(data.error);
+          setMoveLoading(false);
+          return;
+        }
+      } catch {
+        if (!res.ok) {
+          setMoveError("An error occurred. Please try again.");
+          setMoveLoading(false);
+          return;
+        }
+      }
+    } catch {
+      setMoveError("Network error. Please try again.");
+      setMoveLoading(false);
+      return;
+    }
+
+    setMoveLoading(false);
+    setMoveGroup(null);
+    setMoveTargetId("");
+    revalidate();
+  };
+
   const handlePassAll = async () => {
-    // Only pass registrations that have status "pending"
     const registrationIds = sortedGroups.flatMap((group) =>
       group.registrations
         .filter((reg) => reg.result === "pending")
@@ -212,7 +547,6 @@ export default function WorkshopUsers() {
     group: GroupedRegistration,
     newResult: string
   ) => {
-    // Get all registration IDs in the group
     const registrationIds = group.registrations.map((reg) => reg.id);
 
     const formData = new FormData();
@@ -226,6 +560,11 @@ export default function WorkshopUsers() {
     });
     window.location.reload();
   };
+
+  // Available occurrences for the currently-open move dialog
+  const moveAvailableOccurrences = moveGroup
+    ? getAvailableTargetOccurrences(moveGroup)
+    : [];
 
   return (
     <SidebarProvider>
@@ -283,9 +622,110 @@ export default function WorkshopUsers() {
             </TooltipProvider>
           </div>
 
+          {/* Filter / Sort Controls */}
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                Result:
+              </span>
+              <Select value={resultFilter} onValueChange={setResultFilter}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Results</SelectItem>
+                  <SelectItem value="passed">Passed</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                Date:
+              </span>
+              <Input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-40"
+              />
+              {dateFilter && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDateFilter("")}
+                  className="h-8 px-2 text-gray-500"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                Sort:
+              </span>
+              <Select
+                value={sortBy}
+                onValueChange={(v) =>
+                  setSortBy(
+                    v as "lastName" | "firstName" | "occurrenceDate" | "registrationDate"
+                  )
+                }
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lastName">Last Name (A–Z)</SelectItem>
+                  <SelectItem value="firstName">First Name (A–Z)</SelectItem>
+                  <SelectItem value="registrationDate">
+                    Registration Date
+                  </SelectItem>
+                  <SelectItem value="occurrenceDate">
+                    Occurrence Date(s)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+                }
+                className="h-8 px-2 text-gray-500"
+              >
+                {sortDir === "asc" ? "↑ Asc" : "↓ Desc"}
+              </Button>
+            </div>
+
+            {(resultFilter !== "all" || dateFilter) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setResultFilter("all");
+                  setDateFilter("");
+                }}
+                className="h-8 text-gray-500"
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          {cancelError && (
+            <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {cancelError}
+            </div>
+          )}
+
           {/* Grouped Registrations Table */}
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full">
+          <div className="border rounded-lg overflow-x-auto">
+            <table className="w-full min-w-[700px]">
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
@@ -297,17 +737,20 @@ export default function WorkshopUsers() {
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                     Email
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 hidden md:table-cell">
                     Price Variation
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
                     Result
                   </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 hidden md:table-cell">
                     Registration Date
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">
-                    Dates
+                    Occurrence Date(s)
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-700 sticky right-0 bg-gray-50 border-l border-gray-200">
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -315,10 +758,12 @@ export default function WorkshopUsers() {
                 {sortedGroups.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-4 py-8 text-center text-gray-500"
                     >
-                      No users registered for this workshop
+                      {groupedRegistrations.length === 0
+                        ? "No users registered for this workshop"
+                        : "No users match the current filters"}
                     </td>
                   </tr>
                 ) : (
@@ -326,9 +771,15 @@ export default function WorkshopUsers() {
                     const groupKey = `${group.userId}-${group.connectId || group.registrations[0].occurrence.id}`;
                     const isExpanded = expandedGroups.has(groupKey);
                     const firstReg = group.registrations[0];
+                    const effectiveResult = getGroupEffectiveResult(group);
+                    const isActive = effectiveResult !== "cancelled";
+                    const canMove =
+                      isActive &&
+                      !group.isMultiDay &&
+                      getAvailableTargetOccurrences(group).length > 0;
 
                     return (
-                      <tr key={groupKey} className="hover:bg-gray-50">
+                      <tr key={groupKey} className="hover:bg-gray-50 group">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             {group.isMultiDay && (
@@ -348,7 +799,7 @@ export default function WorkshopUsers() {
                         </td>
                         <td className="px-4 py-3">{group.userLastName}</td>
                         <td className="px-4 py-3 text-sm">{group.userEmail}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden md:table-cell">
                           {group.priceVariation
                             ? `${group.priceVariation.name} ($${group.priceVariation.price})`
                             : "N/A"}
@@ -393,7 +844,7 @@ export default function WorkshopUsers() {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 hidden md:table-cell">
                           {firstReg.date
                             ? new Date(firstReg.date).toLocaleString()
                             : "N/A"}
@@ -452,6 +903,47 @@ export default function WorkshopUsers() {
                             </div>
                           )}
                         </td>
+                        <td className="px-4 py-3 sticky right-0 bg-white group-hover:bg-gray-50 border-l border-gray-200">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {isActive ? (
+                                <>
+                                  {canMove && (
+                                    <DropdownMenuItem
+                                      onSelect={() => {
+                                        setMoveGroup(group);
+                                        setMoveTargetId("");
+                                        setMoveError(null);
+                                      }}
+                                    >
+                                      Move to Different Date
+                                    </DropdownMenuItem>
+                                  )}
+                                  <ConfirmButton
+                                    confirmTitle="Cancel Registration"
+                                    confirmDescription={
+                                      group.isMultiDay
+                                        ? `Cancel ${group.userFirstName} ${group.userLastName}'s registration for all ${group.registrations.length} session(s)? A cancellation email will be sent to them.`
+                                        : `Cancel ${group.userFirstName} ${group.userLastName}'s registration? A cancellation email will be sent to them.`
+                                    }
+                                    onConfirm={() => handleAdminCancelRegistration(group)}
+                                    buttonLabel="Cancel Registration"
+                                    buttonClassName="w-full justify-start px-2 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 bg-transparent border-0 shadow-none font-normal rounded-sm h-auto"
+                                  />
+                                </>
+                              ) : (
+                                <DropdownMenuItem disabled className="text-gray-400">
+                                  Registration cancelled
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </td>
                       </tr>
                     );
                   })
@@ -459,6 +951,102 @@ export default function WorkshopUsers() {
               </tbody>
             </table>
           </div>
+
+          {/* Move Registration Dialog */}
+          <Dialog
+            open={moveGroup !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setMoveGroup(null);
+                setMoveTargetId("");
+                setMoveError(null);
+              }
+            }}
+          >
+            <DialogContent className="w-[calc(100%-2rem)] sm:w-full mx-auto sm:max-w-lg rounded-lg overflow-visible">
+              <DialogHeader>
+                <DialogTitle>
+                  Move {moveGroup?.userFirstName} {moveGroup?.userLastName}&apos;s Registration
+                </DialogTitle>
+              </DialogHeader>
+
+              {moveGroup && (
+                <div className="space-y-4 py-2">
+                  <div className="rounded-md bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700 space-y-1">
+                    <div>
+                      <span className="font-medium">Current date: </span>
+                      {new Date(
+                        moveGroup.registrations[0].occurrence.startDate
+                      ).toLocaleString()}{" "}
+                      &ndash;{" "}
+                      {new Date(
+                        moveGroup.registrations[0].occurrence.endDate
+                      ).toLocaleString()}
+                    </div>
+                    {moveGroup.priceVariation && (
+                      <div>
+                        <span className="font-medium">Pricing option: </span>
+                        {moveGroup.priceVariation.name} (${moveGroup.priceVariation.price})
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-gray-700">
+                      Move to
+                    </label>
+                    {moveAvailableOccurrences.length === 0 ? (
+                      <p className="text-sm text-gray-500 mt-1">
+                        No available dates to move this registration to.
+                      </p>
+                    ) : (
+                      <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a date…" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[200] max-h-60 overflow-y-auto">
+                          {moveAvailableOccurrences.map((occ) => {
+                            const spotsLeft =
+                              workshopOccurrences.workshopCapacity - occ.totalRegistrations;
+                            return (
+                              <SelectItem key={occ.id} value={String(occ.id)}>
+                                {new Date(occ.startDate).toLocaleString()} &ndash;{" "}
+                                {new Date(occ.endDate).toLocaleString()}
+                                {" "}({spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left)
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+
+                  {moveError && (
+                    <p className="text-sm text-red-600">{moveError}</p>
+                  )}
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setMoveGroup(null);
+                    setMoveTargetId("");
+                    setMoveError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleMoveRegistration}
+                  disabled={!moveTargetId || moveLoading || moveAvailableOccurrences.length === 0}
+                >
+                  {moveLoading ? "Moving…" : "Move Registration"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </main>
       </div>
     </SidebarProvider>

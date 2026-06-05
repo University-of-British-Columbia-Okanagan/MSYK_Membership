@@ -28,7 +28,7 @@ import {
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { getWorkshopVisibilityDays } from "../../models/admin.server";
 import { useState, useEffect } from "react";
-import { Users, MapPin } from "lucide-react";
+import { Users, MapPin, MoreVertical } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -703,6 +703,7 @@ export default function WorkshopDetails() {
   const [confirmOccurrenceId, setConfirmOccurrenceId] = useState<number | null>(
     null
   );
+  const [confirmCancelMultiDay, setConfirmCancelMultiDay] = useState(false);
 
   const isAdmin =
     roleUser &&
@@ -1211,6 +1212,52 @@ export default function WorkshopDetails() {
                             })()}
                           </>
                         )}
+                        {/* Three-dot menu for cancellation — only when actively registered */}
+                        {isUserRegisteredForAny && !hasAnyCancelledRegistration && (
+                          <DropdownMenu
+                            onOpenChange={(open) => {
+                              if (!open) setConfirmCancelMultiDay(false);
+                            }}
+                          >
+                            <DropdownMenuTrigger asChild>
+                              <button className="p-1 rounded-md hover:bg-gray-200 transition-colors">
+                                <MoreVertical className="h-4 w-4 text-gray-500" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {confirmCancelMultiDay ? (
+                                <>
+                                  <DropdownMenuItem
+                                    onSelect={(e) => {
+                                      e.preventDefault();
+                                      handleCancelAll();
+                                      setConfirmCancelMultiDay(false);
+                                    }}
+                                  >
+                                    Yes, Cancel Entire Workshop Registration
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onSelect={(e) => {
+                                      e.preventDefault();
+                                      setConfirmCancelMultiDay(false);
+                                    }}
+                                  >
+                                    No, Keep Registration
+                                  </DropdownMenuItem>
+                                </>
+                              ) : (
+                                <DropdownMenuItem
+                                  onSelect={(e) => {
+                                    e.preventDefault();
+                                    setConfirmCancelMultiDay(true);
+                                  }}
+                                >
+                                  Cancel Entire Workshop Registration
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     </div>
                     {/* New Box-Style UI for multi-day workshops */}
@@ -1436,36 +1483,25 @@ export default function WorkshopDetails() {
                             </div>
                           );
                         } else if (isUserRegisteredForAny) {
-                          const canCancel =
-                            earliestRegDate &&
-                            (new Date().getTime() - earliestRegDate.getTime()) /
-                              (1000 * 60 * 60);
-                          48;
                           return (
                             <div className="flex items-center gap-4">
                               {userRegistrationInfo &&
                               workshop.priceVariations &&
                               workshop.priceVariations.length > 0 ? (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div>
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Badge
-                                              className={`px-3 py-1 cursor-pointer ${
-                                                hasAnyCancelledRegistration
-                                                  ? "bg-red-500 text-white border-red-600"
-                                                  : "bg-green-500 text-white"
-                                              }`}
-                                            >
-                                              {hasAnyCancelledRegistration
-                                                ? "Registration Cancelled (Entire Workshop)"
-                                                : "Registered (Entire Workshop)"}
-                                            </Badge>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end">
-                                            {hasAnyCancelledRegistration ? (
+                                hasAnyCancelledRegistration ? (
+                                  // Price variation + some sessions admin-cancelled: keep dropdown for Register Again
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div>
+                                          <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                              <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                                Registration Cancelled (Entire
+                                                Workshop)
+                                              </Badge>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
                                               <DropdownMenuItem
                                                 onClick={handleRegisterAll}
                                                 disabled={
@@ -1494,53 +1530,13 @@ export default function WorkshopDetails() {
                                               >
                                                 Register Again
                                               </DropdownMenuItem>
-                                            ) : canCancel ? (
-                                              <>
-                                                <DropdownMenuItem
-                                                  onSelect={(e) => {
-                                                    e.preventDefault();
-                                                    handleCancelAll();
-                                                  }}
-                                                >
-                                                  Yes, Cancel Entire Workshop
-                                                  Registration
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                  onSelect={(e) => {
-                                                    e.preventDefault();
-                                                  }}
-                                                >
-                                                  No, Keep Registration
-                                                </DropdownMenuItem>
-                                              </>
-                                            ) : (
-                                              <DropdownMenuItem disabled>
-                                                Cancel Entire Workshop
-                                              </DropdownMenuItem>
-                                            )}
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent
-                                      className={`border p-3 max-w-xs ${
-                                        hasAnyCancelledRegistration &&
-                                        !isUserRegisteredForAny
-                                          ? "bg-red-50 border-red-200"
-                                          : "bg-emerald-50 border-emerald-200"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div
-                                          className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                                            hasAnyCancelledRegistration &&
-                                            !isUserRegisteredForAny
-                                              ? "bg-red-500"
-                                              : "bg-emerald-500"
-                                          }`}
-                                        >
-                                          {hasAnyCancelledRegistration &&
-                                          !isUserRegisteredForAny ? (
+                                            </DropdownMenuContent>
+                                          </DropdownMenu>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="bg-red-50 border border-red-200 p-3 max-w-xs">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
                                             <svg
                                               className="w-2.5 h-2.5 text-white"
                                               fill="currentColor"
@@ -1552,7 +1548,57 @@ export default function WorkshopDetails() {
                                                 clipRule="evenodd"
                                               />
                                             </svg>
-                                          ) : (
+                                          </div>
+                                          <span className="font-semibold text-red-800">
+                                            Registration Cancelled
+                                          </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-sm text-red-700">
+                                              Option:
+                                            </span>
+                                            <span className="text-sm font-medium text-red-800">
+                                              {userRegistrationInfo.priceVariation
+                                                ? userRegistrationInfo
+                                                    .priceVariation.name
+                                                : "Base Price"}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-sm text-red-700">
+                                              Price:
+                                            </span>
+                                            <span className="text-sm font-bold text-red-600">
+                                              CA$
+                                              {userRegistrationInfo.priceVariation
+                                                ? userRegistrationInfo
+                                                    .priceVariation.price
+                                                : workshop.price}
+                                            </span>
+                                          </div>
+                                          <div className="mt-2 pt-2 border-t border-red-200">
+                                            <p className="text-xs text-red-600 font-medium">
+                                              Contact support if this
+                                              cancellation was unexpected
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  // Price variation + active registration: plain badge with tooltip (cancel via three-dot in header)
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge className="bg-green-500 text-white px-3 py-1">
+                                          Registered (Entire Workshop)
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="bg-emerald-50 border border-emerald-200 p-3 max-w-xs">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <div className="w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
                                             <svg
                                               className="w-2.5 h-2.5 text-white"
                                               fill="currentColor"
@@ -1564,186 +1610,93 @@ export default function WorkshopDetails() {
                                                 clipRule="evenodd"
                                               />
                                             </svg>
-                                          )}
-                                        </div>
-                                        <span
-                                          className={`font-semibold ${
-                                            hasAnyCancelledRegistration &&
-                                            !isUserRegisteredForAny
-                                              ? "text-red-800"
-                                              : "text-emerald-800"
-                                          }`}
-                                        >
-                                          {hasAnyCancelledRegistration &&
-                                          !isUserRegisteredForAny
-                                            ? "Registration Cancelled"
-                                            : "Your Registration"}
-                                        </span>
-                                      </div>
-                                      <div className="space-y-1">
-                                        <div className="flex justify-between items-center">
-                                          <span
-                                            className={`text-sm ${
-                                              hasAnyCancelledRegistration &&
-                                              !isUserRegisteredForAny
-                                                ? "text-red-700"
-                                                : "text-emerald-700"
-                                            }`}
-                                          >
-                                            Option:
-                                          </span>
-                                          <span
-                                            className={`text-sm font-medium ${
-                                              hasAnyCancelledRegistration &&
-                                              !isUserRegisteredForAny
-                                                ? "text-red-800"
-                                                : "text-emerald-800"
-                                            }`}
-                                          >
-                                            {userRegistrationInfo.priceVariation
-                                              ? userRegistrationInfo
-                                                  .priceVariation.name
-                                              : "Base Price"}
-                                          </span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                          <span
-                                            className={`text-sm ${
-                                              hasAnyCancelledRegistration &&
-                                              !isUserRegisteredForAny
-                                                ? "text-red-700"
-                                                : "text-emerald-700"
-                                            }`}
-                                          >
-                                            Price:
-                                          </span>
-                                          <span
-                                            className={`text-sm font-bold ${
-                                              hasAnyCancelledRegistration &&
-                                              !isUserRegisteredForAny
-                                                ? "text-red-600"
-                                                : "text-emerald-600"
-                                            }`}
-                                          >
-                                            CA$
-                                            {userRegistrationInfo.priceVariation
-                                              ? userRegistrationInfo
-                                                  .priceVariation.price
-                                              : workshop.price}
-                                          </span>
-                                        </div>
-                                        {userRegistrationInfo.priceVariation
-                                          ?.description && (
-                                          <div
-                                            className={`mt-2 pt-2 border-t ${
-                                              hasAnyCancelledRegistration &&
-                                              !isUserRegisteredForAny
-                                                ? "border-red-200"
-                                                : "border-emerald-200"
-                                            }`}
-                                          >
-                                            <p
-                                              className={`text-xs ${
-                                                hasAnyCancelledRegistration &&
-                                                !isUserRegisteredForAny
-                                                  ? "text-red-600"
-                                                  : "text-emerald-600"
-                                              }`}
-                                            >
-                                              {hasAnyCancelledRegistration &&
-                                              !isUserRegisteredForAny
-                                                ? "This pricing option was cancelled"
-                                                : userRegistrationInfo
-                                                    .priceVariation.description}
-                                            </p>
                                           </div>
-                                        )}
-                                        {hasAnyCancelledRegistration &&
-                                          !isUserRegisteredForAny && (
-                                            <div className="mt-2 pt-2 border-t border-red-200">
-                                              <p className="text-xs text-red-600 font-medium">
-                                                Contact support if this
-                                                cancellation was unexpected
+                                          <span className="font-semibold text-emerald-800">
+                                            Your Registration
+                                          </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-sm text-emerald-700">
+                                              Option:
+                                            </span>
+                                            <span className="text-sm font-medium text-emerald-800">
+                                              {userRegistrationInfo.priceVariation
+                                                ? userRegistrationInfo
+                                                    .priceVariation.name
+                                                : "Base Price"}
+                                            </span>
+                                          </div>
+                                          <div className="flex justify-between items-center">
+                                            <span className="text-sm text-emerald-700">
+                                              Price:
+                                            </span>
+                                            <span className="text-sm font-bold text-emerald-600">
+                                              CA$
+                                              {userRegistrationInfo.priceVariation
+                                                ? userRegistrationInfo
+                                                    .priceVariation.price
+                                                : workshop.price}
+                                            </span>
+                                          </div>
+                                          {userRegistrationInfo.priceVariation
+                                            ?.description && (
+                                            <div className="mt-2 pt-2 border-t border-emerald-200">
+                                              <p className="text-xs text-emerald-600">
+                                                {
+                                                  userRegistrationInfo
+                                                    .priceVariation.description
+                                                }
                                               </p>
                                             </div>
                                           )}
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              ) : (
+                                        </div>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )
+                              ) : hasAnyCancelledRegistration ? (
+                                // No price variation + some sessions admin-cancelled: keep dropdown for Register Again
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
-                                      Registered (Entire Workshop)
+                                    <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                      Registration Cancelled (Entire Workshop)
                                     </Badge>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    {hasAnyCancelledRegistration ? (
-                                      <DropdownMenuItem
-                                        onClick={handleRegisterAll}
-                                        disabled={
-                                          !user ||
-                                          !hasCompletedAllPrerequisites ||
-                                          (() => {
-                                            const activeOccurrences =
-                                              sortedOccurrences.filter(
-                                                (occ: any) =>
-                                                  occ.status !== "past" &&
-                                                  occ.status !== "cancelled"
-                                              );
-                                            const firstOccurrence =
-                                              activeOccurrences[0];
-                                            const capacityCheck =
-                                              firstOccurrence?.capacityInfo
-                                                ? checkMultiDayWorkshopCapacity(
-                                                    firstOccurrence.capacityInfo
-                                                  )
-                                                : { hasCapacity: true };
-                                            return !capacityCheck.hasCapacity;
-                                          })()
-                                        }
-                                      >
-                                        Register Again
-                                      </DropdownMenuItem>
-                                    ) : canCancel ? (
-                                      <>
-                                        <DropdownMenuItem
-                                          onSelect={(e) => {
-                                            e.preventDefault();
-                                            handleCancelAll();
-                                          }}
-                                        >
-                                          Yes, Cancel Entire Workshop
-                                          Registration
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onSelect={(e) => {
-                                            e.preventDefault();
-                                          }}
-                                        >
-                                          No, Keep Registration
-                                        </DropdownMenuItem>
-                                      </>
-                                    ) : (
-                                      <TooltipProvider>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <DropdownMenuItem disabled>
-                                              Cancel Entire Workshop
-                                            </DropdownMenuItem>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p>
-                                              48 hours have passed; cannot
-                                              cancel.
-                                            </p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )}
+                                    <DropdownMenuItem
+                                      onClick={handleRegisterAll}
+                                      disabled={
+                                        !user ||
+                                        !hasCompletedAllPrerequisites ||
+                                        (() => {
+                                          const activeOccurrences =
+                                            sortedOccurrences.filter(
+                                              (occ: any) =>
+                                                occ.status !== "past" &&
+                                                occ.status !== "cancelled"
+                                            );
+                                          const firstOccurrence =
+                                            activeOccurrences[0];
+                                          const capacityCheck =
+                                            firstOccurrence?.capacityInfo
+                                              ? checkMultiDayWorkshopCapacity(
+                                                  firstOccurrence.capacityInfo
+                                                )
+                                              : { hasCapacity: true };
+                                          return !capacityCheck.hasCapacity;
+                                        })()
+                                      }
+                                    >
+                                      Register Again
+                                    </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
+                              ) : (
+                                // No price variation + active registration: plain badge (cancel via three-dot in header)
+                                <Badge className="bg-green-500 text-white px-3 py-1">
+                                  Registered (Entire Workshop)
+                                </Badge>
                               )}
                             </div>
                           );
@@ -1933,8 +1886,62 @@ export default function WorkshopDetails() {
                         return (
                           <div
                             key={occurrence.id}
-                            className="border p-4 rounded-lg shadow-md bg-gray-50"
+                            className="border p-4 rounded-lg shadow-md bg-gray-50 relative"
                           >
+                            {/* Three-dot menu — only when registered and active */}
+                            {isOccurrenceRegistered &&
+                              !isCancelledRegistration &&
+                              occurrence.status !== "cancelled" &&
+                              occurrence.status !== "past" && (
+                                <div className="absolute top-2 right-2">
+                                  <DropdownMenu
+                                    onOpenChange={(open) => {
+                                      if (!open)
+                                        setConfirmOccurrenceId(null);
+                                    }}
+                                  >
+                                    <DropdownMenuTrigger asChild>
+                                      <button className="p-1 rounded-md hover:bg-gray-200 transition-colors">
+                                        <MoreVertical className="h-4 w-4 text-gray-500" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      {confirmOccurrenceId === occurrence.id ? (
+                                        <>
+                                          <DropdownMenuItem
+                                            onSelect={(e) => {
+                                              e.preventDefault();
+                                              handleCancel(occurrence.id);
+                                              setConfirmOccurrenceId(null);
+                                            }}
+                                          >
+                                            Yes, Cancel Registration
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={(e) => {
+                                              e.preventDefault();
+                                              setConfirmOccurrenceId(null);
+                                            }}
+                                          >
+                                            No, Keep Registration
+                                          </DropdownMenuItem>
+                                        </>
+                                      ) : (
+                                        <DropdownMenuItem
+                                          onSelect={(e) => {
+                                            e.preventDefault();
+                                            setConfirmOccurrenceId(
+                                              occurrence.id
+                                            );
+                                          }}
+                                        >
+                                          Cancel Registration
+                                        </DropdownMenuItem>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              )}
                             <p className="text-lg font-medium text-gray-800">
                               📅{" "}
                               {new Date(occurrence.startDate).toLocaleString()}{" "}
@@ -1992,29 +1999,20 @@ export default function WorkshopDetails() {
                                   {userRegistrationInfo &&
                                   workshop.priceVariations &&
                                   workshop.priceVariations.length > 0 ? (
-                                    <TooltipProvider>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <div>
-                                            <DropdownMenu>
-                                              <DropdownMenuTrigger asChild>
-                                                <Badge
-                                                  className={`px-3 py-1 cursor-pointer ${
-                                                    registrations[occurrence.id]
-                                                      ?.status === "cancelled"
-                                                      ? "bg-red-500 text-white border-red-600"
-                                                      : "bg-green-500 text-white"
-                                                  }`}
-                                                >
-                                                  {registrations[occurrence.id]
-                                                    ?.status === "cancelled"
-                                                    ? "Registration Cancelled"
-                                                    : "Registered"}
-                                                </Badge>
-                                              </DropdownMenuTrigger>
-                                              <DropdownMenuContent align="end">
-                                                {registrations[occurrence.id]
-                                                  ?.status === "cancelled" ? (
+                                    registrations[occurrence.id]?.status ===
+                                    "cancelled" ? (
+                                      // Price variation + cancelled: keep dropdown for Register Again
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <div>
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                  <Badge className="bg-red-500 text-white px-3 py-1 border-red-600 cursor-pointer">
+                                                    Registration Cancelled
+                                                  </Badge>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
                                                   <DropdownMenuItem
                                                     onClick={() =>
                                                       handleRegister(
@@ -2037,86 +2035,13 @@ export default function WorkshopDetails() {
                                                   >
                                                     Register Again
                                                   </DropdownMenuItem>
-                                                ) : confirmOccurrenceId ===
-                                                  occurrence.id ? (
-                                                  <>
-                                                    <DropdownMenuItem
-                                                      onSelect={(e) => {
-                                                        e.preventDefault();
-                                                        handleCancel(
-                                                          occurrence.id
-                                                        );
-                                                        setConfirmOccurrenceId(
-                                                          null
-                                                        );
-                                                      }}
-                                                    >
-                                                      Yes, Cancel
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                      onSelect={(e) => {
-                                                        e.preventDefault();
-                                                        setConfirmOccurrenceId(
-                                                          null
-                                                        );
-                                                      }}
-                                                    >
-                                                      No, Keep Registration
-                                                    </DropdownMenuItem>
-                                                  </>
-                                                ) : (
-                                                  <>
-                                                    {(() => {
-                                                      const canCancel =
-                                                        earliestRegDate &&
-                                                        (new Date().getTime() -
-                                                          earliestRegDate.getTime()) /
-                                                          (1000 * 60 * 60);
-                                                      48;
-                                                      return canCancel ? (
-                                                        <DropdownMenuItem
-                                                          onSelect={(e) => {
-                                                            e.preventDefault();
-                                                            setConfirmOccurrenceId(
-                                                              occurrence.id
-                                                            );
-                                                          }}
-                                                        >
-                                                          Cancel
-                                                        </DropdownMenuItem>
-                                                      ) : (
-                                                        <DropdownMenuItem
-                                                          disabled
-                                                        >
-                                                          Cancel
-                                                        </DropdownMenuItem>
-                                                      );
-                                                    })()}
-                                                  </>
-                                                )}
-                                              </DropdownMenuContent>
-                                            </DropdownMenu>
-                                          </div>
-                                        </TooltipTrigger>
-                                        <TooltipContent
-                                          className={`border p-3 max-w-xs ${
-                                            registrations[occurrence.id]
-                                              ?.status === "cancelled"
-                                              ? "bg-red-50 border-red-200"
-                                              : "bg-emerald-50 border-emerald-200"
-                                          }`}
-                                        >
-                                          <div className="flex items-center gap-2 mb-2">
-                                            <div
-                                              className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                                                registrations[occurrence.id]
-                                                  ?.status === "cancelled"
-                                                  ? "bg-red-500"
-                                                  : "bg-emerald-500"
-                                              }`}
-                                            >
-                                              {registrations[occurrence.id]
-                                                ?.status === "cancelled" ? (
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
+                                            </div>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="bg-red-50 border border-red-200 p-3 max-w-xs">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
                                                 <svg
                                                   className="w-2.5 h-2.5 text-white"
                                                   fill="currentColor"
@@ -2128,7 +2053,59 @@ export default function WorkshopDetails() {
                                                     clipRule="evenodd"
                                                   />
                                                 </svg>
-                                              ) : (
+                                              </div>
+                                              <span className="font-semibold text-red-800">
+                                                Registration Cancelled
+                                              </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-sm text-red-700">
+                                                  Option:
+                                                </span>
+                                                <span className="text-sm font-medium text-red-800">
+                                                  {userRegistrationInfo
+                                                    .priceVariation
+                                                    ? userRegistrationInfo
+                                                        .priceVariation.name
+                                                    : "Base Price"}
+                                                </span>
+                                              </div>
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-sm text-red-700">
+                                                  Price:
+                                                </span>
+                                                <span className="text-sm font-bold text-red-600">
+                                                  CA$
+                                                  {userRegistrationInfo
+                                                    .priceVariation
+                                                    ? userRegistrationInfo
+                                                        .priceVariation.price
+                                                    : workshop.price}
+                                                </span>
+                                              </div>
+                                              <div className="mt-2 pt-2 border-t border-red-200">
+                                                <p className="text-xs text-red-600 font-medium">
+                                                  Contact support if this
+                                                  cancellation was unexpected
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    ) : (
+                                      // Price variation + active: plain badge with tooltip (cancel via three-dot)
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="bg-green-500 text-white px-3 py-1">
+                                              Registered
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="bg-emerald-50 border border-emerald-200 p-3 max-w-xs">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <div className="w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
                                                 <svg
                                                   className="w-2.5 h-2.5 text-white"
                                                   fill="currentColor"
@@ -2140,90 +2117,58 @@ export default function WorkshopDetails() {
                                                     clipRule="evenodd"
                                                   />
                                                 </svg>
+                                              </div>
+                                              <span className="font-semibold text-emerald-800">
+                                                Your Registration
+                                              </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-sm text-emerald-700">
+                                                  Option:
+                                                </span>
+                                                <span className="text-sm font-medium text-emerald-800">
+                                                  {userRegistrationInfo
+                                                    .priceVariation
+                                                    ? userRegistrationInfo
+                                                        .priceVariation.name
+                                                    : "Base Price"}
+                                                </span>
+                                              </div>
+                                              <div className="flex justify-between items-center">
+                                                <span className="text-sm text-emerald-700">
+                                                  Price:
+                                                </span>
+                                                <span className="text-sm font-bold text-emerald-600">
+                                                  CA$
+                                                  {userRegistrationInfo
+                                                    .priceVariation
+                                                    ? userRegistrationInfo
+                                                        .priceVariation.price
+                                                    : workshop.price}
+                                                </span>
+                                              </div>
+                                              {userRegistrationInfo
+                                                .priceVariation
+                                                ?.description && (
+                                                <div className="mt-2 pt-2 border-t border-emerald-200">
+                                                  <p className="text-xs text-emerald-600">
+                                                    {
+                                                      userRegistrationInfo
+                                                        .priceVariation
+                                                        .description
+                                                    }
+                                                  </p>
+                                                </div>
                                               )}
                                             </div>
-                                            <span
-                                              className={`font-semibold ${
-                                                registrations[occurrence.id]
-                                                  ?.status === "cancelled"
-                                                  ? "text-red-800"
-                                                  : "text-emerald-800"
-                                              }`}
-                                            >
-                                              {registrations[occurrence.id]
-                                                ?.status === "cancelled"
-                                                ? "Registration Cancelled"
-                                                : "Your Registration"}
-                                            </span>
-                                          </div>
-                                          <div className="space-y-1">
-                                            <div className="flex justify-between items-center">
-                                              <span
-                                                className={`text-sm ${
-                                                  registrations[occurrence.id]
-                                                    ?.status === "cancelled"
-                                                    ? "text-red-700"
-                                                    : "text-emerald-700"
-                                                }`}
-                                              >
-                                                Option:
-                                              </span>
-                                              <span
-                                                className={`text-sm font-medium ${
-                                                  registrations[occurrence.id]
-                                                    ?.status === "cancelled"
-                                                    ? "text-red-800"
-                                                    : "text-emerald-800"
-                                                }`}
-                                              >
-                                                {userRegistrationInfo.priceVariation
-                                                  ? userRegistrationInfo
-                                                      .priceVariation.name
-                                                  : "Base Price"}
-                                              </span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                              <span
-                                                className={`text-sm ${
-                                                  registrations[occurrence.id]
-                                                    ?.status === "cancelled"
-                                                    ? "text-red-700"
-                                                    : "text-emerald-700"
-                                                }`}
-                                              >
-                                                Price:
-                                              </span>
-                                              <span
-                                                className={`text-sm font-bold ${
-                                                  registrations[occurrence.id]
-                                                    ?.status === "cancelled"
-                                                    ? "text-red-600"
-                                                    : "text-emerald-600"
-                                                }`}
-                                              >
-                                                CA$
-                                                {userRegistrationInfo.priceVariation
-                                                  ? userRegistrationInfo
-                                                      .priceVariation.price
-                                                  : workshop.price}
-                                              </span>
-                                            </div>
-
-                                            {registrations[occurrence.id]
-                                              ?.status === "cancelled" && (
-                                              <div className="mt-2 pt-2 border-t border-red-200">
-                                                <p className="text-xs text-red-600 font-medium">
-                                                  Contact support if this
-                                                  cancellation was unexpected
-                                                </p>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )
                                   ) : registrations[occurrence.id]?.status ===
                                     "cancelled" ? (
+                                    // No price variation + cancelled: keep dropdown for Register Again
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
                                         <Badge className="bg-red-500 text-white border-red-600 px-3 py-1 cursor-pointer">
@@ -2252,98 +2197,10 @@ export default function WorkshopDetails() {
                                       </DropdownMenuContent>
                                     </DropdownMenu>
                                   ) : (
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Badge className="bg-green-500 text-white px-3 py-1 cursor-pointer">
-                                          Registered
-                                        </Badge>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        {registrations[occurrence.id]
-                                          ?.status === "cancelled" ? (
-                                          <DropdownMenuItem
-                                            onClick={() =>
-                                              handleRegister(occurrence.id)
-                                            }
-                                            disabled={
-                                              !user ||
-                                              !hasCompletedAllPrerequisites ||
-                                              !checkWorkshopCapacity(
-                                                occurrence.capacityInfo
-                                              ).hasCapacity ||
-                                              isWithinCutoffPeriod(
-                                                new Date(occurrence.startDate),
-                                                workshop.registrationCutoff
-                                              )
-                                            }
-                                          >
-                                            Register Again
-                                          </DropdownMenuItem>
-                                        ) : confirmOccurrenceId ===
-                                          occurrence.id ? (
-                                          <>
-                                            <DropdownMenuItem
-                                              onSelect={(e) => {
-                                                e.preventDefault();
-                                                handleCancel(occurrence.id);
-                                                setConfirmOccurrenceId(null);
-                                              }}
-                                            >
-                                              Yes, Cancel
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem
-                                              onSelect={(e) => {
-                                                e.preventDefault();
-                                                setConfirmOccurrenceId(null);
-                                              }}
-                                            >
-                                              No, Keep Registration
-                                            </DropdownMenuItem>
-                                          </>
-                                        ) : (
-                                          <>
-                                            {(() => {
-                                              const canCancel =
-                                                earliestRegDate &&
-                                                (new Date().getTime() -
-                                                  earliestRegDate.getTime()) /
-                                                  (1000 * 60 * 60);
-                                              48;
-                                              return canCancel ? (
-                                                <DropdownMenuItem
-                                                  onSelect={(e) => {
-                                                    e.preventDefault();
-                                                    setConfirmOccurrenceId(
-                                                      occurrence.id
-                                                    );
-                                                  }}
-                                                >
-                                                  Cancel
-                                                </DropdownMenuItem>
-                                              ) : (
-                                                <TooltipProvider>
-                                                  <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                      <DropdownMenuItem
-                                                        disabled
-                                                      >
-                                                        Cancel
-                                                      </DropdownMenuItem>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                      <p>
-                                                        48 hours have passed;
-                                                        cannot cancel.
-                                                      </p>
-                                                    </TooltipContent>
-                                                  </Tooltip>
-                                                </TooltipProvider>
-                                              );
-                                            })()}
-                                          </>
-                                        )}
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    // No price variation + active: plain badge (cancel via three-dot)
+                                    <Badge className="bg-green-500 text-white px-3 py-1">
+                                      Registered
+                                    </Badge>
                                   )}
                                 </>
                               ) : (
@@ -2614,15 +2471,21 @@ export default function WorkshopDetails() {
                 )}
 
                 <h2 className="text-lg font-semibold">Cancellation Policy</h2>
-                <p
-                  className="text-gray-600"
-                  dangerouslySetInnerHTML={{
-                    __html: workshop.cancellationPolicy.replace(
-                      "info@makerspaceyk.com",
-                      `<a href="mailto:info@makerspaceyk.com" class="text-blue-500 hover:underline">info@makerspaceyk.com</a>`
-                    ),
-                  }}
-                />
+                <p className="text-gray-600">
+                  Can&apos;t make it? Email{" "}
+                  <a
+                    href="mailto:info@makerspaceyk.com"
+                    className="text-blue-500 hover:underline"
+                  >
+                    info@makerspaceyk.com
+                  </a>
+                  . Full refunds are only available if canceled at least 48
+                  hours before the scheduled start time of the
+                  workshop/orientation.{" "}
+                  {isMultiDayWorkshop
+                    ? "To cancel the entire workshop, click the icon (the 3 vertical dots) next to the registration count above the dates."
+                    : "To cancel, click the icon (the 3 vertical dots) on your registered date."}
+                </p>
 
                 <div className="mt-6">
                   <Button

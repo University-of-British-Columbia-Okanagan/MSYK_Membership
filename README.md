@@ -61,6 +61,9 @@ A comprehensive membership management platform built with React Router 7, TypeSc
    # Document encryption
    WAIVER_ENCRYPTION_KEY=
 
+   # JWT (for password reset tokens)
+   JWT_SECRET=
+
    # Email (Mailgun)
    MAILGUN_API_KEY=
    MAILGUN_DOMAIN=
@@ -75,11 +78,16 @@ A comprehensive membership management platform built with React Router 7, TypeSc
    GOOGLE_OAUTH_REDIRECT_URI=
    GOOGLE_OAUTH_ENCRYPTION_KEY=  # Must be at least 32 characters
 
-   # Brivo Door Access Control
+   # Brivo Door Access Control (all five required for Brivo to activate)
+   BRIVO_CLIENT_ID=
+   BRIVO_CLIENT_SECRET=
+   BRIVO_USERNAME=
+   BRIVO_PASSWORD=
    BRIVO_API_KEY=
-   BRIVO_API_URL=
-   BRIVO_WEBHOOK_SECRET=
-   BRIVO_ACCESS_GROUP_LEVEL4=    # Comma-separated Brivo group IDs (fallback)
+   BRIVO_BASE_URL=              # Optional; default: https://api.brivo.com
+   BRIVO_AUTH_BASE_URL=         # Optional; default: https://auth.brivo.com
+   BRIVO_WEBHOOK_SECRET=        # Optional; for webhook signature verification
+   BRIVO_ACCESS_GROUP_LEVEL4=   # Optional; comma-separated Brivo group IDs (fallback)
    ```
 
    For Stripe: visit the [Stripe dashboard](https://dashboard.stripe.com) to get API keys. Use `sk_live_`/`pk_live_` for production and `sk_test_`/`pk_test_` for development.
@@ -100,7 +108,7 @@ A comprehensive membership management platform built with React Router 7, TypeSc
 ### Additional Development Commands
 
 - **Type checking:** `npm run typecheck`
-- **Database seeding:** `npx tsx seed.ts`
+- **Database seeding:** `npx tsx seed.ts` *(requires `NODE_ENV=development`)*
 - **Prisma Studio:** `npx prisma studio`
 - **Run tests:** `npm test`
 
@@ -183,7 +191,12 @@ After login, users are redirected to role-appropriate dashboards:
 - Edit existing workshops in `/dashboard/editworkshop/:workshopId`
 - Offer workshops again with new occurrence scheduling in `/dashboard/workshops/offer/:id`
 - Manage workshop pricing variations in `/dashboard/workshops/pricevariations/:workshopId`
-- View all workshop registrations in `/dashboard/admin/workshop/users`
+- View registrations per workshop at `/dashboard/admin/workshop/:workshopId/users` with:
+  - **Result filter** — show only passed / failed / pending / cancelled registrations
+  - **Date filter** — show only users who attended on a specific occurrence date (useful for bulk-passing an orientation session)
+  - **Sort** — by last name, first name, registration date, or occurrence date(s); ascending or descending
+  - Multi-day workshops show a collapsible row with per-day results; all filters work across both single-day and multi-day workshops
+  - **Cancel Registration** — kebab menu (⋮) per row lets admins cancel any individual user's registration; works for all workshop types (single-day, multi-day, with/without price variations); sends a distinct admin-cancellation email to the user; creates a `WorkshopCancelledRegistration` audit record with `cancelledByAdmin: true` (always shows as "Yes" in Cancelled Events tab)
 - Cancel workshop occurrences and price variations
 
 **Equipment Administration:**

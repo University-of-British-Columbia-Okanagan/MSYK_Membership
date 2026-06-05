@@ -156,16 +156,26 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Automatic registration confirmation email with ICS attachment
 - Multi-day workshops linked via `connectId`
 
-**Cancellation:**
-- Cancellation within 48 hours: Full refund eligibility
-- Registration removed from database
-- Stripe refund processed
-- Cancellation confirmation email sent
+**Cancellation (user-initiated):**
+- Refund eligible if cancelled at least 48 hours before the workshop start time (checked in Admin Settings → Cancelled Events tab)
+- Registration marked as `"cancelled"` in DB; audit record created in `WorkshopCancelledRegistration` with `cancelledByAdmin: false`
+- Stripe refund processed separately (not automatic on cancellation)
+- Cancellation confirmation email sent (`sendWorkshopCancellationEmail`)
+
+**Admin — Workshop Registrations Page (`/dashboard/admin/workshop/:workshopId/users`):**
+- Lists all users registered for a specific workshop or orientation
+- **Result filter**: show only passed / failed / pending / cancelled registrations
+- **Date filter**: filter by occurrence date — e.g. select a date to see everyone who attended an orientation session that day, then use "Pass All" to pass the whole cohort
+- **Sort**: last name (A–Z), first name (A–Z), registration date, or occurrence date(s); direction toggleable
+- Multi-day workshops group all days per user into one expandable row; per-day results shown on expand; all filters operate on the group's effective result (e.g. a user is "passed" only when all days pass)
+- Works identically for orientation and regular workshop types, single-day and multi-day, with or without price variations
+- **Cancel Registration** (kebab menu ⋮ per row): admin can cancel any individual user's registration regardless of result state (pending/passed/failed); multi-day cancels all sessions together; sends `sendAdminWorkshopCancellationEmail` to the user; creates `WorkshopCancelledRegistration` record with `cancelledByAdmin: true` (always shows as refund-eligible in Cancelled Events)
 
 **Key Files:**
-- `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration
+- `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration; `cancelUserWorkshopRegistration` and `cancelMultiDayWorkshopRegistration` accept optional `cancelledByAdmin` param (default `false`)
 - `app/models/payment.server.ts` - Workshop payment and refund processing
 - `app/routes/dashboard/workshops.tsx` - Workshop browsing and registration
+- `app/routes/dashboard/userworkshop.tsx` - Per-workshop registrations list with result/date filters, sort, and admin cancel action
 
 ### 6. Equipment Booking System
 
@@ -227,7 +237,8 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Registration confirmation (`sendRegistrationConfirmationEmail`)
 - Password reset link (`sendResetEmail`) — JWT token, 1-hour expiration
 - Workshop registration confirmation (`sendWorkshopConfirmationEmail`) — with ICS calendar attachment
-- Workshop cancellation confirmation (`sendWorkshopCancellationEmail`)
+- Workshop cancellation confirmation — user-initiated (`sendWorkshopCancellationEmail`)
+- Workshop cancellation notification — admin-initiated (`sendAdminWorkshopCancellationEmail`; distinct subject and wording: "cancelled by an administrator")
 - Workshop price variation cancelled — single (`sendWorkshopPriceVariationCancellationEmail`)
 - Workshop price variation cancelled — multi-day (`sendWorkshopPriceVariationCancellationEmailMultiDay`)
 - Workshop occurrence cancelled by admin — single (`sendWorkshopOccurrenceCancellationEmail`)
@@ -285,6 +296,19 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Webhook subscription management (create/delete event subscriptions)
 - User sync status display and retry functionality
 - Integration status indicator (shows if Brivo credentials are configured)
+
+**User Management Table (Admin Settings → User Settings tab):**
+- Lists all registered users with columns: First Name, Last Name, Training Card User Number, Email, Phone Number, Role Level, Admin Status, Membership, Door Access
+- **Admin Status filter**: show only Admins or non-admins
+- **Role Level filter**: filter to users at specific role level(s) (1, 2, 3, or 4); each option shows the live count of users at that level
+- **Membership filter**: filter by paid subscription status — three mutually exclusive categories:
+  - `"Active Subscription"` — access not revoked AND has at least one `UserMembership` record with status `active`, `ending`, or `cancelled`
+  - `"No Subscription"` — access not revoked AND no active membership record on file (registered but never subscribed)
+  - `"Access Revoked"` — `membershipStatus === "revoked"` (admin manually revoked, regardless of subscription records)
+- **Door Access filter**: filter by Brivo provisioning status (Disabled, Provisioned, Checking, Registered, Pending Sync, Sync Error)
+- **Name/email search**: global search across first name, last name, and email
+- **Role Level column**: sortable ascending/descending by clicking the column header
+- All active filters are ANDed — a user must satisfy every selected filter to appear
 
 **Admin Functions:**
 - User management (role assignment, `allowLevel4` flag, membership revocation/unrevocation)
@@ -1064,17 +1088,17 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Workshop:** Admin Edit Workshop Remove Equipment | Go to edit workshop | You may remove equipments that have been booked because of the workshop time(s) and that should free up those time slots once removed | `NA` | `TODO/TOFIX`
 | ---- | **Workshop:** Admin Edit Workshop Add Equipment | Go to edit workshop | You may add equipments that will be booked because of the workshop times and the equipments added will book those time slots if avaliable | `NA` | `11/19/2025`
 | ---- | **Workshop:** Admin Edit Workshop Equipment Conflict Check | Go to edit workshop | Anytime you add a equipment to be reserved by the workshop time(s), it will check properly if it will conflict with any bookings made by users or other workshops | `NA` | `TODO/TOFIX`
-| ---- | **Workshop Details:** Workshop Single Occurrence Registration With No Price Variation | Go workshop details | When a user registers for a regular workshop for a particular date, it should say register in green and a hover to cancel. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as NA) | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Single Occurrence Registration With Price Variation | Go workshop details | When a user registers for a regular workshop for a particular date, it should say register in green and hovering over it will show you the option you registered for and its price and the cancel button. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as not NA) | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Multi-day Registration With No Price Variation | Go workshop details | When a user registers for a multi-day workshop, it should say register in green and a hover to cancel. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as NA and Workshop Time(s) says Multi-Day Workshop Connect ID: # where # a number and Multi-Day Workshop links you to the workshop details for the multi-day workshop) | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Multi-day Registration With Price Variation | Go workshop details | When a user registers for a multi-day workshop, it should say register in green and a hover to cancel. Hovering over it will show you the option you registered for and its price as well. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as not NA and Workshop Time(s) says Multi-Day Workshop Connect ID: # where # a number and Multi-Day Workshop links you to the workshop details for the multi-day workshop) | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Cancelled Button Hover on Single Occurrence Registration With No Price Variation | Go workshop details | When a user cancels their workshop registration, hovering over the cancelled button should show a register again button | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Cancelled Button Hover on Multi-day Registration With No Price Variation | Go workshop details | When a user cancels their workshop registration, hovering over the cancelled button should show a register again button | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Cancelled Button Hover on Single Occurrence Registration With Price Variation | Go workshop details | When a user cancels their workshop registration, hovering over the cancelled button should show a register again button and also the details of the price variation name and price | `NA` | `11/19/2025`
-| ---- | **Workshop Details:** Workshop Cancelled Button Hover on Multi-day Registration With Price Variation | Go workshop details | When a user cancels their workshop registration, hovering over the cancelled button should show a register again button and also the details of the price variation name and price | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Single Occurrence Registration With No Price Variation | Go workshop details | When a user registers for a regular workshop for a particular date, it should say "Registered" in green. A ⋮ icon (the 3 vertical dots) appears in the top-right corner of the date card — clicking it shows a "Cancel Registration" option with a two-step confirmation. If they cancel, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as NA) | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Single Occurrence Registration With Price Variation | Go workshop details | When a user registers for a regular workshop for a particular date, it should say "Registered" in green — hovering over the badge shows the selected pricing option name and price. A ⋮ icon (the 3 vertical dots) appears in the top-right corner of the date card for cancellation. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as not NA) | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Multi-day Registration With No Price Variation | Go workshop details | When a user registers for a multi-day workshop, it should say "Registered (Entire Workshop)" in green. A ⋮ icon (the 3 vertical dots) appears next to the registration count in the dates section header — clicking it shows a "Cancel Entire Workshop Registration" option with a two-step confirmation. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as NA and Workshop Time(s) says Multi-Day Workshop Connect ID: # where # a number and Multi-Day Workshop links you to the workshop details for the multi-day workshop) | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Multi-day Registration With Price Variation | Go workshop details | When a user registers for a multi-day workshop, it should say "Registered (Entire Workshop)" in green — hovering over the badge shows the selected pricing option and price. A ⋮ icon (the 3 vertical dots) appears next to the registration count in the dates section header for cancellation. If they cancel their registration, it should show up in Cancelled Events tab in admin settings with proper fields (Price Variation as not NA and Workshop Time(s) says Multi-Day Workshop Connect ID: # where # a number and Multi-Day Workshop links you to the workshop details for the multi-day workshop) | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Cancelled Badge on Single Occurrence Registration With No Price Variation | Go workshop details | When a user cancels their workshop registration, a "Registration Cancelled" badge appears. Clicking it shows a "Register Again" option | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Cancelled Badge on Multi-day Registration With No Price Variation | Go workshop details | When a user cancels their multi-day workshop registration, a "Registration Cancelled (Entire Workshop)" badge appears. Clicking it shows a "Register Again" option | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Cancelled Badge on Single Occurrence Registration With Price Variation | Go workshop details | When a user cancels their workshop registration, a "Registration Cancelled" badge appears. Clicking it shows a "Register Again" option. Hovering also shows the pricing option name and price | `NA` | `11/19/2025`
+| ---- | **Workshop Details:** Workshop Cancelled Badge on Multi-day Registration With Price Variation | Go workshop details | When a user cancels their multi-day workshop registration, a "Registration Cancelled (Entire Workshop)" badge appears. Clicking it shows a "Register Again" option. Hovering also shows the pricing option name and price | `NA` | `11/19/2025`
 | ---- | **Workshop:** Registering for a workshop again after cancelling their registration | Go workshop details and register again after you have cancelled a registration | When a user cancels a workshop registration and then registers again, it should be under a new Stripe Payment ID and if this registration is cancelled, the cancelled event should show that new Stripe Payment ID. Works for and should test for: Workshop Single Occurrence Registration With No Price Variation, Workshop Single Occurrence Registration With Price Variation, Workshop Multi-day Registration With No Price Variation, Workshop Multi-day Registration With Price Variation | `NA` | `11/19/2025`
 | ---- | **Admin Settings:** Workshop Cancelled Events | Go admin settings and cancelled events tab | Workshops that have been cancelled by the user should show up with the correct fields: Regular workshop with no price variation, | `NA` | `11/19/2025`
-| ---- | **Admin Settings:** Workshop Cancelled Events Eligible for Refund | Go admin settings and cancelled events tab | Users who cancelled within 48 hours of their registration should be fully refunded or is it if they refund 48 hours or more before the workshop start date | `NA` | `TODISCUSS`
+| ---- | **Admin Settings:** Workshop Cancelled Events Eligible for Refund | Go admin settings and cancelled events tab | A cancellation is eligible for a full refund if the cancellation date is at least 48 hours before the workshop start time (for multi-day: before the earliest session). The UI always allows cancellation regardless of timing; refund eligibility is shown in the Cancelled Events tab | `NA` | `11/19/2025`
 | ---- | **Admin Settings:** Workshop Cancelled Events Resolved and Unresolved | Go admin settings and cancelled events tab | Workshop Cancelled Events that are resolved should go to the Resolved Workshop Cancelled Events and unresolved should go to Workshop Cancelled Events. These events should move depending on the Resolved checkbox | `NA` | `11/19/2025`
 | ---- | **Workshop Details:** Workshop of type Workshop View Users | Go to workshop details | In a workshop of type workshop, the View Users should just show all users registered for that workshop and their result (should auto default to passed; can also be cancelled) | `NA` | `11/19/2025`
 | ---- | **Workshop Details:** Workshop of type Orientation View Users | Go to workshop details | In a workshop of type orientation, the View Users should just show all users registered for that workshop and their result, it should be by default pending and admins can change users to passed individually or pass all | `NA` | `11/19/2025`
@@ -1151,7 +1175,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Events:** Delete All Occurrences to Multi-day Workshop/Orientation With Price Variation; Occurrence Showcase in Google Calendar | Go to edit workshop and then /dashboard/events | When admin deletes all occurrences, the deleted occurrences should not show up anymore (if no one has registered since you cannot add dates anymore if a user has registered) but you must add at least one occurrence or more and those occurrence added will show on the calendar with Name, Location, Description, Pricing Options, Type, Capacity, That it is Part of a Multi-day Series, Register Link (in localhost or prod website) | `NA` | `TODO/TOFIX`
 | ---- | **Admin Settings:** Workshop Past Workshop Visibility | Go to admin settings | Workshops that have ALL days past the N days, where N is the value of Past Workshop Visibility will not show in the workshop past events. If at least one of the workshops are not past the N days, then it will show | `NA` | `12/05/2025`
 | ---- | **Admin Settings:** Workshop Registration Cutoffs | Go to admin settings | Be able to set the registration cutoff for workshops. For regular workshop, it is based on the individual date. For multi-day workshops, it is based on the first date in the multi-day set | `NA` | `12/05/2025`
-| ---- | **Admin Settings:** User Managment Filters | Go to admin settings | Be able to filter users by admin status, membership, and door access | `NA` | `12/05/2025`
+| ---- | **Admin Settings:** User Managment Filters | Go to admin settings | Be able to filter users by admin status, role level, membership, and door access; membership options are "Active Subscription" (allowed + has active membership record), "No Subscription" (allowed + no membership record), and "Access Revoked" (revoked by admin); role level filter shows counts per level (1–4); all filters are ANDed | `NA` | `06/01/2026`
+| ---- | **Admin Settings:** User Management Role Level Sort | Go to admin settings | The Role Level column should be sortable ascending/descending by clicking the column header | `NA` | `06/01/2026`
 | ---- | **Admin Settings:** User Managment Filter by First or Last Name | Go to admin settings | Be able to filter users by first or last name | `NA` | `12/05/2025`
 | ---- | **Admin Settings:** User Managment Filter by Toggle Columns View | Go to admin settings | Be able to toggle columns using Views | `NA` | `12/05/2025`
 | ---- | **Admin Settings:** User Managment Allow Level 4 | Go to admin settings | Be able to allow level 4 for a user once they are level >= 3 | `NA` | `12/05/2025`
@@ -1352,7 +1377,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 - **Reported Issues**
   - For reported issues, when you upload an image, there is no way to see an image (the screenshot of the bug given by the user when they make the report)
 - **Eligible for Refund Cancelled Events**
-  - **Workshops**: Full refunds are only available if canceled within 48 hours of registration. The system calculates eligibility by comparing the cancellation date against the registration date plus 48 hours. This applies to all workshop types (regular, multi-day, with or without price variations)
+  - **Workshops**: Full refunds are only available if canceled at least 48 hours before the workshop start time. The system calculates eligibility by checking `cancellationDate <= workshopStartDate - 48 hours` (for multi-day: uses the earliest session start date). The UI always allows cancellation at any time; refund eligibility is determined separately in Admin Settings → Cancelled Events. This applies to all workshop types (regular, multi-day, with or without price variations)
   - **Equipment**: Full refunds are only available if canceled at least 48 hours (2 days) before the earliest booked slot time. The system calculates eligibility by checking if the earliest slot's start time is more than 2 days in the future from the cancellation date
 - **My Equipments Page**
   - The /dashboard/myequipments does not group equipments times together for timings under one payment. In the future, if they are grouped, users should still be able to cancel individual times even though multiple bookings can be under one payment (we can logic that handles this, refer to Admin Settings -> Cancelled Events)
