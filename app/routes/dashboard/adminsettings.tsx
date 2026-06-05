@@ -3944,7 +3944,9 @@ export default function AdminSettings() {
                                       {workshop.id}
                                     </TableCell>
                                     <TableCell>{workshop.name}</TableCell>
-                                    <TableCell>${workshop.price}</TableCell>
+                                    <TableCell>
+                                      {workshop.price === -1 ? "Varies" : `$${workshop.price}`}
+                                    </TableCell>
                                     <TableCell>
                                       {editingWorkshop === workshop.id ? (
                                         <Input
@@ -4062,8 +4064,7 @@ export default function AdminSettings() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>ID</TableHead>
-                              <TableHead>Name</TableHead>
-                              <TableHead>Price</TableHead>
+                              <TableHead>Name</TableHead>                              <TableHead>Price</TableHead>
                               <TableHead className="w-[150px]">
                                 Registration Cutoff
                               </TableHead>
@@ -4100,7 +4101,9 @@ export default function AdminSettings() {
                                       {workshop.id}
                                     </TableCell>
                                     <TableCell>{workshop.name}</TableCell>
-                                    <TableCell>${workshop.price}</TableCell>
+                                    <TableCell>
+                                      {workshop.price === -1 ? "Varies" : `$${workshop.price}`}
+                                    </TableCell>
                                     <TableCell>
                                       {editingWorkshop === workshop.id ? (
                                         <Input
