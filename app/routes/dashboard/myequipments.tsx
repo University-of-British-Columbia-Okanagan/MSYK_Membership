@@ -8,7 +8,6 @@ import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
 import { getBookingEmailDetails } from "~/models/equipment.server";
 import { sendEquipmentCancellationEmail } from "~/utils/email.server";
-import { json } from "@remix-run/node";
 import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
@@ -82,9 +81,9 @@ export async function action({ request }: { request: Request }) {
           );
         }
       }
-      return json({ success: "Booking cancelled successfully!" });
+      return Response.json({ success: "Booking cancelled successfully!" });
     } catch (error) {
-      return json(
+      return Response.json(
         {
           errors: {
             message:
@@ -96,7 +95,7 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  return json({ errors: { message: "Invalid action." } }, { status: 400 });
+  return Response.json({ errors: { message: "Invalid action." } }, { status: 400 });
 }
 export default function MyEquipments() {
   const { equipments, roleUser } = useLoaderData<typeof loader>();
