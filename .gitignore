@@ -18,3 +18,6 @@ public/images_custom
 # Uploaded issue screenshots
 public/uploads/issues/*
 !public/uploads/issues/.gitkeep
+
+# Playwright MCP session artifacts (snapshots, console logs)
+.playwright-mcp/

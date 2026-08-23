@@ -125,10 +125,12 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - UI always treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
 
 **Role Level Impact:**
-- Level 3: Active membership (standard plan)
-- Level 4: Active membership + `needAdminPermission` plan + `allowLevel4` flag
-- Level 2: Cancelled membership but completed orientation(s)
+- Level 3: Membership on file (standard plan) + completed orientation
+- Level 4: Membership on file + `needAdminPermission` plan + `allowLevel4` flag + completed orientation
+- Level 2: No membership on file, but completed orientation(s)
 - Level 1: No membership and no orientation
+
+**"Membership on file" means status `active`, `ending`, or `cancelled`** — `startRoleLevelSyncCron()` treats all three as still granting access, which is what keeps a cancelled member at Level 3 until their term actually lapses. Only when the daily billing cron flips the record to `inactive` (or it is deleted) does the user drop to Level 2/1. Brivo door access is stricter and uses `status === "active"` alone, so a cancelled Level 4 member keeps portal access but loses the physical door immediately.
 
 **Membership Revocation (Admin Action):**
 - Admin can revoke a user's membership access globally (ban status)
@@ -298,11 +300,20 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Max equipment slots per day (key: `max_number_equipment_slots_per_day`, default: `"4"`)
 - Max equipment slots per week (key: `max_number_equipment_slots_per_week`, default: `"14"`)
 
-**Admin Settings Tabs:**
-- **General** — GST, visibility windows, planned closures
-- **Google Calendar** — Connect/disconnect via OAuth, select calendar from dropdown
-- **Brivo** — Access group configuration, webhook management (create/delete), user sync status and retry
-- **Stripe Products** — Bulk sync all workshops/membership plans/equipment to Stripe; "Clear & Re-sync" for environment switching; sync count display per category
+**Admin Settings Tabs** (the `TabsTrigger` values in `app/routes/dashboard/adminsettings.tsx`, in order):
+- **Workshop Settings** — workshop visibility days, past workshop visibility, per-workshop registration cutoffs
+- **User Settings** — user table with admin/role level/membership/door access filters, role level and `allowLevel4` controls, admin status, membership revoke/unrevoke, Brivo sync status and retry
+- **Volunteer Settings** — volunteer status management, volunteer hour approval, recently managed actions
+- **Equipment Settings** — equipment visibility days, Level 3 booking hours, Level 4 unavailable hours, max slots per day/week
+- **Planned Closures** — add and remove closure periods
+- **Cancelled Events** — workshop and equipment cancellations, refund eligibility, resolved toggle
+- **Miscellaneous Settings** — GST/HST percentage
+- **Integrations** — Google Calendar (connect/disconnect via OAuth, select calendar, timezone) **and** Brivo (access group, webhook subscription create/delete, integration status)
+- **Security & Access** — access token generation, access card lookup by UUID or email, card permissions
+- **Stripe Products** — bulk sync all workshops/membership plans/equipment to Stripe; "Clear & Re-sync" for environment switching; sync count display per category
+- **Other Settings** — placeholder
+
+Note there is no separate "General", "Google Calendar", or "Brivo" tab — GST lives under Miscellaneous Settings, and Google Calendar and Brivo are both cards inside Integrations.
 
 **Stripe Products Tab (Implemented):**
 - Links each item to a Stripe Product via `stripeProductId` — enables coupon restrictions to specific items
@@ -643,15 +654,20 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ### Workflow 10: Workshop Cancellation & Refund
 
-1. User cancels workshop registration from `/dashboard/myworkshops`
-2. System finds registration(s) with payment intent ID
-3. System checks cancellation policy (default: 48-hour refund window)
-4. Stripe refund processed for payment intent
-5. Registration record(s) deleted from database
-6. Cancellation confirmation email sent
-7. User refunded via Stripe
+Cancellation and refund are two separate steps. Cancelling never calls Stripe and never deletes anything — it flags the registration and queues it for an admin.
 
-**Note:** Multi-day workshop cancellations refund all occurrences in the series.
+**Step 1 — user cancels** (`cancelUserWorkshopRegistration()` / `cancelMultiDayWorkshopRegistration()`):
+1. User cancels from `/dashboard/myworkshops` or the workshop details page
+2. `UserWorkshop.result` is set to `"cancelled"` — the row is **not** deleted
+3. A `WorkshopCancelledRegistration` audit record is created, carrying the original `registrationDate`, the `cancellationDate`, the `paymentIntentId`, and `cancelledByAdmin: false`
+4. Cancellation confirmation email sent (`sendWorkshopCancellationEmail`)
+
+**Step 2 — admin refunds** (`refundWorkshopRegistration()`, separate action):
+1. Admin reviews the row in Admin Settings → Cancelled Events, where refund eligibility is displayed (cancelled at least 48 hours before the workshop start; for multi-day, before the earliest session)
+2. Stripe refund created against the stored payment intent
+3. **Only on a successful refund** are the `UserWorkshop` rows deleted
+
+**Note:** Multi-day cancellation marks every occurrence in the series cancelled but creates a single audit record, since the whole series shares one payment intent.
 
 ### Workflow 11: Equipment Booking (Single Slot)
 
@@ -685,22 +701,23 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ### Workflow 13: Equipment Cancellation & Refund
 
-1. User cancels equipment booking from `/dashboard/myequipments`
-2. System finds booking(s) with payment intent ID
-3. System checks refund eligibility:
-   - Cancellation 2+ days before slot start: Eligible
-   - Cancellation < 2 days before: Not eligible
-4. If eligible:
-   - Stripe refund processed
-   - Slot(s) marked as available (`isBooked: false`)
-   - Booking record(s) deleted
-   - Cancellation record created in `EquipmentCancelledBooking`
-5. Cancellation confirmation email sent
-6. User refunded via Stripe (if eligible)
+As with workshops, cancellation and refund are two separate steps. Cancelling never calls Stripe and never deletes the booking.
+
+**Step 1 — user cancels** (`cancelEquipmentBooking()`):
+1. User cancels from `/dashboard/myequipments`
+2. The slot is freed (`isBooked: false`) so someone else can take it
+3. An `EquipmentCancelledBooking` record is created via `createEquipmentCancellation()`, storing `totalSlotsBooked`, `slotsRefunded`, `totalPricePaid`, the proportional `priceToRefund`, the slot times as JSON, and `eligibleForRefund` — computed once at cancellation time as "the earliest cancelled slot starts more than 2 days from now"
+4. `EquipmentBooking.status` is set to `"cancelled"` — the row is **not** deleted
+5. Cancellation confirmation email sent (`sendEquipmentCancellationEmail`)
+
+**Step 2 — admin refunds** (`refundEquipmentBooking()`, separate action):
+1. Admin reviews the row in Admin Settings → Cancelled Events and sees the stored `eligibleForRefund` flag and `priceToRefund`
+2. Stripe refund created against the shared payment intent
+3. **Only on a successful refund** are the slots freed and the `EquipmentBooking` rows deleted
 
 **Partial Cancellation:**
-- User can cancel individual slots from bulk booking
-- Refund calculated proportionally (price per slot × cancelled slots)
+- User can cancel individual slots from a bulk booking
+- Refund calculated proportionally (original total price ÷ original slot count × slots cancelled), with the original totals carried forward from the first cancellation record so repeated partial cancellations stay consistent
 - Remaining slots remain booked
 
 ### Workflow 14: Automated Membership Billing (Cron Job)
@@ -883,7 +900,7 @@ Every implementation follows **implement → test → verify end to end**. The m
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**26 suites / 363 tests**)
+4. `npm test` — the suite must stay fully green (**27 suites / 372 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -971,6 +988,7 @@ The acceptance criteria are organized into three categories:
 | - | Equipment Basic Operations | Equipment CRUD operations, slot management, settings | `tests/models/equipment.basic.test.ts`, `tests/models/equipment.slots.test.ts`, `tests/models/equipment.settings.test.ts` |
 | - | Admin Workshop Creation | Admin creates new workshop; workshop form validation | `tests/routes/dashboard/addworkshop.test.ts` |
 | - | Admin Equipment Creation | Admin creates new equipment; equipment form validation | `tests/routes/dashboard/addequipment.test.ts` |
+| - | Workshop Registration Cutoff (server-side) | All four workshop URL shapes accepted by the `payment.tsx` loader — single occurrence, single + variation, multi-day, multi-day + variation — redirect away once `Workshop.registrationCutoff` has passed, and still load while registration is open; a cutoff of `0` means no restriction | `tests/routes/dashboard/payment.cutoff.test.ts` |
 
 ---
 
@@ -1080,8 +1098,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Workshop:** Delete Workshop Button | Go to /dashboard/workshops and click Delete Workshop (should show up) on a card | Workshops can only be deleted by admins and no one else | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Single Occurrence Workshop Dates | Go to workshop details | All dates created by workshop should show up and register individually | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Multi-day Workshop Dates | Go to workshop details | All dates created by workshop should show up and register together | `NA` | `11/17/2025`
-| ---- | **Workshop Details:** Single Occurrence Registration Cutoff | Go to workshop details | Dates that are within the cut off date before (from admin panel) it starts should not allow registration, even when typing in the URL | `NA` | `TODO/TOFIX`
-| ---- | **Workshop Details:** Multi-day Occurrence Registration Cutoff | Go to workshop details | The first date in the multi-day workshop and is within the cut off date (from admin panel) should not allow registration, even when typing in the URL | `NA` | `TODO/TOFIX`
+| ---- | **Workshop Details:** Single Occurrence Registration Cutoff | Go to workshop details, then try pasting `/dashboard/payment/:workshopId/:occurrenceId` and `/dashboard/payment/:workshopId/:occurrenceId/:variationId` for a date inside the cutoff window | Dates within the cutoff window do not allow registration, and typing either URL redirects to the role dashboard. Covered by `tests/routes/dashboard/payment.cutoff.test.ts` | `tests/routes/dashboard/payment.cutoff.test.ts` | `08/23/2026`
+| ---- | **Workshop Details:** Multi-day Occurrence Registration Cutoff | Go to workshop details, then try pasting `/dashboard/payment/:workshopId/connect/:connectId` and the `/:variationId` form | When the first date of the series is inside the cutoff window, registration is refused and both URLs redirect. Covered by `tests/routes/dashboard/payment.cutoff.test.ts`; not re-driven in a browser since the fix | `tests/routes/dashboard/payment.cutoff.test.ts` | `TODO/TOFIX`
 | ---- | **Workshop Details:** Single Occurrence Active Dates | Go to workshop details | All dates that are in the future and greater than the cut off date should be active (allowed for users to register) | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Multi-day Occurrence Active Dates | Go to workshop details | The first workshop date in the multi-day workshop that ius in the future and greater than the cut off date should be active (allowed for users to register) | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Single Occurrence Past Dates | Go to workshop details | All dates that are in the past and should not be registerable, even when putting in the URL | `NA` | `11/17/2025`
@@ -1194,8 +1212,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC46 | Membership Revocation (Admin) | Login as admin; navigate to user management; select user and click "Revoke Membership"; enter custom revocation message; confirm revocation | Revocation alert shown on user's memberships page; user receives revocation email with reason and timestamp; all user memberships show "revoked" status; revocation reason and date visible in admin user list |
 | AC47 | Revoked User Subscription Block | Login as revoked user; navigate to memberships page | Prominent alert displayed at top explaining membership access revoked; subscribe buttons on all membership cards disabled with tooltip; redirect to memberships page if attempting to access membership details or payment |
 | AC48 | Membership Unrevocation (Admin) | Login as admin; navigate to user management; select revoked user and click "Unrevoke Membership"; confirm unrevocation | Unrevocation alert shown; user receives unrevocation email; user can now subscribe to new memberships; no historical memberships are retroactively reactivated |
-| AC49 | **Brivo** Door Access Provisioning (Level 4 member) | Login as admin; ensure user has active membership with `needAdminPermission` plan; set user's `allowLevel4` flag to true; verify user role level is 4; check Brivo integration is configured; navigate to admin settings and verify user's Brivo sync status | User's `brivoPersonId` populated in database; user assigned to Brivo access groups (check Brivo dashboard); mobile pass invitation sent to user email; `brivoMobilePassId` stored in access card; door permission (ID: 0) added to access card permissions; `brivoLastSyncedAt` timestamp recorded; sync status shows "Provisioned" in admin settings | `N/A` | `11/29/2025` |
-| AC50 | **Brivo** Door Access Revocation (membership cancellation) | Have Level 4 user with active membership and Brivo access provisioned; cancel user's membership; check admin settings for user's Brivo sync status; verify in Brivo dashboard | User removed from Brivo access groups (check Brivo dashboard); mobile pass revoked in Brivo; door permission (ID: 0) removed from access card permissions; `brivoMobilePassId` cleared from access cards; `brivoLastSyncedAt` timestamp updated; sync status updated in admin settings | `N/A` | `11/29/2025` |
+| AC49 | **Brivo** Door Access Provisioning (Level 4 member) | Login as admin; ensure user has active membership with `needAdminPermission` plan; set user's `allowLevel4` flag to true; verify user role level is 4; check Brivo integration is configured; navigate to admin settings and verify user's Brivo sync status | User's `brivoPersonId` populated in database; user assigned to Brivo access groups (check Brivo dashboard); mobile pass invitation sent to user email; `brivoMobilePassId` stored in access card; `brivoLastSyncedAt` timestamp recorded (note: local ESP32 card `permissions` are **not** touched — the door-permission sync is deliberately disabled); sync status shows "Provisioned" in admin settings | `N/A` | `11/29/2025` |
+| AC50 | **Brivo** Door Access Revocation (membership cancellation) | Have Level 4 user with active membership and Brivo access provisioned; cancel user's membership; check admin settings for user's Brivo sync status; verify in Brivo dashboard | User removed from Brivo access groups (check Brivo dashboard); mobile pass revoked in Brivo; `brivoMobilePassId` cleared from access cards (local ESP32 card `permissions` are left untouched — they are admin-managed); `brivoLastSyncedAt` timestamp updated; sync status updated in admin settings | `N/A` | `11/29/2025` |
 | AC51 | **Brivo** Webhook Event Processing | Configure Brivo webhook subscription pointing to `/brivo/callback`; set `BRIVO_WEBHOOK_SECRET` environment variable; use Brivo credential (mobile pass or card) at door/equipment; check application logs; query `AccessLog` table | Webhook request received and signature verified; access event logged in `AccessLog` table with correct card ID, user ID, equipment name, and state (enter/exit/denied); response sent to Brivo with status "ok"; no errors in application logs | `N/A` | `N/A` |
 | AC52 | **Brivo** Admin Configuration | Login as admin; navigate to admin settings; scroll to "Brivo Access Control" section; verify integration status; select Brivo access group from dropdown; save settings; create/delete webhook subscription | Integration status shows "✓ Brivo API Connected" if credentials configured; access group dropdown populated with available Brivo groups; selected group ID saved to `brivo_access_group_level4` setting; webhook subscription created/deleted successfully; webhook URL shows `/brivo/callback` | `N/A` | `11/29/2025` |
 | AC53 | **Brivo** Sync Error Handling | Configure Brivo with invalid credentials or simulate API failure; attempt to provision user with Level 4 access; check admin settings for user's sync status; click "Retry Sync" button | Sync error message stored in `brivoSyncError` field; error badge displayed in admin user list; error details shown in sync status dialog; retry button triggers new sync attempt; if retry succeeds, error cleared and status updated | `N/A` | `11/29/2025` |
@@ -1272,6 +1290,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**~~
   - ~~Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"~~
   - ~~Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops~~
+    - The original fix covered only the two URL shapes named above. The price-variation form `/dashboard/payment/:workshopId/:occurrenceId/:variationId` was missed and stayed bypassable until it was fixed later. All four workshop branches of the `payment.tsx` loader now call `isPastRegistrationCutoff`, and `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape so a future branch cannot silently skip it
   - ~~Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)~~
   - ~~People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)~~
   - ~~When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop button, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly. Maybe it only does that if you are going from a workshop that books equipment to one that doesn't anymore after editing)~~

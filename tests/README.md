@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 26 suites, 363 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 27 suites, 372 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -54,7 +54,8 @@ tests/
 │   └── session.server.test.ts
 ├── routes/dashboard/            # route loaders and actions
 │   ├── addequipment.test.ts
-│   └── addworkshop.test.ts
+│   ├── addworkshop.test.ts
+│   └── payment.cutoff.test.ts
 ├── fixtures/                    # per-domain mock setup + sample data
 │   ├── equipment/   {setup,equipments,addEquimentForm,getEquipmentSlotsWithStatus}.ts
 │   ├── membership/  {setup,memberships}.ts

@@ -319,6 +319,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw redirect(getRedirectPath());
     }
 
+    if (
+      isPastRegistrationCutoff(
+        new Date(occurrence.startDate),
+        workshop.registrationCutoff
+      )
+    ) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {

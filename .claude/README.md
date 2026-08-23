@@ -41,6 +41,7 @@ Notes for using it here:
 - `npm run dev` runs both the client and the cron server; the cron server is what flips workshop occurrence status, so start both when timing matters
 - You need a seeded database to log in — `npx tsx seed.ts` (requires `NODE_ENV=development`)
 - Chromium is already installed locally. If it is ever missing, `npx playwright install chromium`
+- The server drops page snapshots and console logs into `.playwright-mcp/` as you drive it. That directory is gitignored — do not commit it
 - This is for **interactive verification**, not an automated test suite. Regression tests belong in `tests/` under Jest
 
 ---
@@ -53,14 +54,18 @@ Custom slash commands defined as markdown files. Invoke them in Claude Code by t
 
 **File:** `commands/read-docs.md`
 
-Onboards Claude to the codebase at the start of a conversation by reading the docs *and* the source, then reporting where they disagree. Use this when starting fresh work on the repo.
+Orients Claude in the codebase at the start of a conversation, cheaply. Use this when starting fresh work on the repo.
+
+It is explicitly budgeted: **under 10% of the context window**. An earlier version read every markdown and all ~52,000 lines of source into the main context — it produced an excellent summary and left almost nothing to actually work with. The current version keeps the coverage and moves the cost off the main thread.
 
 What it does:
-- Enumerates every markdown in the repo with `find`, then reads them all in full — the three primary docs, both folder indexes (`docs/README.md`, `docs/implementations/README.md`), and all five `.claude` files
-- Reads the Prisma schema, every model, service, util, config, `entry.server.ts`, `seed.ts`, `package.json`, `app/routes.ts`, and every route file
-- Skips exactly two things, deliberately: the frozen write-ups in `docs/implementations/` (reading them builds a false picture of current behavior) and the ~12,700-line Brivo API snapshot (read on demand instead, so it does not eat the context needed for the source)
-- Verifies specific high-risk claims against the code — cron schedules, session behavior, role level logic, seed guard, Stripe sync hooks, Brivo degradation, `AdminSettings` keys, route map completeness, unique constraints, whether documented functions are actually exported
-- Reports a verified understanding, an explicit list of discrepancies found (or states there were none), and which markdowns it skipped and why
+- **Phase 0 — orientation.** Skips `CLAUDE.md` (already auto-loaded), reads `tests/README.md` and `.claude/README.md` in full, enumerates every markdown with `find`, and indexes `README.md` / `MSYK-OVERVIEW.md` by heading rather than reading them cover to cover — so it can jump to the right section when a task needs it
+- **Phase 1 — structural map.** A handful of `grep`/`sed` commands that yield the data model, the full route table, every exported model/service function, cron schedules, env vars, and `AdminSettings` keys — the shape of the system for a fraction of the tokens the source costs
+- **Phase 2 — delegated deep reading.** Up to three `Explore` subagents in parallel (business logic, request layer, auth/config), each capped at a 40-line brief. The ~50,000 lines are read in *their* context; only the briefs reach the main one. Fewer subagents when the task is narrow
+- **Phase 3 — mechanical verification.** Four cheap shell checks: every route file registered, every route in the README map, documented functions actually exported, referenced paths exist. It does **not** audit the prose claim by claim — `/update-all-docs` keeps docs honest as code changes, and a full audit is something you ask for explicitly
+- **Phase 4 — a report under ~40 lines**, ending with an explicit list of what it did *not* read
+
+Deliberate omissions, in the command itself: the frozen write-ups in `docs/implementations/` (reading them builds a false picture of current behavior), the ~12,700-line Brivo API snapshot (read on demand), and the JSX of the six largest route files (their loaders and actions are read; their markup is not).
 
 ### /update-all-docs
 
