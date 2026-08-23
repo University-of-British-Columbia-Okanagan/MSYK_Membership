@@ -190,6 +190,20 @@ describe("workshop.server - Cancellation", () => {
 
   describe("cancelWorkshopPriceVariation", () => {
     it("should cancel price variation and related registrations", async () => {
+      // cancelWorkshopPriceVariation loads the variation with its workshop and
+      // non-cancelled registrations before doing anything else; without this the
+      // function throws "Price variation not found".
+      db.workshopPriceVariation.findUnique.mockResolvedValue({
+        id: 1,
+        workshopId: 1,
+        name: "Student",
+        price: 50,
+        description: "Student rate",
+        capacity: 10,
+        status: "active",
+        workshop: { id: 1, name: "Test Workshop", type: "workshop", price: 100 },
+        userWorkshops: [],
+      });
       db.workshopPriceVariation.update.mockResolvedValue({});
       db.userWorkshop.updateMany.mockResolvedValue({});
 
@@ -201,7 +215,8 @@ describe("workshop.server - Cancellation", () => {
         data: { status: "cancelled" },
       });
       expect(db.userWorkshop.updateMany).toHaveBeenCalledWith({
-        where: { priceVariationId: 1 },
+        // already-cancelled registrations are excluded so they are not re-cancelled
+        where: { priceVariationId: 1, result: { not: "cancelled" } },
         data: { result: "cancelled" },
       });
     });
@@ -282,7 +297,8 @@ describe("workshop.server - Cancellation", () => {
       const result = await createWorkshopCancellation(cancellationData);
 
       expect(db.workshopCancelledRegistration.create).toHaveBeenCalledWith({
-        data: cancellationData,
+        // cancelledByAdmin defaults to false and is written on every record
+        data: { ...cancellationData, cancelledByAdmin: false },
       });
       expect(result.id).toBe(1);
     });
