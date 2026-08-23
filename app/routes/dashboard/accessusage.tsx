@@ -1,5 +1,4 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router-dom";
 import { getAccessLogs } from "~/models/accessLog.server";
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -82,7 +81,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       ? summary.filter((s) => s.totalTime >= minMinutes)
       : summary;
 
-  return json({
+  return Response.json({
     summary: filteredSummary,
     filters: {
       equipment,

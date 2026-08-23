@@ -119,7 +119,6 @@ import {
   getAccessCardByEmail,
   updateAccessCard,
 } from "~/models/access_card.server";
-import { json } from "@remix-run/node";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";

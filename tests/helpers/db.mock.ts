@@ -64,6 +64,8 @@ export const createDbMock = () => ({
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
+      count: jest.fn(),
     },
     equipmentPrerequisite: {
       createMany: jest.fn(),

@@ -104,7 +104,10 @@ describe("equipment.server - Booking", () => {
           "2025-12-01T05:00:00Z",
           "2025-12-01T05:30:00Z"
         )
-      ).rejects.toThrow("Level 3 members can only book between 9 AM and 5 PM.");
+      ).rejects.toThrow(
+        // Message is built per-day from level3_start_end_hours, not hardcoded
+        /Level 3 members can only book between 9 AM and 17 PM on \w+/
+      );
     });
 
     it("rejects role level 1 users", async () => {

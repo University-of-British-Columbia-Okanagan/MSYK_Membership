@@ -23,14 +23,26 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 ### Technology Stack
 
 - **Frontend**: React Router 7 (SSR), React 19, TypeScript 5.7, Tailwind CSS
-- **Backend**: Node.js, Express (via React Router)
+- **Backend**: Node.js with React Router 7 server-side rendering (`@react-router/serve` in production, `tsx entry.server.ts` for the cron process in development) — Express is not a direct dependency
 - **Database**: PostgreSQL with Prisma ORM 6
 - **External Services**: 
   - Stripe (payment processing)
   - Mailgun (email notifications)
   - Google Calendar API (optional, for workshop events)
   - Brivo API (access control system for door access)
-- **Testing**: Jest with Testing Library
+- **Testing**: Jest with Testing Library, MSW for external API mocking
+
+### Background Jobs
+
+Three jobs start automatically from `entry.server.ts` (the process run by `npm run dev:server`):
+
+| Job | Function | Schedule | File |
+|-----|----------|----------|------|
+| Role level sync | `startRoleLevelSyncCron()` | Every 15 seconds (node-cron `*/15 * * * * *`) | `app/models/user.server.ts` |
+| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight (node-cron `0 0 * * *`) | `app/models/membership.server.ts` |
+| Workshop occurrence status | `startWorkshopOccurrenceStatusUpdate()` | Immediately on startup, then every 1 second (`setInterval`) | `app/models/workshop.server.ts` |
+
+The occurrence status job flips occurrences from `active` to `past` once their `startDate` has passed.
 
 ---
 
@@ -67,7 +79,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Stored in database as encrypted string
 
 **Key Files:**
-- `app/utils/session.server.ts` - `register()`, `generateSignedWaiver()`
+- `app/utils/session.server.ts` - `register()` (exported); `generateSignedWaiver()` (internal helper called by `register()`); `decryptWaiver()` (re-exported)
 - `app/schemas/registrationSchema.tsx` - Validation schema
 - `app/routes/authentication/register.tsx` - Registration form
 
@@ -80,7 +92,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Secure token validation before password update
 
 **Key Files:**
-- `app/utils/email.server.ts` - `sendResetEmail()`, `generateResetToken()`
+- `app/utils/email.server.ts` - `sendResetEmail()` (exported); `generateResetToken()` (internal helper it calls)
 - `app/routes/authentication/passwordReset.tsx` - Reset form and validation
 
 ### 4. Membership Management
@@ -170,6 +182,8 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Multi-day workshops group all days per user into one expandable row; per-day results shown on expand; all filters operate on the group's effective result (e.g. a user is "passed" only when all days pass)
 - Works identically for orientation and regular workshop types, single-day and multi-day, with or without price variations
 - **Cancel Registration** (kebab menu ⋮ per row): admin can cancel any individual user's registration regardless of result state (pending/passed/failed); multi-day cancels all sessions together; sends `sendAdminWorkshopCancellationEmail` to the user; creates `WorkshopCancelledRegistration` record with `cancelledByAdmin: true` (always shows as refund-eligible in Cancelled Events)
+- **Move Registration** (`actionType: "moveRegistration"` → `moveUserWorkshopRegistration()`): admin moves a user from one occurrence of the workshop to another. Rejected unless the target occurrence belongs to the same workshop, has status `active`, is single-day (`connectId` is null), is not already actively booked by that user, and has remaining capacity — including capacity on the price variation the user originally chose. The registration retains its price variation, and `sendAdminWorkshopMoveEmail` notifies the user of the old and new dates
+- **Mark results**: individual pass/fail/pending via `updateRegistrationResult()`, or bulk "Pass All" via `updateMultipleRegistrations()` — both handled by the action in `app/routes/dashboard/admindashboardlayout.tsx`
 
 **Key Files:**
 - `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration; `cancelUserWorkshopRegistration` and `cancelMultiDayWorkshopRegistration` accept optional `cancelledByAdmin` param (default `false`)
@@ -204,7 +218,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Key Files:**
 - `app/models/equipment.server.ts` - Equipment CRUD, booking, prerequisites
 - `app/models/payment.server.ts` - Equipment payment and refund processing
-- `app/routes/dashboard/equipmentbooking/:id.tsx` - Booking interface
+- `app/routes/dashboard/equipmentbooking.tsx` - Booking interface (route `/dashboard/equipmentbooking/:id`)
 
 ### 7. Payment Processing
 
@@ -228,8 +242,9 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 
 **Key Files:**
 - `app/models/payment.server.ts` - Payment intent creation, checkout sessions, refunds
-- `app/routes/api/paymentupgrade.tsx` - Quick checkout endpoint
-- `app/routes/dashboard/payment/success.tsx` - Payment success handler
+- `app/routes/api/paymentprocess.tsx` - Quick checkout endpoint (saved-card purchase)
+- `app/routes/api/paymentupgrade.tsx`, `app/routes/api/paymentdowngrade.tsx`, `app/routes/api/paymentresubscribe.tsx` - Membership change endpoints
+- `app/routes/dashboard/paymentsuccess.tsx` - Payment success handler (route `/dashboard/payment/success`)
 
 ### 8. Email Notifications
 
@@ -239,6 +254,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Workshop registration confirmation (`sendWorkshopConfirmationEmail`) — with ICS calendar attachment
 - Workshop cancellation confirmation — user-initiated (`sendWorkshopCancellationEmail`)
 - Workshop cancellation notification — admin-initiated (`sendAdminWorkshopCancellationEmail`; distinct subject and wording: "cancelled by an administrator")
+- Workshop registration moved by admin (`sendAdminWorkshopMoveEmail`) — shows the old and new occurrence dates
 - Workshop price variation cancelled — single (`sendWorkshopPriceVariationCancellationEmail`)
 - Workshop price variation cancelled — multi-day (`sendWorkshopPriceVariationCancellationEmailMultiDay`)
 - Workshop occurrence cancelled by admin — single (`sendWorkshopOccurrenceCancellationEmail`)
@@ -270,13 +286,17 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Configurable Settings (stored in `AdminSettings` key-value table):**
 - GST percentage (key: `gst_percentage`, default: `"5"`)
 - Workshop visibility days (key: `workshop_visibility_days`, default: `"60"`)
-- Equipment visibility days (key: `equipment_visibility_days`)
+- Equipment visibility days (key: `equipment_visible_registrable_days`, default: `"7"`) — note the key name, it is not `equipment_visibility_days`
 - Past workshop history days (key: `past_workshop_visibility`, default: `"180"`)
 - Google Calendar ID (key: `google_calendar_id`)
 - Google Calendar timezone (key: `google_calendar_timezone`, default: `"America/Yellowknife"`)
 - Google OAuth refresh token — AES-encrypted (key: `google_oauth_refresh_token_enc`)
-- Brivo access group for Level 4 members (key: `brivo_access_group_level4`) — comma-separated group IDs
-- Planned closures
+- Brivo access group for Level 4 members (key: `brivo_access_group_level4`) — comma-separated group IDs; falls back to the `BRIVO_ACCESS_GROUP_LEVEL4` env var
+- Planned closures (key: `planned_closures`) — JSON array, managed via `getPlannedClosures()` / `updatePlannedClosures()`
+- Level 3 booking hours (key: `level3_start_end_hours`) — JSON map of weekday → `{ start, end }`; empty falls back to 9–17 every day
+- Level 4 unavailable hours (key: `level4_unavaliable_hours`) — JSON `{ start, end }`; unset falls back to `{ start: 0, end: 0 }` (no restriction). **The key is misspelled in the code and must be matched exactly**
+- Max equipment slots per day (key: `max_number_equipment_slots_per_day`, default: `"4"`)
+- Max equipment slots per week (key: `max_number_equipment_slots_per_week`, default: `"14"`)
 
 **Admin Settings Tabs:**
 - **General** — GST, visibility windows, planned closures
@@ -319,7 +339,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Issue tracking and resolution
 
 **Key Files:**
-- `app/models/admin.server.ts` — `getAdminSetting`, `updateAdminSetting`, `getGoogleCalendarConfig`, `clearGoogleCalendarAuth`, `getPlannedClosures`, `updatePlannedClosures`
+- `app/models/admin.server.ts` — `getAdminSetting`, `updateAdminSetting`, `getWorkshopVisibilityDays`, `getEquipmentVisibilityDays`, `getPastWorkshopVisibility`, `updateWorkshopCutoff`, `getGoogleCalendarConfig`, `clearGoogleCalendarAuth`, `getPlannedClosures`, `updatePlannedClosures`
 - `app/routes/dashboard/adminsettings.tsx` — Admin settings UI (tabbed)
 - `app/routes/api/stripe-sync.tsx` — Stripe Product sync API endpoint
 
@@ -338,8 +358,8 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Single-card path and UUID path share the same card details/edit UI
 
 **Key Files:**
-- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `updateAccessCard`)
-- `app/models/accessLog.server.ts` - Log tracking
+- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `getAccessCardByBrivoCredentialId`, `getUserIdByAccessCard`, `hasPermissionForType`, `updateAccessCard`)
+- `app/models/accessLog.server.ts` - Log tracking (`logAccessEvent`, `getAccessLogs`)
 - `app/routes/brivo.callback.tsx` - Access system webhook
 
 ### 11. Brivo Access Control Integration
@@ -364,6 +384,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Integration Points:**
 The `syncUserDoorAccess()` function is automatically called when:
 - New membership subscription is registered (`registerMembershipSubscription()`)
+- A membership plan is deleted (`deleteMembershipPlan()`) — resyncs every affected member
 - Membership is cancelled (`cancelMembership()`)
 - User role level is updated (`updateUserRole()`)
 - User `allowLevel4` flag is updated (`updateUserAllowLevel()`)
@@ -428,7 +449,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 8. User redirected to `/login?registered=true`
 9. Login page displays green "Registration successful!" confirmation banner
 10. User enters email and password
-11. Session created with userId, password hash, and loginTime stored in cookie
+11. Session cookie `RJ_session` created holding `userId`, `userPassword` (the raw password submitted on the login form), and `loginTime`. On every subsequent request `getUserId()` re-reads the user and `bcrypt.compare`s the session password against the stored hash, so a password change invalidates all existing sessions
 12. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
@@ -854,6 +875,28 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ## Test Plan
 
+### Development Workflow
+
+Every implementation follows **implement → test → verify end to end**. The middle step depends on what changed:
+
+**New functionality**
+1. Implement the feature
+2. Add test files under `tests/` and make them pass
+3. Verify end to end in a real browser via the Playwright MCP server
+4. `npm test` — the suite must stay fully green (**26 suites / 363 tests**)
+5. `npm run typecheck`
+
+**Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
+1. Implement the change
+2. Update every affected test file — run the suite to see what broke, and grep `tests/` for the symbols touched, since a test can be stale without failing
+3. Verify end to end in a browser — the changed behaviour *and* the surrounding flow
+4. `npm test` fully green
+5. `npm run typecheck`
+
+Step 3 is not optional: a green unit test says the function behaves, only the browser says the feature works. A test is never edited purely to make it pass — establish whether the test or the code is wrong first, and say which.
+
+See [CLAUDE.md](./CLAUDE.md) for the full rules and [tests/README.md](./tests/README.md) for layout and conventions.
+
 ### Test Strategy
 
 **Testing Framework:**
@@ -861,13 +904,16 @@ The `syncUserDoorAccess()` function is automatically called when:
 - **Testing Library** for React component testing
 - **MSW (Mock Service Worker)** for external API mocking
 
-**Test Focus Areas:**
-- Model functions (business logic)
+**Test Focus Areas (all now covered):**
+- Model functions — workshop, equipment, membership, payment, user, profile, admin, access card, access log, issue
+- Services — Stripe Product sync, Brivo door access sync, Brivo client configuration
+- Auth and session — login, session expiry, password-change invalidation, email case-insensitivity
+- Access control — role-level AND chain, door permission gating
 - Route actions and loaders
-- Form validation schemas
-- Payment processing workflows
-- Email composition
+- Payment processing — GST calculation, refunds, payment method removal
 - Database operations
+
+**Reference:** [tests/README.md](./tests/README.md) documents the folder — layout, fixture conventions, and the failure modes that have bitten here.
 
 **Test Data:**
 - Fixtures in `tests/fixtures/**` for consistent test data
@@ -930,9 +976,11 @@ The acceptance criteria are organized into three categories:
 
 ### Need Jest Tests
 
+These tests are **not yet written**. The "Recommended Test File" column names where each test *should* live — those files do not exist on disk yet, and their absence is expected. Do not treat them as broken references.
+
 | AC Number | Test Case | Description | Recommended Test File |
 |-----------|-----------|-------------|----------------------|
-| AC1 | Valid Login | Session cookie created with `userId` and `loginTime`; user redirected to appropriate dashboard; session expires after 3 hours | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
+| AC1 | Valid Login | Session cookie created with `userId`, `userPassword`, and `loginTime`; user redirected to appropriate dashboard; session expires after 3 hours | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
 | AC2 | Invalid Credentials | Error message displayed; no session created; user remains on login page | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
 | AC3 | Session Invalidation | User password changed externally; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
 | AC4 | Tampered Session Cookie | Session cookie modified or expired; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
@@ -1403,19 +1451,28 @@ The following acceptance criteria should be manually tested by QA in the applica
 - `app/models/user.server.ts` - User management, role assignment
 - `app/models/profile.server.ts` - Profile data, volunteer tracking
 - `app/models/admin.server.ts` - Admin settings management
+- `app/models/access_card.server.ts` - Access card lookup and permission checks
+- `app/models/accessLog.server.ts` - Access event logging and retrieval
+- `app/models/issue.server.ts` - Issue reporting with screenshot uploads
 
 **Services:**
-- `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes)
-- `app/services/access-control-sync.server.ts` - Door access synchronization
+- `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes); exports the `brivoClient` singleton
+- `app/services/access-control-sync.server.ts` - Door access synchronization (`syncUserDoorAccess()`)
+- `app/services/stripe-sync.server.ts` - Stripe Product sync and archive
 
 **Utilities:**
 - `app/utils/session.server.ts` - Authentication, session management, waiver generation
 - `app/utils/email.server.ts` - Email composition and sending
 - `app/utils/db.server.ts` - Database singleton instance
 - `app/utils/googleCalendar.server.ts` - Google Calendar OAuth and event management
+- `app/utils/singleton.server.ts` - Server singleton pattern helper
 
-**Configuration:**
+**Configuration and logging:**
 - `app/config/access-control.ts` - Access control configuration (door permissions, Brivo groups)
+- `app/logging/logger.ts` - Winston logger (`logs/error.log`, `logs/all_logs.log`)
+
+**Server entry:**
+- `entry.server.ts` - Starts the three background jobs (role level sync, membership billing, workshop occurrence status)
 
 **Database:**
 - `prisma/schema.prisma` - Database schema and model definitions
@@ -1432,8 +1489,12 @@ The following acceptance criteria should be manually tested by QA in the applica
 ### Development Commands
 
 ```bash
-# Start development server
+# Start development server (client + cron server concurrently)
 npm run dev
+
+# Start just one side
+npm run dev:client
+npm run dev:server
 
 # Build for production
 npm run build
@@ -1464,10 +1525,10 @@ npx prisma studio
 - `tests/helpers/db.mock.ts` - Mock database helpers
 
 **Fixtures:**
-- `tests/fixtures/user/*` - User test data
 - `tests/fixtures/workshop/*` - Workshop test data
 - `tests/fixtures/equipment/*` - Equipment test data
-- `tests/fixtures/session/*` - Session test data
+- `tests/fixtures/membership/*` - Membership test data
+- `tests/fixtures/session/*` - Session test data (`getUser`, `getRoleUser`)
 
 ### Testing External Services
 
@@ -1552,5 +1613,15 @@ npx prisma studio
 - Graceful degradation (email failures don't block registration)
 - Retry logic for transient failures
 - Comprehensive error logging
+
+### Related Documentation
+
+- [README.md](./README.md) — setup, env vars, architecture, database schema, model function reference, complete route map
+- [CLAUDE.md](./CLAUDE.md) — quick reference and critical gotchas
+
+Supporting material lives in [docs/](./docs/) — the repo root is reserved for the three docs above. See [docs/README.md](./docs/README.md) for the full index:
+
+- [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md) — vendor Brivo API reference snapshot; authoritative for the door access integration
+- [docs/implementations/](./docs/implementations/) — point-in-time write-ups of individual implementations, written once when the work landed and not maintained afterwards; historical records rather than current behavior
 
 ---

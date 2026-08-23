@@ -22,10 +22,6 @@ jest.mock('~/logging/logger', () => ({
 }));
 
 
-jest.mock('@remix-run/node', () => ({
-  redirect: jest.fn(),
-}));
-
 const mockGetWorkshops = getWorkshops as jest.Mock;
 const mockGetUser = getUser as jest.Mock;
 const mockGetRoleUser = getRoleUser as jest.Mock;
@@ -35,7 +31,6 @@ const mockGetAvailableEquipmentForAdmin = getAvailableEquipmentForAdmin as jest.
 const mockAddWorkshop = addWorkshop as jest.Mock;
 const mockBulkBookEquipment = bulkBookEquipment as jest.Mock;
 const mockCreateEquipmentSlotsForOccurrence = createEquipmentSlotsForOccurrence as jest.Mock;
-const mockRedirect = require('@remix-run/node').redirect as jest.Mock;
 
 describe('loader', () => {
   beforeEach(() => {
@@ -45,7 +40,7 @@ describe('loader', () => {
   it('loader for add workshop', async () => {
     mockGetWorkshops.mockResolvedValue(getWorkshopsFixture);
     mockGetUser.mockResolvedValue(getUserFixture);
-    mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     mockGetEquipmentSlotsWithStatus.mockResolvedValue(getEquipmentSlotsWithStatusFixture);
     mockGetEquipmentVisibilityDays.mockResolvedValue(1);
 

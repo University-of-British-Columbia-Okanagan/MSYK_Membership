@@ -12,10 +12,6 @@ jest.mock("~/models/workshop.server");
 jest.mock("~/models/equipment.server");
 jest.mock('~/logging/logger');
 
-jest.mock('@remix-run/node', () => ({
-  redirect: jest.fn(),
-}));
-
 const mockGetWorkshops = getWorkshops as jest.Mock;
 const mockGetRoleUser = getRoleUser as jest.Mock;
 const mockGetEquipmentByName = getEquipmentByName as jest.Mock;
@@ -29,7 +25,7 @@ describe('loader', () => {
 
   it('returns workshops and roleUser', async () => {
     mockGetWorkshops.mockResolvedValue(getWorkshopsFixture);
-    mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     const request = new Request('http://localhost:5173/dashboard/addequipment', {
       method: 'GET',
     });
@@ -40,7 +36,7 @@ describe('loader', () => {
     expect(mockGetRoleUser).toHaveBeenCalledWith(request);
     expect(result).toEqual({
       workshops: getWorkshopsFixture,
-      roleUser: getRoleUserFixture,
+      roleUser: getRoleUserAdminFixture,
     });
   });
 });

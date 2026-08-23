@@ -1,4 +1,3 @@
-import { json } from "@remix-run/node";
 import { useLoaderData, useSearchParams, redirect } from "react-router";
 import fs from "fs/promises";
 import path from "path";
@@ -56,9 +55,9 @@ export async function loader({ request }: { request: Request }) {
       }
     });
 
-    return json({ logs: filtered.slice(-200).join("\n") }); // limit to last 200 lines
+    return Response.json({ logs: filtered.slice(-200).join("\n") }); // limit to last 200 lines
   } catch (err) {
-    return json({ logs: "Failed to load logs." }, { status: 500 });
+    return Response.json({ logs: "Failed to load logs." }, { status: 500 });
   }
 }
 
