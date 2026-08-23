@@ -125,6 +125,8 @@ npx playwright install chromium   # one-time, only if the browser binary is miss
 
 Then browse `http://localhost:5173`. This is for **interactive verification** — clicking through a flow, checking what a page renders, reading console errors. Automated regression tests belong in `tests/` under Jest; see [Testing Strategy](#testing-strategy).
 
+The server writes page snapshots and console logs into `.playwright-mcp/` at the repo root as you drive it. That directory is gitignored — it is session scratch, not something to commit.
+
 ## Environment Variables & Configuration
 
 ### Required Environment Variables
@@ -420,7 +422,7 @@ All server-side code uses the `*.server.ts` naming convention. These files:
 - **Special Flag:** `allowLevel4` — Boolean flag that must be explicitly granted by admin for Level 4 access
 - **Access Requirements:** Most equipment requires Level 3+, some require Level 4 with the flag
 - Role checks are enforced in loaders/actions and at the model layer
-- **Role Level Sync Cron:** `startRoleLevelSyncCron()` in `app/models/user.server.ts` — runs every 15 seconds (`*/15 * * * * *`), corrects any drift across all users in a single batched DB query
+- **Role Level Sync Cron:** `startRoleLevelSyncCron()` in `app/models/user.server.ts` — runs every 15 seconds (`*/15 * * * * *`). It loads every user in one batched read (with their passed orientations and non-inactive memberships), then writes per user, updating and re-syncing door access only for those whose level actually drifted
 
 ### Cron Jobs
 
@@ -451,7 +453,7 @@ The workshop status job runs immediately on startup and then every 1 second, kee
 **Multi-day Workshops:** Connected via shared `connectId` on `WorkshopOccurrence`. All occurrences must be registered together as a single unit.
 
 **Registration Rules:**
-- **Cutoff Time**: `Workshop.registrationCutoff`, in minutes before start (schema default 60). Set per-workshop from Admin Settings via `updateWorkshopCutoff()`; enforced in the UI in `workshopdetails.tsx` and server-side in `payment.tsx`
+- **Cutoff Time**: `Workshop.registrationCutoff`, in minutes before start (schema default 60); `0` or null means no cutoff. Set per-workshop from Admin Settings via `updateWorkshopCutoff()`. Enforced in the UI in `workshopdetails.tsx`, and server-side by the module-local `isPastRegistrationCutoff` helper (internal to `payment.tsx`, not exported) in **all four** workshop branches of the `payment.tsx` loader — single occurrence, single + variation, multi-day, and multi-day + variation. The loader is the only server-side gate: neither `quickCheckout()` nor `paymentsuccess.tsx` re-checks the cutoff, so a branch that skips it is bypassable by URL. `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape
 - **Capacity**: Tracked per occurrence or across multi-day series
 - **Price Variations**: `WorkshopPriceVariation` records with individual capacity limits
 - **Cancellation Policy**: Refund eligible if cancelled at least 48 hours before the workshop start time (eligibility checked in Cancelled Events tab in Admin Settings). The policy text is hardcoded in `app/routes/dashboard/workshopdetails.tsx` — the `Workshop.cancellationPolicy` DB field exists but is no longer rendered in the UI
@@ -517,7 +519,7 @@ Each workshop, membership plan, and equipment item is automatically linked to a 
   - `syncEquipmentToStripe(id)` — creates or updates Stripe Product for equipment
   - `archiveStripeProduct(stripeProductId)` — marks Stripe Product inactive (used on delete; items are archived, not deleted)
   - `bulkSyncToStripe(clearExisting = false)` — syncs all three categories in one pass; `clearExisting: true` backs the Clear & Re-sync action
-- **Auto-Sync Hooks:** Called non-blocking (`.catch()`) from model create/update/delete functions in workshop, membership, and equipment models
+- **Auto-Sync Hooks:** Create, update, and duplicate call the sync non-blocking (`.catch()`) in the workshop, membership, and equipment models. Delete instead `await`s `archiveStripeProduct()` before removing the row — that call swallows its own errors, so a Stripe outage still cannot block the delete
 - **Checkout:** `payment.server.ts` and `payment.tsx` use `price_data.product` when `stripeProductId` exists, falling back to inline `price_data.product_data` if not set
 - **Admin API:** `POST /api/stripe-sync` with actions: `bulkSync`, `clearAndResync`, `getSyncStatus`
 - **Admin UI:** Admin Settings → "Stripe Products" tab — Sync All, Clear & Re-sync buttons with status display
@@ -1039,7 +1041,7 @@ Assume you are here whenever you edit an existing function, route, query, or sch
 
 **Most changes are the second kind.** When unsure, treat it as the second kind.
 
-The suite is currently **fully green — 26 suites, 363 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+The suite is currently **fully green — 27 suites, 372 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
 
 **Rules:**
 
@@ -1066,14 +1068,20 @@ The suite is currently **fully green — 26 suites, 363 tests** — and every se
 **[tests/README.md](./tests/README.md) is the full reference** for the folder — layout, fixture conventions, the import-ordering rule, and the failure modes that have actually bitten here. Read it before adding or changing a test
 
 **Model tests** (`tests/models/`):
-`equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.settings`, `equipment.slots`, `membership.cron`, `membership.server`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.registration`
+`access.card-log`, `admin.settings`, `equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.settings`, `equipment.slots`, `issue.server`, `membership.cron`, `membership.server`, `payment.gst`, `payment.refunds`, `profile.volunteer`, `user.rolelevel`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.move`, `workshop.registration`
+
+**Service tests** (`tests/services/`):
+`access-control-sync.server`, `brivo.server`, `stripe-sync.server`
+
+**Util and config tests:**
+`tests/utils/session.server.test.ts`, `tests/config/access-control.test.ts`
 
 **Route tests** (`tests/routes/dashboard/`):
-`addequipment.test.ts`, `addworkshop.test.ts`
+`addequipment.test.ts`, `addworkshop.test.ts`, `payment.cutoff.test.ts`
 
 **Support:**
 - `tests/helpers/db.mock.ts`, `tests/helpers/test-utils.ts`
-- Fixtures in `tests/fixtures/` — `equipment/`, `membership/`, `session/`, `workshop/`
+- Fixtures in `tests/fixtures/` — `equipment/`, `membership/`, `payment/`, `session/`, `user/`, `workshop/`
 
 **Seed data:**
 - `seed.ts` provides consistent test data; **requires `NODE_ENV=development`** — it logs `Seed aborted` and exits immediately otherwise. Occurrence dates are relative to `now` (e.g. `addDays(now, 7)`) so workshops always appear upcoming regardless of when the seed runs. It truncates and reseeds `RoleUser`, restarting the sequence so `User` = 1 and `Admin` = 2
