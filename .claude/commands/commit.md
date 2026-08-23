@@ -17,7 +17,7 @@ Read the diff. Do not commit changes you have not read.
 
 **Run `npm test` and `npm run typecheck` before the first commit.**
 
-- `npm test` — the suite is fully green (26 suites / 363 tests). A failure after your change is a regression you introduced; fix it before committing rather than committing over it
+- `npm test` — the suite is fully green (27 suites / 372 tests). A failure after your change is a regression you introduced; fix it before committing rather than committing over it
 - `npm run typecheck` — regenerates React Router types and type-checks the project. Three pre-existing errors in `old/webhooks.server.ts` are known and unrelated
 
 If either fails for a reason genuinely unrelated to your change, say so explicitly and continue.
@@ -32,7 +32,7 @@ Every implementation here follows **implement → test → verify end to end**, 
 - **Never commit `.env`.** It is gitignored; if it appears in `git status`, stop and tell the user
 - **Never commit `.claude/settings.local.json`** — personal machine settings, not shared config
 - **Do commit `.claude/README.md` and `.claude/commands/*.md`.** These are shared team configuration and are tracked in this repo. `/update-all-docs` maintains them, so they legitimately change alongside code
-- Build artifacts, `node_modules/`, `logs/*`, `public/images_custom`, and `public/uploads/issues/*` are gitignored — if any shows up in `git status`, something is wrong; tell the user rather than committing it
+- Build artifacts, `node_modules/`, `logs/*`, `public/images_custom`, `public/uploads/issues/*`, and `.playwright-mcp/` (Playwright MCP session snapshots and console logs) are gitignored — if any shows up in `git status`, something is wrong; tell the user rather than committing it
 
 ### Files that must travel together
 
