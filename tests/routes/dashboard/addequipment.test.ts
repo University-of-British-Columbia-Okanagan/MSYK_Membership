@@ -25,7 +25,7 @@ describe('loader', () => {
 
   it('returns workshops and roleUser', async () => {
     mockGetWorkshops.mockResolvedValue(getWorkshopsFixture);
-    mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     const request = new Request('http://localhost:5173/dashboard/addequipment', {
       method: 'GET',
     });
@@ -36,7 +36,7 @@ describe('loader', () => {
     expect(mockGetRoleUser).toHaveBeenCalledWith(request);
     expect(result).toEqual({
       workshops: getWorkshopsFixture,
-      roleUser: getRoleUserFixture,
+      roleUser: getRoleUserAdminFixture,
     });
   });
 });

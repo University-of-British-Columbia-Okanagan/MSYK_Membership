@@ -40,7 +40,7 @@ describe('loader', () => {
   it('loader for add workshop', async () => {
     mockGetWorkshops.mockResolvedValue(getWorkshopsFixture);
     mockGetUser.mockResolvedValue(getUserFixture);
-    mockGetRoleUser.mockResolvedValue(getRoleUserFixture);
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     mockGetEquipmentSlotsWithStatus.mockResolvedValue(getEquipmentSlotsWithStatusFixture);
     mockGetEquipmentVisibilityDays.mockResolvedValue(1);
 
