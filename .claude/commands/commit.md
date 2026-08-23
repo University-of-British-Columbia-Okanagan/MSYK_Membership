@@ -15,7 +15,14 @@ Read the diff. Do not commit changes you have not read.
 
 **If you are on `main`, stop and tell the user.** Work on this repo goes through a branch and a PR — see `/make-pr`. Branch names follow `type/kebab-description` (e.g. `feat/admin-move-workshop-registration`, `fix/registration-success-redirect`, `bug/equipment-booking-management-fixes`).
 
-**Run `npm run typecheck` before the first commit.** It regenerates React Router types and type-checks the project. Do not commit code that fails it — if it fails for a reason unrelated to your change, say so and continue.
+**Run `npm test` and `npm run typecheck` before the first commit.**
+
+- `npm test` — the suite is fully green (26 suites / 363 tests). A failure after your change is a regression you introduced; fix it before committing rather than committing over it
+- `npm run typecheck` — regenerates React Router types and type-checks the project. Three pre-existing errors in `old/webhooks.server.ts` are known and unrelated
+
+If either fails for a reason genuinely unrelated to your change, say so explicitly and continue.
+
+Every implementation here follows **implement → test → verify end to end**, so a feature or fix commit should normally carry its tests alongside the code — new tests for new functionality, updated tests where existing behaviour changed. If you have not driven the change in a browser via the Playwright MCP server, say so rather than implying it was verified. See the workflow in `CLAUDE.md` and the conventions in `tests/README.md`.
 
 ---
 

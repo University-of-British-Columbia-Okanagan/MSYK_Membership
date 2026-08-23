@@ -20,6 +20,7 @@ Read **every file that command returns in full**, with exactly two carve-outs, b
 - `MSYK-OVERVIEW.md`
 
 **Folder indexes — what else exists and whether it is maintained:**
+- `tests/README.md` — the test suite: layout, fixture conventions, and the implement → test → verify workflow you are expected to follow
 - `docs/README.md`
 - `docs/implementations/README.md`
 
@@ -91,6 +92,7 @@ Read every file listed below completely. If a file is too long to read in one ca
 - `vite.config.ts`
 - `tsconfig.json`
 - `components.json`
+- `.mcp.json` — MCP servers available to you in this repo (currently Playwright, for driving a real browser against the running app)
 
 **Routes — read all files in these directories:**
 

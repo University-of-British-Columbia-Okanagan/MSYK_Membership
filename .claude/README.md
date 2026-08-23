@@ -14,7 +14,34 @@ Three markdown files at the repo root are the maintained documentation for this 
 - `CLAUDE.md` — quick reference and critical gotchas for agentic coding tools
 - `MSYK-OVERVIEW.md` — functional overview, end-to-end workflows, test plan, and acceptance criteria
 
+`tests/README.md` documents the test suite: layout, fixture conventions, and the workflow above as it applies to writing tests.
+
 Supporting material lives in `docs/` — the root is reserved for the three docs above, so anything else worth reading goes there. `docs/README.md` indexes the folder and records whether each file is maintained. Today it holds a vendor Brivo API snapshot (never edited) and `docs/implementations/`, a folder of frozen one-off implementation write-ups.
+
+---
+
+## MCP servers
+
+Configured in `.mcp.json` at the repo root. Project-scoped, so anyone who opens this repo in Claude Code gets them.
+
+### playwright
+
+**Package:** `@playwright/mcp@latest` (run via `npx`, stdio transport)
+
+Drives a real Chromium browser. Use it to **verify a change actually works in the running app** rather than inferring it from the code — click through a flow, fill a form, read what the page renders, take a screenshot, check the console for errors.
+
+Reach for it when:
+- You changed a route, form, or component and want to confirm the rendered result
+- A bug is described in terms of what the user sees ("the cancel button does nothing")
+- You need to check a flow end to end — register, log in, book a slot — across pages
+- You want to confirm an admin-only route actually redirects a non-admin
+
+Notes for using it here:
+- Start the app first (`npm run dev`) and browse to `http://localhost:5173`. The MCP server does not start the app for you
+- `npm run dev` runs both the client and the cron server; the cron server is what flips workshop occurrence status, so start both when timing matters
+- You need a seeded database to log in — `npx tsx seed.ts` (requires `NODE_ENV=development`)
+- Chromium is already installed locally. If it is ever missing, `npx playwright install chromium`
+- This is for **interactive verification**, not an automated test suite. Regression tests belong in `tests/` under Jest
 
 ---
 
@@ -87,7 +114,12 @@ Creates a pull request into `main` for the current branch. Key rules it enforces
 ## Typical flow
 
 1. `/read-docs` at the start of a session to build a verified mental model
-2. Implement the change
-3. `/update-all-docs` to bring the documentation back in line with the code
-4. `/commit` to split the work into logical commits
-5. `/make-pr` to open the pull request
+2. **Implement** the change
+3. **Test it** — *add* test files for new functionality, or *update* the existing tests a change to existing functionality invalidated. Most changes are the latter
+4. **Verify end to end** in a browser via the Playwright MCP server — a green unit test says the function behaves, only the browser says the feature works
+5. **Run the full suite** (`npm test`) — it is currently fully green, so any failure is yours
+6. `/update-all-docs` to bring the documentation back in line with the code
+7. `/commit` to split the work into logical commits
+8. `/make-pr` to open the pull request
+
+Steps 2–5 are mandatory for every implementation. The full rules are in `CLAUDE.md`; `tests/README.md` covers the test folder itself.

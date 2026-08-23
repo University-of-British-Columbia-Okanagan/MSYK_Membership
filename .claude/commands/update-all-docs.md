@@ -37,6 +37,7 @@ Pay special attention to:
 - New or changed role level / permission logic
 - New routes — every route must be registered in `app/routes.ts`
 - New transactional emails in `app/utils/email.server.ts`
+- New or changed tests under `tests/` — `tests/README.md`, plus the Testing Strategy section in `README.md`, quote a live suite/test count and describe the directory layout. Get the real numbers from `npm test` rather than guessing, and update `CLAUDE.md` and `MSYK-OVERVIEW.md` too if the count is cited there
 
 For each file you read, note:
 - What it does now
@@ -62,6 +63,8 @@ Every file that returns is in scope **except** `docs/implementations/*.md` (othe
 | `MSYK-OVERVIEW.md` | Functional workflows, feature descriptions, business logic, end-to-end workflows, test plan, acceptance criteria |
 | `.claude/README.md` | Update if a slash command was added, removed, or changed |
 | `.claude/commands/*.md` | Update if the workflow a command describes changed (e.g. a doc was renamed, a new doc joined the primary set) |
+| `.mcp.json` | Not a doc, but if an MCP server is added, removed, or reconfigured, update the Playwright/MCP sections in `README.md`, `CLAUDE.md`, and `.claude/README.md` to match |
+| `tests/README.md` | Documents the test suite: layout, fixture conventions, and the implement → test → verify workflow. Update when a test directory or fixture domain is added, a convention changes, or the suite/test count moves |
 | `docs/README.md` | The index of the `docs/` folder. Update **only** if a file was added to, removed from, or renamed within `docs/` — add or fix its row in the Contents table. Do not update it for ordinary code changes |
 | `docs/implementations/README.md` | Explains what the implementations folder is for. It is maintained (unlike the write-ups beside it). Update only if the folder's purpose or conventions change, or a file is added to or removed from it |
 
