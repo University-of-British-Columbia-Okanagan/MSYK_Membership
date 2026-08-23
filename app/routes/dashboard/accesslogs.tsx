@@ -1,5 +1,4 @@
 import type { LoaderFunctionArgs } from "react-router-dom";
-import { json } from "@remix-run/node";
 import { getAccessLogs } from "~/models/accessLog.server";
 import { Link, useLoaderData } from "react-router-dom";
 import { SidebarProvider } from "~/components/ui/sidebar";
@@ -40,7 +39,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     endDate,
   });
 
-  return json({
+  return Response.json({
     logs,
     total,
     page,
