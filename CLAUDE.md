@@ -57,7 +57,7 @@ First decide which of the two cases you are in, because it changes step 2:
 1. **Implement** the feature
 2. **Add test files for it** under `tests/`, following the existing layout, and run them until they pass
 3. **Verify end to end with Playwright MCP** — drive the real flow in the browser and confirm it behaves as expected
-4. **Regress** — `npm test` must stay fully green (currently **26 suites / 363 tests**)
+4. **Regress** — `npm test` must stay fully green (currently **27 suites / 372 tests**)
 5. **Typecheck** — `npm run typecheck` (three pre-existing errors in `old/webhooks.server.ts` are known and unrelated)
 
 #### Case B — the change touches existing functionality
@@ -122,6 +122,7 @@ prisma/
 - **`EquipmentBooking` has no unique constraint on `slotId`** — `@@unique([slotId])` is commented out in `schema.prisma` so cancelled and new bookings can share a slot. Double-booking is prevented in application code, not the DB
 - **Occurrence status values** are `active` → `past` (set by the 1s cron) and `cancelled`; the `// "open", "closed", "cancelled"` comment in `schema.prisma` is stale
 - **`UserWorkshop.result`**: `passed` (schema default), `failed`, `pending`, `cancelled`
+- **The `payment.tsx` loader is the only server-side registration-cutoff gate.** Neither `quickCheckout()` nor `paymentsuccess.tsx` re-checks `Workshop.registrationCutoff`, so a loader branch that omits the check is bypassable by pasting the URL. All four workshop branches call `isPastRegistrationCutoff` today — if you add a fifth, add the check and a case to `tests/routes/dashboard/payment.cutoff.test.ts`
 - **Admin can move a registration** between occurrences of the same workshop via `moveUserWorkshopRegistration()` — single-day, active, in-capacity targets only
 
 ---
