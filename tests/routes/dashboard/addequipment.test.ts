@@ -12,10 +12,6 @@ jest.mock("~/models/workshop.server");
 jest.mock("~/models/equipment.server");
 jest.mock('~/logging/logger');
 
-jest.mock('@remix-run/node', () => ({
-  redirect: jest.fn(),
-}));
-
 const mockGetWorkshops = getWorkshops as jest.Mock;
 const mockGetRoleUser = getRoleUser as jest.Mock;
 const mockGetEquipmentByName = getEquipmentByName as jest.Mock;
