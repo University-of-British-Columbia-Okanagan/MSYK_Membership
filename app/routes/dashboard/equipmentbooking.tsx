@@ -3,8 +3,8 @@ import {
   useActionData,
   useNavigation,
   Form,
+  redirect,
 } from "react-router";
-import { json, redirect } from "@remix-run/node";
 import {
   getEquipmentSlotsWithStatus,
   getEquipmentById,
@@ -128,7 +128,7 @@ export async function loader({
   const savedPaymentMethod = user ? await getSavedPaymentMethod(user.id) : null;
   const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
-  return json({
+  return Response.json({
     equipment: equipmentWithSlots,
     roleLevel,
     visibleDays: parseInt(visibleDays, 10),
@@ -165,7 +165,7 @@ export async function action({ request }: { request: Request }) {
     logger.warn(`[Guest] Attempt to book equipment without authentication`, {
       url: request.url,
     });
-    return json(
+    return Response.json(
       { errors: { message: "User not authenticated." } },
       { status: 401 }
     );
@@ -194,7 +194,7 @@ export async function action({ request }: { request: Request }) {
     logger.warn(`[User: ${user.id}] Missing equipment or slot data`, {
       url: request.url,
     });
-    return json(
+    return Response.json(
       { errors: { message: "Missing equipment or slot data." } },
       { status: 400 }
     );
@@ -226,7 +226,7 @@ export async function action({ request }: { request: Request }) {
         `[User: ${user.id}] Attempted to book equipment ID ${equipmentId} without completing prerequisites`,
         { url: request.url }
       );
-      return json(
+      return Response.json(
         {
           errors: {
             message:
@@ -278,7 +278,7 @@ export async function action({ request }: { request: Request }) {
         `[User: ${user.id}] Failed to create checkout session - missing URL`,
         { url: request.url }
       );
-      return json(
+      return Response.json(
         { errors: { message: "Payment session failed." } },
         { status: 500 }
       );
@@ -288,7 +288,7 @@ export async function action({ request }: { request: Request }) {
       `[User: ${user.id}] Error creating checkout session: ${error.message}`,
       { url: request.url }
     );
-    return json({ errors: { message: error.message } }, { status: 400 });
+    return Response.json({ errors: { message: error.message } }, { status: 400 });
   }
 }
 
