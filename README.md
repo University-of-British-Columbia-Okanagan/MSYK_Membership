@@ -7,6 +7,7 @@ This is the single source of truth for the project — setup, user documentation
 ## Table of Contents
 
 - [Local Development Setup](#local-development-setup)
+- [Browser Testing (Playwright MCP)](#browser-testing-playwright-mcp)
 - [Environment Variables & Configuration](#environment-variables--configuration)
 - [User Documentation](#user-documentation)
 - [Architecture Overview](#architecture-overview)
@@ -95,6 +96,34 @@ npx tsx seed.ts
 # Open Prisma Studio (visual database manager)
 npx prisma studio
 ```
+
+### Browser Testing (Playwright MCP)
+
+`.mcp.json` at the repo root registers the [`@playwright/mcp`](https://www.npmjs.com/package/@playwright/mcp) server, which gives agentic coding tools (Claude Code and anything else that reads `.mcp.json`) a real Chromium browser for verifying changes against the running app.
+
+```jsonc
+// .mcp.json — project-scoped, committed, shared with the team
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"],
+      "env": {}
+    }
+  }
+}
+```
+
+To use it:
+
+```bash
+npm run dev            # nothing auto-starts the app; the MCP server only drives the browser
+npx tsx seed.ts        # seeded accounts, if the flow needs a login (NODE_ENV=development)
+npx playwright install chromium   # one-time, only if the browser binary is missing
+```
+
+Then browse `http://localhost:5173`. This is for **interactive verification** — clicking through a flow, checking what a page renders, reading console errors. Automated regression tests belong in `tests/` under Jest; see [Testing Strategy](#testing-strategy).
 
 ## Environment Variables & Configuration
 
@@ -980,8 +1009,61 @@ logger.error("Operation failed", { error, userId, context });
 
 ## Testing Strategy
 
+### Required workflow for every implementation
+
+**Implement → test → verify end to end.** All three steps, every time — finishing the code is not finishing the change.
+
+Which middle step applies depends on what you touched:
+
+#### New functionality
+
+| Step | Action | Command |
+|------|--------|---------|
+| 1 | Implement the feature | — |
+| 2 | **Add** test files under `tests/` and make them pass | `npx jest --testPathPatterns "<name>"` |
+| 3 | **Verify end to end** in a real browser via the Playwright MCP server | `npm run dev`, then drive the flow |
+| 4 | Confirm nothing else broke | `npm test` |
+| 5 | Confirm types still hold | `npm run typecheck` |
+
+#### Change to existing functionality
+
+Assume you are here whenever you edit an existing function, route, query, or schema field. The existing tests encode the *old* behaviour, so some of them are now wrong.
+
+| Step | Action | Command |
+|------|--------|---------|
+| 1 | Implement the change | — |
+| 2 | **Update every affected test.** Run the suite to see what broke, and grep `tests/` for the symbols you touched — a test can be stale without failing | `npm test`, then `grep -rn "<symbol>" tests/` |
+| 3 | **Verify end to end** — the changed behaviour *and* that the surrounding flow still works | `npm run dev`, then drive the flow |
+| 4 | Confirm nothing else broke | `npm test` |
+| 5 | Confirm types still hold | `npm run typecheck` |
+
+**Most changes are the second kind.** When unsure, treat it as the second kind.
+
+The suite is currently **fully green — 26 suites, 363 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+
+**Rules:**
+
+- **Step 3 is not optional.** A passing unit test says the function behaves; only the browser says the feature works
+- **Never edit a test purely to make it pass.** Work out whether the test or the code is wrong, state which, and fix that one. Several assertions in this repo were stale rather than the code being broken — and one was masking a real defect
+- **A suite that reports `0 total` is broken, not passing.** Five equipment suites silently ran zero tests because a Stripe client was constructed at import time with no key. Everything looked green while nothing was checked
+- **A bug fix should carry a test that would have caught it**
+- **Cover the guard, not just the happy path.** Capacity limits, role-level gates, refund windows, upload validation, and "already cancelled" states are where the real defects live
+
+### Layout and conventions
+
 - Jest with ts-jest; Testing Library for component tests; MSW available for mocking external APIs
-- Run with `npm test`
+- Run everything with `npm test`, or one area with `npx jest --testPathPatterns "workshop"`
+- **Specs** mirror the source tree: `tests/models/`, `tests/services/`, `tests/utils/`, `tests/config/`, `tests/routes/dashboard/`
+- **Per-domain mocks** live in `tests/fixtures/<domain>/setup.ts` and are imported for their side effects on the *first line* of a spec, before the module under test:
+  ```ts
+  import "tests/fixtures/equipment/setup";
+  ```
+  That ordering matters — several modules construct a Stripe client or read `SESSION_SECRET` at import time, so the mocks have to be registered first
+- **Shared Prisma mock** is `tests/helpers/db.mock.ts`. Add a model or method there when a new query needs one, rather than re-mocking per suite
+- **Shared helpers** are in `tests/helpers/test-utils.ts` (`clearAllMocks`, `createMockRequest`)
+- A fixture must match the shape the query actually returns — including `include`d relations. A fixture missing a relation produces a `Cannot read properties of undefined` failure that looks like an app bug but is not
+
+**[tests/README.md](./tests/README.md) is the full reference** for the folder — layout, fixture conventions, the import-ordering rule, and the failure modes that have actually bitten here. Read it before adding or changing a test
 
 **Model tests** (`tests/models/`):
 `equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.settings`, `equipment.slots`, `membership.cron`, `membership.server`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.registration`
@@ -1148,6 +1230,7 @@ When adding a new purchasable entity type:
 
 - **[MSYK-OVERVIEW.md](./MSYK-OVERVIEW.md)** — Detailed functional overview covering all core features (authentication, workshops, equipment, memberships, volunteers, payments), business logic, end-to-end workflows, and test plan
 - **[CLAUDE.md](./CLAUDE.md)** — Quick-reference guidance and critical gotchas for agentic coding tools
+- **[tests/README.md](./tests/README.md)** — The test suite: layout, fixture conventions, the import-ordering rule, and the failure modes that have actually bitten here
 - **[.claude/README.md](./.claude/README.md)** — The repo's Claude Code slash commands and when to use each
 
 **Supporting material** — lives in [docs/](./docs/) because the repo root is reserved for the three primary docs above. Being in `docs/` says nothing about how useful a file is; several are the best source for what they cover:

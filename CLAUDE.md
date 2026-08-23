@@ -38,12 +38,50 @@ npm test                              # Run Jest tests
 Maintained — keep these in sync with the code:
 - **[README.md](./README.md)** - Complete documentation: setup, user docs, architecture, database schema, model functions, route map, env vars (READ THIS FIRST)
 - **[MSYK-OVERVIEW.md](./MSYK-OVERVIEW.md)** - Detailed functional overview, end-to-end workflows, and test plan
+- **[tests/README.md](./tests/README.md)** - Test suite: layout, fixture conventions, and the failure modes that have bitten here
 - **[.claude/README.md](./.claude/README.md)** - Slash commands available in this repo
 
 Supporting material in `docs/` — the root is reserved for the three primary docs, so anything else worth reading lives here. Not maintained against the code, but still worth reading for the area it covers:
 - **[docs/README.md](./docs/README.md)** - Index of the folder: every file, what it is, and whether it is maintained. Start here
 - **[docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md)** - Vendor Brivo API reference snapshot. Authoritative for the endpoints `app/services/brivo.server.ts` calls — read before changing the door access integration. Never edit
 - **[docs/implementations/](./docs/implementations/)** - Point-in-time write-ups of individual implementations, written once when the work landed and deliberately not maintained afterwards. Historical records, not current behavior
+
+### Required workflow for every implementation
+
+**Implement → test → verify end to end. All three steps, every time. Never stop after the code compiles.**
+
+First decide which of the two cases you are in, because it changes step 2:
+
+#### Case A — new functionality
+
+1. **Implement** the feature
+2. **Add test files for it** under `tests/`, following the existing layout, and run them until they pass
+3. **Verify end to end with Playwright MCP** — drive the real flow in the browser and confirm it behaves as expected
+4. **Regress** — `npm test` must stay fully green (currently **26 suites / 363 tests**)
+5. **Typecheck** — `npm run typecheck` (three pre-existing errors in `old/webhooks.server.ts` are known and unrelated)
+
+#### Case B — the change touches existing functionality
+
+Assume it does whenever you edit an existing function, route, query, or schema field. Existing tests encode the old behaviour, so they will be wrong now.
+
+1. **Implement** the change
+2. **Find and update every affected test file.** Run `npm test` first to see what broke, and grep `tests/` for the symbols you touched — a test can be stale without failing. Then decide, per failure, whether the test or the code is wrong, **say which**, and fix that one
+3. **Verify end to end with Playwright MCP** — confirm the changed behaviour *and* that the surrounding flow still works
+4. **Regress** — `npm test` fully green
+5. **Typecheck**
+
+**Most changes are Case B.** When unsure, treat it as Case B.
+
+Rules:
+- **Step 3 is not optional.** A green unit test says the function behaves; only the browser says the feature works
+- **Never edit a test purely to make it pass.** Establish whether the test or the code is wrong, state which, fix that one. In this repo several assertions were stale — but one was masking a real defect
+- **A suite reporting `0 total` is broken, not passing.** Five equipment suites silently ran zero tests for months while looking green
+- **A bug fix should carry a test that would have caught it**
+- Match the existing layout — see [tests/README.md](./tests/README.md)
+
+### Browser Testing (Playwright MCP)
+
+`.mcp.json` registers the `@playwright/mcp` server, giving you a real Chromium browser. **Use it to verify UI and flow changes in the running app instead of assuming they work.** Start the app with `npm run dev` first (nothing auto-starts it), seed the DB if you need to log in, then drive `http://localhost:5173`. Chromium is already installed. See [.claude/README.md](./.claude/README.md) for guidance on when to reach for it.
 
 ### Project Structure
 ```

@@ -875,6 +875,28 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ## Test Plan
 
+### Development Workflow
+
+Every implementation follows **implement → test → verify end to end**. The middle step depends on what changed:
+
+**New functionality**
+1. Implement the feature
+2. Add test files under `tests/` and make them pass
+3. Verify end to end in a real browser via the Playwright MCP server
+4. `npm test` — the suite must stay fully green (**26 suites / 363 tests**)
+5. `npm run typecheck`
+
+**Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
+1. Implement the change
+2. Update every affected test file — run the suite to see what broke, and grep `tests/` for the symbols touched, since a test can be stale without failing
+3. Verify end to end in a browser — the changed behaviour *and* the surrounding flow
+4. `npm test` fully green
+5. `npm run typecheck`
+
+Step 3 is not optional: a green unit test says the function behaves, only the browser says the feature works. A test is never edited purely to make it pass — establish whether the test or the code is wrong first, and say which.
+
+See [CLAUDE.md](./CLAUDE.md) for the full rules and [tests/README.md](./tests/README.md) for layout and conventions.
+
 ### Test Strategy
 
 **Testing Framework:**
@@ -882,13 +904,16 @@ The `syncUserDoorAccess()` function is automatically called when:
 - **Testing Library** for React component testing
 - **MSW (Mock Service Worker)** for external API mocking
 
-**Test Focus Areas:**
-- Model functions (business logic)
+**Test Focus Areas (all now covered):**
+- Model functions — workshop, equipment, membership, payment, user, profile, admin, access card, access log, issue
+- Services — Stripe Product sync, Brivo door access sync, Brivo client configuration
+- Auth and session — login, session expiry, password-change invalidation, email case-insensitivity
+- Access control — role-level AND chain, door permission gating
 - Route actions and loaders
-- Form validation schemas
-- Payment processing workflows
-- Email composition
+- Payment processing — GST calculation, refunds, payment method removal
 - Database operations
+
+**Reference:** [tests/README.md](./tests/README.md) documents the folder — layout, fixture conventions, and the failure modes that have bitten here.
 
 **Test Data:**
 - Fixtures in `tests/fixtures/**` for consistent test data
