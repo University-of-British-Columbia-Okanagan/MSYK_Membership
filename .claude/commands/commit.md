@@ -17,7 +17,7 @@ Read the diff. Do not commit changes you have not read.
 
 **Run `npm test` and `npm run typecheck` before the first commit.**
 
-- `npm test` — the suite is fully green (27 suites / 372 tests). A failure after your change is a regression you introduced; fix it before committing rather than committing over it
+- `npm test` — the suite is fully green (29 suites / 388 tests). A failure after your change is a regression you introduced; fix it before committing rather than committing over it
 - `npm run typecheck` — regenerates React Router types and type-checks the project. Three pre-existing errors in `old/webhooks.server.ts` are known and unrelated
 
 If either fails for a reason genuinely unrelated to your change, say so explicitly and continue.

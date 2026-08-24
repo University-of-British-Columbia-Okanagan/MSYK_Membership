@@ -894,13 +894,15 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 
 ### Development Workflow
 
-Every implementation follows **implement → test → verify end to end**. The middle step depends on what changed:
+**Before implementing: ask.** Every non-trivial change starts with clarifying questions to the maintainer — *"ask me any clarifying questions and anything you need from me to do this, we are a team."* Ambiguous scope, two defensible designs, an unclear edge case, or credentials the implementer does not have all get settled up front, not discovered halfway through.
+
+Every implementation then follows **implement → test → verify end to end**. The middle step depends on what changed:
 
 **New functionality**
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**27 suites / 372 tests**)
+4. `npm test` — the suite must stay fully green (**29 suites / 388 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -911,6 +913,23 @@ Every implementation follows **implement → test → verify end to end**. The m
 5. `npm run typecheck`
 
 Step 3 is not optional: a green unit test says the function behaves, only the browser says the feature works. A test is never edited purely to make it pass — establish whether the test or the code is wrong first, and say which.
+
+**Every UI change must be verified at mobile width as well as desktop.** Responsiveness is part of the change, not a follow-up.
+
+**Ask for whatever testing needs.** A test card, a Brivo sandbox credential, a role level 3/4 account, a record seeded into a particular state, or a ruling on the correct behaviour — ask the maintainer rather than skipping the verification, faking the data, or weakening the assertion.
+
+**Browser test accounts** — created by `npx tsx seed.ts` (`NODE_ENV=development`), all with the password `password`:
+
+| Email | Password | Role level | How the level is earned |
+|-------|----------|-----------|--------------------------|
+| `testuser1@gmail.com` | `password` | 1 — **Admin** (`roleUserId: 2`) | Admin role; no orientation or membership |
+| `testuser2@gmail.com` | `password` | 1 | Registered only |
+| `testuser3@gmail.com` | `password` | 1 | Registered only |
+| `testuser4@gmail.com` | `password` | 2 | Passed a past General Orientation |
+| `testuser5@gmail.com` | `password` | 3 | Orientation + active **Makerspace Member** membership |
+| `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
+
+None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
 
 See [CLAUDE.md](./CLAUDE.md) for the full rules and [tests/README.md](./tests/README.md) for layout and conventions.
 
@@ -972,7 +991,7 @@ The acceptance criteria are organized into three categories:
 | AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
 | AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
 | AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
-| AC19 | Automated Monthly Billing (Cron) | Finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders | `tests/models/membership.cron.test.ts` |
+| AC19 | Automated Monthly Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
 | AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder | `tests/models/membership.cron.test.ts` |
 | AC21 | Workshop Prerequisites | System checks user completed required workshops; registration blocked if prerequisites not met | `tests/models/workshop.registration.test.ts` |
 | AC22 | Workshop Capacity | System checks available spots; registration blocked if capacity exceeded | `tests/models/workshop.capacity.test.ts` |
@@ -989,6 +1008,9 @@ The acceptance criteria are organized into three categories:
 | - | Admin Workshop Creation | Admin creates new workshop; workshop form validation | `tests/routes/dashboard/addworkshop.test.ts` |
 | - | Admin Equipment Creation | Admin creates new equipment; equipment form validation | `tests/routes/dashboard/addequipment.test.ts` |
 | - | Workshop Registration Cutoff (server-side) | All four workshop URL shapes accepted by the `payment.tsx` loader — single occurrence, single + variation, multi-day, multi-day + variation — redirect away once `Workshop.registrationCutoff` has passed, and still load while registration is open; a cutoff of `0` means no restriction | `tests/routes/dashboard/payment.cutoff.test.ts` |
+| - | Role Level Sync (Cron) | Registered every 15 seconds (`*/15 * * * * *`); recomputes `roleLevel` from passed orientations, memberships in active/ending/cancelled, the plan's `needAdminPermission`, and `allowLevel4`; promotes and demotes, resyncs door access on every correction, writes nothing when the stored level is already right, and swallows database errors | `tests/models/user.rolelevel.test.ts` |
+| - | Workshop Occurrence Status (Interval) | One pass at startup, then every second (`setInterval`, 1000 ms); flips `active` occurrences whose `startDate` has passed to `past`, leaves upcoming ones and an occurrence starting exactly now alone, and rethrows database failures rather than swallowing them | `tests/models/workshop.occurrence-status.test.ts` |
+| - | Background Job Startup | `entry.server.ts` starts all three jobs — membership billing, occurrence status, role level sync — and starts each exactly once per process; a repeat import hits the module cache instead of registering duplicate jobs | `tests/entry.server.test.ts` |
 
 ---
 

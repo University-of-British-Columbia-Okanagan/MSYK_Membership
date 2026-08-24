@@ -123,3 +123,9 @@ Keep the whole report under ~40 lines. You are confirming readiness, not demonst
 **Not read** — name what you skipped: the two carve-outs above, the JSX of the large route files, and any subsystem whose subagent you chose not to run. Being explicit here is what makes the rest of the report trustworthy.
 
 Then stop and start the actual work. Read the specific files that work touches, when you touch them.
+
+Before implementing, close the report with the invitation the workflow expects:
+
+> Ask me any clarifying questions and anything you need from me to do this. We are a team.
+
+…and ask yours — scope, edge cases, a choice between designs, credentials or accounts you need to test with. `CLAUDE.md` has the rest of the standing rules: mobile responsive UI, short comments that earn their line, and asking rather than skipping when a test or browser verification needs something you do not have.
