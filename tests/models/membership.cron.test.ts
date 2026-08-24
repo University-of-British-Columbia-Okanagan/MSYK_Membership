@@ -51,6 +51,27 @@ describe("membership.server - cron", () => {
     jest.useRealTimers();
   });
 
+  it("registers on the daily midnight schedule", async () => {
+    db.userMembership.findMany.mockResolvedValue([]);
+
+    await runCron();
+
+    expect(mocks.mockCronSchedule).toHaveBeenCalledWith(
+      "0 0 * * *",
+      expect.any(Function)
+    );
+  });
+
+  it("survives a database failure so the daily job keeps running", async () => {
+    db.userMembership.findMany.mockRejectedValue(new Error("db down"));
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(runCron()).resolves.not.toThrow();
+
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   it("charges active monthly memberships with saved payment info and advances nextPaymentDate", async () => {
     const plan = createMockPlan({ id: 1, price: 100 });
     const membership = createMockMembership({
