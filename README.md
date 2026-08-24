@@ -437,6 +437,8 @@ prisma/
 
 React Router 7 uses file-based routing configured in `app/routes.ts`. Routes export `loader` functions for data fetching and `action` functions for mutations. Both `~` and `@` aliases point to the `app/` directory (configured in `vite.config.ts` and `tsconfig.json`).
 
+`vite.config.ts` also sets `optimizeDeps.entries` to `["app/**/*.{ts,tsx}"]`. Vite's default dependency scan only follows what the entry HTML reaches, so packages imported solely by routes nobody had visited yet were discovered mid-session — Vite then re-bundled them and forced a page reload, which surfaces in the console as a misleading "Invalid hook call / more than one copy of React" error. Scanning every app file at startup finds them in one pass. If that error ever appears, clear `node_modules/.vite` and restart before treating it as a real defect.
+
 ### Server-Side Code Convention
 
 All server-side code uses the `*.server.ts` naming convention. These files:
