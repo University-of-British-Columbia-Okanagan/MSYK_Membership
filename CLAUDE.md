@@ -46,6 +46,18 @@ Supporting material in `docs/` — the root is reserved for the three primary do
 - **[docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md)** - Vendor Brivo API reference snapshot. Authoritative for the endpoints `app/services/brivo.server.ts` calls — read before changing the door access integration. Never edit
 - **[docs/implementations/](./docs/implementations/)** - Point-in-time write-ups of individual implementations, written once when the work landed and deliberately not maintained afterwards. Historical records, not current behavior
 
+### Before you start any implementation
+
+**Ask clarifying questions first. We are a team — say so, and mean it.**
+
+Before writing code for anything non-trivial, tell the user:
+
+> Ask me any clarifying questions and anything you need from me to do this. We are a team.
+
+…and then actually ask yours. Surface anything that would change what you build: ambiguous scope, two reasonable designs, a missing decision, an unclear edge case, access or credentials you do not have. A question asked up front costs a minute; a wrong assumption costs the whole implementation. Do the parts that do not depend on the answer while you wait.
+
+Never guess silently at something the user can answer in one sentence.
+
 ### Required workflow for every implementation
 
 **Implement → test → verify end to end. All three steps, every time. Never stop after the code compiles.**
@@ -57,7 +69,7 @@ First decide which of the two cases you are in, because it changes step 2:
 1. **Implement** the feature
 2. **Add test files for it** under `tests/`, following the existing layout, and run them until they pass
 3. **Verify end to end with Playwright MCP** — drive the real flow in the browser and confirm it behaves as expected
-4. **Regress** — `npm test` must stay fully green (currently **27 suites / 372 tests**)
+4. **Regress** — `npm test` must stay fully green (currently **29 suites / 388 tests**)
 5. **Typecheck** — `npm run typecheck` (three pre-existing errors in `old/webhooks.server.ts` are known and unrelated)
 
 #### Case B — the change touches existing functionality
@@ -78,10 +90,36 @@ Rules:
 - **A suite reporting `0 total` is broken, not passing.** Five equipment suites silently ran zero tests for months while looking green
 - **A bug fix should carry a test that would have caught it**
 - Match the existing layout — see [tests/README.md](./tests/README.md)
+- **Ask for help when testing needs it.** If you cannot write the test or drive the browser flow without something only the user can give you — a seeded record, a Stripe test card, a Brivo sandbox key, a role level 3/4 account, an admin toggle flipped, a decision about expected behaviour — **ask**. Do not skip the step, fake it, or quietly assert something weaker. Being blocked is fine; going silent about it is not
+
+### Code conventions for every change
+
+**Mobile responsive is a requirement, not a nice-to-have.** Every UI change must work on a phone-width viewport, not just desktop. Use the Tailwind responsive prefixes the codebase already uses (`sm:`, `md:`, `lg:`), let tables and wide grids scroll inside their own container rather than pushing the page sideways, and keep tap targets reachable. Verify it — resize the browser to a mobile viewport in the Playwright MCP session, do not just assume the classes work.
+
+**Keep code comments short.** Comment where it helps, but a comment must earn its line: clear, concise, relevant, and telling the reader something the code does not already say. Prefer one sentence explaining *why* over a paragraph restating *what*.
+
+- Do not stack a run of single-line comments over consecutive statements — that is noise, and it ages badly
+- Do not narrate obvious code (`// loop through users`)
+- Do not leave running commentary about your own edits (`// changed this to fix the bug`)
+- Do explain a non-obvious constraint, a workaround, or a rule that lives outside the file
+- Match the comment density of the surrounding file
 
 ### Browser Testing (Playwright MCP)
 
 `.mcp.json` registers the `@playwright/mcp` server, giving you a real Chromium browser. **Use it to verify UI and flow changes in the running app instead of assuming they work.** Start the app with `npm run dev` first (nothing auto-starts it), seed the DB if you need to log in, then drive `http://localhost:5173`. Chromium is already installed. See [.claude/README.md](./.claude/README.md) for guidance on when to reach for it.
+
+**Test accounts** — seeded by `npx tsx seed.ts` (requires `NODE_ENV=development`). All six share the password `password`, and cover every role level:
+
+| Email | Password | Role level | How the level is earned |
+|-------|----------|-----------|--------------------------|
+| `testuser1@gmail.com` | `password` | 1 — **Admin** (`roleUserId: 2`) | Admin role; no orientation or membership |
+| `testuser2@gmail.com` | `password` | 1 | Registered only |
+| `testuser3@gmail.com` | `password` | 1 | Registered only |
+| `testuser4@gmail.com` | `password` | 2 | Passed a past General Orientation |
+| `testuser5@gmail.com` | `password` | 3 | Orientation + active **Makerspace Member** membership |
+| `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
+
+None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
 
 ### Project Structure
 ```

@@ -125,6 +125,23 @@ npx playwright install chromium   # one-time, only if the browser binary is miss
 
 Then browse `http://localhost:5173`. This is for **interactive verification** — clicking through a flow, checking what a page renders, reading console errors. Automated regression tests belong in `tests/` under Jest; see [Testing Strategy](#testing-strategy).
 
+#### Test accounts
+
+`npx tsx seed.ts` creates six users covering every role level. All of them share the password `password`:
+
+| Email | Password | Role level | How the level is earned |
+|-------|----------|-----------|--------------------------|
+| `testuser1@gmail.com` | `password` | 1 — **Admin** (`roleUserId: 2`) | Admin role; no orientation or membership |
+| `testuser2@gmail.com` | `password` | 1 | Registered only |
+| `testuser3@gmail.com` | `password` | 1 | Registered only |
+| `testuser4@gmail.com` | `password` | 2 | Passed a past General Orientation |
+| `testuser5@gmail.com` | `password` | 3 | Orientation + active **Makerspace Member** membership |
+| `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
+
+Use `testuser1` for admin flows, `testuser2`/`testuser3` for a plain registered user, and `testuser4`–`testuser6` for anything gated on role level — equipment booking windows, level 3 scheduling restrictions, level 4 door access.
+
+None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
+
 The server writes page snapshots and console logs into `.playwright-mcp/` at the repo root as you drive it. That directory is gitignored — it is session scratch, not something to commit.
 
 ## Environment Variables & Configuration
@@ -435,6 +452,8 @@ Three background jobs are started from `entry.server.ts` (the server process, ru
 | Workshop status update | `startWorkshopOccurrenceStatusUpdate()` | Every 1 second (setInterval) | `app/models/workshop.server.ts` |
 
 The workshop status job runs immediately on startup and then every 1 second, keeping `WorkshopOccurrence.status` up-to-date as time passes.
+
+All three jobs are covered by tests, along with the startup wiring itself: `tests/models/user.rolelevel.test.ts`, `tests/models/membership.cron.test.ts`, `tests/models/workshop.occurrence-status.test.ts`, and `tests/entry.server.test.ts`. The specs replace `node-cron` with a recorder and drive `setInterval` with fake timers, so nothing waits on real time — see [tests/README.md](./tests/README.md#background-jobs).
 
 ### Workshop System Architecture
 
@@ -902,6 +921,25 @@ All models are in `app/models/` (*.server.ts). Some API logic is also in `app/ro
 
 ## Development Patterns
 
+### Mobile Responsiveness
+
+**Every UI change must work at phone width.** This is a requirement of the change, not a follow-up ticket. The app is used on phones in the space, so a layout that only holds together on a desktop viewport is unfinished.
+
+- Use the Tailwind responsive prefixes already used throughout the codebase (`sm:`, `md:`, `lg:`) rather than fixed pixel widths
+- Wide content — tables, booking grids, admin lists — scrolls inside its own `overflow-x-auto` container; the page body must never scroll sideways
+- Keep tap targets and form controls usable at small sizes; stack columns instead of shrinking them past legibility
+- **Verify it.** Resize to a mobile viewport in the Playwright MCP browser and look at the page. Responsive classes are easy to write and easy to get wrong
+
+### Code Comments
+
+Comment where it helps, but keep comments short. A comment must earn its line: clear, concise, relevant, and saying something the code does not already say. One sentence explaining *why* beats a paragraph restating *what*.
+
+- **Do not stack runs of single-line comments** over consecutive statements. A wall of `// do X` / `// then do Y` above every line is noise, and it goes stale the moment the code moves
+- Do not narrate obvious code (`// loop through the users`)
+- Do not leave commentary about the edit itself (`// changed this to fix the bug`) — that belongs in the commit message
+- Do explain non-obvious constraints, workarounds, and rules that live outside the file (a Stripe API quirk, a misspelled `AdminSettings` key, a deliberately disabled sync)
+- Match the comment density of the file you are editing
+
 ### Form Handling
 
 ```typescript
@@ -1011,6 +1049,14 @@ logger.error("Operation failed", { error, userId, context });
 
 ## Testing Strategy
 
+### Before you start: ask
+
+Before implementing anything non-trivial, ask the maintainer your clarifying questions — and say so explicitly:
+
+> Ask me any clarifying questions and anything you need from me to do this. We are a team.
+
+Raise anything that would change what gets built: ambiguous scope, two defensible designs, a missing product decision, an unclear edge case, credentials or access you do not have. Then get on with the parts that do not depend on the answer. A question up front is cheap; an assumption that turns out wrong costs the whole implementation.
+
 ### Required workflow for every implementation
 
 **Implement → test → verify end to end.** All three steps, every time — finishing the code is not finishing the change.
@@ -1041,7 +1087,7 @@ Assume you are here whenever you edit an existing function, route, query, or sch
 
 **Most changes are the second kind.** When unsure, treat it as the second kind.
 
-The suite is currently **fully green — 27 suites, 372 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+The suite is currently **fully green — 29 suites, 388 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
 
 **Rules:**
 
@@ -1050,6 +1096,7 @@ The suite is currently **fully green — 27 suites, 372 tests** — and every se
 - **A suite that reports `0 total` is broken, not passing.** Five equipment suites silently ran zero tests because a Stripe client was constructed at import time with no key. Everything looked green while nothing was checked
 - **A bug fix should carry a test that would have caught it**
 - **Cover the guard, not just the happy path.** Capacity limits, role-level gates, refund windows, upload validation, and "already cancelled" states are where the real defects live
+- **Ask when testing needs something you do not have.** A test or a browser walkthrough often needs input only the maintainer can give — a Stripe test card, a Brivo sandbox credential, a role level 3/4 account, a seeded record, an admin setting flipped, or simply a ruling on what the correct behaviour is. Ask for it. Skipping the step, faking the data, or weakening the assertion to make it pass is worse than being blocked out loud
 
 ### Layout and conventions
 
@@ -1068,13 +1115,16 @@ The suite is currently **fully green — 27 suites, 372 tests** — and every se
 **[tests/README.md](./tests/README.md) is the full reference** for the folder — layout, fixture conventions, the import-ordering rule, and the failure modes that have actually bitten here. Read it before adding or changing a test
 
 **Model tests** (`tests/models/`):
-`access.card-log`, `admin.settings`, `equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.settings`, `equipment.slots`, `issue.server`, `membership.cron`, `membership.server`, `payment.gst`, `payment.refunds`, `profile.volunteer`, `user.rolelevel`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.move`, `workshop.registration`
+`access.card-log`, `admin.settings`, `equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.settings`, `equipment.slots`, `issue.server`, `membership.cron`, `membership.server`, `payment.gst`, `payment.refunds`, `profile.volunteer`, `user.rolelevel`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.move`, `workshop.occurrence-status`, `workshop.registration`
 
 **Service tests** (`tests/services/`):
 `access-control-sync.server`, `brivo.server`, `stripe-sync.server`
 
 **Util and config tests:**
 `tests/utils/session.server.test.ts`, `tests/config/access-control.test.ts`
+
+**Boot wiring test:**
+`tests/entry.server.test.ts` — asserts `entry.server.ts` starts all three background jobs, and starts each one only once per process
 
 **Route tests** (`tests/routes/dashboard/`):
 `addequipment.test.ts`, `addworkshop.test.ts`, `payment.cutoff.test.ts`
@@ -1085,6 +1135,7 @@ The suite is currently **fully green — 27 suites, 372 tests** — and every se
 
 **Seed data:**
 - `seed.ts` provides consistent test data; **requires `NODE_ENV=development`** — it logs `Seed aborted` and exits immediately otherwise. Occurrence dates are relative to `now` (e.g. `addDays(now, 7)`) so workshops always appear upcoming regardless of when the seed runs. It truncates and reseeds `RoleUser`, restarting the sequence so `User` = 1 and `Admin` = 2
+- It creates six users, `testuser1@gmail.com` through `testuser6@gmail.com` (password `password`), covering every role level — see [Test accounts](#test-accounts). Levels 2, 3, and 4 come from real seeded rows (a passed orientation, an active membership, `allowLevel4`), and the seed derives `roleLevel` from them with the same rules as `startRoleLevelSyncCron()` rather than assigning it
 
 **Additional scripts** (`test-scripts/`, run with `npx tsx`):
 - `seed-orientation-registrations.ts` — populates any workshop with 20 test users across 5 past sessions with varied results (passed/failed/pending/cancelled) and optional price variations; supports multi-day via `--days=N`. Run: `npx tsx test-scripts/seed-orientation-registrations.ts [workshopId|name] [--days=N]`

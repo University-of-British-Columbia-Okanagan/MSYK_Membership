@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 27 suites, 372 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 29 suites, 388 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -27,6 +27,20 @@ Every implementation follows **implement → test → verify end to end**. Which
 
 Most changes are the right-hand column. When in doubt, assume you are. Full rules live in [CLAUDE.md](../CLAUDE.md); the reader-facing version is in [README.md](../README.md#testing-strategy).
 
+**Step 0 is asking.** Before implementing, put the clarifying questions to the maintainer — *"ask me any clarifying questions and anything you need from me to do this, we are a team"* runs in both directions. Scope, expected behaviour at the edges, which of two designs: settle it before writing the test that encodes it.
+
+### Ask for what you need to test
+
+Testing is where an agent most often gets quietly stuck, and where staying stuck does the most damage. If you cannot finish step 2 or step 3 without something only the maintainer can provide — **ask for it**:
+
+- A Stripe test card, a Brivo sandbox credential, a Google OAuth test client
+- A user at role level 3 or 4 (the seed has none, and the sync cron reverts a hand-edited `roleLevel` within 15s)
+- A seeded workshop, membership, or booking in a specific state
+- An admin setting flipped, or a `.env` value you do not have
+- A ruling on what the correct behaviour actually *is*, when the existing test and the new code disagree
+
+Asking costs one message. The alternatives — skipping the verification, faking the data, or softening the assertion until it passes — all ship a change nobody checked. Say what you are blocked on and what would unblock you.
+
 ---
 
 ## Layout
@@ -34,6 +48,7 @@ Most changes are the right-hand column. When in doubt, assume you are. Full rule
 ```
 tests/
 ├── README.md                    # this file
+├── entry.server.test.ts         # boot wiring: the three background jobs start, once each
 ├── config/                      # app/config/
 │   └── access-control.test.ts
 ├── models/                      # app/models/
@@ -45,7 +60,7 @@ tests/
 │   ├── payment.{gst,refunds}.test.ts
 │   ├── profile.volunteer.test.ts
 │   ├── user.rolelevel.test.ts
-│   └── workshop.{basic,cancellation,capacity,move,registration}.test.ts
+│   └── workshop.{basic,cancellation,capacity,move,occurrence-status,registration}.test.ts
 ├── services/                    # app/services/
 │   ├── access-control-sync.server.test.ts
 │   ├── brivo.server.test.ts
@@ -69,6 +84,26 @@ tests/
 ```
 
 Specs mirror the source tree. A file with more than roughly 20 tests is split by concern (`equipment.booking` vs `equipment.slots`) rather than growing without bound.
+
+---
+
+## Background jobs
+
+Three jobs run for the life of the server process, all started from `entry.server.ts`. Each has its own spec, and the wiring that starts them has one too:
+
+| Job | Cadence | Started by | Spec |
+|-----|---------|-----------|------|
+| Role level sync | every 15s (`*/15 * * * * *`, node-cron) | `startRoleLevelSyncCron()` | `models/user.rolelevel.test.ts` |
+| Membership billing | daily at midnight (`0 0 * * *`, node-cron) | `startMonthlyMembershipCheck()` | `models/membership.cron.test.ts` |
+| Occurrence status | every 1s (`setInterval`) | `startWorkshopOccurrenceStatusUpdate()` | `models/workshop.occurrence-status.test.ts` |
+| — all three start at boot | once per process | `entry.server.ts` | `entry.server.test.ts` |
+
+Testing them means never waiting on real time:
+
+- **node-cron is mocked as a recorder.** `fixtures/user/setup.ts` and `fixtures/membership/setup.ts` replace `cron.schedule` with a mock that stores `{ expression, handler }`, so a spec asserts the expression and then calls the handler directly. Note the difference between the two fixtures: the membership recorder *invokes* the handler as it registers it (the spec awaits `job.execution`), while the user one does not (the spec calls `job.handler()` itself)
+- **`setInterval` uses fake timers.** The occurrence job takes no schedule argument, so the spec asserts `setInterval(fn, 1000)` and drives it with `jest.advanceTimersByTime`, counting `db.workshopOccurrence.findMany` calls as passes. `jest.clearAllTimers()` in `afterEach` stops the interval leaking into the next test
+- **Assert the schedule, not just the work.** A job whose handler is correct but whose expression was changed to `0 0 * * *` from `*/15 * * * * *` is still broken
+- **Failure behaviour differs on purpose, so test what each one actually does.** The role-level and membership jobs catch and log, because a throw would kill a job that has to survive until the next tick. `updateWorkshopOccurrenceStatuses()` rethrows
 
 ---
 
@@ -108,6 +143,25 @@ A fixture has to carry every relation the query `include`s. `cancelWorkshopOccur
 ### Test the guard, not just the happy path
 
 Where the defects actually are: capacity limits, role-level gates, refund windows, upload validation, `already cancelled` states, and "what happens when the third-party integration is not configured".
+
+---
+
+## Browser verification accounts
+
+Step 3 needs a real login. `npx tsx seed.ts` (requires `NODE_ENV=development`) creates six users, all with the password `password`, one for every role level:
+
+| Email | Password | Role level | How the level is earned |
+|-------|----------|-----------|--------------------------|
+| `testuser1@gmail.com` | `password` | 1 — **Admin** (`roleUserId: 2`) | Admin role; no orientation or membership |
+| `testuser2@gmail.com` | `password` | 1 | Registered only |
+| `testuser3@gmail.com` | `password` | 1 | Registered only |
+| `testuser4@gmail.com` | `password` | 2 | Passed a past General Orientation |
+| `testuser5@gmail.com` | `password` | 3 | Orientation + active **Makerspace Member** membership |
+| `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
+
+Use `testuser1` for admin flows (settings, user management, workshop and equipment administration), `testuser2`/`testuser3` for a plain registered user — including the check that a non-admin is redirected away from admin routes — and `testuser4`–`testuser6` for anything gated on role level.
+
+None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
 
 ---
 
