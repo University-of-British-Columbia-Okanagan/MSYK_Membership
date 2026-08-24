@@ -87,6 +87,58 @@ async function main() {
         operationsPolicy: true,
         waiverSignature: "EncryptedWaiverPlaceholder3",
       },
+      // testuser4/5/6 reach role level 2/3/4 through the orientation and membership
+      // rows created further down — roleLevel is left at its default and derived, never set here.
+      {
+        email: "testuser4@gmail.com",
+        password: hashedPassword,
+        firstName: "Test4",
+        lastName: "User4",
+        phone: "4455667788",
+        dateOfBirth: "1992-04-11",
+        emergencyContactName: "Clark Kent",
+        emergencyContactPhone: "5552233445",
+        emergencyContactEmail: "emergency4@example.com",
+        mediaConsent: true,
+        dataPrivacy: true,
+        communityGuidelines: true,
+        operationsPolicy: true,
+        waiverSignature: "EncryptedWaiverPlaceholder4",
+      },
+      {
+        email: "testuser5@gmail.com",
+        password: hashedPassword,
+        firstName: "Test5",
+        lastName: "User5",
+        phone: "5566778899",
+        dateOfBirth: "1985-09-27",
+        emergencyContactName: "Diana Prince",
+        emergencyContactPhone: "5553344556",
+        emergencyContactEmail: "emergency5@example.com",
+        mediaConsent: true,
+        dataPrivacy: true,
+        communityGuidelines: true,
+        operationsPolicy: true,
+        waiverSignature: "EncryptedWaiverPlaceholder5",
+      },
+      {
+        email: "testuser6@gmail.com",
+        password: hashedPassword,
+        firstName: "Test6",
+        lastName: "User6",
+        phone: "6677889900",
+        dateOfBirth: "1998-02-14",
+        emergencyContactName: "Barry Allen",
+        emergencyContactPhone: "5554455667",
+        emergencyContactEmail: "emergency6@example.com",
+        mediaConsent: true,
+        dataPrivacy: true,
+        communityGuidelines: true,
+        operationsPolicy: true,
+        waiverSignature: "EncryptedWaiverPlaceholder6",
+        // Admin-granted flag; level 4 also requires an active needAdminPermission plan.
+        allowLevel4: true,
+      },
     ],
   });
 
@@ -372,6 +424,12 @@ async function main() {
       startDate: addDays(now, -30),
       endDate: addDays(now, -30),
     },
+    // General Orientation — past session the level 2/3/4 accounts passed
+    {
+      workshopId: 4,
+      startDate: addDays(now, -21),
+      endDate: addDays(now, -21),
+    },
     {
       workshopId: 2,
       startDate: addDays(now, -14),
@@ -555,6 +613,125 @@ async function main() {
       },
     ],
   });
+  // Role level 2/3/4 test accounts.
+  //
+  // Nothing here writes a role level directly. It writes the rows that *earn* one — a passed
+  // orientation, an active membership, an admin-permission plan — and then derives roleLevel
+  // from those rows using the same rules as startRoleLevelSyncCron() in
+  // app/models/user.server.ts, which is the source of truth and will re-derive it every 15s:
+  //   level 2 = passed orientation
+  //   level 3 = level 2 + a membership in active/ending/cancelled
+  //   level 4 = level 3 + that plan needs admin permission + the user's allowLevel4 flag
+  const pastOrientation = await prisma.workshopOccurrence.findFirstOrThrow({
+    where: {
+      startDate: { lt: now },
+      workshop: { type: { equals: "orientation", mode: "insensitive" } },
+    },
+    select: { id: true, workshopId: true },
+  });
+
+  const standardPlan = await prisma.membershipPlan.findFirstOrThrow({
+    where: { needAdminPermission: false },
+  });
+  const adminPermissionPlan = await prisma.membershipPlan.findFirstOrThrow({
+    where: { needAdminPermission: true },
+  });
+
+  const levelledEmails = [
+    "testuser4@gmail.com",
+    "testuser5@gmail.com",
+    "testuser6@gmail.com",
+  ];
+  const levelledUsers = await prisma.user.findMany({
+    where: { email: { in: levelledEmails } },
+    select: { id: true, email: true },
+  });
+  const userIdByEmail = new Map(levelledUsers.map((u) => [u.email, u.id]));
+  const userId = (email: string) => {
+    const id = userIdByEmail.get(email);
+    if (!id) throw new Error(`Seed error: ${email} was not created`);
+    return id;
+  };
+
+  // All three passed the same past orientation, which is what clears the level 2 bar.
+  await prisma.userWorkshop.createMany({
+    data: levelledEmails.map((email) => ({
+      userId: userId(email),
+      workshopId: pastOrientation.workshopId,
+      occurrenceId: pastOrientation.id,
+      result: "passed",
+      date: addDays(now, -21),
+    })),
+  });
+
+  await prisma.userMembership.createMany({
+    data: [
+      // Level 3: active membership on a plan that does not need admin permission.
+      {
+        userId: userId("testuser5@gmail.com"),
+        membershipPlanId: standardPlan.id,
+        nextPaymentDate: addDays(now, 30),
+        status: "active",
+      },
+      // Level 4: active membership on the needAdminPermission plan, paired with allowLevel4.
+      {
+        userId: userId("testuser6@gmail.com"),
+        membershipPlanId: adminPermissionPlan.id,
+        nextPaymentDate: addDays(now, 30),
+        status: "active",
+      },
+    ],
+  });
+
+  // Derive roleLevel from what is now in the database, so a freshly seeded DB is already
+  // correct before the app (and its sync cron) starts. Mirrors startRoleLevelSyncCron().
+  const seededUsers = await prisma.user.findMany({
+    select: {
+      id: true,
+      email: true,
+      allowLevel4: true,
+      userWorkshops: {
+        where: {
+          result: { equals: "passed", mode: "insensitive" },
+          workshop: { type: { equals: "orientation", mode: "insensitive" } },
+        },
+        select: { id: true },
+      },
+      userMemberships: {
+        where: { status: { in: ["active", "ending", "cancelled"] } },
+        select: { membershipPlan: { select: { needAdminPermission: true } } },
+      },
+    },
+  });
+
+  for (const user of seededUsers) {
+    const hasCompletedOrientation = user.userWorkshops.length > 0;
+    const hasActiveMembership = user.userMemberships.length > 0;
+    const hasAdminPermissionPlan = user.userMemberships.some(
+      (m) => m.membershipPlan.needAdminPermission,
+    );
+
+    let correctLevel = 1;
+    if (
+      hasCompletedOrientation &&
+      hasActiveMembership &&
+      hasAdminPermissionPlan &&
+      user.allowLevel4
+    ) {
+      correctLevel = 4;
+    } else if (hasCompletedOrientation && hasActiveMembership) {
+      correctLevel = 3;
+    } else if (hasCompletedOrientation) {
+      correctLevel = 2;
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { roleLevel: correctLevel },
+    });
+    console.log(`Seeded ${user.email} at role level ${correctLevel}`);
+  }
+
   await prisma.equipment.createMany({
     data: [
       {
