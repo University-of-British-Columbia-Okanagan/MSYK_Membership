@@ -39,7 +39,9 @@ Reach for it when:
 Notes for using it here:
 - Start the app first (`npm run dev`) and browse to `http://localhost:5173`. The MCP server does not start the app for you
 - `npm run dev` runs both the client and the cron server; the cron server is what flips workshop occurrence status, so start both when timing matters
-- You need a seeded database to log in — `npx tsx seed.ts` (requires `NODE_ENV=development`)
+- You need a seeded database to log in — `npx tsx seed.ts` (requires `NODE_ENV=development`). It creates `testuser1@gmail.com` (**admin**) through `testuser6@gmail.com`, all with the password `password`: 1–3 are role level 1, then `testuser4` is level 2, `testuser5` level 3, and `testuser6` level 4. Those levels come from real seeded rows (passed orientation, active membership, `allowLevel4`), so the sync cron leaves them alone — but for the same reason, hand-editing `roleLevel` is reverted within 15s
+- **Check mobile.** Resize the browser to a phone-width viewport and look at the page. Mobile responsiveness is required of every UI change here, and it is the thing most often missed
+- **Ask if you are blocked.** If driving the flow needs something you do not have — a test card, a sandbox credential, a record in a particular state, a decision about what should happen — ask for it rather than skipping the verification
 - Chromium is already installed locally. If it is ever missing, `npx playwright install chromium`
 - The server drops page snapshots and console logs into `.playwright-mcp/` as you drive it. That directory is gitignored — do not commit it
 - This is for **interactive verification**, not an automated test suite. Regression tests belong in `tests/` under Jest
@@ -63,7 +65,7 @@ What it does:
 - **Phase 1 — structural map.** A handful of `grep`/`sed` commands that yield the data model, the full route table, every exported model/service function, cron schedules, env vars, and `AdminSettings` keys — the shape of the system for a fraction of the tokens the source costs
 - **Phase 2 — delegated deep reading.** Up to three `Explore` subagents in parallel (business logic, request layer, auth/config), each capped at a 40-line brief. The ~50,000 lines are read in *their* context; only the briefs reach the main one. Fewer subagents when the task is narrow
 - **Phase 3 — mechanical verification.** Four cheap shell checks: every route file registered, every route in the README map, documented functions actually exported, referenced paths exist. It does **not** audit the prose claim by claim — `/update-all-docs` keeps docs honest as code changes, and a full audit is something you ask for explicitly
-- **Phase 4 — a report under ~40 lines**, ending with an explicit list of what it did *not* read
+- **Phase 4 — a report under ~40 lines**, ending with an explicit list of what it did *not* read, then the standing invitation to ask clarifying questions before implementation begins
 
 Deliberate omissions, in the command itself: the frozen write-ups in `docs/implementations/` (reading them builds a false picture of current behavior), the ~12,700-line Brivo API snapshot (read on demand), and the JSX of the six largest route files (their loaders and actions are read; their markup is not).
 
@@ -119,12 +121,13 @@ Creates a pull request into `main` for the current branch. Key rules it enforces
 ## Typical flow
 
 1. `/read-docs` at the start of a session to build a verified mental model
-2. **Implement** the change
-3. **Test it** — *add* test files for new functionality, or *update* the existing tests a change to existing functionality invalidated. Most changes are the latter
-4. **Verify end to end** in a browser via the Playwright MCP server — a green unit test says the function behaves, only the browser says the feature works
-5. **Run the full suite** (`npm test`) — it is currently fully green, so any failure is yours
-6. `/update-all-docs` to bring the documentation back in line with the code
-7. `/commit` to split the work into logical commits
-8. `/make-pr` to open the pull request
+2. **Ask first** — put your clarifying questions to the maintainer before implementing anything non-trivial: *"ask me any clarifying questions and anything you need from me to do this, we are a team."* Scope, edge cases, a choice between two designs, credentials you lack — all cheaper to settle now
+3. **Implement** the change — mobile responsive, with short comments that earn their line (see `CLAUDE.md`)
+4. **Test it** — *add* test files for new functionality, or *update* the existing tests a change to existing functionality invalidated. Most changes are the latter
+5. **Verify end to end** in a browser via the Playwright MCP server, at desktop *and* mobile width — a green unit test says the function behaves, only the browser says the feature works
+6. **Run the full suite** (`npm test`) — it is currently fully green, so any failure is yours
+7. `/update-all-docs` to bring the documentation back in line with the code
+8. `/commit` to split the work into logical commits
+9. `/make-pr` to open the pull request
 
-Steps 2–5 are mandatory for every implementation. The full rules are in `CLAUDE.md`; `tests/README.md` covers the test folder itself.
+Steps 3–6 are mandatory for every implementation, and step 2 is what keeps them from being wasted. If any of them needs something only the maintainer can supply — a credential, a seeded record, a level 3/4 account, a ruling on expected behaviour — ask for it instead of working around it. The full rules are in `CLAUDE.md`; `tests/README.md` covers the test folder itself.
