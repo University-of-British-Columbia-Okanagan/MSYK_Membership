@@ -5,10 +5,10 @@ import {
   getUserWorkshopsWithRegistrationDetails,
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import WorkshopCard from "~/components/ui/Dashboard/workshopcard";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import WorkshopCard from "~/components/ui/Dashboard/WorkshopCard";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 
 export async function loader({ request }: { request: Request }) {
   try {

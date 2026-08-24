@@ -8,8 +8,8 @@ import { useEffect, useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
 import { redirect } from "react-router";
 import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import { AppSidebar } from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import { AppSidebar } from "~/components/ui/Dashboard/AppSidebar";
 import { createIssue } from "~/models/issue.server";
 import { logger } from "~/logging/logger";
 

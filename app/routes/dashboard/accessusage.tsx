@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { Link, useLoaderData } from "react-router-dom";
 import { getAccessLogs } from "~/models/accessLog.server";
 import { SidebarProvider } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import { useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";

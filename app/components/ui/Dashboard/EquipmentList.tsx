@@ -1,4 +1,4 @@
-import EquipmentCard from "./equipmentcard";
+import EquipmentCard from "./EquipmentCard";
 
 interface Equipment {
   id: number;
