@@ -1,6 +1,6 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import AdminSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import MembershipCard from "~/components/ui/Dashboard/MembershipCard";
 import {
   getMembershipPlans,
@@ -20,7 +20,7 @@ import { getUserById } from "~/models/user.server";
 import { PlusCircle, Ban } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { logger } from "~/logging/logger";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";

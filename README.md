@@ -142,6 +142,26 @@ Use `testuser1` for admin flows, `testuser2`/`testuser3` for a plain registered 
 
 None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
 
+#### Paying in a browser test (Stripe test card)
+
+Any flow that reaches checkout needs a card. With **test** Stripe keys (`sk_test_`/`pk_test_`) use Stripe's standard test card:
+
+| Field | Value |
+|-------|-------|
+| Card number | `4242 4242 4242 4242` |
+| Expiry | any future date (e.g. `08/29`) |
+| CVC | any 3 digits |
+| Name, email, billing address, postal code | any non-empty test values |
+
+Only the card number is significant — every other field just has to be filled in. Never enter a real card, and never do this against live keys.
+
+Two things follow from where the card is stored:
+
+- **`QuickCheckout` only renders when the user has a saved payment method.** Without one, the payment page falls back to the standard Stripe form and the quick-checkout path is simply not on screen — which reads like a missing feature but is not. `getSavedPaymentMethod()` reads the separate `UserPaymentInformation` row, and the payment routes gate on both `stripeCustomerId` and `stripePaymentMethodId` being set on it
+- **`npx tsx seed.ts` wipes it.** The seed calls `prisma.user.deleteMany()`, and `UserPaymentInformation` has `onDelete: Cascade` on its `user` relation, so saved cards go with the user rows. The seed creates no replacement
+
+To put a card back on an account, log in as that user and go to **`/user/profile/paymentinformation` → Add Payment Method**, then fill the fields above. After that, `/dashboard/payment/...` and the equipment booking page both show the Quick Checkout block.
+
 The server writes page snapshots and console logs into `.playwright-mcp/` at the repo root as you drive it. That directory is gitignored — it is session scratch, not something to commit.
 
 ## Environment Variables & Configuration
@@ -416,6 +436,8 @@ prisma/
 ### Routing Convention
 
 React Router 7 uses file-based routing configured in `app/routes.ts`. Routes export `loader` functions for data fetching and `action` functions for mutations. Both `~` and `@` aliases point to the `app/` directory (configured in `vite.config.ts` and `tsconfig.json`).
+
+`vite.config.ts` also sets `optimizeDeps.entries` to `["app/**/*.{ts,tsx}"]`. Vite's default dependency scan only follows what the entry HTML reaches, so packages imported solely by routes nobody had visited yet were discovered mid-session — Vite then re-bundled them and forced a page reload, which surfaces in the console as a misleading "Invalid hook call / more than one copy of React" error. Scanning every app file at startup finds them in one pass. If that error ever appears, clear `node_modules/.vite` and restart before treating it as a real defect.
 
 ### Server-Side Code Convention
 
@@ -759,27 +781,29 @@ app/components/
     ├── button.tsx, form.tsx, table.tsx, …  # shadcn primitives live as flat files here,
     │                                       # not in a subdirectory (26 in total)
     ├── Dashboard/          # Dashboard-specific components
-    │   ├── sidebar.tsx              # User sidebar (AppSidebar)
-    │   ├── adminsidebar.tsx         # Admin sidebar
-    │   ├── guestsidebar.tsx         # Guest sidebar
-    │   ├── ConfirmButton.tsx        # Action confirmation with loading state
-    │   ├── DateTypeRadioGroup.tsx   # Single/multi-day/recurring selector
-    │   ├── GenericFormField.tsx     # Reusable form field with validation
-    │   ├── MembershipCard.tsx       # Membership plan display card
-    │   ├── MembershipPlanForm.tsx   # Membership plan create/edit form
-    │   ├── MultiSelectField.tsx     # Multi-selection dropdown
-    │   ├── PrerequisitesField.tsx   # Workshop prerequisite selector
-    │   ├── OccurrenceRow.tsx        # Workshop occurrence row display
-    │   ├── OccurrenceTabs.tsx       # Tabbed occurrence management
+    │   │                           # every file here is PascalCase, named for the
+    │   │                           # component it exports
+    │   ├── AppSidebar.tsx          # User sidebar
+    │   ├── AdminAppSidebar.tsx     # Admin sidebar
+    │   ├── GuestAppSidebar.tsx     # Guest sidebar
+    │   ├── ConfirmButton.tsx       # Action confirmation with loading state
+    │   ├── DateTypeRadioGroup.tsx  # Single/multi-day/recurring selector
+    │   ├── EquipmentBookingGrid.tsx # Time-slot booking grid
+    │   ├── EquipmentCard.tsx       # Equipment item card
+    │   ├── EquipmentList.tsx       # Equipment list component
+    │   ├── GenericFormField.tsx    # Reusable form field with validation
+    │   ├── MembershipCard.tsx      # Membership plan display card
+    │   ├── MembershipPlanForm.tsx  # Membership plan create/edit form
+    │   ├── MultiSelectField.tsx    # Multi-selection dropdown
+    │   ├── OccurrenceRow.tsx       # Workshop occurrence row display
+    │   ├── OccurrenceTabs.tsx      # Tabbed occurrence management
+    │   ├── PrerequisitesField.tsx  # Workshop prerequisite selector
+    │   ├── QuickCheckout.tsx       # Saved-card quick checkout
     │   ├── RepetitionScheduleInputs.tsx  # Recurring schedule inputs
-    │   ├── ShadTable.tsx            # Styled table wrapper
-    │   ├── TimeIntervalPicker.tsx   # Time range selector
-    │   ├── equipmentbookinggrid.tsx # Time-slot booking grid
-    │   ├── equipmentcard.tsx        # Equipment item card
-    │   ├── equipmentlist.tsx        # Equipment list component
-    │   ├── quickcheckout.tsx        # Saved-card quick checkout
-    │   ├── workshopcard.tsx         # Workshop display card
-    │   └── workshoplist.tsx         # Workshop list component
+    │   ├── ShadTable.tsx           # Styled table wrapper
+    │   ├── TimeIntervalPicker.tsx  # Time range selector
+    │   ├── WorkshopCard.tsx        # Workshop display card
+    │   └── WorkshopList.tsx        # Workshop list component
     ├── About/              # About page sections
     ├── Home/               # Home page sections (hero, facilities, calendar, etc.)
     ├── Programming/        # Programming/workshops public sections
@@ -791,10 +815,12 @@ app/components/
 
 ### Dashboard Components
 
+Files in `app/components/ui/Dashboard/` are **PascalCase and named for the component they export** (`AppSidebar.tsx` exports `AppSidebar`). The flat shadcn primitives in `app/components/ui/` keep their lowercase upstream filenames — note `Dashboard/AppSidebar.tsx` (this app's sidebar) is a different file from `ui/sidebar.tsx` (the shadcn primitives), and many routes import both.
+
 **Layout & Navigation:**
-- **AppSidebar** (`sidebar.tsx`): Main user navigation sidebar
-- **AdminAppSidebar** (`adminsidebar.tsx`): Enhanced admin sidebar
-- **GuestAppSidebar** (`guestsidebar.tsx`): Limited guest navigation
+- **AppSidebar** (`AppSidebar.tsx`): Main user navigation sidebar
+- **AdminAppSidebar** (`AdminAppSidebar.tsx`): Enhanced admin sidebar
+- **GuestAppSidebar** (`GuestAppSidebar.tsx`): Limited guest navigation
 
 **Form & Input Components:**
 - **GenericFormField**: Reusable form field wrapper with validation and error handling
@@ -805,19 +831,19 @@ app/components/
 - **TimeIntervalPicker**: Time range picker for schedule inputs
 
 **Workshop Components:**
-- **WorkshopList** (`workshoplist.tsx`): Workshop list — supports user and admin views
-- **WorkshopCard** (`workshopcard.tsx`): Individual workshop display
+- **WorkshopList** (`WorkshopList.tsx`): Workshop list — supports user and admin views
+- **WorkshopCard** (`WorkshopCard.tsx`): Individual workshop display
 - **OccurrenceRow**: Workshop occurrence row with date/time formatting
 - **OccurrenceTabs**: Tabbed interface for occurrence management
 - **ConfirmButton**: Action confirmation with loading state
 
 **Equipment Components:**
-- **EquipmentBookingGrid** (`equipmentbookinggrid.tsx`): Time-slot grid for equipment reservations
-- **EquipmentCard** (`equipmentcard.tsx`): Equipment item display
-- **EquipmentList** (`equipmentlist.tsx`): Equipment listing component
+- **EquipmentBookingGrid** (`EquipmentBookingGrid.tsx`): Time-slot grid for equipment reservations
+- **EquipmentCard** (`EquipmentCard.tsx`): Equipment item display
+- **EquipmentList** (`EquipmentList.tsx`): Equipment listing component
 
 **Payment Components:**
-- **QuickCheckout** (`quickcheckout.tsx`): One-click payment with saved card
+- **QuickCheckout** (`QuickCheckout.tsx`): One-click payment with saved card
 
 **Data Display:**
 - **ShadTable**: Styled table wrapper

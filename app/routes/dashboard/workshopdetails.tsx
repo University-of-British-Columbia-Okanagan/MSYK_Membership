@@ -50,9 +50,9 @@ import {
 import { logger } from "~/logging/logger";
 import { sendWorkshopCancellationEmail } from "~/utils/email.server";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 
 interface Occurrence {
   id: number;

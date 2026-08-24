@@ -33,8 +33,8 @@ Most changes are the right-hand column. When in doubt, assume you are. Full rule
 
 Testing is where an agent most often gets quietly stuck, and where staying stuck does the most damage. If you cannot finish step 2 or step 3 without something only the maintainer can provide — **ask for it**:
 
-- A Stripe test card, a Brivo sandbox credential, a Google OAuth test client
-- A user at role level 3 or 4 (the seed has none, and the sync cron reverts a hand-edited `roleLevel` within 15s)
+- A Brivo sandbox credential or a Google OAuth test client (the Stripe test card is already documented below — you do not need to ask for that one)
+- A user in a state the seed does not produce. The seed *does* cover role levels 1–4 (`testuser1`–`testuser6` below), so check that table first; the sync cron reverts a hand-edited `roleLevel` within 15s, so ask rather than patching the column
 - A seeded workshop, membership, or booking in a specific state
 - An admin setting flipped, or a `.env` value you do not have
 - A ruling on what the correct behaviour actually *is*, when the existing test and the new code disagree
@@ -160,6 +160,17 @@ Step 3 needs a real login. `npx tsx seed.ts` (requires `NODE_ENV=development`) c
 | `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
 
 Use `testuser1` for admin flows (settings, user management, workshop and equipment administration), `testuser2`/`testuser3` for a plain registered user — including the check that a non-admin is redirected away from admin routes — and `testuser4`–`testuser6` for anything gated on role level.
+
+### Paying in a browser test (Stripe test card)
+
+Step 3 flows that reach checkout need a card. On **test** Stripe keys, use Stripe's standard test card — `4242 4242 4242 4242`, any future expiry, any CVC, and any non-empty values for name, email, and billing address. Only the number matters. Never use a real card, and never run this against live keys.
+
+Two gotchas that will otherwise cost you a debugging session:
+
+- **`QuickCheckout` renders only when the user has a saved payment method.** With no card on file the payment page shows the ordinary Stripe form instead and the quick-checkout block is absent — that is the designed fallback, not a regression. `getSavedPaymentMethod()` reads the separate `UserPaymentInformation` row, and the payment routes gate on both `stripeCustomerId` and `stripePaymentMethodId` being set on it
+- **`npx tsx seed.ts` deletes it.** The seed calls `prisma.user.deleteMany()`, and `UserPaymentInformation` cascades on its `user` relation, so saved cards go with the user rows. The seed creates no replacement
+
+To restore one: log in as the user, go to **`/user/profile/paymentinformation` → Add Payment Method**, enter the card above. Quick Checkout then appears on `/dashboard/payment/...` and on the equipment booking page once slots are selected.
 
 None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
 

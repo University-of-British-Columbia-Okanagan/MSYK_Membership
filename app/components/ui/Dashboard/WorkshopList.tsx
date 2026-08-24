@@ -1,4 +1,4 @@
-import WorkshopCard from "./workshopcard";
+import WorkshopCard from "./WorkshopCard";
 
 interface Workshop {
   id: number;

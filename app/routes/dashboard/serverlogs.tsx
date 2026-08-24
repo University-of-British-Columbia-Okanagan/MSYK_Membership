@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { useEffect, useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import { getRoleUser } from "~/utils/session.server";
 export type LoaderData = {
   logs: string;

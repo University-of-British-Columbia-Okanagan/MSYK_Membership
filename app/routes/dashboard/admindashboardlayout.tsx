@@ -1,8 +1,8 @@
 import { Outlet, Link, redirect } from "react-router-dom";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
-import WorkshopList from "~/components/ui/Dashboard/workshoplist";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
+import WorkshopList from "~/components/ui/Dashboard/WorkshopList";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import {
   getWorkshops,

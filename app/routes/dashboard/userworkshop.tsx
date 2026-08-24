@@ -19,8 +19,8 @@ import {
 } from "~/utils/email.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
 import { FiSearch, FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";

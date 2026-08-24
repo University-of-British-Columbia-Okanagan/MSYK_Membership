@@ -1,10 +1,10 @@
 import { useLoaderData, redirect } from "react-router-dom";
 import { getUserBookedEquipments } from "~/models/equipment.server";
 import { getRoleUser } from "~/utils/session.server";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import EquipmentCard from "~/components/ui/Dashboard/equipmentcard";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import EquipmentCard from "~/components/ui/Dashboard/EquipmentCard";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import { cancelEquipmentBooking } from "~/models/equipment.server";
 import { getBookingEmailDetails } from "~/models/equipment.server";
 import { sendEquipmentCancellationEmail } from "~/utils/email.server";

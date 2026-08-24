@@ -9,7 +9,7 @@ import {
   useFetcher,
 } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import {
   Card,
   CardContent,
