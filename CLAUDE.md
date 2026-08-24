@@ -162,6 +162,8 @@ prisma/
 - **`UserWorkshop.result`**: `passed` (schema default), `failed`, `pending`, `cancelled`
 - **The `payment.tsx` loader is the only server-side registration-cutoff gate.** Neither `quickCheckout()` nor `paymentsuccess.tsx` re-checks `Workshop.registrationCutoff`, so a loader branch that omits the check is bypassable by pasting the URL. All four workshop branches call `isPastRegistrationCutoff` today — if you add a fifth, add the check and a case to `tests/routes/dashboard/payment.cutoff.test.ts`
 - **Admin can move a registration** between occurrences of the same workshop via `moveUserWorkshopRegistration()` — single-day, active, in-capacity targets only
+- **Stripe test card for browser verification**: `4242 4242 4242 4242`, any future expiry, any CVC, any non-empty name/email/billing address. Only the number matters. Test keys only — never a real card, never live keys
+- **`QuickCheckout` renders only when the user has a saved payment method.** Cards live in the separate `UserPaymentInformation` table (`getSavedPaymentMethod()`), gated on both `stripeCustomerId` and `stripePaymentMethodId`. With no card the payment page falls back to the standard Stripe form — the designed fallback, not a bug. `npx tsx seed.ts` calls `user.deleteMany()` and the table cascades, so seeding wipes saved cards; re-add one at `/user/profile/paymentinformation` → Add Payment Method
 
 ---
 

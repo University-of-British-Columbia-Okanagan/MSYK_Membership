@@ -142,6 +142,26 @@ Use `testuser1` for admin flows, `testuser2`/`testuser3` for a plain registered 
 
 None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
 
+#### Paying in a browser test (Stripe test card)
+
+Any flow that reaches checkout needs a card. With **test** Stripe keys (`sk_test_`/`pk_test_`) use Stripe's standard test card:
+
+| Field | Value |
+|-------|-------|
+| Card number | `4242 4242 4242 4242` |
+| Expiry | any future date (e.g. `08/29`) |
+| CVC | any 3 digits |
+| Name, email, billing address, postal code | any non-empty test values |
+
+Only the card number is significant — every other field just has to be filled in. Never enter a real card, and never do this against live keys.
+
+Two things follow from where the card is stored:
+
+- **`QuickCheckout` only renders when the user has a saved payment method.** Without one, the payment page falls back to the standard Stripe form and the quick-checkout path is simply not on screen — which reads like a missing feature but is not. `getSavedPaymentMethod()` reads the separate `UserPaymentInformation` row, and the payment routes gate on both `stripeCustomerId` and `stripePaymentMethodId` being set on it
+- **`npx tsx seed.ts` wipes it.** The seed calls `prisma.user.deleteMany()`, and `UserPaymentInformation` has `onDelete: Cascade` on its `user` relation, so saved cards go with the user rows. The seed creates no replacement
+
+To put a card back on an account, log in as that user and go to **`/user/profile/paymentinformation` → Add Payment Method**, then fill the fields above. After that, `/dashboard/payment/...` and the equipment booking page both show the Quick Checkout block.
+
 The server writes page snapshots and console logs into `.playwright-mcp/` at the repo root as you drive it. That directory is gitignored — it is session scratch, not something to commit.
 
 ## Environment Variables & Configuration
