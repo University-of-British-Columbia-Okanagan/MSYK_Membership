@@ -759,27 +759,29 @@ app/components/
     ├── button.tsx, form.tsx, table.tsx, …  # shadcn primitives live as flat files here,
     │                                       # not in a subdirectory (26 in total)
     ├── Dashboard/          # Dashboard-specific components
-    │   ├── sidebar.tsx              # User sidebar (AppSidebar)
-    │   ├── adminsidebar.tsx         # Admin sidebar
-    │   ├── guestsidebar.tsx         # Guest sidebar
-    │   ├── ConfirmButton.tsx        # Action confirmation with loading state
-    │   ├── DateTypeRadioGroup.tsx   # Single/multi-day/recurring selector
-    │   ├── GenericFormField.tsx     # Reusable form field with validation
-    │   ├── MembershipCard.tsx       # Membership plan display card
-    │   ├── MembershipPlanForm.tsx   # Membership plan create/edit form
-    │   ├── MultiSelectField.tsx     # Multi-selection dropdown
-    │   ├── PrerequisitesField.tsx   # Workshop prerequisite selector
-    │   ├── OccurrenceRow.tsx        # Workshop occurrence row display
-    │   ├── OccurrenceTabs.tsx       # Tabbed occurrence management
+    │   │                           # every file here is PascalCase, named for the
+    │   │                           # component it exports
+    │   ├── AppSidebar.tsx          # User sidebar
+    │   ├── AdminAppSidebar.tsx     # Admin sidebar
+    │   ├── GuestAppSidebar.tsx     # Guest sidebar
+    │   ├── ConfirmButton.tsx       # Action confirmation with loading state
+    │   ├── DateTypeRadioGroup.tsx  # Single/multi-day/recurring selector
+    │   ├── EquipmentBookingGrid.tsx # Time-slot booking grid
+    │   ├── EquipmentCard.tsx       # Equipment item card
+    │   ├── EquipmentList.tsx       # Equipment list component
+    │   ├── GenericFormField.tsx    # Reusable form field with validation
+    │   ├── MembershipCard.tsx      # Membership plan display card
+    │   ├── MembershipPlanForm.tsx  # Membership plan create/edit form
+    │   ├── MultiSelectField.tsx    # Multi-selection dropdown
+    │   ├── OccurrenceRow.tsx       # Workshop occurrence row display
+    │   ├── OccurrenceTabs.tsx      # Tabbed occurrence management
+    │   ├── PrerequisitesField.tsx  # Workshop prerequisite selector
+    │   ├── QuickCheckout.tsx       # Saved-card quick checkout
     │   ├── RepetitionScheduleInputs.tsx  # Recurring schedule inputs
-    │   ├── ShadTable.tsx            # Styled table wrapper
-    │   ├── TimeIntervalPicker.tsx   # Time range selector
-    │   ├── equipmentbookinggrid.tsx # Time-slot booking grid
-    │   ├── equipmentcard.tsx        # Equipment item card
-    │   ├── equipmentlist.tsx        # Equipment list component
-    │   ├── quickcheckout.tsx        # Saved-card quick checkout
-    │   ├── workshopcard.tsx         # Workshop display card
-    │   └── workshoplist.tsx         # Workshop list component
+    │   ├── ShadTable.tsx           # Styled table wrapper
+    │   ├── TimeIntervalPicker.tsx  # Time range selector
+    │   ├── WorkshopCard.tsx        # Workshop display card
+    │   └── WorkshopList.tsx        # Workshop list component
     ├── About/              # About page sections
     ├── Home/               # Home page sections (hero, facilities, calendar, etc.)
     ├── Programming/        # Programming/workshops public sections
@@ -791,10 +793,12 @@ app/components/
 
 ### Dashboard Components
 
+Files in `app/components/ui/Dashboard/` are **PascalCase and named for the component they export** (`AppSidebar.tsx` exports `AppSidebar`). The flat shadcn primitives in `app/components/ui/` keep their lowercase upstream filenames — note `Dashboard/AppSidebar.tsx` (this app's sidebar) is a different file from `ui/sidebar.tsx` (the shadcn primitives), and many routes import both.
+
 **Layout & Navigation:**
-- **AppSidebar** (`sidebar.tsx`): Main user navigation sidebar
-- **AdminAppSidebar** (`adminsidebar.tsx`): Enhanced admin sidebar
-- **GuestAppSidebar** (`guestsidebar.tsx`): Limited guest navigation
+- **AppSidebar** (`AppSidebar.tsx`): Main user navigation sidebar
+- **AdminAppSidebar** (`AdminAppSidebar.tsx`): Enhanced admin sidebar
+- **GuestAppSidebar** (`GuestAppSidebar.tsx`): Limited guest navigation
 
 **Form & Input Components:**
 - **GenericFormField**: Reusable form field wrapper with validation and error handling
@@ -805,19 +809,19 @@ app/components/
 - **TimeIntervalPicker**: Time range picker for schedule inputs
 
 **Workshop Components:**
-- **WorkshopList** (`workshoplist.tsx`): Workshop list — supports user and admin views
-- **WorkshopCard** (`workshopcard.tsx`): Individual workshop display
+- **WorkshopList** (`WorkshopList.tsx`): Workshop list — supports user and admin views
+- **WorkshopCard** (`WorkshopCard.tsx`): Individual workshop display
 - **OccurrenceRow**: Workshop occurrence row with date/time formatting
 - **OccurrenceTabs**: Tabbed interface for occurrence management
 - **ConfirmButton**: Action confirmation with loading state
 
 **Equipment Components:**
-- **EquipmentBookingGrid** (`equipmentbookinggrid.tsx`): Time-slot grid for equipment reservations
-- **EquipmentCard** (`equipmentcard.tsx`): Equipment item display
-- **EquipmentList** (`equipmentlist.tsx`): Equipment listing component
+- **EquipmentBookingGrid** (`EquipmentBookingGrid.tsx`): Time-slot grid for equipment reservations
+- **EquipmentCard** (`EquipmentCard.tsx`): Equipment item display
+- **EquipmentList** (`EquipmentList.tsx`): Equipment listing component
 
 **Payment Components:**
-- **QuickCheckout** (`quickcheckout.tsx`): One-click payment with saved card
+- **QuickCheckout** (`QuickCheckout.tsx`): One-click payment with saved card
 
 **Data Display:**
 - **ShadTable**: Styled table wrapper
