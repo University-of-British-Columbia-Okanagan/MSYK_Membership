@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -991,7 +990,9 @@ export default function MembershipDetails() {
                         Membership Agreement{" "}
                         <span className="text-red-500">*</span>
                       </FormLabel>
-                      <FormDescription className="text-sm text-gray-600 mb-4">
+                      {/* Plain div, not FormDescription: that renders a <p>,
+                          which cannot legally contain the list below */}
+                      <div className="text-sm text-gray-600 mb-4">
                         <div className="font-semibold mb-2">
                           To sign the Membership Agreement:
                         </div>
@@ -1010,7 +1011,7 @@ export default function MembershipDetails() {
                           </li>
                           <li>Click the "Continue to Payment" button.</li>
                         </ol>
-                      </FormDescription>
+                      </div>
 
                       <div className="mb-4">
                         <Button
