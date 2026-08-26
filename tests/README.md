@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 29 suites, 388 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 31 suites, 431 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -65,7 +65,10 @@ tests/
 │   ├── access-control-sync.server.test.ts
 │   ├── brivo.server.test.ts
 │   └── stripe-sync.server.test.ts
+├── schemas/                     # app/schemas/
+│   └── workshop-occurrence-dates.test.ts  # end > start, across both workshop schemas
 ├── utils/                       # app/utils/
+│   ├── occurrences.test.ts
 │   └── session.server.test.ts
 ├── routes/dashboard/            # route loaders and actions
 │   ├── addequipment.test.ts
@@ -84,6 +87,8 @@ tests/
 ```
 
 Specs mirror the source tree. A file with more than roughly 20 tests is split by concern (`equipment.booking` vs `equipment.slots`) rather than growing without bound.
+
+`schemas/workshop-occurrence-dates.test.ts` is named for the rule rather than one source file, because it deliberately covers the same rule in **both** `workshopFormSchema` and `workshopOfferAgainSchema` — the offer schema was missing it, and asserting them together is what stops them drifting apart again. It also runs the rule across every `type` × multi-day × price-variations combination, so a future branch that skips the check for one workshop kind fails here.
 
 ---
 

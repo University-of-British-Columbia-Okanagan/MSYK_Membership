@@ -163,6 +163,15 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Registration cutoff (default: 60 minutes before start)
 - Google Calendar integration (optional, creates events when connected)
 
+**Scheduling occurrences (Add Workshop, Edit Workshop, Offer Again):**
+- All three pages enter dates through the same components (`OccurrenceRow`, `RepetitionScheduleInputs`) and share `app/utils/occurrences.ts`, so the rules below apply to every workshop kind — `workshop` and `orientation`, single-day and multi-day, with or without price variations
+- **Start and end are set independently.** Editing a start never changes the end. Moving a session to a different day is therefore two edits, the start then the end
+- The list re-sorts by start date after every edit; rows still being filled in sink to the bottom
+- An end at or before its start is flagged in the row in red and rejected on submit with "End date must be later than start date"
+- The end date and time fields stay disabled until a start is set. Once it is, picking an end time adopts the start's day, so the admin's chosen duration is never overridden by a default
+- A row whose occurrence has registrations is locked entirely and cannot be edited
+- **Append weekly / monthly dates** generates occurrences from the first-occurrence start and end, preserving that duration across every repetition; the append is refused if the template's end is not after its start
+
 **Registration Process:**
 - Prerequisite validation before registration
 - Capacity check (single occurrence or multi-day series)
@@ -188,6 +197,8 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - **Mark results**: individual pass/fail/pending via `updateRegistrationResult()`, or bulk "Pass All" via `updateMultipleRegistrations()` — both handled by the action in `app/routes/dashboard/admindashboardlayout.tsx`
 
 **Key Files:**
+- `app/utils/occurrences.ts` - `setOccurrenceDateField()`, `sortOccurrencesByStart()`, `isEndBeforeStart()` — the occurrence date rules, shared by all three date editors
+- `app/components/ui/Dashboard/OccurrenceRow.tsx` - One editable occurrence row, including the end-before-start warning and the disabled-until-start gating
 - `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration; `cancelUserWorkshopRegistration` and `cancelMultiDayWorkshopRegistration` accept optional `cancelledByAdmin` param (default `false`)
 - `app/models/payment.server.ts` - Workshop payment and refund processing
 - `app/routes/dashboard/workshops.tsx` - Workshop browsing and registration
@@ -902,7 +913,7 @@ Every implementation then follows **implement → test → verify end to end**. 
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**29 suites / 388 tests**)
+4. `npm test` — the suite must stay fully green (**31 suites / 431 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -999,6 +1010,10 @@ The acceptance criteria are organized into three categories:
 | AC24 | Multi-Day Workshop Registration | Multiple registrations created (one per occurrence); all share same payment intent ID | `tests/models/workshop.registration.test.ts` |
 | - | Workshop Basic Operations | Workshop CRUD operations, occurrence management, duplication and offering | `tests/models/workshop.basic.test.ts` |
 | - | Workshop Cancellation | Workshop cancellation logic and registration removal | `tests/models/workshop.cancellation.test.ts` |
+| - | Occurrence Date Field Editing | Setting a start never derives an end from it (the removed auto-2h rule); each edit returns new objects rather than mutating the array held in state; other rows and the occurrence's own unrelated fields are untouched; an out-of-range index is a no-op | `tests/utils/occurrences.test.ts` |
+| - | Occurrence Sorting | Sorts chronologically and sinks not-yet-filled rows (`new Date("")`) to the bottom, so an invalid date cannot act as a sort barrier that leaves the array partially sorted; never mutates its input | `tests/utils/occurrences.test.ts` |
+| - | Occurrence End-Before-Start Detection | True when an end is before or equal to its start, false while either side is unfilled — drives the red row warning | `tests/utils/occurrences.test.ts` |
+| - | Occurrence Date Range Validation | `endDate > startDate` enforced by both `workshopFormSchema` and `workshopOfferAgainSchema` with the same message and field path, for every `type` × multi-day × price-variations combination; rejects the whole list when any one session is inverted | `tests/schemas/workshop-occurrence-dates.test.ts` |
 | AC28 | Equipment Prerequisites | System checks user completed required workshops; booking blocked if prerequisites not met | `tests/models/equipment.basic.test.ts` |
 | AC29 | Equipment Slot Availability | System validates slot not already booked; slot marked as booked (`isBooked: true`) | `tests/models/equipment.booking.test.ts` |
 | AC30 | Equipment Bulk Booking | Multiple booking records created; all bookings share same payment intent ID; all slots marked as booked | `tests/models/equipment.booking.test.ts` |
@@ -1202,6 +1217,13 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC24 | Multi-Day **Workshop** Registration | Browse workshops; select multi-day workshop (has `connectId`); review all sessions; complete registration and payment (single payment) | Multiple registrations created (one per occurrence); all registrations share same payment intent ID; confirmation email received with all session dates/times, multi-event ICS attachment, per-session Google Calendar links |
 | AC25 | **Workshop** Price Variation | Create workshop with price variations (e.g., student, early bird); select price variation during registration; complete registration | Selected variation price applied to payment; variation name and description included in confirmation email |
 | AC26 | **Workshop** Refund | Register for workshop; cancel workshop registration from `/dashboard/myworkshops` | Stripe refund processed; registration record deleted; cancellation confirmation email received; refund appears in Stripe dashboard |
+| ---- | **Workshop** Edit Dates — start edit leaves other sessions alone | Open a multi-day workshop whose sessions are longer than 2 hours (seed: "Workshop — Multi-Day", 10:00–14:00); change the first row's start date to a day after the others; then change the start time on whichever row is now at the top | The list re-sorts and the edited session moves; every session the admin did not touch keeps its original start and end; the touched row keeps its end time so the duration changes only by what the admin actually edited; no session is silently reduced to 2 hours | `tests/utils/occurrences.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — moving a session to another day | Change only a row's start date | End date and time are unchanged, so the end now sits before the start; the row is outlined red with "This session ends before it starts"; correcting the end date clears the warning and preserves the original duration | `tests/utils/occurrences.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — new row gating | Click "+ Add Date"; then set the new row's start date; then pick an end time without touching the end date | End date and end time are disabled until a start is set; once set they become editable and no end is filled in automatically; picking an end time fills the end date with the start's day at the chosen time | `NA` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — append weekly/monthly preserves duration | Pick "Append weekly dates"; set the first occurrence to a span longer than 2 hours; change the start date; correct the end; set repetitions to 3 and append | Changing the start leaves the end time alone (flagged red if it now precedes the start); the appended sessions all carry the template's duration, not 2 hours; appending is refused while the template's end is not after its start | `NA` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — save blocked on an inverted range | Leave a row with its end before its start and submit on Add Workshop, Edit Workshop, and Offer Again | Submit is blocked on all three pages with "End date must be later than start date"; nothing is written to the database | `tests/schemas/workshop-occurrence-dates.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — every workshop kind | Repeat the start-date edit on each of: workshop and orientation, single-day and multi-day, with and without price variations (seed workshops #7–#14 by name) | The end never moves on its own in any of the eight combinations; a row whose occurrence has registrations is locked entirely and cannot be edited at all | `tests/schemas/workshop-occurrence-dates.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — mobile | Narrow the browser to a phone-width viewport on any workshop date editor | Each row stacks so start date/time sit on one line and end date/time below; the page does not scroll sideways; the red outlines and warning text stay readable | `NA` | `26/08/2026`
 | AC27 | **Equipment** Role Level Restriction | Login as Level 2 user; attempt to book equipment requiring Level 3+; upgrade to Level 3 (via membership); attempt booking again | Booking blocked initially; error message displayed; booking allowed after upgrade |
 | AC28 | **Equipment** Prerequisites | Create equipment with prerequisite workshops; attempt booking without completing prerequisites; complete prerequisite workshop; attempt booking again | Booking blocked initially; error message displayed; booking allowed after completing prerequisites |
 | AC29 | **Equipment** Slot Availability | Navigate to equipment booking grid; select available time slot; complete booking and payment; attempt to book same slot as another user | Booking created; slot marked as booked; booking blocked for same slot (slot unavailable) |

@@ -395,7 +395,8 @@ app/
 │   ├── db.server.ts             # Prisma client instance (singleton)
 │   ├── email.server.ts          # All transactional emails via Mailgun
 │   ├── googleCalendar.server.ts # Google Calendar OAuth + event CRUD
-│   └── singleton.server.ts      # Server singleton pattern helper
+│   ├── singleton.server.ts      # Server singleton pattern helper
+│   └── occurrences.ts           # Workshop occurrence date rules (shared by the date editors, not server-only)
 │
 ├── layouts/             # Shared layout components
 │   ├── DashboardLayout.tsx
@@ -492,6 +493,14 @@ All three jobs are covered by tests, along with the startup wiring itself: `test
 **Prerequisites:** Workshops can require completion of other workshops via the `WorkshopPrerequisite` table. Always validate prerequisites before allowing registration.
 
 **Multi-day Workshops:** Connected via shared `connectId` on `WorkshopOccurrence`. All occurrences must be registered together as a single unit.
+
+**Occurrence Date Editing:** Add Workshop, Edit Workshop, and Offer Again all enter dates through `OccurrenceRow` and `RepetitionScheduleInputs`, and all share the helpers in `app/utils/occurrences.ts`. The rules hold for every workshop kind — `workshop` and `orientation`, single-day and multi-day, with or without price variations:
+
+- **Start and end are independent.** Editing a start never derives an end from it. An earlier version added two hours to the start on every start edit, which silently collapsed sessions the admin had given a different duration — see the note in `CLAUDE.md`
+- **The list re-sorts on every edit** via `sortOccurrencesByStart()`, which sinks not-yet-filled rows to the bottom. A plain `a - b` comparator returns NaN against a row holding `new Date("")`, which V8 reads as "equal" and treats as a wall, leaving the array partially sorted
+- **An end at or before its start is flagged in the row** by `isEndBeforeStart()` and rejected on submit by both `workshopFormSchema` and `workshopOfferAgainSchema` with "End date must be later than start date". Moving a session to a different day therefore takes two edits — the start, then the end — with the red flag catching a forgotten second edit
+- **The end fields are disabled until a start is set.** Once it is, the end time picker falls back to the start's day, so choosing a time fills the end date without inventing a duration
+- **A row with registrations is fully locked** (`disabled`), and `updateOccurrence` early-returns, so no date on it can change
 
 **Registration Rules:**
 - **Cutoff Time**: `Workshop.registrationCutoff`, in minutes before start (schema default 60); `0` or null means no cutoff. Set per-workshop from Admin Settings via `updateWorkshopCutoff()`. Enforced in the UI in `workshopdetails.tsx`, and server-side by the module-local `isPastRegistrationCutoff` helper (internal to `payment.tsx`, not exported) in **all four** workshop branches of the `payment.tsx` loader — single occurrence, single + variation, multi-day, and multi-day + variation. The loader is the only server-side gate: neither `quickCheckout()` nor `paymentsuccess.tsx` re-checks the cutoff, so a branch that skips it is bypassable by URL. `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape
@@ -827,13 +836,13 @@ Files in `app/components/ui/Dashboard/` are **PascalCase and named for the compo
 - **DateTypeRadioGroup**: Workshop date type selector (single, multi-day)
 - **MultiSelectField**: Multi-selection dropdown for equipment and prerequisites
 - **PrerequisitesField**: Prerequisite workshop selector
-- **RepetitionScheduleInputs**: Time-based inputs for recurring schedules
-- **TimeIntervalPicker**: Time range picker for schedule inputs
+- **RepetitionScheduleInputs**: First-occurrence start/end plus interval and count, used to append a weekly or monthly series. The end fields stay disabled until a start is set, and an end at or before the start blocks the append
+- **TimeIntervalPicker**: Time range picker for schedule inputs, in 15-minute steps. Disabled until its `date` prop is set, which is how the date editors gate the end time
 
 **Workshop Components:**
 - **WorkshopList** (`WorkshopList.tsx`): Workshop list — supports user and admin views
 - **WorkshopCard** (`WorkshopCard.tsx`): Individual workshop display
-- **OccurrenceRow**: Workshop occurrence row with date/time formatting
+- **OccurrenceRow**: One editable occurrence — start date/time and end date/time. Shared by Add Workshop, Edit Workshop, and Offer Again, so the date rules below hold on all three. Flags an end at or before the start in red, disables the end fields until a start is set, and locks the whole row when the occurrence has registrations
 - **OccurrenceTabs**: Tabbed interface for occurrence management
 - **ConfirmButton**: Action confirmation with loading state
 
@@ -1113,7 +1122,7 @@ Assume you are here whenever you edit an existing function, route, query, or sch
 
 **Most changes are the second kind.** When unsure, treat it as the second kind.
 
-The suite is currently **fully green — 29 suites, 388 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+The suite is currently **fully green — 31 suites, 431 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
 
 **Rules:**
 
@@ -1128,7 +1137,7 @@ The suite is currently **fully green — 29 suites, 388 tests** — and every se
 
 - Jest with ts-jest; Testing Library for component tests; MSW available for mocking external APIs
 - Run everything with `npm test`, or one area with `npx jest --testPathPatterns "workshop"`
-- **Specs** mirror the source tree: `tests/models/`, `tests/services/`, `tests/utils/`, `tests/config/`, `tests/routes/dashboard/`
+- **Specs** mirror the source tree: `tests/models/`, `tests/services/`, `tests/utils/`, `tests/schemas/`, `tests/config/`, `tests/routes/dashboard/`
 - **Per-domain mocks** live in `tests/fixtures/<domain>/setup.ts` and are imported for their side effects on the *first line* of a spec, before the module under test:
   ```ts
   import "tests/fixtures/equipment/setup";
@@ -1147,7 +1156,10 @@ The suite is currently **fully green — 29 suites, 388 tests** — and every se
 `access-control-sync.server`, `brivo.server`, `stripe-sync.server`
 
 **Util and config tests:**
-`tests/utils/session.server.test.ts`, `tests/config/access-control.test.ts`
+`tests/utils/session.server.test.ts`, `tests/utils/occurrences.test.ts`, `tests/config/access-control.test.ts`
+
+**Schema tests** (`tests/schemas/`):
+`workshop-occurrence-dates.test.ts` — the "end must be later than start" rule in both `workshopFormSchema` and `workshopOfferAgainSchema`, across every `type` × multi-day × price-variations combination
 
 **Boot wiring test:**
 `tests/entry.server.test.ts` — asserts `entry.server.ts` starts all three background jobs, and starts each one only once per process
