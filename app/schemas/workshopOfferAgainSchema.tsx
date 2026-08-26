@@ -15,7 +15,17 @@ export const workshopOfferSchema = z.object({
         endDatePST: z.date().optional(),
       })
     )
-    .min(1, "At least one date is required"),
+    .min(1, "At least one date is required")
+    .refine(
+      (occurrences) =>
+        occurrences.every(
+          (occ) => occ.endDate.getTime() > occ.startDate.getTime()
+        ),
+      {
+        message: "End date must be later than start date",
+        path: ["occurrences"],
+      }
+    ),
 });
 
 export type WorkshopOfferValues = z.infer<typeof workshopOfferSchema>;
