@@ -35,6 +35,7 @@ export const createMockPlan = (
     priceYearly: number | null;
     needAdminPermission: boolean;
     feature: Record<string, string>;
+    stripeProductId: string | null;
   }> = {}
 ) => ({
   id: 1,
@@ -46,6 +47,9 @@ export const createMockPlan = (
   priceYearly: null,
   needAdminPermission: false,
   feature: { Feature1: "Access to makerspace" },
+  // Synced by default — renewal invoices must carry it or product-restricted
+  // coupons stop applying after the first payment.
+  stripeProductId: "prod_test",
   ...overrides,
 });
 

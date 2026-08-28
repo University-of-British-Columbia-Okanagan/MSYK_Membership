@@ -19,6 +19,12 @@ import { PDFDocument as PDFLibDocument, StandardFonts, rgb } from "pdf-lib";
 import * as fs from "fs";
 import * as path from "path";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
+import {
+  chargeMembershipViaInvoice,
+  clearMembershipDiscount,
+  getCustomerDiscount,
+  previewMembershipCharge,
+} from "~/services/stripe-discounts.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -339,6 +345,33 @@ export async function getMembershipPlanById(planId: number) {
  * @param isResubscription Flag indicating if this is reactivating a cancelled membership
  * @returns Created or updated membership subscription record
  */
+/**
+ * End a member's recurring discount and forget it locally.
+ *
+ * The client's rule: a discount is tied to the plan it was bought for, so switching plans
+ * ends it. Stripe would otherwise carry a customer discount onto every later invoice.
+ */
+export async function endRecurringDiscountForUser(
+  userId: number,
+  membershipIds: number[] = [],
+): Promise<boolean> {
+  const savedPayment = await db.userPaymentInformation.findUnique({
+    where: { userId },
+    select: { stripeCustomerId: true },
+  });
+
+  const affected = await db.userMembership.findMany({
+    where: { userId, stripeCouponId: { not: null } },
+    select: { id: true },
+  });
+
+  const ids = Array.from(
+    new Set([...membershipIds, ...affected.map((row) => row.id)]),
+  );
+
+  return clearMembershipDiscount(savedPayment?.stripeCustomerId, ids);
+}
+
 export async function registerMembershipSubscription(
   userId: number,
   membershipPlanId: number,
@@ -424,6 +457,9 @@ export async function registerMembershipSubscription(
       data: { status: "ending" },
     });
 
+    // A recurring discount does not follow the member onto a different plan.
+    await endRecurringDiscountForUser(userId, [currentMembershipId]);
+
     // Set the old membership's form to "ending" to match
     await updateMembershipFormStatus(
       userId,
@@ -502,6 +538,9 @@ export async function registerMembershipSubscription(
       where: { id: currentMembershipId },
       data: { status: "ending" },
     });
+
+    // A recurring discount does not follow the member onto a different plan.
+    await endRecurringDiscountForUser(userId, [currentMembershipId]);
 
     // Sync the old membership's form to ending
     await updateMembershipFormStatus(
@@ -850,11 +889,16 @@ export function startMonthlyMembershipCheck() {
         }
 
         const gstPercentage = await getAdminSetting("gst_percentage", "5");
-        const gstRate = parseFloat(gstPercentage) / 100;
-        const chargeAmount = baseAmount * (1 + gstRate);
 
         const savedPayment = await db.userPaymentInformation.findUnique({
           where: { userId: membership.userId },
+        });
+
+        const preview = await previewMembershipCharge({
+          customerId: savedPayment?.stripeCustomerId,
+          baseAmount,
+          gstPercentage: parseFloat(gstPercentage),
+          chargeOn: membership.nextPaymentDate,
         });
 
         try {
@@ -862,14 +906,16 @@ export function startMonthlyMembershipCheck() {
             userEmail: user.email,
             planTitle: membership.membershipPlan.title,
             nextPaymentDate: membership.nextPaymentDate,
-            amountDue: chargeAmount,
+            amountDue: preview.total,
+            baseAmount: preview.baseAmount,
+            discountAmount: preview.discountAmount,
             gstPercentage: parseFloat(gstPercentage),
             needsPaymentMethod:
               !savedPayment?.stripeCustomerId ||
               !savedPayment?.stripePaymentMethodId,
           });
           console.log(
-            `✅ Sent payment reminder to user ${membership.userId} for ${membership.billingCycle} membership ($${chargeAmount.toFixed(2)})`,
+            `✅ Sent payment reminder to user ${membership.userId} for ${membership.billingCycle} membership ($${preview.total.toFixed(2)})`,
           );
         } catch (emailErr) {
           console.error(
@@ -1019,8 +1065,6 @@ export function startMonthlyMembershipCheck() {
 
           // Get GST percentage from admin settings
           const gstPercentage = await getAdminSetting("gst_percentage", "5");
-          const gstRate = parseFloat(gstPercentage) / 100;
-          const chargeAmount = baseAmount * (1 + gstRate);
 
           // Get user's saved payment method from UserPaymentInformation
           const savedPayment = await db.userPaymentInformation.findUnique({
@@ -1069,31 +1113,29 @@ export function startMonthlyMembershipCheck() {
           }
 
           try {
-            // Create payment intent with GST-inclusive amount and metadata
-            const pi = await stripe.paymentIntents.create({
-              amount: Math.round(chargeAmount * 100), // Now includes GST
-              currency: "cad", // Changed from "usd" to match your other payments
-              customer: savedPayment.stripeCustomerId,
-              payment_method: savedPayment.stripePaymentMethodId,
-              off_session: true,
-              confirm: true,
-              receipt_email: user.email,
-              description: `${membership.membershipPlan.title} - Monthly Payment (Includes ${gstPercentage}% GST)`,
+            // Charged as an invoice, not a bare PaymentIntent: only an invoice carries a
+            // discount, which is what lets a recurring coupon apply past the first payment.
+            // GST rides as a tax rate so it is levied on the post-discount base.
+            const charge = await chargeMembershipViaInvoice({
+              customerId: savedPayment.stripeCustomerId,
+              paymentMethodId: savedPayment.stripePaymentMethodId,
+              baseAmount,
+              description: `${membership.membershipPlan.title} - ${membership.billingCycle} membership`,
+              gstPercentage: parseFloat(gstPercentage),
+              stripeProductId: membership.membershipPlan.stripeProductId,
               metadata: {
                 userId: String(membership.userId),
                 membershipId: String(membership.id),
                 planId: String(membership.membershipPlanId),
                 original_amount: baseAmount.toString(),
-                gst_amount: (chargeAmount - baseAmount).toString(),
-                total_with_gst: chargeAmount.toString(),
                 gst_percentage: gstPercentage,
                 payment_type: "monthly_membership",
               },
             });
 
-            if (pi.status === "succeeded") {
+            if (charge.status === "paid") {
               console.log(
-                `✅ Payment intent succeeded for user ${membership.userId}, charged $${chargeAmount.toFixed(2)} (includes ${gstPercentage}% GST)`,
+                `✅ Invoice ${charge.invoiceId} paid for user ${membership.userId}: base $${charge.subtotal.toFixed(2)}, discount -$${charge.discountAmount.toFixed(2)}, GST $${charge.taxAmount.toFixed(2)}, total $${charge.total.toFixed(2)}`,
               );
 
               const newNextPaymentDate = addMonthsForCycle(
@@ -1105,11 +1147,17 @@ export function startMonthlyMembershipCheck() {
                   | "yearly",
               );
 
+              const discountAfterCharge = await getCustomerDiscount(
+                savedPayment.stripeCustomerId,
+              );
+
               await db.userMembership.update({
                 where: { id: membership.id },
                 data: {
                   nextPaymentDate: newNextPaymentDate,
-                  paymentIntentId: pi.id,
+                  paymentIntentId: charge.paymentIntentId,
+                  stripeCouponId: discountAfterCharge?.couponId ?? null,
+                  discountEndsAt: discountAfterCharge?.endsAt ?? null,
                 },
               });
 
@@ -1120,8 +1168,9 @@ export function startMonthlyMembershipCheck() {
                 await sendMembershipPaymentSuccessEmail({
                   userEmail: user.email,
                   planTitle: membership.membershipPlan.title,
-                  amountCharged: chargeAmount,
-                  baseAmount: baseAmount,
+                  amountCharged: charge.total,
+                  baseAmount: charge.subtotal,
+                  discountAmount: charge.discountAmount,
                   gstPercentage: parseFloat(gstPercentage),
                   nextPaymentDate: newNextPaymentDate,
                   billingCycle: membership.billingCycle as
@@ -1141,14 +1190,8 @@ export function startMonthlyMembershipCheck() {
               }
             } else {
               console.log(
-                `⚠️ Payment intent for user ${membership.userId} has status: ${pi.status}`,
+                `⚠️ Invoice ${charge.invoiceId} for user ${membership.userId} has status: ${charge.status}`,
               );
-
-              if (pi.last_payment_error) {
-                console.error(
-                  `Payment error: ${JSON.stringify(pi.last_payment_error)}`,
-                );
-              }
             }
           } catch (err: any) {
             console.error(
