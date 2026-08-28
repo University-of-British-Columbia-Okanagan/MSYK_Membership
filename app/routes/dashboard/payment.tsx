@@ -936,7 +936,7 @@ export default function Payment() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
+    <div className="max-w-md mx-auto my-10 p-6 border rounded-lg shadow-lg bg-white">
       {/* Quick Checkout Section for Workshops - only show if price > 0 */}
       {data.workshop && data.savedPaymentMethod &&
         (data.selectedVariation ? data.selectedVariation.price : data.workshop.price) > 0 && (
