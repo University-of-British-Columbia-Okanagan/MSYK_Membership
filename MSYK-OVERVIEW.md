@@ -441,15 +441,49 @@ The `syncUserDoorAccess()` function is automatically called when:
 - Checkout sessions reference `price_data.product` when `stripeProductId` is set; fallback to `price_data.product_data` inline if not
 - Each Stripe Product carries metadata: `{ portal_type: "workshop"|"membership"|"equipment", portal_id: "N" }`
 
-**Admin UI (Admin Settings → Stripe Products tab):**
+**Admin UI (Admin Settings → Stripe Integrations tab):**
 - Sync All to Stripe button with per-category success counts
 - Clear & Re-sync button — clears all `stripeProductId` values and re-syncs (required when switching Stripe environments)
 - Integration status display
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — All Stripe sync/archive logic
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
-- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Products tab
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Integrations tab
+
+---
+
+### 13. Recurring Membership Discounts
+
+**Purpose:** A Stripe promotion code entered at membership checkout applies to every subsequent renewal, not only the first payment.
+
+Memberships are **not** Stripe Subscriptions. The portal still owns `nextPaymentDate`, `billingCycle`, and upgrade/downgrade; only the charge mechanism changed.
+
+**How it works:**
+- Renewals are raised as Stripe **Invoices** rather than bare PaymentIntents, because only an invoice carries a discount
+- The coupon is pinned to the member's **Stripe Customer**, which applies to invoices only — it cannot leak into workshop or equipment checkout
+- `UserMembership.stripeCouponId` and `discountEndsAt` mirror the Stripe discount for display; Stripe remains authoritative
+- GST is attached as a Stripe **tax rate** on both checkout and renewals, so a discount reduces the base and GST is charged on the reduced amount
+- The plan's `stripeProductId` is set on the renewal invoice line, so coupons restricted to specific products keep applying after the first payment
+
+**A discount ends when:**
+- The member upgrades or downgrades their plan
+- An admin clicks **End** in Admin Settings → Stripe Integrations
+- Stripe reaches the coupon's expiry date
+- Cancelling does **not** end it: the coupon stays on the Stripe Customer and applies again if the member resubscribes to the same plan
+
+**Coupon duration:** `duration_in_months` counts calendar months from redemption, and the expiry boundary is exclusive, so discounted payments = `ceil(coupon months / cycle months)`. A coupon whose duration equals the billing cycle discounts exactly one payment.
+
+**Admin UI (Admin Settings → Stripe Integrations tab):**
+- GST tax rate status
+- Table of members currently on a recurring discount, with coupon id and expiry, and an **End** action per member. Discounts Stripe has already expired are filtered out
+
+**Key Files:**
+- `app/services/stripe-discounts.server.ts` — tax rate resolution, coupon capture, apply/clear, charge preview, renewal invoices
+- `app/models/membership.server.ts` — `endRecurringDiscountForUser()`, and the billing cron's invoice charge
+- `app/routes/dashboard/paymentsuccess.tsx` — captures the checkout coupon onto the Stripe Customer
+- `test-scripts/test-coupon-durations.ts` — verifies any duration × billing cycle combination against real Stripe test clocks
+- `test-scripts/test-membership-renewal.ts` — drives a renewal on demand without waiting for the cron
 
 ---
 
@@ -741,13 +775,13 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
      - Set form status to "inactive"
      - Skip charging (membership expires at term end)
    - **If status "active" and `autoRenew=true`:**
-     - Calculate charge amount (base price + GST based on billing cycle)
+     - Select the base price for the billing cycle (`price`, `price3Months`, `price6Months`, `priceYearly`, falling back to `price` when the cycle price is null)
      - Retrieve saved payment method
      - If payment method exists:
-       - Create Stripe payment intent with saved card
-       - Charge user
+       - Raise a Stripe **Invoice** with the base amount, the plan's `stripeProductId`, and GST as a tax rate, then finalize and pay it with the saved card
+       - Any recurring discount on the Stripe Customer is applied by Stripe, before tax
        - Update `nextPaymentDate` based on billing cycle (monthly: +1 month, quarterly: +3 months, semiannually: +6 months, yearly: +1 year)
-       - Store payment intent ID
+       - Store the invoice's payment intent ID, and re-mirror `stripeCouponId` / `discountEndsAt` from Stripe
      - If no payment method:
        - Set membership status to "inactive"
        - Set form status to "inactive"
@@ -756,7 +790,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
      - Set status to "inactive"
      - Set form status to "inactive"
 3. Update user role levels based on membership status
-4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`)
+4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`), quoting the discounted total as of the charge date
 
 **Role Level Updates:**
 - If active membership exists and plan has `needAdminPermission` and user has `allowLevel4`: Level 4
@@ -872,7 +906,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 3. Stripe Product marked `active: false` (archived, not deleted — Stripe cannot delete products with payment history)
 
 **Bulk Sync (for Existing Data):**
-1. Admin navigates to Admin Settings → Stripe Products tab
+1. Admin navigates to Admin Settings → Stripe Integrations tab
 2. Clicks "Sync All to Stripe"
 3. `POST /api/stripe-sync` called with action `bulkSync`
 4. System loops through all workshops, membership plans, and equipment
@@ -883,7 +917,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 **Clear & Re-sync (Environment Switch):**
 1. Admin switches Stripe keys in `.env` (e.g. test → live)
 2. All stored `stripeProductId` values are now invalid for the new account
-3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Products tab
+3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Integrations tab
 4. `POST /api/stripe-sync` called with action `clearAndResync`
 5. All `stripeProductId` values in DB cleared to `null`
 6. Full bulk sync runs against the new Stripe account
@@ -891,8 +925,8 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — `syncWorkshopToStripe`, `syncMembershipPlanToStripe`, `syncEquipmentToStripe`, `archiveStripeProduct`, `bulkSyncToStripe`
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
-- `app/routes/dashboard/adminsettings.tsx` — Stripe Products tab UI
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/dashboard/adminsettings.tsx` — Stripe Integrations tab UI
 
 **Known Limitations:**
 - Per-variation coupon targeting not supported (all price variations share one Stripe Product)
@@ -913,7 +947,7 @@ Every implementation then follows **implement → test → verify end to end**. 
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**31 suites / 431 tests**)
+4. `npm test` — the suite must stay fully green (**37 suites / 515 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -1002,8 +1036,16 @@ The acceptance criteria are organized into three categories:
 | AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
 | AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
 | AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
-| AC19 | Automated Monthly Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
-| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder | `tests/models/membership.cron.test.ts` |
+| AC19 | Automated Membership Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges every billing cycle via a Stripe invoice using the saved payment method; sets memberships without a saved card to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
+| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder; the amount is the discounted total priced as of the charge date | `tests/models/membership.cron.test.ts` |
+| - | Billing Cycles | Every cycle (monthly, quarterly, semiannually, yearly) reads its own price with fallback to `price` when the cycle price is null, advances `nextPaymentDate` by the right interval, and carries the plan's `stripeProductId` on the invoice line | `tests/models/membership.cron.test.ts` |
+| - | Recurring Discount Capture | A promotion code on the completed checkout session is pinned to the member's Stripe customer after the subscription exists; a Stripe failure there does not cost the member the membership they just paid for | `tests/routes/dashboard/paymentsuccess.discount.test.ts` |
+| - | Recurring Discount Service | GST tax rate resolution and reuse, coupon extraction from a session including a typed promotion code, apply and clear, charge preview, and renewal invoices carrying the product and tax rate | `tests/services/stripe-discounts.server.test.ts` |
+| - | Recurring Discount Ends on Plan Change | Upgrade and downgrade both clear the Stripe discount and the mirrored columns; a brand-new subscription does not | `tests/models/membership.server.test.ts` |
+| - | Stripe Integrations Admin Endpoint | Every action is admin-only; the discount listing filters out discounts Stripe has already expired while keeping `forever` ones; ending a discount requires a `userId` and surfaces Stripe failures | `tests/routes/api/stripe-sync.test.ts` |
+| - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/routes/dashboard/payment.membership-gst.test.ts` |
+| - | Membership Email Amounts | Reminder and payment-success emails itemise base, discount, and GST, with GST derived from the discounted base rather than the gap between list price and total | `tests/utils/email.membership-discount.test.ts` |
+| - | Saved Payment Method Guard | `getSavedPaymentMethod()` returns `null` for a `UserPaymentInformation` row holding only a customer id, so Quick Checkout and the profile page do not render a card with blank digits | `tests/models/user.payment-method.test.ts` |
 | AC21 | Workshop Prerequisites | System checks user completed required workshops; registration blocked if prerequisites not met | `tests/models/workshop.registration.test.ts` |
 | AC22 | Workshop Capacity | System checks available spots; registration blocked if capacity exceeded | `tests/models/workshop.capacity.test.ts` |
 | AC23 | Single Occurrence Registration | User registers for single workshop occurrence; registration created in `UserWorkshop` | `tests/models/workshop.registration.test.ts` |
@@ -1522,6 +1564,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 - `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes); exports the `brivoClient` singleton
 - `app/services/access-control-sync.server.ts` - Door access synchronization (`syncUserDoorAccess()`)
 - `app/services/stripe-sync.server.ts` - Stripe Product sync and archive
+- `app/services/stripe-discounts.server.ts` - Recurring membership discounts, GST tax rate, renewal invoices
 
 **Utilities:**
 - `app/utils/session.server.ts` - Authentication, session management, waiver generation
