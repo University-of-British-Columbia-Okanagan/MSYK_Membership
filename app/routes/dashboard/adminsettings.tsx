@@ -7,6 +7,7 @@ import {
   redirect,
   useSubmit,
   useFetcher,
+  useSearchParams,
 } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
@@ -2076,6 +2077,54 @@ function StripeSyncSection() {
   const [loading, setLoading] = React.useState(false);
   const [statusLoading, setStatusLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [discountInfo, setDiscountInfo] = React.useState<{
+    gst?: { percentage: number; taxRateId: string | null };
+    discounts?: Array<{
+      membershipId: number;
+      userId: number;
+      memberName: string;
+      email: string;
+      planTitle: string;
+      couponId: string | null;
+      endsAt: string | null;
+      status: string;
+    }>;
+  } | null>(null);
+  const [discountLoading, setDiscountLoading] = React.useState(false);
+  const [endingUserId, setEndingUserId] = React.useState<number | null>(null);
+
+  const fetchDiscounts = async () => {
+    setDiscountLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "getDiscountStatus");
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) setDiscountInfo(data);
+      else setError(data.error);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setDiscountLoading(false);
+    }
+  };
+
+  const endDiscount = async (userId: number) => {
+    setEndingUserId(userId);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "endDiscount");
+      fd.append("userId", String(userId));
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) await fetchDiscounts();
+      else setError(data.error ?? "Could not end the discount");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setEndingUserId(null);
+    }
+  };
 
   const fetchStatus = async () => {
     setStatusLoading(true);
@@ -2095,6 +2144,7 @@ function StripeSyncSection() {
 
   React.useEffect(() => {
     fetchStatus();
+    fetchDiscounts();
   }, []);
 
   const runSync = async (actionType: "bulkSync" | "clearAndResync") => {
@@ -2237,13 +2287,132 @@ function StripeSyncSection() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            <strong>Sync All to Stripe</strong> — creates Stripe Products for
-            any items that don&apos;t yet have one. Safe to run multiple times;
+            <strong>Sync All to Stripe</strong> creates Stripe Products for any
+            items that don&apos;t yet have one. Safe to run multiple times;
             already-synced items are skipped.
             <br />
-            <strong>Clear &amp; Re-sync</strong> — clears all stored Stripe
-            Product IDs and re-creates them from scratch. Use this only when
-            switching Stripe environments (e.g. test → live).
+            <strong>Clear &amp; Re-sync</strong> clears all stored Stripe Product
+            IDs and re-creates them from scratch. Use this only when switching
+            Stripe environments, for example test to live.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recurring Membership Discounts</CardTitle>
+          <CardDescription>
+            A promotion code entered at checkout is pinned to the member&apos;s
+            Stripe customer, so every renewal invoice inherits it until Stripe
+            expires it. Create the coupon in the Stripe dashboard with a
+            duration of <em>repeating</em> and the number of months it should
+            last.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-medium">GST tax rate</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={fetchDiscounts}
+                disabled={discountLoading}
+              >
+                {discountLoading ? "Refreshing…" : "Refresh"}
+              </Button>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground break-all">
+              {discountInfo?.gst?.taxRateId ? (
+                <>
+                  {discountInfo.gst.percentage}% ·{" "}
+                  <code className="text-xs">{discountInfo.gst.taxRateId}</code>
+                </>
+              ) : (
+                "Not created yet. It is created automatically on the next membership checkout."
+              )}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              GST is charged as a Stripe tax rate rather than folded into the
+              price, so a discount reduces the base and GST is charged on the
+              reduced amount.
+            </p>
+          </div>
+
+          <div className="rounded-lg border">
+            <div className="border-b p-4">
+              <span className="text-sm font-medium">
+                Members on a recurring discount
+                {discountInfo?.discounts
+                  ? ` (${discountInfo.discounts.length})`
+                  : ""}
+              </span>
+            </div>
+
+            {!discountInfo?.discounts?.length ? (
+              <p className="p-4 text-sm text-muted-foreground">
+                No members currently have a recurring discount.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                      <th className="p-3 font-medium">Member</th>
+                      <th className="p-3 font-medium">Plan</th>
+                      <th className="p-3 font-medium">Coupon</th>
+                      <th className="p-3 font-medium">Ends</th>
+                      <th className="p-3 font-medium" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {discountInfo.discounts.map((row) => (
+                      <tr key={row.membershipId} className="border-b last:border-0">
+                        <td className="p-3">
+                          <div className="font-medium">{row.memberName}</div>
+                          <div className="text-xs text-muted-foreground break-all">
+                            {row.email}
+                          </div>
+                        </td>
+                        <td className="p-3">{row.planTitle}</td>
+                        <td className="p-3">
+                          <code className="text-xs">{row.couponId}</code>
+                        </td>
+                        <td className="p-3">
+                          {row.endsAt
+                            ? new Date(row.endsAt).toLocaleDateString()
+                            : "No expiry"}
+                        </td>
+                        <td className="p-3 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={endingUserId === row.userId}
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `End the recurring discount for ${row.memberName}? Their next renewal will be charged at full price.`
+                                )
+                              ) {
+                                endDiscount(row.userId);
+                              }
+                            }}
+                          >
+                            {endingUserId === row.userId ? "Ending…" : "End"}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            A discount ends automatically when the member upgrades or downgrades
+            their plan, and when Stripe reaches its expiry date. Use{" "}
+            <strong>End</strong> to stop one early.
           </p>
         </CardContent>
       </Card>
@@ -2466,10 +2635,14 @@ export default function AdminSettings() {
     Record<number, boolean | null>
   >({});
 
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    if (typeof window === "undefined") return "workshops";
-    return new URLSearchParams(window.location.search).get("tab") ?? "workshops";
-  });
+  // Read ?tab= through the router, not window.location: the server knows the URL too, so
+  // both renders agree. Reading window here made the server render "workshops" while the
+  // client rendered the requested tab, which failed hydration and left the whole settings
+  // page's handlers detached until React rebuilt the tree.
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<string>(
+    () => searchParams.get("tab") ?? "workshops",
+  );
 
   const effectiveBrivoAccessGroupLevel4 = (
     brivo.accessGroupLevel4 ??
@@ -3754,7 +3927,7 @@ export default function AdminSettings() {
                     value="stripeProducts"
                     className="whitespace-nowrap"
                   >
-                    Stripe Products
+                    Stripe Integrations
                   </TabsTrigger>
                   <TabsTrigger
                     value="placeholder"
@@ -7757,7 +7930,7 @@ export default function AdminSettings() {
                   </Card>
                 </div>
               </TabsContent>
-              {/* Stripe Products Tab */}
+              {/* Stripe Integrations Tab */}
               <TabsContent value="stripeProducts">
                 <StripeSyncSection />
               </TabsContent>
