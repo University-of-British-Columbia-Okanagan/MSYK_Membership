@@ -674,8 +674,8 @@ export async function sendMembershipConfirmationEmail(params: {
 
   const autoRenewLine =
     autoRenew === false
-      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
-      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+      ? `Auto-Renew: Off. Your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On. Your membership will automatically renew at the end of each billing period using your saved payment method.`;
 
   const parts = [
     `Welcome to your new membership: "${planTitle}"!`,
@@ -703,6 +703,8 @@ export async function sendMembershipPaymentReminderEmail(params: {
   planTitle: string;
   nextPaymentDate: Date;
   amountDue: number;
+  baseAmount?: number;
+  discountAmount?: number;
   gstPercentage?: number;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
@@ -711,6 +713,8 @@ export async function sendMembershipPaymentReminderEmail(params: {
     planTitle,
     nextPaymentDate,
     amountDue,
+    baseAmount,
+    discountAmount,
     gstPercentage,
     needsPaymentMethod,
   } = params;
@@ -724,8 +728,18 @@ export async function sendMembershipPaymentReminderEmail(params: {
     typeof gstPercentage === "number"
       ? ` (includes ${gstPercentage}% GST)`
       : "";
+  const hasDiscount =
+    typeof discountAmount === "number" &&
+    discountAmount > 0 &&
+    typeof baseAmount === "number";
   const parts = [
     `Reminder: Your membership plan "${planTitle}" will be charged overnight on ${dateOnly}.`,
+    ...(hasDiscount
+      ? [
+          `Regular price: $${baseAmount!.toFixed(2)}`,
+          `Discount applied: -$${discountAmount!.toFixed(2)}`,
+        ]
+      : []),
     `Amount due: $${amountDue.toFixed(2)}${gstLine}.`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean);
@@ -741,6 +755,7 @@ export async function sendMembershipPaymentSuccessEmail(params: {
   planTitle: string;
   amountCharged: number;
   baseAmount: number;
+  discountAmount?: number;
   gstPercentage: number;
   nextPaymentDate: Date;
   billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly";
@@ -750,6 +765,7 @@ export async function sendMembershipPaymentSuccessEmail(params: {
     planTitle,
     amountCharged,
     baseAmount,
+    discountAmount = 0,
     gstPercentage,
     nextPaymentDate,
     billingCycle,
@@ -764,7 +780,8 @@ export async function sendMembershipPaymentSuccessEmail(params: {
           ? "Yearly"
           : "Monthly";
 
-  const gstAmount = amountCharged - baseAmount;
+  const discountedBase = baseAmount - discountAmount;
+  const gstAmount = amountCharged - discountedBase;
   const nextDateFormatted = new Date(nextPaymentDate).toLocaleDateString(
     undefined,
     {
@@ -780,9 +797,12 @@ export async function sendMembershipPaymentSuccessEmail(params: {
     `Your ${cycleLabel.toLowerCase()} payment for "${planTitle}" has been processed.`,
     ``,
     `Payment Details:`,
-    `Amount charged: $${amountCharged.toFixed(2)}`,
     `Base amount: $${baseAmount.toFixed(2)}`,
+    ...(discountAmount > 0
+      ? [`Discount applied: -$${discountAmount.toFixed(2)}`]
+      : []),
     `GST (${gstPercentage}%): $${gstAmount.toFixed(2)}`,
+    `Amount charged: $${amountCharged.toFixed(2)}`,
     ``,
     `Billing cycle: ${cycleLabel}`,
     `Next payment date: ${nextDateFormatted}`,
@@ -898,8 +918,8 @@ export async function sendMembershipResubscribeEmail(params: {
       : undefined;
   const autoRenewLine =
     autoRenew === false
-      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
-      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+      ? `Auto-Renew: Off. Your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On. Your membership will automatically renew at the end of each billing period using your saved payment method.`;
 
   const parts = [
     `Your membership has been reactivated: "${planTitle}".`,
