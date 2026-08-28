@@ -214,6 +214,22 @@ export default function QuickCheckout({
         </div>
       </div>
 
+      {/* A membership discount has to be entered at Stripe Checkout, and it recurs from
+          there, so the hover badge alone is too easy to miss when the cost is every
+          future renewal. sm:leading-relaxed is required because sm:text-sm would
+          otherwise reset the line height and crowd the block. */}
+      {checkoutData.type === "membership" && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <Tag className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <p className="text-xs leading-relaxed text-amber-800 sm:text-sm sm:leading-relaxed">
+            Have a promotion code? Use{" "}
+            <span className="font-semibold">Proceed to Checkout</span> instead.
+            Codes can only be entered on Stripe's checkout page, and a recurring
+            discount applies to your future renewals too.
+          </p>
+        </div>
+      )}
+
       {/* Payment Details */}
       <div className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
         <div className="flex justify-between items-center mb-2">
