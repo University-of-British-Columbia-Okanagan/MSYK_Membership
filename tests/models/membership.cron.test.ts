@@ -72,6 +72,110 @@ describe("membership.server - cron", () => {
     errorSpy.mockRestore();
   });
 
+  it("carries a recurring discount into the renewal and mirrors it onto the membership", async () => {
+    const plan = createMockPlan({ id: 1, price: 100 });
+    const membership = createMockMembership({
+      id: 1,
+      userId: 1,
+      membershipPlanId: plan.id,
+      status: "active",
+      billingCycle: "monthly",
+      nextPaymentDate: baseNow,
+      membershipPlan: plan,
+    });
+    const discountEnd = new Date("2025-07-10T10:00:00Z");
+
+    db.userMembership.findMany
+      .mockResolvedValueOnce([membership])
+      .mockResolvedValueOnce([]);
+    db.user.findUnique.mockResolvedValueOnce(
+      createMockUser({ id: 1, roleLevel: 3 })
+    );
+    db.userPaymentInformation.findUnique.mockResolvedValueOnce(
+      createMockPaymentInformation()
+    );
+    mocks.chargeMembershipViaInvoiceMock.mockResolvedValueOnce({
+      invoiceId: "in_disc",
+      paymentIntentId: "pi_disc",
+      status: "paid",
+      subtotal: 100,
+      discountAmount: 50,
+      taxAmount: 2.5,
+      total: 52.5,
+    });
+    mocks.getCustomerDiscountMock.mockResolvedValueOnce({
+      couponId: "co_half",
+      percentOff: 50,
+      amountOff: null,
+      endsAt: discountEnd,
+    });
+    db.userMembership.update.mockResolvedValueOnce({ ...membership });
+    db.userMembership.findFirst.mockResolvedValueOnce(
+      createMockMembership({
+        id: 1,
+        userId: 1,
+        membershipPlanId: plan.id,
+        status: "active",
+        membershipPlan: plan,
+      })
+    );
+
+    await runCron();
+
+    expect(db.userMembership.update).toHaveBeenCalledWith({
+      where: { id: membership.id },
+      data: expect.objectContaining({
+        paymentIntentId: "pi_disc",
+        stripeCouponId: "co_half",
+        discountEndsAt: discountEnd,
+      }),
+    });
+  });
+
+  it("clears the mirrored discount once Stripe has expired it", async () => {
+    const plan = createMockPlan({ id: 1, price: 100 });
+    const membership = createMockMembership({
+      id: 1,
+      userId: 1,
+      membershipPlanId: plan.id,
+      status: "active",
+      billingCycle: "monthly",
+      nextPaymentDate: baseNow,
+      membershipPlan: plan,
+    });
+
+    db.userMembership.findMany
+      .mockResolvedValueOnce([membership])
+      .mockResolvedValueOnce([]);
+    db.user.findUnique.mockResolvedValueOnce(
+      createMockUser({ id: 1, roleLevel: 3 })
+    );
+    db.userPaymentInformation.findUnique.mockResolvedValueOnce(
+      createMockPaymentInformation()
+    );
+    mocks.getCustomerDiscountMock.mockResolvedValueOnce(null);
+    db.userMembership.update.mockResolvedValueOnce({ ...membership });
+    db.userMembership.findFirst.mockResolvedValueOnce(
+      createMockMembership({
+        id: 1,
+        userId: 1,
+        membershipPlanId: plan.id,
+        status: "active",
+        membershipPlan: plan,
+      })
+    );
+
+    await runCron();
+
+    expect(db.userMembership.update).toHaveBeenCalledWith({
+      where: { id: membership.id },
+      data: expect.objectContaining({
+        stripeCouponId: null,
+        discountEndsAt: null,
+      }),
+    });
+  });
+
   it("charges active monthly memberships with saved payment info and advances nextPaymentDate", async () => {
     const plan = createMockPlan({ id: 1, price: 100 });
     const membership = createMockMembership({
@@ -110,23 +214,28 @@ describe("membership.server - cron", () => {
 
     await runCron();
 
-    expect(mocks.stripePaymentIntentsCreateMock).toHaveBeenCalledWith(
+    // Charged as an invoice, not a PaymentIntent: only an invoice carries a discount.
+    // The base amount goes over untaxed — GST is applied by the Stripe tax rate, so it
+    // lands on the post-discount amount rather than the list price.
+    expect(mocks.chargeMembershipViaInvoiceMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: 10500,
-        customer: "cus_123",
-        payment_method: "pm_123",
-        off_session: true,
+        customerId: "cus_123",
+        paymentMethodId: "pm_123",
+        baseAmount: 100,
+        gstPercentage: 5,
+        stripeProductId: plan.stripeProductId,
         metadata: expect.objectContaining({
           membershipId: String(membership.id),
           gst_percentage: "5",
         }),
       })
     );
+    expect(mocks.stripePaymentIntentsCreateMock).not.toHaveBeenCalled();
     expect(db.userMembership.update).toHaveBeenCalledWith({
       where: { id: membership.id },
       data: expect.objectContaining({
         nextPaymentDate: addMonths(baseNow, 1),
-        paymentIntentId: "pi_monthly",
+        paymentIntentId: "pi_test",
       }),
     });
     expect(db.user.update).toHaveBeenCalledWith({
@@ -189,7 +298,7 @@ describe("membership.server - cron", () => {
     });
   });
 
-  it("expires non-monthly memberships without charging and updates forms", async () => {
+  it("marks a quarterly membership inactive when it has no saved card", async () => {
     const plan = createMockPlan({ id: 3, price: 260 });
     const membership = createMockMembership({
       id: 3,
@@ -219,6 +328,8 @@ describe("membership.server - cron", () => {
       where: { id: membership.id },
       data: { status: "inactive" },
     });
+    // Nothing is charged because there is no card — not because the cycle is quarterly.
+    expect(mocks.chargeMembershipViaInvoiceMock).not.toHaveBeenCalled();
     expect(mocks.stripePaymentIntentsCreateMock).not.toHaveBeenCalled();
     expect(db.userMembershipForm.updateMany).toHaveBeenCalledWith({
       where: expect.objectContaining({
@@ -228,6 +339,187 @@ describe("membership.server - cron", () => {
       }),
       data: { status: "inactive" },
     });
+  });
+
+  // Every billing cycle is charged by the same daily job. What differs is which price it
+  // reads and how far nextPaymentDate moves — the coupon itself is Stripe's business, and
+  // is exercised against real Stripe in test-scripts/test-membership-renewal.ts.
+  describe("billing cycles", () => {
+    const CYCLES = [
+      { cycle: "monthly", months: 1, priceField: "price", expected: 50 },
+      { cycle: "quarterly", months: 3, priceField: "price3Months", expected: 135 },
+      { cycle: "semiannually", months: 6, priceField: "price6Months", expected: 260 },
+      { cycle: "yearly", months: 12, priceField: "priceYearly", expected: 500 },
+    ] as const;
+
+    const planWithEveryPrice = () =>
+      createMockPlan({
+        id: 1,
+        price: 50,
+        price3Months: 135,
+        price6Months: 260,
+        priceYearly: 500,
+        stripeProductId: "prod_cycle",
+      });
+
+    const arrangeDueMembership = (
+      cycle: (typeof CYCLES)[number]["cycle"],
+      plan: ReturnType<typeof createMockPlan>
+    ) => {
+      const membership = createMockMembership({
+        id: 1,
+        userId: 1,
+        membershipPlanId: plan.id,
+        status: "active",
+        billingCycle: cycle,
+        nextPaymentDate: baseNow,
+        membershipPlan: plan,
+      });
+
+      db.userMembership.findMany
+        .mockResolvedValueOnce([membership])
+        .mockResolvedValueOnce([]);
+      db.user.findUnique.mockResolvedValueOnce(
+        createMockUser({ id: 1, roleLevel: 3 })
+      );
+      db.userPaymentInformation.findUnique.mockResolvedValueOnce(
+        createMockPaymentInformation()
+      );
+      db.userMembership.update.mockResolvedValueOnce({ ...membership });
+      db.userMembership.findFirst.mockResolvedValueOnce(membership);
+
+      return membership;
+    };
+
+    it.each(CYCLES)(
+      "charges a $cycle membership at $priceField and advances by $months month(s)",
+      async ({ cycle, months, expected }) => {
+        const plan = planWithEveryPrice();
+        const membership = arrangeDueMembership(cycle, plan);
+
+        await runCron();
+
+        expect(mocks.chargeMembershipViaInvoiceMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            baseAmount: expected,
+            gstPercentage: 5,
+            // Without the plan's Product a product-restricted coupon silently stops
+            // applying after the first payment, on every cycle.
+            stripeProductId: "prod_cycle",
+          })
+        );
+        expect(db.userMembership.update).toHaveBeenCalledWith({
+          where: { id: membership.id },
+          data: expect.objectContaining({
+            nextPaymentDate: addMonths(baseNow, months),
+          }),
+        });
+      }
+    );
+
+    it.each([
+      { cycle: "quarterly", months: 3 },
+      { cycle: "semiannually", months: 6 },
+      { cycle: "yearly", months: 12 },
+    ] as const)(
+      "falls back to the monthly price when a $cycle plan has no cycle price set",
+      async ({ cycle, months }) => {
+        // Plans may be sold on a longer cycle without a dedicated price configured.
+        const plan = createMockPlan({
+          id: 1,
+          price: 50,
+          price3Months: null,
+          price6Months: null,
+          priceYearly: null,
+          stripeProductId: "prod_cycle",
+        });
+        const membership = arrangeDueMembership(cycle, plan);
+
+        await runCron();
+
+        expect(mocks.chargeMembershipViaInvoiceMock).toHaveBeenCalledWith(
+          expect.objectContaining({ baseAmount: 50 })
+        );
+        expect(db.userMembership.update).toHaveBeenCalledWith({
+          where: { id: membership.id },
+          data: expect.objectContaining({
+            nextPaymentDate: addMonths(baseNow, months),
+          }),
+        });
+      }
+    );
+
+    it.each(CYCLES)(
+      "records a discount taken on a $cycle renewal",
+      async ({ cycle, expected }) => {
+        const plan = planWithEveryPrice();
+        const membership = arrangeDueMembership(cycle, plan);
+        const endsAt = new Date("2025-07-10T10:00:00Z");
+
+        mocks.chargeMembershipViaInvoiceMock.mockResolvedValueOnce({
+          invoiceId: "in_cycle",
+          paymentIntentId: "pi_cycle",
+          status: "paid",
+          subtotal: expected,
+          discountAmount: expected / 2,
+          taxAmount: (expected / 2) * 0.05,
+          total: (expected / 2) * 1.05,
+        });
+        mocks.getCustomerDiscountMock.mockResolvedValueOnce({
+          couponId: "co_half",
+          percentOff: 50,
+          amountOff: null,
+          endsAt,
+        });
+
+        await runCron();
+
+        expect(db.userMembership.update).toHaveBeenCalledWith({
+          where: { id: membership.id },
+          data: expect.objectContaining({
+            stripeCouponId: "co_half",
+            discountEndsAt: endsAt,
+          }),
+        });
+      }
+    );
+
+    it.each(CYCLES)(
+      "quotes the $cycle reminder from the cycle price, discount included",
+      async ({ cycle, expected }) => {
+        const plan = planWithEveryPrice();
+        const membership = createMockMembership({
+          id: 2,
+          userId: 2,
+          membershipPlanId: plan.id,
+          status: "active",
+          billingCycle: cycle,
+          nextPaymentDate: addDays(baseNow, 1),
+          membershipPlan: plan,
+        });
+
+        db.userMembership.findMany
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([membership]);
+        db.user.findUnique.mockResolvedValueOnce(
+          createMockUser({ id: 2, email: "cycle@example.com" })
+        );
+        db.userPaymentInformation.findUnique.mockResolvedValueOnce(
+          createMockPaymentInformation()
+        );
+
+        await runCron();
+
+        expect(mocks.previewMembershipChargeMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            baseAmount: expected,
+            gstPercentage: 5,
+            // Taken as of the charge date so a discount lapsing first is not quoted.
+            chargeOn: addDays(baseNow, 1),
+          })
+        );
+      }
+    );
   });
 
   it("moves ending or cancelled memberships to inactive status", async () => {
@@ -387,5 +679,53 @@ describe("membership.server - cron", () => {
       expect(typeof call.userEmail).toBe("string");
       expect(call.nextPaymentDate).toEqual(addDays(baseNow, 1));
     });  });
+
+  it("quotes the discounted amount in the reminder, not the list price", async () => {
+    const plan = createMockPlan({ id: 9, price: 75 });
+    const membership = createMockMembership({
+      id: 9,
+      userId: 43,
+      membershipPlanId: plan.id,
+      status: "active",
+      billingCycle: "monthly",
+      nextPaymentDate: addDays(baseNow, 1),
+      membershipPlan: plan,
+    });
+
+    db.userMembership.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([membership]);
+    db.user.findUnique.mockResolvedValueOnce(
+      createMockUser({ id: 43, email: "half@price.com" })
+    );
+    db.userPaymentInformation.findUnique.mockResolvedValueOnce(
+      createMockPaymentInformation()
+    );
+    mocks.previewMembershipChargeMock.mockResolvedValueOnce({
+      baseAmount: 75,
+      discountAmount: 37.5,
+      taxAmount: 1.88,
+      total: 39.38,
+    });
+
+    await runCron();
+
+    const [args] =
+      mocks.mockSendMembershipPaymentReminderEmail.mock.calls[0];
+    expect(args.amountDue).toBeCloseTo(39.38);
+    expect(args.baseAmount).toBeCloseTo(75);
+    expect(args.discountAmount).toBeCloseTo(37.5);
+
+    // The preview must be taken as of the charge date, so a discount that lapses
+    // first is not quoted.
+    expect(mocks.previewMembershipChargeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "cus_123",
+        baseAmount: 75,
+        gstPercentage: 5,
+        chargeOn: addDays(baseNow, 1),
+      })
+    );
+  });
 });
 

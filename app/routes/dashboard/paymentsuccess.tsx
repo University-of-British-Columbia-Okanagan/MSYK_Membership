@@ -23,7 +23,11 @@ import {
   sendMembershipConfirmationEmail,
   checkPaymentMethodStatus,
 } from "~/utils/email.server";
-import { getUserById } from "~/models/user.server";
+import { getUserById, getOrCreateStripeCustomer } from "~/models/user.server";
+import {
+  applyMembershipDiscount,
+  getCheckoutSessionCouponId,
+} from "~/services/stripe-discounts.server";
 import { getEquipmentById } from "~/models/equipment.server";
 import { getAdminSetting } from "~/models/admin.server";
 import { logger } from "~/logging/logger";
@@ -225,6 +229,32 @@ export async function loader({ request }: { request: Request }) {
         parseInt(membershipPlanId),
         subscription.id
       );
+
+      // Pin any promotion code the member entered onto their Stripe Customer, so the
+      // renewal invoices inherit it. Without this the discount dies with this session —
+      // which is exactly the bug this replaces.
+      try {
+        const couponId = await getCheckoutSessionCouponId(sessionId);
+        if (couponId) {
+          const customerId = await getOrCreateStripeCustomer(parseInt(userId));
+          const applied = await applyMembershipDiscount(
+            customerId,
+            couponId,
+            subscription.id
+          );
+          console.log(
+            `Applied recurring discount ${couponId} to user ${userId}` +
+              (applied?.endsAt
+                ? `, ends ${applied.endsAt.toISOString().slice(0, 10)}`
+                : " (no expiry)")
+          );
+        }
+      } catch (discountErr) {
+        console.error(
+          `Failed to carry the checkout discount forward for user ${userId}:`,
+          discountErr
+        );
+      }
 
       try {
         let membershipPlan = await getMembershipPlanById(

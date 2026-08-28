@@ -371,6 +371,8 @@ model UserMembership {
   autoRenew        Boolean  @default(true)
   paymentIntentId  String? // Stripe Payment Intent ID
   billingCycle     String   @default("monthly") // "monthly", "quarterly", "semiannually", "yearly"
+  stripeCouponId   String? // Recurring discount coupon, mirrored from the Stripe Customer
+  discountEndsAt   DateTime? // When Stripe expires that discount; null if it never does
 
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id], onDelete: Cascade)

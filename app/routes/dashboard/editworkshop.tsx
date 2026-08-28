@@ -41,6 +41,10 @@ import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
 import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import OccurrencesTabs from "~/components/ui/Dashboard/OccurrenceTabs";
+import {
+  setOccurrenceDateField,
+  sortOccurrencesByStart,
+} from "~/utils/occurrences";
 import { getAvailableEquipment } from "~/models/equipment.server";
 import MultiSelectField from "~/components/ui/Dashboard/MultiSelectField";
 import {
@@ -1253,12 +1257,10 @@ export default function EditWorkshop() {
       offerId: highestOfferId, // Use the highest existing offerId
     };
 
-    const updatedOccurrences = [...occurrences, newOccurrence];
-
-    // Sort by startDate
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
-    );
+    const updatedOccurrences = sortOccurrencesByStart([
+      ...occurrences,
+      newOccurrence,
+    ]);
 
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
@@ -1284,20 +1286,17 @@ export default function EditWorkshop() {
 
     const now = new Date();
     const localDate = parseDateTimeAsLocal(value);
-    const updatedOccurrences = [...occurrences];
 
     // Store the old dates before updating for equipment slot cleanup
-    const oldStartDate = updatedOccurrences[index].startDate;
-    const oldEndDate = updatedOccurrences[index].endDate;
+    const oldStartDate = occurrences[index].startDate;
+    const oldEndDate = occurrences[index].endDate;
 
-    // Update the chosen field
-    updatedOccurrences[index][field] = localDate;
-
-    // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
-    if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
-      updatedOccurrences[index].endDate = endDate;
-    }
+    const updatedOccurrences = setOccurrenceDateField(
+      occurrences,
+      index,
+      field,
+      localDate
+    );
 
     // If it's not already cancelled, compute a new status based on the start date.
     if (updatedOccurrences[index].status !== "cancelled") {
@@ -1344,13 +1343,9 @@ export default function EditWorkshop() {
       setSelectedSlotsMap(newSlotsMap);
     }
 
-    // **Now sort** by startDate
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
-    );
-
-    setOccurrences(updatedOccurrences);
-    form.setValue("occurrences", updatedOccurrences);
+    const sorted = sortOccurrencesByStart(updatedOccurrences);
+    setOccurrences(sorted);
+    form.setValue("occurrences", sorted);
   }
 
   // Remove a row

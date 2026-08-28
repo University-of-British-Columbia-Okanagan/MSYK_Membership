@@ -26,6 +26,10 @@ import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
 import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
 import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import {
+  setOccurrenceDateField,
+  sortOccurrencesByStart,
+} from "~/utils/occurrences";
+import {
   getAvailableEquipmentForAdmin,
   getEquipmentSlotsWithStatus,
 } from "~/models/equipment.server";
@@ -911,11 +915,10 @@ export default function AddWorkshop() {
   // Function for adding occurences
   const addOccurrence = () => {
     const newOccurrence = { startDate: new Date(""), endDate: new Date("") };
-    const updatedOccurrences = [...occurrences, newOccurrence];
-    // Sort by startDate (if dates are valid)
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
-    );
+    const updatedOccurrences = sortOccurrencesByStart([
+      ...occurrences,
+      newOccurrence,
+    ]);
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
   };
@@ -927,18 +930,8 @@ export default function AddWorkshop() {
     value: string
   ) {
     const localDate = parseDateTimeAsLocal(value);
-    const updatedOccurrences = [...occurrences];
-
-    // AUTO-SET END DATE: If updating start date and it's valid, automatically set end date to 2 hours later
-    if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
-      updatedOccurrences[index].endDate = endDate;
-    }
-
-    updatedOccurrences[index][field] = localDate;
-    // Re-sort the list after updating.
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
+    const updatedOccurrences = sortOccurrencesByStart(
+      setOccurrenceDateField(occurrences, index, field, localDate)
     );
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);

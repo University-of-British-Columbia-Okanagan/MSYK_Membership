@@ -28,6 +28,7 @@ describe("membership.server - memberships", () => {
   let db: MembershipDbMock;
   let mockSendMembershipRevokedEmail: jest.Mock;
   let mockSendMembershipUnrevokedEmail: jest.Mock;
+  let clearMembershipDiscountMock: jest.Mock;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -38,6 +39,7 @@ describe("membership.server - memberships", () => {
       db,
       mockSendMembershipRevokedEmail: mockSendMembershipRevokedEmail,
       mockSendMembershipUnrevokedEmail: mockSendMembershipUnrevokedEmail,
+      clearMembershipDiscountMock,
     } = getMembershipMocks());
   });
 
@@ -113,6 +115,93 @@ describe("membership.server - memberships", () => {
         where: { id: pendingForm.id },
         data: { status: "active", userMembershipId: createdMembership.id },
       });
+    });
+  });
+
+  describe("Recurring discount ends on a plan change", () => {
+    const setUpPlanChange = () => {
+      const currentMembership = createMockMembership({
+        id: 5,
+        membershipPlanId: 1,
+        nextPaymentDate: addMonths(baseNow, 1),
+        status: "active",
+        billingCycle: "monthly",
+        membershipPlan: createMockPlan({ id: 1, price: 100 }),
+      });
+      const targetPlan = createMockPlan({ id: 2, price: 50 });
+      const user = createMockUser({ roleLevel: 3 });
+
+      db.membershipPlan.findUnique.mockResolvedValue(targetPlan);
+      db.userMembership.findUnique.mockResolvedValue(currentMembership);
+      db.userMembership.update.mockResolvedValue({
+        ...currentMembership,
+        status: "ending",
+      });
+      db.userMembership.findFirst.mockResolvedValue(null);
+      db.userMembership.create.mockResolvedValue(
+        createMockMembership({ id: 6, membershipPlanId: targetPlan.id })
+      );
+      db.userMembershipForm.updateMany.mockResolvedValue({ count: 1 });
+      db.user.findUnique.mockResolvedValue(user);
+      db.user.update.mockResolvedValue(user);
+      db.userPaymentInformation.findUnique.mockResolvedValue({
+        stripeCustomerId: "cus_1",
+      });
+      db.userMembership.findMany.mockResolvedValue([{ id: 5 }]);
+
+      return { currentMembership, targetPlan };
+    };
+
+    it("clears the Stripe discount when a member upgrades", async () => {
+      const { targetPlan, currentMembership } = setUpPlanChange();
+
+      await registerMembershipSubscription(
+        1,
+        targetPlan.id,
+        currentMembership.id,
+        false,
+        false,
+        "pi_upgrade",
+        "monthly"
+      );
+
+      expect(clearMembershipDiscountMock).toHaveBeenCalledWith(
+        "cus_1",
+        expect.arrayContaining([currentMembership.id])
+      );
+    });
+
+    it("clears the Stripe discount when a member downgrades", async () => {
+      const { targetPlan, currentMembership } = setUpPlanChange();
+
+      await registerMembershipSubscription(
+        1,
+        targetPlan.id,
+        currentMembership.id,
+        true,
+        false,
+        undefined,
+        "monthly"
+      );
+
+      expect(clearMembershipDiscountMock).toHaveBeenCalledWith(
+        "cus_1",
+        expect.arrayContaining([currentMembership.id])
+      );
+    });
+
+    it("leaves the discount alone for a brand-new subscription", async () => {
+      const plan = createMockPlan({ id: 3 });
+      db.membershipPlan.findUnique.mockResolvedValue(plan);
+      db.user.findUnique.mockResolvedValue(createMockUser({ roleLevel: 2 }));
+      db.userMembership.create.mockResolvedValue(
+        createMockMembership({ id: 9, membershipPlanId: plan.id })
+      );
+      db.user.update.mockResolvedValue({});
+
+      await registerMembershipSubscription(1, plan.id);
+
+      expect(clearMembershipDiscountMock).not.toHaveBeenCalled();
     });
   });
 

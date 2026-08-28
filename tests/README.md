@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 29 suites, 388 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 37 suites, 515 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -65,7 +65,10 @@ tests/
 │   ├── access-control-sync.server.test.ts
 │   ├── brivo.server.test.ts
 │   └── stripe-sync.server.test.ts
+├── schemas/                     # app/schemas/
+│   └── workshop-occurrence-dates.test.ts  # end > start, across both workshop schemas
 ├── utils/                       # app/utils/
+│   ├── occurrences.test.ts
 │   └── session.server.test.ts
 ├── routes/dashboard/            # route loaders and actions
 │   ├── addequipment.test.ts
@@ -84,6 +87,8 @@ tests/
 ```
 
 Specs mirror the source tree. A file with more than roughly 20 tests is split by concern (`equipment.booking` vs `equipment.slots`) rather than growing without bound.
+
+`schemas/workshop-occurrence-dates.test.ts` is named for the rule rather than one source file, because it deliberately covers the same rule in **both** `workshopFormSchema` and `workshopOfferAgainSchema` — the offer schema was missing it, and asserting them together is what stops them drifting apart again. It also runs the rule across every `type` × multi-day × price-variations combination, so a future branch that skips the check for one workshop kind fails here.
 
 ---
 
@@ -167,12 +172,72 @@ Step 3 flows that reach checkout need a card. On **test** Stripe keys, use Strip
 
 Two gotchas that will otherwise cost you a debugging session:
 
-- **`QuickCheckout` renders only when the user has a saved payment method.** With no card on file the payment page shows the ordinary Stripe form instead and the quick-checkout block is absent — that is the designed fallback, not a regression. `getSavedPaymentMethod()` reads the separate `UserPaymentInformation` row, and the payment routes gate on both `stripeCustomerId` and `stripePaymentMethodId` being set on it
+- **`QuickCheckout` renders only when the user has a saved payment method.** With no card on file the payment page shows the ordinary Stripe form instead and the quick-checkout block is absent — that is the designed fallback, not a regression. `getSavedPaymentMethod()` reads the separate `UserPaymentInformation` row and returns `null` unless both `stripeCustomerId` and `stripePaymentMethodId` are set on it
 - **`npx tsx seed.ts` deletes it.** The seed calls `prisma.user.deleteMany()`, and `UserPaymentInformation` cascades on its `user` relation, so saved cards go with the user rows. The seed creates no replacement
 
 To restore one: log in as the user, go to **`/user/profile/paymentinformation` → Add Payment Method**, enter the card above. Quick Checkout then appears on `/dashboard/payment/...` and on the equipment booking page once slots are selected.
 
 None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
+
+---
+
+## Membership discounts and billing cycles
+
+Coverage here is deliberately split, because two different things are being tested.
+
+**Jest covers our half.** `models/membership.cron.test.ts` has a `billing cycles` block that runs every cycle — `monthly`, `quarterly`, `semiannually`, `yearly` (there is no four-month option) — and asserts, per cycle:
+
+- the right price is read (`price`, `price3Months`, `price6Months`, `priceYearly`), and that it falls back to `price` when the cycle price is null
+- `nextPaymentDate` advances by the right interval
+- the plan's `stripeProductId` rides on the invoice line — without it, a coupon restricted with *Apply to specific products* silently stops applying after the first payment
+- a discount taken on a renewal is mirrored onto `UserMembership`
+- the reminder email quotes the cycle price with the discount applied, priced as of the charge date
+
+`services/stripe-discounts.server.test.ts` covers the service itself against the real Stripe response shapes, and `routes/api/stripe-sync.test.ts` covers the admin endpoint — the admin-only gate on every action, the discount listing (including that discounts Stripe has already expired are filtered out while `forever` ones are kept), and ending a discount.
+
+Ending a discount is covered three ways, because there are three routes into it: `models/membership.server.test.ts` asserts the upgrade and downgrade paths clear it and that a brand-new subscription does not, and the route test covers the admin **End** button.
+
+The rest of the path has its own specs:
+
+- `routes/dashboard/paymentsuccess.discount.test.ts` — the capture wiring. Pinning the checkout coupon to the member's Stripe customer is the step that makes the discount recur at all, and it is ordered *after* the subscription exists and wrapped so a Stripe failure cannot cost a member the membership they just paid for
+- `routes/dashboard/payment.membership-gst.test.ts` — membership checkout sends the **base** price with GST as a Stripe tax rate, never folded into `unit_amount`; carries the plan's Product; and allows promotion codes
+- `utils/email.membership-discount.test.ts` — the money quoted in the reminder and payment-success emails, including that GST is derived from the discounted base rather than the gap between list price and total
+
+Each of these was mutation-tested when written: the code was deliberately broken, the expected specs failed, and the change was reverted. A test that cannot fail is not coverage.
+
+**Jest deliberately does not cover coupon duration.** Whether a coupon discounts one payment, six, or all of them is *Stripe's* behaviour, not ours — our code never counts payments or expires anything. Asserting it against a mocked Stripe would only assert the mock. Verify it against real Stripe instead:
+
+```bash
+npx tsx test-scripts/test-coupon-durations.ts <cycle> <once|N|forever>
+```
+
+It drives Stripe test clocks through six real renewals and prints which are discounted. Verified results:
+
+| Cycle | Coupon duration | Discounted payments |
+|---|---|---|
+| monthly | 3 months | 3 of 6 |
+| quarterly | 1 month | 1 of 6 |
+| quarterly | 3 months | **1 of 6** |
+| semiannually | 6 months | **1 of 6** |
+| semiannually | forever | 6 of 6 |
+
+**`Multiple months` counts calendar months, not billing periods**, and the expiry boundary is **exclusive** — a renewal landing exactly on the expiry date is charged full price.
+
+Those two facts give the rule:
+
+> discounted payments = **ceil(coupon months / cycle months)**
+
+So a coupon whose duration *equals* the billing cycle discounts exactly **one** payment — the signup — because the first renewal falls precisely on the expiry date and misses it. Quarterly + 3 months is one discounted payment, not two; semiannual + 6 months is one, not two. Only on a monthly plan do "months" and "payments" line up 1:1.
+
+Run the script before promising a client a specific number of discounted payments.
+
+To exercise a renewal against real Stripe without waiting for the midnight cron:
+
+```bash
+npx tsx test-scripts/test-membership-renewal.ts <email>
+```
+
+The member needs a saved card, or the cron marks the membership inactive instead of charging — that is by design, not a failure.
 
 ---
 

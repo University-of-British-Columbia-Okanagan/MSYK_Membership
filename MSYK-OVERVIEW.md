@@ -163,6 +163,15 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Registration cutoff (default: 60 minutes before start)
 - Google Calendar integration (optional, creates events when connected)
 
+**Scheduling occurrences (Add Workshop, Edit Workshop, Offer Again):**
+- All three pages enter dates through the same components (`OccurrenceRow`, `RepetitionScheduleInputs`) and share `app/utils/occurrences.ts`, so the rules below apply to every workshop kind — `workshop` and `orientation`, single-day and multi-day, with or without price variations
+- **Start and end are set independently.** Editing a start never changes the end. Moving a session to a different day is therefore two edits, the start then the end
+- The list re-sorts by start date after every edit; rows still being filled in sink to the bottom
+- An end at or before its start is flagged in the row in red and rejected on submit with "End date must be later than start date"
+- The end date and time fields stay disabled until a start is set. Once it is, picking an end time adopts the start's day, so the admin's chosen duration is never overridden by a default
+- A row whose occurrence has registrations is locked entirely and cannot be edited
+- **Append weekly / monthly dates** generates occurrences from the first-occurrence start and end, preserving that duration across every repetition; the append is refused if the template's end is not after its start
+
 **Registration Process:**
 - Prerequisite validation before registration
 - Capacity check (single occurrence or multi-day series)
@@ -188,6 +197,8 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - **Mark results**: individual pass/fail/pending via `updateRegistrationResult()`, or bulk "Pass All" via `updateMultipleRegistrations()` — both handled by the action in `app/routes/dashboard/admindashboardlayout.tsx`
 
 **Key Files:**
+- `app/utils/occurrences.ts` - `setOccurrenceDateField()`, `sortOccurrencesByStart()`, `isEndBeforeStart()` — the occurrence date rules, shared by all three date editors
+- `app/components/ui/Dashboard/OccurrenceRow.tsx` - One editable occurrence row, including the end-before-start warning and the disabled-until-start gating
 - `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration; `cancelUserWorkshopRegistration` and `cancelMultiDayWorkshopRegistration` accept optional `cancelledByAdmin` param (default `false`)
 - `app/models/payment.server.ts` - Workshop payment and refund processing
 - `app/routes/dashboard/workshops.tsx` - Workshop browsing and registration
@@ -430,15 +441,49 @@ The `syncUserDoorAccess()` function is automatically called when:
 - Checkout sessions reference `price_data.product` when `stripeProductId` is set; fallback to `price_data.product_data` inline if not
 - Each Stripe Product carries metadata: `{ portal_type: "workshop"|"membership"|"equipment", portal_id: "N" }`
 
-**Admin UI (Admin Settings → Stripe Products tab):**
+**Admin UI (Admin Settings → Stripe Integrations tab):**
 - Sync All to Stripe button with per-category success counts
 - Clear & Re-sync button — clears all `stripeProductId` values and re-syncs (required when switching Stripe environments)
 - Integration status display
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — All Stripe sync/archive logic
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
-- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Products tab
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Integrations tab
+
+---
+
+### 13. Recurring Membership Discounts
+
+**Purpose:** A Stripe promotion code entered at membership checkout applies to every subsequent renewal, not only the first payment.
+
+Memberships are **not** Stripe Subscriptions. The portal still owns `nextPaymentDate`, `billingCycle`, and upgrade/downgrade; only the charge mechanism changed.
+
+**How it works:**
+- Renewals are raised as Stripe **Invoices** rather than bare PaymentIntents, because only an invoice carries a discount
+- The coupon is pinned to the member's **Stripe Customer**, which applies to invoices only — it cannot leak into workshop or equipment checkout
+- `UserMembership.stripeCouponId` and `discountEndsAt` mirror the Stripe discount for display; Stripe remains authoritative
+- GST is attached as a Stripe **tax rate** on both checkout and renewals, so a discount reduces the base and GST is charged on the reduced amount
+- The plan's `stripeProductId` is set on the renewal invoice line, so coupons restricted to specific products keep applying after the first payment
+
+**A discount ends when:**
+- The member upgrades or downgrades their plan
+- An admin clicks **End** in Admin Settings → Stripe Integrations
+- Stripe reaches the coupon's expiry date
+- Cancelling does **not** end it: the coupon stays on the Stripe Customer and applies again if the member resubscribes to the same plan
+
+**Coupon duration:** `duration_in_months` counts calendar months from redemption, and the expiry boundary is exclusive, so discounted payments = `ceil(coupon months / cycle months)`. A coupon whose duration equals the billing cycle discounts exactly one payment.
+
+**Admin UI (Admin Settings → Stripe Integrations tab):**
+- GST tax rate status
+- Table of members currently on a recurring discount, with coupon id and expiry, and an **End** action per member. Discounts Stripe has already expired are filtered out
+
+**Key Files:**
+- `app/services/stripe-discounts.server.ts` — tax rate resolution, coupon capture, apply/clear, charge preview, renewal invoices
+- `app/models/membership.server.ts` — `endRecurringDiscountForUser()`, and the billing cron's invoice charge
+- `app/routes/dashboard/paymentsuccess.tsx` — captures the checkout coupon onto the Stripe Customer
+- `test-scripts/test-coupon-durations.ts` — verifies any duration × billing cycle combination against real Stripe test clocks
+- `test-scripts/test-membership-renewal.ts` — drives a renewal on demand without waiting for the cron
 
 ---
 
@@ -730,13 +775,13 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
      - Set form status to "inactive"
      - Skip charging (membership expires at term end)
    - **If status "active" and `autoRenew=true`:**
-     - Calculate charge amount (base price + GST based on billing cycle)
+     - Select the base price for the billing cycle (`price`, `price3Months`, `price6Months`, `priceYearly`, falling back to `price` when the cycle price is null)
      - Retrieve saved payment method
      - If payment method exists:
-       - Create Stripe payment intent with saved card
-       - Charge user
+       - Raise a Stripe **Invoice** with the base amount, the plan's `stripeProductId`, and GST as a tax rate, then finalize and pay it with the saved card
+       - Any recurring discount on the Stripe Customer is applied by Stripe, before tax
        - Update `nextPaymentDate` based on billing cycle (monthly: +1 month, quarterly: +3 months, semiannually: +6 months, yearly: +1 year)
-       - Store payment intent ID
+       - Store the invoice's payment intent ID, and re-mirror `stripeCouponId` / `discountEndsAt` from Stripe
      - If no payment method:
        - Set membership status to "inactive"
        - Set form status to "inactive"
@@ -745,7 +790,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
      - Set status to "inactive"
      - Set form status to "inactive"
 3. Update user role levels based on membership status
-4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`)
+4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`), quoting the discounted total as of the charge date
 
 **Role Level Updates:**
 - If active membership exists and plan has `needAdminPermission` and user has `allowLevel4`: Level 4
@@ -861,7 +906,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 3. Stripe Product marked `active: false` (archived, not deleted — Stripe cannot delete products with payment history)
 
 **Bulk Sync (for Existing Data):**
-1. Admin navigates to Admin Settings → Stripe Products tab
+1. Admin navigates to Admin Settings → Stripe Integrations tab
 2. Clicks "Sync All to Stripe"
 3. `POST /api/stripe-sync` called with action `bulkSync`
 4. System loops through all workshops, membership plans, and equipment
@@ -872,7 +917,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 **Clear & Re-sync (Environment Switch):**
 1. Admin switches Stripe keys in `.env` (e.g. test → live)
 2. All stored `stripeProductId` values are now invalid for the new account
-3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Products tab
+3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Integrations tab
 4. `POST /api/stripe-sync` called with action `clearAndResync`
 5. All `stripeProductId` values in DB cleared to `null`
 6. Full bulk sync runs against the new Stripe account
@@ -880,8 +925,8 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — `syncWorkshopToStripe`, `syncMembershipPlanToStripe`, `syncEquipmentToStripe`, `archiveStripeProduct`, `bulkSyncToStripe`
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
-- `app/routes/dashboard/adminsettings.tsx` — Stripe Products tab UI
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/dashboard/adminsettings.tsx` — Stripe Integrations tab UI
 
 **Known Limitations:**
 - Per-variation coupon targeting not supported (all price variations share one Stripe Product)
@@ -902,7 +947,7 @@ Every implementation then follows **implement → test → verify end to end**. 
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**29 suites / 388 tests**)
+4. `npm test` — the suite must stay fully green (**37 suites / 515 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -991,14 +1036,26 @@ The acceptance criteria are organized into three categories:
 | AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
 | AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
 | AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
-| AC19 | Automated Monthly Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
-| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder | `tests/models/membership.cron.test.ts` |
+| AC19 | Automated Membership Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges every billing cycle via a Stripe invoice using the saved payment method; sets memberships without a saved card to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
+| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder; the amount is the discounted total priced as of the charge date | `tests/models/membership.cron.test.ts` |
+| - | Billing Cycles | Every cycle (monthly, quarterly, semiannually, yearly) reads its own price with fallback to `price` when the cycle price is null, advances `nextPaymentDate` by the right interval, and carries the plan's `stripeProductId` on the invoice line | `tests/models/membership.cron.test.ts` |
+| - | Recurring Discount Capture | A promotion code on the completed checkout session is pinned to the member's Stripe customer after the subscription exists; a Stripe failure there does not cost the member the membership they just paid for | `tests/routes/dashboard/paymentsuccess.discount.test.ts` |
+| - | Recurring Discount Service | GST tax rate resolution and reuse, coupon extraction from a session including a typed promotion code, apply and clear, charge preview, and renewal invoices carrying the product and tax rate | `tests/services/stripe-discounts.server.test.ts` |
+| - | Recurring Discount Ends on Plan Change | Upgrade and downgrade both clear the Stripe discount and the mirrored columns; a brand-new subscription does not | `tests/models/membership.server.test.ts` |
+| - | Stripe Integrations Admin Endpoint | Every action is admin-only; the discount listing filters out discounts Stripe has already expired while keeping `forever` ones; ending a discount requires a `userId` and surfaces Stripe failures | `tests/routes/api/stripe-sync.test.ts` |
+| - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/routes/dashboard/payment.membership-gst.test.ts` |
+| - | Membership Email Amounts | Reminder and payment-success emails itemise base, discount, and GST, with GST derived from the discounted base rather than the gap between list price and total | `tests/utils/email.membership-discount.test.ts` |
+| - | Saved Payment Method Guard | `getSavedPaymentMethod()` returns `null` for a `UserPaymentInformation` row holding only a customer id, so Quick Checkout and the profile page do not render a card with blank digits | `tests/models/user.payment-method.test.ts` |
 | AC21 | Workshop Prerequisites | System checks user completed required workshops; registration blocked if prerequisites not met | `tests/models/workshop.registration.test.ts` |
 | AC22 | Workshop Capacity | System checks available spots; registration blocked if capacity exceeded | `tests/models/workshop.capacity.test.ts` |
 | AC23 | Single Occurrence Registration | User registers for single workshop occurrence; registration created in `UserWorkshop` | `tests/models/workshop.registration.test.ts` |
 | AC24 | Multi-Day Workshop Registration | Multiple registrations created (one per occurrence); all share same payment intent ID | `tests/models/workshop.registration.test.ts` |
 | - | Workshop Basic Operations | Workshop CRUD operations, occurrence management, duplication and offering | `tests/models/workshop.basic.test.ts` |
 | - | Workshop Cancellation | Workshop cancellation logic and registration removal | `tests/models/workshop.cancellation.test.ts` |
+| - | Occurrence Date Field Editing | Setting a start never derives an end from it (the removed auto-2h rule); each edit returns new objects rather than mutating the array held in state; other rows and the occurrence's own unrelated fields are untouched; an out-of-range index is a no-op | `tests/utils/occurrences.test.ts` |
+| - | Occurrence Sorting | Sorts chronologically and sinks not-yet-filled rows (`new Date("")`) to the bottom, so an invalid date cannot act as a sort barrier that leaves the array partially sorted; never mutates its input | `tests/utils/occurrences.test.ts` |
+| - | Occurrence End-Before-Start Detection | True when an end is before or equal to its start, false while either side is unfilled — drives the red row warning | `tests/utils/occurrences.test.ts` |
+| - | Occurrence Date Range Validation | `endDate > startDate` enforced by both `workshopFormSchema` and `workshopOfferAgainSchema` with the same message and field path, for every `type` × multi-day × price-variations combination; rejects the whole list when any one session is inverted | `tests/schemas/workshop-occurrence-dates.test.ts` |
 | AC28 | Equipment Prerequisites | System checks user completed required workshops; booking blocked if prerequisites not met | `tests/models/equipment.basic.test.ts` |
 | AC29 | Equipment Slot Availability | System validates slot not already booked; slot marked as booked (`isBooked: true`) | `tests/models/equipment.booking.test.ts` |
 | AC30 | Equipment Bulk Booking | Multiple booking records created; all bookings share same payment intent ID; all slots marked as booked | `tests/models/equipment.booking.test.ts` |
@@ -1202,6 +1259,13 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC24 | Multi-Day **Workshop** Registration | Browse workshops; select multi-day workshop (has `connectId`); review all sessions; complete registration and payment (single payment) | Multiple registrations created (one per occurrence); all registrations share same payment intent ID; confirmation email received with all session dates/times, multi-event ICS attachment, per-session Google Calendar links |
 | AC25 | **Workshop** Price Variation | Create workshop with price variations (e.g., student, early bird); select price variation during registration; complete registration | Selected variation price applied to payment; variation name and description included in confirmation email |
 | AC26 | **Workshop** Refund | Register for workshop; cancel workshop registration from `/dashboard/myworkshops` | Stripe refund processed; registration record deleted; cancellation confirmation email received; refund appears in Stripe dashboard |
+| ---- | **Workshop** Edit Dates — start edit leaves other sessions alone | Open a multi-day workshop whose sessions are longer than 2 hours (seed: "Workshop — Multi-Day", 10:00–14:00); change the first row's start date to a day after the others; then change the start time on whichever row is now at the top | The list re-sorts and the edited session moves; every session the admin did not touch keeps its original start and end; the touched row keeps its end time so the duration changes only by what the admin actually edited; no session is silently reduced to 2 hours | `tests/utils/occurrences.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — moving a session to another day | Change only a row's start date | End date and time are unchanged, so the end now sits before the start; the row is outlined red with "This session ends before it starts"; correcting the end date clears the warning and preserves the original duration | `tests/utils/occurrences.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — new row gating | Click "+ Add Date"; then set the new row's start date; then pick an end time without touching the end date | End date and end time are disabled until a start is set; once set they become editable and no end is filled in automatically; picking an end time fills the end date with the start's day at the chosen time | `NA` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — append weekly/monthly preserves duration | Pick "Append weekly dates"; set the first occurrence to a span longer than 2 hours; change the start date; correct the end; set repetitions to 3 and append | Changing the start leaves the end time alone (flagged red if it now precedes the start); the appended sessions all carry the template's duration, not 2 hours; appending is refused while the template's end is not after its start | `NA` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — save blocked on an inverted range | Leave a row with its end before its start and submit on Add Workshop, Edit Workshop, and Offer Again | Submit is blocked on all three pages with "End date must be later than start date"; nothing is written to the database | `tests/schemas/workshop-occurrence-dates.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — every workshop kind | Repeat the start-date edit on each of: workshop and orientation, single-day and multi-day, with and without price variations (seed workshops #7–#14 by name) | The end never moves on its own in any of the eight combinations; a row whose occurrence has registrations is locked entirely and cannot be edited at all | `tests/schemas/workshop-occurrence-dates.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — mobile | Narrow the browser to a phone-width viewport on any workshop date editor | Each row stacks so start date/time sit on one line and end date/time below; the page does not scroll sideways; the red outlines and warning text stay readable | `NA` | `26/08/2026`
 | AC27 | **Equipment** Role Level Restriction | Login as Level 2 user; attempt to book equipment requiring Level 3+; upgrade to Level 3 (via membership); attempt booking again | Booking blocked initially; error message displayed; booking allowed after upgrade |
 | AC28 | **Equipment** Prerequisites | Create equipment with prerequisite workshops; attempt booking without completing prerequisites; complete prerequisite workshop; attempt booking again | Booking blocked initially; error message displayed; booking allowed after completing prerequisites |
 | AC29 | **Equipment** Slot Availability | Navigate to equipment booking grid; select available time slot; complete booking and payment; attempt to book same slot as another user | Booking created; slot marked as booked; booking blocked for same slot (slot unavailable) |
@@ -1500,6 +1564,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 - `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes); exports the `brivoClient` singleton
 - `app/services/access-control-sync.server.ts` - Door access synchronization (`syncUserDoorAccess()`)
 - `app/services/stripe-sync.server.ts` - Stripe Product sync and archive
+- `app/services/stripe-discounts.server.ts` - Recurring membership discounts, GST tax rate, renewal invoices
 
 **Utilities:**
 - `app/utils/session.server.ts` - Authentication, session management, waiver generation
