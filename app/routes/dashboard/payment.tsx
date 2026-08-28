@@ -20,6 +20,7 @@ import { getSavedPaymentMethod, getUserById } from "../../models/user.server";
 import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
 import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
+import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -530,12 +531,15 @@ export async function action({ request }: { request: Request }) {
       }
 
       const gstPercentage = await getAdminSetting("gst_percentage", "5");
-      const gstRate = parseFloat(gstPercentage) / 100;
-      const priceWithGST = price * (1 + gstRate);
+
+      // GST as a tax rate, so a promotion code discounts the base and GST follows the
+      // discounted amount — the same arithmetic the renewal invoices use.
+      const gstTaxRateId = await getOrCreateGstTaxRate(parseFloat(gstPercentage));
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
+        allow_promotion_codes: true,
         line_items: [
           {
             price_data: {
@@ -550,12 +554,13 @@ export async function action({ request }: { request: Request }) {
                         (upgradeFee > 0
                           ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
                           : "") +
-                        ` (Includes ${gstPercentage}% GST)`,
+                        ` (plus ${gstPercentage}% GST)`,
                     },
                   }),
-              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
+              unit_amount: Math.round(price * 100),
             },
             quantity: 1,
+            ...(gstTaxRateId ? { tax_rates: [gstTaxRateId] } : {}),
           },
         ],
         success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,

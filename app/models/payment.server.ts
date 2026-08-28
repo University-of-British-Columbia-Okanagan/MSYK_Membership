@@ -13,6 +13,7 @@ import { getSavedPaymentMethod } from "./user.server";
 import { db } from "../utils/db.server";
 import { getAdminSetting } from "./admin.server";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
+import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -975,8 +976,11 @@ export async function createCheckoutSession(request: Request) {
     }
 
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
-    const gstRate = parseFloat(gstPercentage) / 100;
-    const priceWithGST = chargeAmount * (1 + gstRate);
+
+    // GST rides as a tax rate rather than being folded into unit_amount, so a promotion
+    // code discounts the base and GST is charged on the discounted amount — matching how
+    // renewals are invoiced. Folding it in would tax the full price at signup only.
+    const gstTaxRateId = await getOrCreateGstTaxRate(parseFloat(gstPercentage));
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -994,12 +998,13 @@ export async function createCheckoutSession(request: Request) {
               : {
                   product_data: {
                     name: membershipPlan.title,
-                    description: `${membershipPlan.description || "Membership"} (Includes ${gstPercentage}% GST)`,
+                    description: `${membershipPlan.description || "Membership"} (plus ${gstPercentage}% GST)`,
                   },
                 }),
-            unit_amount: Math.round(priceWithGST * 100),
+            unit_amount: Math.round(chargeAmount * 100),
           },
           quantity: 1,
+          ...(gstTaxRateId ? { tax_rates: [gstTaxRateId] } : {}),
         },
       ],
       success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
