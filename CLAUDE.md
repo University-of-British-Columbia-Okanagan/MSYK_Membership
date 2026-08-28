@@ -69,7 +69,7 @@ First decide which of the two cases you are in, because it changes step 2:
 1. **Implement** the feature
 2. **Add test files for it** under `tests/`, following the existing layout, and run them until they pass
 3. **Verify end to end with Playwright MCP** — drive the real flow in the browser and confirm it behaves as expected
-4. **Regress** — `npm test` must stay fully green (currently **31 suites / 431 tests**)
+4. **Regress** — `npm test` must stay fully green (currently **37 suites / 515 tests**)
 5. **Typecheck** — `npm run typecheck` (three pre-existing errors in `old/webhooks.server.ts` are known and unrelated)
 
 #### Case B — the change touches existing functionality
@@ -96,6 +96,17 @@ Rules:
 
 **Mobile responsive is a requirement, not a nice-to-have.** Every UI change must work on a phone-width viewport, not just desktop. Use the Tailwind responsive prefixes the codebase already uses (`sm:`, `md:`, `lg:`), let tables and wide grids scroll inside their own container rather than pushing the page sideways, and keep tap targets reachable. Verify it — resize the browser to a mobile viewport in the Playwright MCP session, do not just assume the classes work.
 
+**Never use em dashes (—) in user-facing text.** Not in UI copy, button labels, help text, toasts, error messages, or emails. Rewrite the sentence instead of substituting another dash: split it at the break, or join it with a comma, a period, or a word like "so" or "because". `A — B` becomes `A. B` or `A, so B`.
+
+- Wrong: `Use Proceed to Checkout instead — codes can only be entered on Stripe's page.`
+- Right: `Use Proceed to Checkout instead. Codes can only be entered on Stripe's page.`
+- Wrong: `Sync All to Stripe — creates Stripe Products for items that lack one.`
+- Right: `Sync All to Stripe creates Stripe Products for items that lack one.`
+
+This is about text a user reads. Code comments are unaffected. When adding UI copy, grep your diff for `—` before you finish.
+
+**Check vertical rhythm on any text block you add, not just the padding class.** A `p-3` that measures symmetric can still look unbalanced, and a responsive text size can silently undo the line height you set: `sm:text-sm` resets `line-height`, so `leading-relaxed` is lost above the `sm` breakpoint unless you also pass `sm:leading-relaxed`. Measure the real gap above and below the text in the browser rather than trusting the class list.
+
 **Keep code comments short.** Comment where it helps, but a comment must earn its line: clear, concise, relevant, and telling the reader something the code does not already say. Prefer one sentence explaining *why* over a paragraph restating *what*.
 
 - Do not stack a run of single-line comments over consecutive statements — that is noise, and it ages badly
@@ -106,7 +117,29 @@ Rules:
 
 ### Browser Testing (Playwright MCP)
 
-`.mcp.json` registers the `@playwright/mcp` server, giving you a real Chromium browser. **Use it to verify UI and flow changes in the running app instead of assuming they work.** Start the app with `npm run dev` first (nothing auto-starts it), seed the DB if you need to log in, then drive `http://localhost:5173`. Chromium is already installed. See [.claude/README.md](./.claude/README.md) for guidance on when to reach for it.
+`.mcp.json` registers the `@playwright/mcp` server, giving you a real Chromium browser. **Use it to verify UI and flow changes in the running app instead of assuming they work.** Seed the DB if you need to log in, then drive `http://localhost:5173`. Chromium is already installed. See [.claude/README.md](./.claude/README.md) for guidance on when to reach for it.
+
+**Check for a running dev server before starting one. Do not start a second instance.**
+
+```bash
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+If that returns a process, the app is already running on `http://localhost:5173` and you should just use it. Only run `npm run dev` yourself when nothing is listening, and stop it when you are done.
+
+Starting a second instance causes real problems, not just clutter:
+
+- **Two membership billing crons.** `npm run dev` starts `entry.server.ts` as well as the client, and that process runs the daily billing job. A second copy can double-charge members
+- **Stripe redirects go to the wrong app.** `BASE_URL` in `.env` is `http://localhost:5173/`, so Stripe returns the browser to 5173 no matter which port your instance took. Your success handler never runs, and the flow silently completes against the other server
+- Vite falls back to 5174, 5175, and so on without warning, so the mismatch is easy to miss
+
+**After a Prisma migration, the running server holds a stale client.** `npx prisma migrate dev` regenerates `@prisma/client` on disk, but a server started earlier keeps the old one in memory, so writes to new columns fail with "Unknown argument" and the surrounding code often swallows it. The server has to be restarted. It is the maintainer's process, so **ask them to restart it** rather than killing it, or run your own instance on another port with `BASE_URL` overridden to match:
+
+```bash
+BASE_URL=http://localhost:5180/ npx react-router dev --port 5180
+```
+
+That skips the cron server, which is what you want for UI work. When you finish, stop it and confirm only 5173 is left.
 
 **Test accounts** — seeded by `npx tsx seed.ts` (requires `NODE_ENV=development`). All six share the password `password`, and cover every role level:
 
@@ -147,6 +180,11 @@ prisma/
 - **Database**: PostgreSQL with Prisma ORM; Stripe API version `2025-02-24.acacia`
 - **Stripe**: Live keys start with `sk_live_`/`pk_live_`, test with `sk_test_`/`pk_test_`; env vars are `STRIPE_SECRET_KEY` and `STRIPE_PUBLIC_KEY`
 - **Stripe Products**: `stripeProductId` on Workshop, MembershipPlan, Equipment — auto-synced via `app/services/stripe-sync.server.ts`; bulk sync via `/api/stripe-sync` admin endpoint
+- **Recurring membership discounts**: memberships are **not** Stripe Subscriptions. Renewals are charged as Stripe **Invoices** (`chargeMembershipViaInvoice()` in `app/services/stripe-discounts.server.ts`) because a bare PaymentIntent carries no discount. The coupon lives on the **Stripe Customer**, so it applies to invoices only and cannot leak into workshop or equipment checkout. `UserMembership.stripeCouponId` / `discountEndsAt` mirror it for display; Stripe stays authoritative
+- **Membership GST is a Stripe tax rate, not baked into `unit_amount`** (`getOrCreateGstTaxRate()`, admin setting `stripe_gst_tax_rate_id`). Stripe discounts before tax, so GST lands on the discounted base and signup matches renewal. Workshops and equipment still fold GST into the amount
+- **A renewal invoice line must carry the plan's `stripeProductId`.** A coupon restricted with "Apply to specific products" is ignored on a line without one, so it would discount the first payment and silently nothing after — the original bug in a narrower form
+- **Coupon duration counts calendar months, not billing periods**, and the expiry boundary is exclusive: discounted payments = `ceil(coupon months / cycle months)`. A coupon whose duration equals the billing cycle discounts exactly one payment. Check any combination with `npx tsx test-scripts/test-coupon-durations.ts <cycle> <once|N|forever>`
+- **A recurring discount ends on upgrade, downgrade, or the admin End button** (`endRecurringDiscountForUser()`). Cancelling does **not** end it — the coupon stays on the Stripe Customer and applies again on resubscribe to the same plan
 - **Role Levels**: Strict AND chain (1=registered only, 2=+orientation, 3=+active membership, 4=+needAdminPermission plan+allowLevel4); corrected every 15s by `startRoleLevelSyncCron()` in `app/models/user.server.ts`
 - **Cron Jobs**: Three background jobs started in `entry.server.ts` — role level sync (every 15s via node-cron), membership billing (midnight daily via node-cron), workshop occurrence status update (every 1s via setInterval)
 - **Door Access**: Two separate systems — Brivo (physical door lock, Level 4 only, auto-sync) and ESP32+local fobs (sign-in/out logging, admin-managed, never auto-modified by syncs)
@@ -166,7 +204,7 @@ prisma/
 - **`app/utils/occurrences.ts` is a plain `.ts`, not `.server.ts`** — it is imported by client components (`OccurrenceRow`, `RepetitionScheduleInputs`), so it must stay free of server-only imports
 - **Stripe test card for browser verification**: `4242 4242 4242 4242`, any future expiry, any CVC, any non-empty name/email/billing address. Only the number matters. Test keys only — never a real card, never live keys
 - **`vite.config.ts` sets `optimizeDeps.entries: ["app/**/*.{ts,tsx}"]` on purpose.** Vite's default scan only follows what the entry HTML reaches, so deps used only by unvisited routes were discovered mid-session, re-bundled, and forced a reload — surfacing as a spurious "Invalid hook call / more than one copy of React" console error. Do not remove it. If you ever do see that error, clear `node_modules/.vite` and restart before treating it as a real bug
-- **`QuickCheckout` renders only when the user has a saved payment method.** Cards live in the separate `UserPaymentInformation` table (`getSavedPaymentMethod()`), gated on both `stripeCustomerId` and `stripePaymentMethodId`. With no card the payment page falls back to the standard Stripe form — the designed fallback, not a bug. `npx tsx seed.ts` calls `user.deleteMany()` and the table cascades, so seeding wipes saved cards; re-add one at `/user/profile/paymentinformation` → Add Payment Method
+- **`QuickCheckout` renders only when the user has a saved payment method.** Cards live in the separate `UserPaymentInformation` table (`getSavedPaymentMethod()`), which returns `null` unless **both** `stripeCustomerId` and `stripePaymentMethodId` are set — a row can exist with only a customer id, created by `getOrCreateStripeCustomer()`, and that is not a usable card. With no card the payment page falls back to the standard Stripe form — the designed fallback, not a bug. `npx tsx seed.ts` calls `user.deleteMany()` and the table cascades, so seeding wipes saved cards; re-add one at `/user/profile/paymentinformation` → Add Payment Method
 
 ---
 
