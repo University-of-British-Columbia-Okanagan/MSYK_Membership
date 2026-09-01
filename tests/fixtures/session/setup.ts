@@ -45,9 +45,12 @@ jest.mock("bcryptjs", () => ({
 }));
 
 const mockSendRegistrationConfirmationEmail = jest.fn();
+const mockSendMinorRegistrationNotificationEmail = jest.fn();
 
 jest.mock("~/utils/email.server", () => ({
   sendRegistrationConfirmationEmail: mockSendRegistrationConfirmationEmail,
+  sendMinorRegistrationNotificationEmail:
+    mockSendMinorRegistrationNotificationEmail,
 }));
 
 jest.mock("~/logging/logger", () => ({
@@ -65,6 +68,7 @@ export const getSessionMocks = () => {
   const { db } = require("~/utils/db.server");
   const {
     sendRegistrationConfirmationEmail,
+    sendMinorRegistrationNotificationEmail,
   } = require("~/utils/email.server");
 
   return {
@@ -73,6 +77,8 @@ export const getSessionMocks = () => {
     bcryptCompareMock,
     mockSendRegistrationConfirmationEmail:
       sendRegistrationConfirmationEmail as jest.Mock,
+    mockSendMinorRegistrationNotificationEmail:
+      sendMinorRegistrationNotificationEmail as jest.Mock,
   };
 };
 
