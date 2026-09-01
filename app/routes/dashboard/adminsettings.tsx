@@ -32,6 +32,7 @@ import {
   getPlannedClosures,
   updatePlannedClosures,
   getAdminSetting,
+  getMinorNotificationEmail,
   getPastWorkshopVisibility,
 } from "~/models/admin.server";
 import {
@@ -152,6 +153,7 @@ export async function loader({ request }: { request: Request }) {
     maxEquipmentSlotsPerDay,
     maxEquipmentSlotsPerWeek,
     gstPercentage,
+    minorNotificationEmail,
     workshopsRaw,
     users,
     level3Schedule,
@@ -172,6 +174,7 @@ export async function loader({ request }: { request: Request }) {
     getAdminSetting("max_number_equipment_slots_per_day", "4"),
     getAdminSetting("max_number_equipment_slots_per_week", "14"),
     getAdminSetting("gst_percentage", "5"),
+    getMinorNotificationEmail(),
     getWorkshops(),
     getAllUsersWithVolunteerStatus(),
     getLevel3ScheduleRestrictions(),
@@ -276,6 +279,7 @@ export async function loader({ request }: { request: Request }) {
       maxEquipmentSlotsPerDay: parseInt(maxEquipmentSlotsPerDay, 10),
       maxEquipmentSlotsPerWeek: parseInt(maxEquipmentSlotsPerWeek, 10),
       gstPercentage: parseFloat(gstPercentage),
+      minorNotificationEmail,
     },
     workshops,
     users: usersWithDoorAccess,
@@ -387,6 +391,17 @@ export async function action({ request }: { request: Request }) {
             "max_number_equipment_slots_per_week",
             maxSlotsWeekData.toString(),
             "Maximum number of 30-minute slots a user can book equipment per week"
+          );
+        }
+      }
+
+      if (settingType === "minorNotificationEmail") {
+        const emailData = formData.get("minorNotificationEmail");
+        if (emailData) {
+          await updateAdminSetting(
+            "minor_notification_email",
+            emailData.toString().trim(),
+            "Address notified when a 14 to 17 year old registers, so they can be added to the front desk guardian waiver list"
           );
         }
       }
@@ -2451,6 +2466,7 @@ export default function AdminSettings() {
       maxEquipmentSlotsPerDay: number;
       maxEquipmentSlotsPerWeek: number;
       gstPercentage: number;
+      minorNotificationEmail: string;
     };
     workshops: Array<{
       id: number;
@@ -2744,6 +2760,9 @@ export default function AdminSettings() {
 
   const [gstPercentage, setGstPercentage] = useState(
     settings.gstPercentage.toString()
+  );
+  const [minorNotificationEmail, setMinorNotificationEmail] = useState(
+    settings.minorNotificationEmail
   );
 
   const [level3Schedule, setLevel3Schedule] = useState(() => {
@@ -7256,6 +7275,64 @@ export default function AdminSettings() {
                       >
                         <Save className="h-4 w-4 mr-2" />
                         Save Tax Settings
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </Form>
+
+                <Form method="post" className="space-y-6 mt-6">
+                  <input
+                    type="hidden"
+                    name="actionType"
+                    value="updateSettings"
+                  />
+                  <input
+                    type="hidden"
+                    name="settingType"
+                    value="minorNotificationEmail"
+                  />
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Under 18 Registration Notices</CardTitle>
+                      <CardDescription>
+                        Where to send the alert when a 14 to 17 year old creates
+                        an account
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="minorNotificationEmail">
+                          Notification Email
+                        </Label>
+                        <Input
+                          id="minorNotificationEmail"
+                          name="minorNotificationEmail"
+                          type="email"
+                          required
+                          value={minorNotificationEmail}
+                          onChange={(e) =>
+                            setMinorNotificationEmail(e.target.value)
+                          }
+                          placeholder="info@makerspaceyk.com"
+                          className="w-full sm:w-96"
+                        />
+                        <p className="text-sm text-gray-500">
+                          Every time someone aged 14 to 17 registers, this
+                          address receives their name, age and legal guardian's
+                          name so they can be added to the front desk list. They
+                          still need to come in-person with their guardian to
+                          sign the additional waiver. The default is
+                          info@makerspaceyk.com.
+                        </p>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        type="submit"
+                        className="bg-indigo-500 hover:bg-indigo-600 text-white"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Notification Email
                       </Button>
                     </CardFooter>
                   </Card>
