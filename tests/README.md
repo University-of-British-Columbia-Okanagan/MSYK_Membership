@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 37 suites, 515 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 43 suites, 636 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -43,6 +43,35 @@ Asking costs one message. The alternatives — skipping the verification, faking
 
 ---
 
+## Component tests
+
+Almost everything here runs in jest's `node` environment. The register form is the exception,
+because its age gate, guardian field and post-error restore all live in component state and
+are unreachable from a model test.
+
+A component test opts in with a docblock at the top of the file:
+
+```ts
+/**
+ * @jest-environment jest-fixed-jsdom
+ */
+```
+
+`jest-fixed-jsdom` rather than plain `jsdom`: React Router needs `TextEncoder` and the fetch
+globals (`Request`, `Response`) at module load, and jsdom omits them. Two more gaps are
+filled globally in `tests/setup/` and are inert under `node`.
+
+Three things to know before writing another one:
+
+- **Mock the `*.server.ts` import.** A route module imports its own loader and action, which
+  drags in Prisma, bcrypt, pdf-lib and Mailgun. Stub the server module and test the component
+- **Render through `createRoutesStub`** from react-router so `useLoaderData` resolves, then
+  `await` the form appearing. The stub resolves its loader asynchronously, so a query on the
+  first tick finds nothing
+- **Pass `actionData` as a prop.** It cannot be produced by submitting the form: the register
+  form posts natively via `formRef.current.submit()`, which jsdom does not implement. A prop
+  is exactly how React Router delivers an action result anyway
+
 ## Layout
 
 ```
@@ -66,10 +95,20 @@ tests/
 │   ├── brivo.server.test.ts
 │   └── stripe-sync.server.test.ts
 ├── schemas/                     # app/schemas/
+│   ├── registration-age-guardian.test.ts  # 14+ gate and the 14-17 guardian name
 │   └── workshop-occurrence-dates.test.ts  # end > start, across both workshop schemas
 ├── utils/                       # app/utils/
+│   ├── age.test.ts                        # age boundaries, invalid dates, timezone drift
+│   ├── email.minor-registration.test.ts    # the under-18 staff notice
 │   ├── occurrences.test.ts
+│   ├── registration-restore.test.ts        # re-opening the document gates after a failed submit
+│   ├── session.register-minor.test.ts      # register() stores the guardian, notifies staff
 │   └── session.server.test.ts
+├── setup/                       # jest setup, no tests
+│   ├── dom-stubs.ts                 # ResizeObserver etc. that Radix needs; no-op under node
+│   └── lucide-react-stub.js         # icons; the real package is ESM-only
+├── routes/authentication/       # component tests (jsdom)
+│   └── register.component.test.tsx  # the age gate, guardian field and post-error restore
 ├── routes/dashboard/            # route loaders and actions
 │   ├── addequipment.test.ts
 │   ├── addworkshop.test.ts
