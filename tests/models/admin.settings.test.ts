@@ -24,6 +24,7 @@ import {
   getPlannedClosures,
   updatePlannedClosures,
   updateWorkshopCutoff,
+  getMinorNotificationEmail,
 } from "~/models/admin.server";
 
 const { db } = require("~/utils/db.server") as { db: AdminDbMock };
@@ -197,6 +198,48 @@ describe("admin.server - settings", () => {
           where: { id: 3 },
           data: expect.objectContaining({ registrationCutoff: 120 }),
         })
+      );
+    });
+  });
+
+  describe("getMinorNotificationEmail", () => {
+    it("reads the configured staff address", async () => {
+      db.adminSettings.findUnique.mockResolvedValue({
+        value: "frontdesk@makerspaceyk.com",
+      });
+
+      await expect(getMinorNotificationEmail()).resolves.toBe(
+        "frontdesk@makerspaceyk.com"
+      );
+      expect(db.adminSettings.findUnique).toHaveBeenCalledWith({
+        where: { key: "minor_notification_email" },
+      });
+    });
+
+    it("falls back to info@makerspaceyk.com when the key is unset", async () => {
+      db.adminSettings.findUnique.mockResolvedValue(null);
+
+      await expect(getMinorNotificationEmail()).resolves.toBe(
+        "info@makerspaceyk.com"
+      );
+    });
+
+    it("falls back when the stored value was cleared to an empty string", async () => {
+      // An admin emptying the field must not silently stop the notification.
+      db.adminSettings.findUnique.mockResolvedValue({ value: "   " });
+
+      await expect(getMinorNotificationEmail()).resolves.toBe(
+        "info@makerspaceyk.com"
+      );
+    });
+
+    it("trims surrounding whitespace off a pasted address", async () => {
+      db.adminSettings.findUnique.mockResolvedValue({
+        value: " frontdesk@makerspaceyk.com ",
+      });
+
+      await expect(getMinorNotificationEmail()).resolves.toBe(
+        "frontdesk@makerspaceyk.com"
       );
     });
   });
