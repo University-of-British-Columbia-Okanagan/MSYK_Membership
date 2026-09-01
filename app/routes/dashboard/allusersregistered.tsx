@@ -30,6 +30,8 @@ interface LoaderData {
     lastName: string;
     email: string;
     phone: string;
+    dateOfBirth: string;
+    guardianName: string | null;
     trainingCardUserNumber: string;
     roleLevel: number;
     allowLevel4: boolean;
@@ -196,6 +198,17 @@ export default function AllUsersRegistered() {
     { header: "Last Name", render: (user) => user.lastName },
     { header: "Email", render: (user) => user.email },
     { header: "Phone Number", render: (user) => user.phone },
+    {
+      // The under-18 notice email is the primary route to this, but it can be lost. The
+      // guardian name on the record is the fallback for the front desk list.
+      header: "Legal Guardian",
+      render: (user) =>
+        user.guardianName ? (
+          <span>{user.guardianName}</span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        ),
+    },
     {
       header: "Training Card User Number",
       render: (user) => user.trainingCardUserNumber,
