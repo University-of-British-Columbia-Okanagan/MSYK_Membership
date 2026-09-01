@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  calculateAge,
+  isTooYoungToRegister,
+  requiresGuardian,
+  MINIMUM_REGISTRATION_AGE,
+} from "~/utils/age";
 
 export const registerSchema = z
   .object({
@@ -14,27 +20,15 @@ export const registerSchema = z
     dateOfBirth: z
       .string()
       .min(1, "Date of Birth is required")
-      .refine(
-        (date) => {
-          const birthDate = new Date(date);
-          const today = new Date();
-          let age = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
+      .refine((date) => calculateAge(date) !== null, {
+        message: "Please enter a valid date of birth",
+      })
+      .refine((date) => !isTooYoungToRegister(calculateAge(date)), {
+        message: `Makers under ${MINIMUM_REGISTRATION_AGE} are a bit too young to register for the portal. You can talk to your parent or guardian about registering and participating with you`,
+      }),
 
-          if (
-            monthDiff < 0 ||
-            (monthDiff === 0 && today.getDate() < birthDate.getDate())
-          ) {
-            age--;
-          }
-
-          return age >= 18;
-        },
-        {
-          message:
-            ". You must be 18 or older to complete online registration. Please visit the makerspace with a parent/guardian to register",
-        }
-      ),
+    // Only collected from 14 to 17 year olds. Required for them, dropped for everyone else.
+    guardianName: z.string().optional(),
 
     emergencyContactName: z
       .string()
@@ -68,6 +62,26 @@ export const registerSchema = z
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
     message: "Passwords do not match",
+  })
+  .superRefine((data, ctx) => {
+    if (!requiresGuardian(calculateAge(data.dateOfBirth))) return;
+
+    if (!data.guardianName || data.guardianName.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["guardianName"],
+        message: "Please enter your legal guardian's full name",
+      });
+    }
+  })
+  .transform((data) => {
+    // The field is hidden again if the user changes their birth year, so a stale value can
+    // still be posted. Only keep it for the band that actually needs it.
+    const guardianName = requiresGuardian(calculateAge(data.dateOfBirth))
+      ? data.guardianName?.trim()
+      : undefined;
+
+    return { ...data, guardianName };
   });
 
 export type RegisterFormValues = z.infer<typeof registerSchema>;

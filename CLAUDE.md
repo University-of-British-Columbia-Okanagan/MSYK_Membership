@@ -69,7 +69,7 @@ First decide which of the two cases you are in, because it changes step 2:
 1. **Implement** the feature
 2. **Add test files for it** under `tests/`, following the existing layout, and run them until they pass
 3. **Verify end to end with Playwright MCP** — drive the real flow in the browser and confirm it behaves as expected
-4. **Regress** — `npm test` must stay fully green (currently **37 suites / 515 tests**)
+4. **Regress** — `npm test` must stay fully green (currently **43 suites / 636 tests**)
 5. **Typecheck** — `npm run typecheck` (three pre-existing errors in `old/webhooks.server.ts` are known and unrelated)
 
 #### Case B — the change touches existing functionality
@@ -114,6 +114,18 @@ This is about text a user reads. Code comments are unaffected. When adding UI co
 - Do not leave running commentary about your own edits (`// changed this to fix the bug`)
 - Do explain a non-obvious constraint, a workaround, or a rule that lives outside the file
 - Match the comment density of the surrounding file
+
+### Component tests
+
+Suites run in jest's `node` environment. A component test opts into a DOM with a docblock:
+
+```ts
+/**
+ * @jest-environment jest-fixed-jsdom
+ */
+```
+
+`jest-fixed-jsdom`, not plain `jsdom`: React Router needs `TextEncoder` and the fetch globals at module load. Mock the route's `*.server.ts` import, render through `createRoutesStub`, and `await` the form appearing before querying it. `tests/routes/authentication/register.component.test.tsx` is the worked example; [tests/README.md](./tests/README.md#component-tests) has the full notes.
 
 ### Browser Testing (Playwright MCP)
 
@@ -160,7 +172,8 @@ app/
 ├── routes/              # File-based routing (React Router 7)
 ├── models/              # Server-side business logic (*.server.ts)
 ├── services/            # External service integrations (*.server.ts)
-├── utils/               # Utilities (*.server.ts)
+├── utils/               # Utilities (*.server.ts, plus client-safe age.ts,
+│                        #   occurrences.ts, registration-restore.ts)
 ├── layouts/             # Shared layout components
 ├── components/ui/       # UI components
 ├── schemas/             # Zod validation schemas
@@ -193,6 +206,8 @@ prisma/
 - **No `requireAuth()` helper exists.** Routes call `getRoleUser(request)` (most common), `getUser(request)`, or `getUserId(request)` in their loader/action and issue their own `redirect()`
 - **Emails**: Case-insensitive lookups everywhere (`mode: "insensitive"`); new registrations stored lowercase
 - **JWT_SECRET**: Required env var for password reset tokens (1-hour JWT expiry)
+- **Registration minimum age is 14, not 18.** Under 14 is blocked; 14 to 17 must name a legal guardian on the form and get a staff notice emailed to the `minor_notification_email` admin setting (default `info@makerspaceyk.com`). Age arithmetic lives in `app/utils/age.ts` and is shared by the schema, the route action and the form. It parses `YYYY-MM-DD` by component on purpose: `new Date("2012-08-28")` is UTC midnight, and local getters then report Aug 27, which reads as a birthday already passed, so west of UTC a 13 year old was admitted the day before turning 14. `User.guardianName` is only kept for 14 to 17, the schema strips a stale value from any other age
+- **A disabled control is never serialised into FormData.** The register form gates the two consent checkboxes and the signature pad behind "have you opened the PDF yet?" component state, which a full-page POST wipes. Before `documentViewsFromSavedValues()` in `app/utils/registration-restore.ts`, a server error restored the boxes **ticked but disabled**, so the resubmit silently dropped `communityGuidelines` and `operationsPolicy` and the server rejected it for agreements the page was visibly showing as agreed. Any new gated control needs its flag re-derived there too
 - **AdminSettings key for equipment visibility**: `equipment_visible_registrable_days` (not `equipment_visibility_days`)
 - **AdminSettings key `level4_unavaliable_hours` is misspelled in the code** — match it exactly; the other equipment keys are `level3_start_end_hours`, `max_number_equipment_slots_per_day` (default 4), `max_number_equipment_slots_per_week` (default 14)
 - **`EquipmentBooking` has no unique constraint on `slotId`** — `@@unique([slotId])` is commented out in `schema.prisma` so cancelled and new bookings can share a slot. Double-booking is prevented in application code, not the DB
@@ -201,7 +216,7 @@ prisma/
 - **The `payment.tsx` loader is the only server-side registration-cutoff gate.** Neither `quickCheckout()` nor `paymentsuccess.tsx` re-checks `Workshop.registrationCutoff`, so a loader branch that omits the check is bypassable by pasting the URL. All four workshop branches call `isPastRegistrationCutoff` today — if you add a fifth, add the check and a case to `tests/routes/dashboard/payment.cutoff.test.ts`
 - **Admin can move a registration** between occurrences of the same workshop via `moveUserWorkshopRegistration()` — single-day, active, in-capacity targets only
 - **Occurrence start and end dates are independent — do not re-add an auto-derived end.** Add Workshop, Edit Workshop, and Offer Again previously set the end to start + 2 hours on every start edit. Because the list also re-sorts by start on every edit while rows are addressed by array index, a start edit could land on a different occurrence than the one on screen and silently collapse *that* session's duration to 2 hours. All three pages now share `app/utils/occurrences.ts` — `setOccurrenceDateField()` (immutable, start and end never derived from each other), `sortOccurrencesByStart()` (NaN-safe, so an unfilled `new Date("")` row sinks instead of acting as a sort barrier that leaves the array partially sorted), and `isEndBeforeStart()` (drives the red row warning). Moving a session to another day is deliberately two edits; the red flag catches a forgotten second one
-- **`app/utils/occurrences.ts` is a plain `.ts`, not `.server.ts`** — it is imported by client components (`OccurrenceRow`, `RepetitionScheduleInputs`), so it must stay free of server-only imports
+- **`app/utils/occurrences.ts` is a plain `.ts`, not `.server.ts`** — it is imported by client components (`OccurrenceRow`, `RepetitionScheduleInputs`), so it must stay free of server-only imports. `app/utils/age.ts` and `app/utils/registration-restore.ts` are client-safe for the same reason: the register form imports both
 - **Stripe test card for browser verification**: `4242 4242 4242 4242`, any future expiry, any CVC, any non-empty name/email/billing address. Only the number matters. Test keys only — never a real card, never live keys
 - **`vite.config.ts` sets `optimizeDeps.entries: ["app/**/*.{ts,tsx}"]` on purpose.** Vite's default scan only follows what the entry HTML reaches, so deps used only by unvisited routes were discovered mid-session, re-bundled, and forced a reload — surfacing as a spurious "Invalid hook call / more than one copy of React" console error. Do not remove it. If you ever do see that error, clear `node_modules/.vite` and restart before treating it as a real bug
 - **`QuickCheckout` renders only when the user has a saved payment method.** Cards live in the separate `UserPaymentInformation` table (`getSavedPaymentMethod()`), which returns `null` unless **both** `stripeCustomerId` and `stripePaymentMethodId` are set — a row can exist with only a customer id, created by `getOrCreateStripeCustomer()`, and that is not a usable card. With no card the payment page falls back to the standard Stripe form — the designed fallback, not a bug. `npx tsx seed.ts` calls `user.deleteMany()` and the table cascades, so seeding wipes saved cards; re-add one at `/user/profile/paymentinformation` → Add Payment Method

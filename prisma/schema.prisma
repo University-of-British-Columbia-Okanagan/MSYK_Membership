@@ -24,6 +24,7 @@ model User {
   password              String
   phone                 String
   dateOfBirth           String
+  guardianName          String?
   emergencyContactName  String
   emergencyContactPhone String
   emergencyContactEmail String

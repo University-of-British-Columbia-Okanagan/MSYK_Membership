@@ -318,7 +318,7 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - **Equipment Settings** — equipment visibility days, Level 3 booking hours, Level 4 unavailable hours, max slots per day/week
 - **Planned Closures** — add and remove closure periods
 - **Cancelled Events** — workshop and equipment cancellations, refund eligibility, resolved toggle
-- **Miscellaneous Settings** — GST/HST percentage
+- **Miscellaneous Settings** — GST/HST percentage, and the under-18 registration notice address (`minor_notification_email`)
 - **Integrations** — Google Calendar (connect/disconnect via OAuth, select calendar, timezone) **and** Brivo (access group, webhook subscription create/delete, integration status)
 - **Security & Access** — access token generation, access card lookup by UUID or email, card permissions
 - **Stripe Products** — bulk sync all workshops/membership plans/equipment to Stripe; "Clear & Re-sync" for environment switching; sync count display per category
@@ -338,6 +338,10 @@ Note there is no separate "General", "Google Calendar", or "Brivo" tab — GST l
 - Webhook subscription management (create/delete event subscriptions)
 - User sync status display and retry functionality
 - Integration status indicator (shows if Brivo credentials are configured)
+
+**All Users Page (`/dashboard/admin/users`):**
+- Columns are First Name, Last Name, Email, Phone Number, Legal Guardian, Training Card User Number, Role Level
+- **Legal Guardian** shows the name given at registration by a 14 to 17 year old, and a dash for everyone else. It is the fallback for the front desk waiver list if the notification email is lost
 
 **User Management Table (Admin Settings → User Settings tab):**
 - Lists all registered users with columns: First Name, Last Name, Training Card User Number, Email, Phone Number, Role Level, Admin Status, Membership, Door Access
@@ -494,6 +498,7 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 1. User navigates to `/register`
 2. Fills registration form:
    - Personal information (name, email, phone, DOB)
+   - Legal guardian's name, shown and required only when the DOB puts them at 14 to 17
    - Emergency contact details
    - Consent agreements (media, data privacy, community guidelines, operations policy)
    - Digital waiver signature (optional)
@@ -502,11 +507,12 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 5. Waiver PDF generated and encrypted (if signature provided)
 6. User record created in database
 7. Registration confirmation email sent
-8. User redirected to `/login?registered=true`
-9. Login page displays green "Registration successful!" confirmation banner
-10. User enters email and password
-11. Session cookie `RJ_session` created holding `userId`, `userPassword` (the raw password submitted on the login form), and `loginTime`. On every subsequent request `getUserId()` re-reads the user and `bcrypt.compare`s the session password against the stored hash, so a password change invalidates all existing sessions
-12. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
+8. If the user is 14 to 17, staff are emailed the name, age and guardian name at the `minor_notification_email` address (default `info@makerspaceyk.com`) so the maker can be added to the front desk list for the in-person guardian waiver
+9. User redirected to `/login?registered=true`
+10. Login page displays green "Registration successful!" confirmation banner
+11. User enters email and password
+12. Session cookie `RJ_session` created holding `userId`, `userPassword` (the raw password submitted on the login form), and `loginTime`. On every subsequent request `getUserId()` re-reads the user and `bcrypt.compare`s the session password against the stored hash, so a password change invalidates all existing sessions
+13. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
 - Email uniqueness check
@@ -947,7 +953,7 @@ Every implementation then follows **implement → test → verify end to end**. 
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**37 suites / 515 tests**)
+4. `npm test` — the suite must stay fully green (**43 suites / 636 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -1044,6 +1050,12 @@ The acceptance criteria are organized into three categories:
 | - | Recurring Discount Ends on Plan Change | Upgrade and downgrade both clear the Stripe discount and the mirrored columns; a brand-new subscription does not | `tests/models/membership.server.test.ts` |
 | - | Stripe Integrations Admin Endpoint | Every action is admin-only; the discount listing filters out discounts Stripe has already expired while keeping `forever` ones; ending a discount requires a `userId` and surfaces Stripe failures | `tests/routes/api/stripe-sync.test.ts` |
 | - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/routes/dashboard/payment.membership-gst.test.ts` |
+| AC8 | Missing Required Fields | Zod schema validation fails; field-specific error messages displayed; no user record created. Also covers the guardian name being required for 14 to 17 and stripped for every other age | `tests/schemas/registration-age-guardian.test.ts` |
+| - | Age Arithmetic | Whole-year ages across both boundaries, leap days, malformed and non-existent calendar dates, future dates, and the timezone case where a UTC-parsed birthday used to admit a 13 year old a day early | `tests/utils/age.test.ts` |
+| - | Under-18 Staff Notice | Recipient resolved from `minor_notification_email` and never the registrant, the subject and every body fact, HTML escaping of crafted names, a missing guardian name, and a Mailgun failure propagating to the caller | `tests/utils/email.minor-registration.test.ts` |
+| - | Registering a Minor | `register()` refuses under 14 and a 14 to 17 year old with no guardian, stores and trims `guardianName` for the band and nulls it otherwise, notifies staff at both edges of 14 to 17 but not at 18, and completes the registration even when either email fails | `tests/utils/session.register-minor.test.ts` |
+| - | Register Form Age Gate | Both boundaries drive the notice, the guardian field and the submit button; a typed guardian name is dropped when the birthday moves out of the band and is not resurrected on re-entry | `tests/routes/authentication/register.component.test.tsx` |
+| - | Register Form Error Restore | After a rejected submit the birthday returns to all three dropdowns, the guardian field and notice survive, and the consent gates reopen so the consents are serialised again | `tests/routes/authentication/register.component.test.tsx`, `tests/utils/registration-restore.test.ts` |
 | - | Membership Email Amounts | Reminder and payment-success emails itemise base, discount, and GST, with GST derived from the discounted base rather than the gap between list price and total | `tests/utils/email.membership-discount.test.ts` |
 | - | Saved Payment Method Guard | `getSavedPaymentMethod()` returns `null` for a `UserPaymentInformation` row holding only a customer id, so Quick Checkout and the profile page do not render a card with blank digits | `tests/models/user.payment-method.test.ts` |
 | AC21 | Workshop Prerequisites | System checks user completed required workshops; registration blocked if prerequisites not met | `tests/models/workshop.registration.test.ts` |
@@ -1084,7 +1096,6 @@ These tests are **not yet written**. The "Recommended Test File" column names wh
 | AC5 | Valid Registration | User record created; password hashed with bcrypt; registration confirmation email sent; user redirected to login | `tests/utils/session.server.test.ts` |
 | AC6 | Waiver Signature | PDF template loaded; user name, signature, and date added; PDF encrypted with AES; encrypted PDF stored in `User.waiverSignature` | `tests/utils/session.server.test.ts` |
 | AC7 | Duplicate Email | Validation error displayed; no user record created; registration form shows error message | `tests/utils/session.server.test.ts` |
-| AC8 | Missing Required Fields | Zod schema validation fails; field-specific error messages displayed; no user record created | `tests/schemas/registrationSchema.test.ts` |
 | AC9 | Password Reset Request | JWT token generated (1-hour expiration); reset email sent with tokenized link | `tests/utils/email.server.test.ts` |
 | AC10 | Password Reset Token Validation | Token validated (expiration, signature); password reset form displayed; user can enter new password | `tests/routes/authentication/passwordReset.test.ts` |
 | AC11 | Expired Reset Token | Token validation fails; error message displayed; user redirected to password reset request page | `tests/routes/authentication/passwordReset.test.ts` |
@@ -1123,7 +1134,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC3 | **Session** Invalidation | Login as user; change password externally (via admin or database); attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC4 | Tampered **Session** Cookie | Login as user; modify session cookie in browser dev tools; attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC5 | **Register** Valid Registration | Navigate to `/register`; fill all required fields with valid data; provide all required consents; submit form | User record created; registration confirmation email received; redirect to login page | `N/A` | `11/09/2025`
-| ---- | **Register** Age Input | Navigate to `/register` and input age | If less than 18 years old, then register should not complete | `N/A` | `11/09/2025`
+| ---- | **Register** Age Input | Navigate to `/register` and input a DOB under 14, then 14 to 17, then 18+ | Under 14 is blocked and the submit button stays disabled; 14 to 17 shows the guardian notice, requires a guardian name, and registers; 18+ registers with no guardian field | `tests/schemas/registration-age-guardian.test.ts` | `28/08/2026`
 | ---- | **Register** Agreements | Navigate to `/register` and have to check the boxes to agree and read agreements | If unchecked, then register should not complete | `N/A` | `11/09/2025`
 | AC6 | **Register** Waiver Signature | During registration, provide digital waiver signature; complete registration | Waiver PDF can be downloaded (admin view); waiver contains user name, signature, and date; waiver is encrypted in database | `N/A` | `11/09/2025`
 | AC7 | **Register** Duplicate Email | Attempt registration with existing email | Validation error displayed; no duplicate user record created; error message shows on form | `N/A` | `11/09/2025`

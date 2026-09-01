@@ -42,6 +42,21 @@ export async function updateAdminSetting(
   });
 }
 
+/** Default recipient for the under-18 registration notice. */
+const DEFAULT_MINOR_NOTIFICATION_EMAIL = "info@makerspaceyk.com";
+
+/**
+ * Staff address notified when a 14-17 year old registers, so they can be added to the
+ * front desk list for the in-person guardian waiver.
+ *
+ * Falls back to the default if the setting was never created or was cleared, because an
+ * empty recipient would drop the notice silently.
+ */
+export async function getMinorNotificationEmail(): Promise<string> {
+  const configured = await getAdminSetting("minor_notification_email", "");
+  return configured.trim() || DEFAULT_MINOR_NOTIFICATION_EMAIL;
+}
+
 export async function getGoogleCalendarConfig() {
   const calendarId = await getAdminSetting("google_calendar_id", "");
   const timezone = await getAdminSetting("google_calendar_timezone", "America/Yellowknife");

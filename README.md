@@ -685,7 +685,7 @@ See [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.c
 ### Core Models
 
 #### User Management
-- **User**: Central user entity — personal info, emergency contacts, four consent booleans (`mediaConsent`, `dataPrivacy`, `communityGuidelines`, `operationsPolicy`), `roleLevel`, `allowLevel4`, `avatarUrl`, encrypted `waiverSignature`, revocation fields (`membershipStatus` — `"active"`/`"revoked"`, `membershipRevokedAt`, `membershipRevokedReason`), and Brivo sync fields (`brivoPersonId`, `brivoLastSyncedAt`, `brivoSyncError`)
+- **User**: Central user entity — personal info, emergency contacts, `guardianName` (nullable; only populated for accounts that registered aged 14 to 17), four consent booleans (`mediaConsent`, `dataPrivacy`, `communityGuidelines`, `operationsPolicy`), `roleLevel`, `allowLevel4`, `avatarUrl`, encrypted `waiverSignature`, revocation fields (`membershipStatus` — `"active"`/`"revoked"`, `membershipRevokedAt`, `membershipRevokedReason`), and Brivo sync fields (`brivoPersonId`, `brivoLastSyncedAt`, `brivoSyncError`)
 - **RoleUser**: Role definitions — User (id: 1) and Admin (id: 2)
 - **UserPaymentInformation**: Stripe customer and payment method storage
 
@@ -786,6 +786,7 @@ Key-value configuration storage for system-wide settings:
 | `max_number_equipment_slots_per_day` | `"4"` | Maximum equipment slots a user may book in one day |
 | `max_number_equipment_slots_per_week` | `"14"` | Maximum equipment slots a user may book in one week |
 | `stripe_gst_tax_rate_id` | *(unset)* | Stripe Tax Rate id matching `gst_percentage`, used on membership checkout and renewal invoices. Created on first use by `getOrCreateGstTaxRate()`; Stripe tax rates are immutable, so changing GST creates a new one |
+| `minor_notification_email` | `"info@makerspaceyk.com"` | Address notified when a 14 to 17 year old registers. Read through `getMinorNotificationEmail()`, which falls back to the default when the key is unset or stored empty, so an emptied field cannot silently drop the notice. Editable in Admin Settings under Miscellaneous |
 
 All values are stored as strings; helpers in `app/models/admin.server.ts` and `app/models/equipment.server.ts` parse them. Defaults listed above are the fallbacks supplied at each call site — a key may be absent from the table entirely.
 
@@ -965,6 +966,7 @@ All models are in `app/models/` (*.server.ts). Some API logic is also in `app/ro
 - `updateWorkshopCutoff()`
 - `getGoogleCalendarConfig()`, `clearGoogleCalendarAuth()`
 - `getPlannedClosures()`, `updatePlannedClosures()`
+- `getMinorNotificationEmail()` — staff recipient for the under-18 registration notice
 
 #### Payment Processing (`payment.server.ts`)
 - `createPaymentIntentWithSavedCard()` — saved card quick checkout
@@ -1031,6 +1033,23 @@ const form = useForm<FormValues>({
 
 On successful registration, the action redirects to `/login?registered=true`. The login page reads the `?registered=true` param and displays a green "Registration successful!" banner. There is no "stay on register page" behavior.
 
+**Minimum age is 14.** It was 18 until the board relaxed it. The age bands are:
+
+| Age | Can register online | Extra requirement |
+|-----|--------------------|-------------------|
+| Under 14 | No | Blocking notice on the form; the submit button is disabled |
+| 14 to 17 | Yes | Must name a legal guardian on the form, and come in-person with that guardian to sign an additional waiver |
+| 18+ | Yes | None |
+
+A 14 to 17 year old is a normal Level 1 account with no functional restrictions, and signs the same digital waiver as everyone else. The in-person guardian waiver is a paper process tracked on a front desk list, not in the portal.
+
+Four pieces make this work:
+
+- **`app/utils/age.ts`** owns the arithmetic: `calculateAge()`, `requiresGuardian()` (14 to 17), `isTooYoungToRegister()` (under 14). It is a plain `.ts`, not `.server.ts`, because the register form imports it to decide which notice to show while the user picks a birthday. It parses `YYYY-MM-DD` by component rather than through `new Date(string)`, which parses a bare date as UTC midnight and, read back with local getters, reports the previous day anywhere west of Greenwich. A birthday shifted a day earlier reads as already passed, so in Yellowknife a 13 year old was admitted the day before turning 14
+- **`User.guardianName`** (`String?`) stores the name. The register form only renders the field for 14 to 17, and the schema drops any stale value submitted outside that band, so an adult account can never carry one. Admins see it as a "Legal Guardian" column on `/dashboard/admin/users`
+- **`sendMinorRegistrationNotificationEmail()`** emails staff the registrant's name, age, email and guardian name so they can be added to the front desk list. The recipient comes from the `minor_notification_email` admin setting, defaulting to `info@makerspaceyk.com`, and is editable in Admin Settings under Miscellaneous. Like the welcome email it is best-effort: a Mailgun failure is logged, never surfaced to the registrant, and never fails the registration
+- **`app/utils/registration-restore.ts`** repairs the form after a rejected submit. A server error posts the whole page, wiping the component state that gates the two consent checkboxes and the signature pad behind "have you opened the PDF yet?". The boxes came back ticked but **disabled**, and a disabled control is never serialised into FormData, so the resubmit dropped `communityGuidelines` and `operationsPolicy` and the server rejected it for agreements the page was visibly showing as agreed. `documentViewsFromSavedValues()` re-derives those gates from the restored values, and `splitDateOfBirth()` in `age.ts` puts the birthday back into the three Month/Day/Year selects, which kept their own empty state before
+
 ### Waiver Generation
 
 - Template PDF in `public/documents/msyk-waiver-template.pdf`
@@ -1064,6 +1083,7 @@ logger.error("Operation failed", { error, userId, context });
 | Function | Trigger |
 |----------|---------|
 | `sendRegistrationConfirmationEmail` | New user registration |
+| `sendMinorRegistrationNotificationEmail` | A 14 to 17 year old registers. Goes to staff at `minor_notification_email`, never to the registrant |
 | `sendResetEmail` | Password reset request |
 | `sendWorkshopConfirmationEmail` | Workshop registration (with ICS attachment) |
 | `sendWorkshopCancellationEmail` | Workshop registration cancelled by user |
@@ -1151,7 +1171,9 @@ Assume you are here whenever you edit an existing function, route, query, or sch
 
 **Most changes are the second kind.** When unsure, treat it as the second kind.
 
-The suite is currently **fully green — 37 suites, 515 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+The suite is currently **fully green — 43 suites, 636 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+
+Suites run in jest's `node` environment by default. A component test opts into a DOM by declaring `@jest-environment jest-fixed-jsdom` in a docblock at the top of the file, and must mock the route's `*.server.ts` import; see [tests/README.md](./tests/README.md#component-tests) for the three things that catch people out.
 
 **Rules:**
 

@@ -8,7 +8,11 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import * as fs from "fs";
 import * as path from "path";
 import CryptoJS from "crypto-js";
-import { sendRegistrationConfirmationEmail } from "./email.server";
+import {
+  sendRegistrationConfirmationEmail,
+  sendMinorRegistrationNotificationEmail,
+} from "./email.server";
+import { calculateAge, requiresGuardian } from "./age";
 
 /**
  * Generates a digitally signed and encrypted waiver PDF document
@@ -220,6 +224,7 @@ export async function register(rawValues: Record<string, any>) {
         password: hashedPassword,
         phone: data.phone || "",
         dateOfBirth: data.dateOfBirth,
+        guardianName: data.guardianName ?? null,
         emergencyContactName: data.emergencyContactName || "",
         emergencyContactPhone: data.emergencyContactPhone || "",
         emergencyContactEmail: data.emergencyContactEmail || "",
@@ -248,6 +253,28 @@ export async function register(rawValues: Record<string, any>) {
     } catch (emailError) {
       console.error("Failed to send registration confirmation email:", emailError);
       // Don't fail the registration if email fails, just log the error
+    }
+
+    // Staff need to know about a 14-17 year old so they can be added to the front desk
+    // list for the in-person guardian waiver. Sent separately from the welcome email so
+    // one failing does not skip the other, and neither can fail the registration.
+    const age = calculateAge(data.dateOfBirth);
+    if (requiresGuardian(age)) {
+      try {
+        await sendMinorRegistrationNotificationEmail({
+          firstName: user.firstName,
+          lastName: user.lastName,
+          userEmail: user.email,
+          guardianName: data.guardianName,
+          age: age as number,
+          dateOfBirth: data.dateOfBirth,
+        });
+      } catch (emailError) {
+        console.error(
+          "Failed to send under-18 registration notification:",
+          emailError
+        );
+      }
     }
 
     // Return success message
