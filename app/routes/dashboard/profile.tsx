@@ -15,7 +15,7 @@ import { updateMembershipAutoRenew } from "~/models/membership.server";
 import type { LoaderFunction } from "react-router-dom";
 import fs from "fs";
 import path from "path";
-import Sidebar from "../../components/ui/Dashboard/sidebar";
+import Sidebar from "~/components/ui/Dashboard/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import type { UserProfileData } from "~/models/profile.server";
 import {
@@ -45,8 +45,8 @@ import {
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
 import { getRoleUser } from "~/utils/session.server";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
 import { getUserCompletedOrientations } from "~/models/workshop.server";
 

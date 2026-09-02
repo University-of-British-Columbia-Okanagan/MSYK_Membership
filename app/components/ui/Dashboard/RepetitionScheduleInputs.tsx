@@ -3,6 +3,11 @@ import { FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TimeIntervalPicker } from "./TimeIntervalPicker";
+import { cn } from "@/lib/utils";
+import {
+  isEndBeforeStart,
+  sortOccurrencesByStart,
+} from "~/utils/occurrences";
 
 export interface Occurrence {
   startDate: Date;
@@ -81,6 +86,15 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
       alert("Please select initial start and end dates");
       return;
     }
+    if (
+      isEndBeforeStart({
+        startDate: parseDateTimeAsLocal(startDate),
+        endDate: parseDateTimeAsLocal(endDate),
+      })
+    ) {
+      alert("The end date and time must be after the start");
+      return;
+    }
     if (interval < 1 || count < 1) {
       alert("Please enter valid interval and repetition numbers");
       return;
@@ -132,20 +146,31 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
         });
       }
     }
-    const updatedOccurrences = [...occurrences, ...newOccurrences];
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
-    );
+    const updatedOccurrences = sortOccurrencesByStart([
+      ...occurrences,
+      ...newOccurrences,
+    ]);
     setOccurrences(updatedOccurrences);
     updateFormOccurrences(updatedOccurrences);
     // After appending, revert back to custom view.
     onRevert();
   };
 
+  // The end fields stay locked until a start exists, so an end can never be
+  // entered against a start that is not there yet.
+  const startIsSet = !!startDate && !isNaN(parseDateTimeAsLocal(startDate).getTime());
+  const endBeforeStart =
+    startIsSet &&
+    !!endDate &&
+    isEndBeforeStart({
+      startDate: parseDateTimeAsLocal(startDate),
+      endDate: parseDateTimeAsLocal(endDate),
+    });
+
   return (
     <div className="flex flex-col items-start w-full space-y-4">
       {/* First Occurrence Inputs */}
-      <div className="grid grid-cols-2 gap-4 w-full">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
         <div className="flex flex-col space-y-2">
           <FormLabel>First Occurrence Start</FormLabel>
           <div className="flex items-center gap-2">
@@ -156,32 +181,7 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
                 const currentTime = startDate
                   ? startDate.split("T")[1]
                   : "00:00";
-                const newDateTime = `${e.target.value}T${currentTime}`;
-                setStartDate(newDateTime);
-
-                // AUTO-SET END DATE: Automatically set end date to 2 hours later
-                const startDateObj = parseDateTimeAsLocal(newDateTime);
-                if (!isNaN(startDateObj.getTime())) {
-                  const endDateObj = new Date(
-                    startDateObj.getTime() + 2 * 60 * 60 * 1000
-                  );
-                  const endYear = endDateObj.getFullYear();
-                  const endMonth = String(endDateObj.getMonth() + 1).padStart(
-                    2,
-                    "0"
-                  );
-                  const endDay = String(endDateObj.getDate()).padStart(2, "0");
-                  const endHours = String(endDateObj.getHours()).padStart(
-                    2,
-                    "0"
-                  );
-                  const endMinutes = String(endDateObj.getMinutes()).padStart(
-                    2,
-                    "0"
-                  );
-                  const formattedEndDate = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
-                  setEndDate(formattedEndDate);
-                }
+                setStartDate(`${e.target.value}T${currentTime}`);
               }}
               className="flex-1"
             />
@@ -189,30 +189,6 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
               value={startDate}
               onChange={(value) => {
                 setStartDate(value);
-
-                // AUTO-SET END DATE: Automatically set end date to 2 hours later
-                const startDateObj = parseDateTimeAsLocal(value);
-                if (!isNaN(startDateObj.getTime())) {
-                  const endDateObj = new Date(
-                    startDateObj.getTime() + 2 * 60 * 60 * 1000
-                  );
-                  const endYear = endDateObj.getFullYear();
-                  const endMonth = String(endDateObj.getMonth() + 1).padStart(
-                    2,
-                    "0"
-                  );
-                  const endDay = String(endDateObj.getDate()).padStart(2, "0");
-                  const endHours = String(endDateObj.getHours()).padStart(
-                    2,
-                    "0"
-                  );
-                  const endMinutes = String(endDateObj.getMinutes()).padStart(
-                    2,
-                    "0"
-                  );
-                  const formattedEndDate = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}`;
-                  setEndDate(formattedEndDate);
-                }
               }}
               date={startDate ? startDate.split("T")[0] : undefined}
               className="flex-1"
@@ -229,17 +205,38 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
                 const currentTime = endDate ? endDate.split("T")[1] : "00:00";
                 setEndDate(`${e.target.value}T${currentTime}`);
               }}
-              className="flex-1"
+              disabled={!startIsSet}
+              className={cn(
+                "flex-1",
+                !startIsSet && "cursor-not-allowed bg-gray-100",
+                endBeforeStart && "border-red-500 focus-visible:ring-red-500"
+              )}
             />
             <TimeIntervalPicker
               value={endDate}
               onChange={(value) => setEndDate(value)}
-              date={endDate ? endDate.split("T")[0] : undefined} // Pass the date
-              className="flex-1"
+              // Falls back to the start's day so the picker unlocks as soon as a
+              // start exists, rather than waiting on an end date first. With no
+              // start either, the undefined date is what disables it.
+              date={
+                endDate || startDate
+                  ? (endDate || startDate).split("T")[0]
+                  : undefined
+              }
+              className={cn(
+                "flex-1",
+                endBeforeStart && "border-red-500 focus:ring-red-500"
+              )}
             />
           </div>
         </div>
       </div>
+      {endBeforeStart && (
+        <p className="text-sm text-red-600 font-medium">
+          The end date and time is before the start. Pick an end that is after{" "}
+          {startDate.replace("T", " ")}.
+        </p>
+      )}
       {/* Interval and Count Inputs */}
       <div className="grid grid-cols-2 gap-4 w-full">
         <div className="flex flex-col space-y-2">

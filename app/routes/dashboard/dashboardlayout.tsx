@@ -1,6 +1,6 @@
 import { Link } from "react-router";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import GuestSidebar from "~/components/ui/Dashboard/guestsidebar";
+import GuestSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 import {
   Users,
   Calendar,

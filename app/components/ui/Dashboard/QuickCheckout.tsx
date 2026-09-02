@@ -1,11 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   CreditCard,
   CheckCircle,
   AlertCircle,
   Loader2,
   Clock,
+  Tag,
+  Info,
 } from "lucide-react";
+import { Badge } from "../badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../tooltip";
 
 interface QuickCheckoutProps {
   userId: number;
@@ -23,6 +32,8 @@ interface QuickCheckoutProps {
     currentMembershipId?: number;
     upgradeFee?: number;
     variationId?: number | null;
+    billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
+    autoRenew?: boolean;
   };
   itemName: string;
   itemPrice: number;
@@ -33,6 +44,7 @@ interface QuickCheckoutProps {
   };
   onSuccess?: () => void;
   onError?: (error: string) => void;
+  onRedirecting?: (isRedirecting: boolean) => void;
 }
 
 export default function QuickCheckout({
@@ -44,10 +56,16 @@ export default function QuickCheckout({
   savedCard,
   onSuccess,
   onError,
+  onRedirecting,
 }: QuickCheckoutProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const shouldDisable = isProcessing || status === "success";
+    onRedirecting?.(shouldDisable);
+  }, [isProcessing, status, onRedirecting]);
 
   const handleQuickCheckout = async () => {
     setIsProcessing(true);
@@ -72,8 +90,8 @@ export default function QuickCheckout({
         // Redirect to success page after a brief delay
         setTimeout(() => {
           if (checkoutData.type === "equipment") {
-            // For equipment, include equipment_id and slots_data_key in the URL
-            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}&equipment_id=${checkoutData.equipmentId}&slots_data_key=${checkoutData.slotsDataKey}`;
+            // For equipment, include equipment_id and slots_data_key in the URL and include payment intent ID in the redirect URL
+            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}&equipment_id=${checkoutData.equipmentId}&slots_data_key=${checkoutData.slotsDataKey}&payment_intent_id=${result.paymentIntentId}`;
           } else {
             // For other types (workshop, membership), use the regular redirect
             window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}`;
@@ -152,21 +170,65 @@ export default function QuickCheckout({
   }
 
   return (
-    <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border-2 border-yellow-300 rounded-xl p-6 shadow-lg">
+    <div className="bg-gradient-to-r from-indigo-50 to-indigo-100 border-2 border-indigo-300 rounded-xl p-6 shadow-lg">
       {/* Header */}
       <div className="flex items-center mb-4">
         <div className="flex-shrink-0">
-          <div className="w-12 h-12 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center shadow-md">
+          <div className="w-12 h-12 bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-center shadow-md">
             <CreditCard className="h-6 w-6 text-white" />
           </div>
         </div>
-        <div className="ml-4">
-          <h3 className="text-lg font-bold text-gray-900">Quick Checkout</h3>
+        <div className="ml-4 flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <h3 className="text-lg font-bold text-gray-900">Quick Checkout</h3>
+
+            {/* Coupon Notice Badge */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 cursor-help flex items-center gap-1"
+                  >
+                    <Tag className="h-3 w-3" />
+                    <span className="text-xs">Coupon?</span>
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">Have a coupon code?</p>
+                      <p className="text-xs text-gray-300 mt-1">
+                        Use the "Proceed" button below to access Stripe checkout where you can enter your promotion code for discounts.
+                      </p>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-sm text-gray-600">
             Pay instantly with your saved card
           </p>
         </div>
       </div>
+
+      {/* A membership discount has to be entered at Stripe Checkout, and it recurs from
+          there, so the hover badge alone is too easy to miss when the cost is every
+          future renewal. sm:leading-relaxed is required because sm:text-sm would
+          otherwise reset the line height and crowd the block. */}
+      {checkoutData.type === "membership" && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <Tag className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <p className="text-xs leading-relaxed text-amber-800 sm:text-sm sm:leading-relaxed">
+            Have a promotion code? Use{" "}
+            <span className="font-semibold">Proceed to Checkout</span> instead.
+            Codes can only be entered on Stripe's checkout page, and a recurring
+            discount applies to your future renewals too.
+          </p>
+        </div>
+      )}
 
       {/* Payment Details */}
       <div className="bg-white rounded-lg p-4 mb-4 border border-gray-200">

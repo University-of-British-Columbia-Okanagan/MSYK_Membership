@@ -24,6 +24,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  calculateAge,
+  isTooYoungToRegister,
+  requiresGuardian,
+  splitDateOfBirth,
+} from "~/utils/age";
+import { documentViewsFromSavedValues } from "~/utils/registration-restore";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -40,24 +47,6 @@ export async function action({ request }: Route.ActionArgs) {
   rawValues.dataPrivacy = rawValues.dataPrivacy === "on";
   rawValues.communityGuidelines = rawValues.communityGuidelines === "on";
   rawValues.operationsPolicy = rawValues.operationsPolicy === "on";
-
-  // Handle date of birth and calculate if over 18
-  if (rawValues.dateOfBirth) {
-    const birthDate = new Date(rawValues.dateOfBirth);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birthDate.getDate())
-    ) {
-      age--;
-    }
-
-    rawValues.calculatedAge = age;
-    rawValues.over18 = age >= 18;
-  }
 
   // Ensure signature data is properly handled
   if (
@@ -101,6 +90,7 @@ interface FormErrors {
   confirmPassword?: string[];
   phone?: string[];
   dateOfBirth?: string[];
+  guardianName?: string[];
   emergencyContactName?: string[];
   emergencyContactPhone?: string[];
   emergencyContactEmail?: string[];
@@ -278,6 +268,7 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
       confirmPassword: "",
       phone: "",
       dateOfBirth: "",
+      guardianName: "",
       emergencyContactName: "",
       emergencyContactPhone: "",
       emergencyContactEmail: "",
@@ -316,33 +307,43 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
 
   // Watch date of birth to show age-related messages
   const dateOfBirth = form.watch("dateOfBirth");
+  const age = calculateAge(dateOfBirth);
+  const needsGuardian = requiresGuardian(age);
 
   useEffect(() => {
-    if (dateOfBirth) {
-      const birthDate = new Date(dateOfBirth);
-      const today = new Date();
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-
-      if (
-        monthDiff < 0 ||
-        (monthDiff === 0 && today.getDate() < birthDate.getDate())
-      ) {
-        age--;
-      }
-
-      if (age >= 14 && age <= 17) {
-        setShowMinorError(
-          "For liability and safety all makers between the ages of 14-17 must come in-person to the makerspace with a parent/guardian to register on the portal. Contact us to schedule a time!"
-        );
-      } else if (age < 14) {
-        setShowMinorError(
-          "Oh no! Makers that are under 14 are a bit too young to register for the portal. You can talk to your parent/guardian to register and participate with you!"
-        );
-      } else {
-        setShowMinorError("");
-      }
+    if (!dateOfBirth) {
+      setShowMinorError("");
+      return;
     }
+
+    if (isTooYoungToRegister(age)) {
+      setShowMinorError(
+        "Oh no! Makers that are under 14 are a bit too young to register for the portal. You can talk to your parent/guardian to register and participate with you!"
+      );
+    } else {
+      setShowMinorError("");
+    }
+  }, [dateOfBirth, age]);
+
+  // Clear the guardian name when the birthday moves out of the 14-17 band, so a stale
+  // value cannot linger in the form after the field is hidden again.
+  useEffect(() => {
+    if (!needsGuardian && form.getValues("guardianName")) {
+      form.setValue("guardianName", "");
+    }
+  }, [needsGuardian, form]);
+
+  // The three selects hold their own state and only write a joined date once all of them
+  // are set, so a form.reset() after a server error restored the date but left them
+  // reading empty. Feed them back from the restored value. A partial selection produces no
+  // date at all, so splitDateOfBirth returns null and the in-progress choice is left alone.
+  useEffect(() => {
+    const parts = splitDateOfBirth(dateOfBirth);
+    if (!parts) return;
+
+    setDobMonth((current) => (current === parts.month ? current : parts.month));
+    setDobDay((current) => (current === parts.day ? current : parts.day));
+    setDobYear((current) => (current === parts.year ? current : parts.year));
   }, [dateOfBirth]);
 
 
@@ -360,6 +361,14 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
         try {
           const parsed = JSON.parse(saved);
           form.reset(parsed);
+
+          // The document gates are component state, so this POST wiped them. Left shut,
+          // the restored consent checkboxes come back ticked but disabled, and a disabled
+          // control is not serialised, so the next submit silently drops the consents.
+          const views = documentViewsFromSavedValues(parsed);
+          setCommunityGuidelinesViewed(views.communityGuidelines);
+          setOperationsPolicyViewed(views.operationsPolicy);
+          setWaiverDocumentViewed(views.waiver);
         } catch {}
       }
       const entries = Object.entries(actionData.errors) as Array<[
@@ -620,9 +629,33 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             {showMinorError}
                           </p>
                         )}
+                        {needsGuardian && (
+                          <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3">
+                            <p className="text-sm leading-relaxed sm:leading-relaxed text-amber-900">
+                              Makers aged 14 to 17 can create an account online.
+                              For liability and safety, you must also come
+                              in-person to the makerspace with a legal guardian
+                              to sign an additional waiver before you can use
+                              the space. Please enter your legal guardian's name
+                              below.
+                            </p>
+                          </div>
+                        )}
                       </FormItem>
                     )}
                   />
+
+                  {/* Legal guardian, only for the 14-17 band */}
+                  {needsGuardian && (
+                    <GenericFormField
+                      control={form.control}
+                      name="guardianName"
+                      label="Legal Guardian's Full Name"
+                      placeholder="Legal Guardian's Full Name"
+                      required
+                      className="w-full"
+                    />
+                  )}
 
                   {/* Emergency Contact Fields */}
                   <GenericFormField

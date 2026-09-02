@@ -4,6 +4,7 @@ import Mailgun from "mailgun.js";
 import { randomUUID } from "crypto";
 import formData from "form-data";
 import { db } from "./db.server";
+import { getMinorNotificationEmail } from "../models/admin.server";
 
 dotenv.config();
 
@@ -674,8 +675,8 @@ export async function sendMembershipConfirmationEmail(params: {
 
   const autoRenewLine =
     autoRenew === false
-      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
-      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+      ? `Auto-Renew: Off. Your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On. Your membership will automatically renew at the end of each billing period using your saved payment method.`;
 
   const parts = [
     `Welcome to your new membership: "${planTitle}"!`,
@@ -703,6 +704,8 @@ export async function sendMembershipPaymentReminderEmail(params: {
   planTitle: string;
   nextPaymentDate: Date;
   amountDue: number;
+  baseAmount?: number;
+  discountAmount?: number;
   gstPercentage?: number;
   needsPaymentMethod?: boolean;
 }): Promise<void> {
@@ -711,6 +714,8 @@ export async function sendMembershipPaymentReminderEmail(params: {
     planTitle,
     nextPaymentDate,
     amountDue,
+    baseAmount,
+    discountAmount,
     gstPercentage,
     needsPaymentMethod,
   } = params;
@@ -724,8 +729,18 @@ export async function sendMembershipPaymentReminderEmail(params: {
     typeof gstPercentage === "number"
       ? ` (includes ${gstPercentage}% GST)`
       : "";
+  const hasDiscount =
+    typeof discountAmount === "number" &&
+    discountAmount > 0 &&
+    typeof baseAmount === "number";
   const parts = [
     `Reminder: Your membership plan "${planTitle}" will be charged overnight on ${dateOnly}.`,
+    ...(hasDiscount
+      ? [
+          `Regular price: $${baseAmount!.toFixed(2)}`,
+          `Discount applied: -$${discountAmount!.toFixed(2)}`,
+        ]
+      : []),
     `Amount due: $${amountDue.toFixed(2)}${gstLine}.`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean);
@@ -741,6 +756,7 @@ export async function sendMembershipPaymentSuccessEmail(params: {
   planTitle: string;
   amountCharged: number;
   baseAmount: number;
+  discountAmount?: number;
   gstPercentage: number;
   nextPaymentDate: Date;
   billingCycle: "monthly" | "quarterly" | "semiannually" | "yearly";
@@ -750,6 +766,7 @@ export async function sendMembershipPaymentSuccessEmail(params: {
     planTitle,
     amountCharged,
     baseAmount,
+    discountAmount = 0,
     gstPercentage,
     nextPaymentDate,
     billingCycle,
@@ -764,7 +781,8 @@ export async function sendMembershipPaymentSuccessEmail(params: {
           ? "Yearly"
           : "Monthly";
 
-  const gstAmount = amountCharged - baseAmount;
+  const discountedBase = baseAmount - discountAmount;
+  const gstAmount = amountCharged - discountedBase;
   const nextDateFormatted = new Date(nextPaymentDate).toLocaleDateString(
     undefined,
     {
@@ -780,9 +798,12 @@ export async function sendMembershipPaymentSuccessEmail(params: {
     `Your ${cycleLabel.toLowerCase()} payment for "${planTitle}" has been processed.`,
     ``,
     `Payment Details:`,
-    `Amount charged: $${amountCharged.toFixed(2)}`,
     `Base amount: $${baseAmount.toFixed(2)}`,
+    ...(discountAmount > 0
+      ? [`Discount applied: -$${discountAmount.toFixed(2)}`]
+      : []),
     `GST (${gstPercentage}%): $${gstAmount.toFixed(2)}`,
+    `Amount charged: $${amountCharged.toFixed(2)}`,
     ``,
     `Billing cycle: ${cycleLabel}`,
     `Next payment date: ${nextDateFormatted}`,
@@ -898,8 +919,8 @@ export async function sendMembershipResubscribeEmail(params: {
       : undefined;
   const autoRenewLine =
     autoRenew === false
-      ? `Auto-Renew: Off — your membership will expire at the end of the billing period and will not be automatically renewed.`
-      : `Auto-Renew: On — your membership will automatically renew at the end of each billing period using your saved payment method.`;
+      ? `Auto-Renew: Off. Your membership will expire at the end of the billing period and will not be automatically renewed.`
+      : `Auto-Renew: On. Your membership will automatically renew at the end of each billing period using your saved payment method.`;
 
   const parts = [
     `Your membership has been reactivated: "${planTitle}".`,
@@ -1049,6 +1070,61 @@ export async function sendRegistrationConfirmationEmail(params: {
   await sendMail({
     to: userEmail,
     subject: "Welcome to Makerspace YK - Account Created",
+    text: parts.join("\n\n"),
+    html: htmlBody,
+  });
+}
+
+/**
+ * Tells staff that a 14-17 year old has created an account, so they can be added to the
+ * front desk list and ticked off when they come in with a guardian to sign the extra
+ * waiver. Goes to the makerspace, never to the registrant.
+ */
+export async function sendMinorRegistrationNotificationEmail(params: {
+  firstName: string;
+  lastName: string;
+  userEmail: string;
+  guardianName?: string | null;
+  age: number;
+  dateOfBirth: string;
+}): Promise<void> {
+  const { firstName, lastName, userEmail, guardianName, age, dateOfBirth } =
+    params;
+
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+  const guardian = guardianName?.trim() || "Not provided";
+  const recipient = await getMinorNotificationEmail();
+
+  function escapeHTML(input: string): string {
+    return input
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  const parts = [
+    `A new portal account has been created by someone under 18.`,
+    `Name: ${fullName}`,
+    `Age: ${age}`,
+    `Date of birth: ${dateOfBirth}`,
+    `Email: ${userEmail}`,
+    `Legal guardian: ${guardian}`,
+  ];
+
+  const htmlBody = [
+    `<p>A new portal account has been created by someone under 18.</p>`,
+    `<ul>`,
+    `<li><strong>Name:</strong> ${escapeHTML(fullName)}</li>`,
+    `<li><strong>Age:</strong> ${age}</li>`,
+    `<li><strong>Date of birth:</strong> ${escapeHTML(dateOfBirth)}</li>`,
+    `<li><strong>Email:</strong> ${escapeHTML(userEmail)}</li>`,
+    `<li><strong>Legal guardian:</strong> ${escapeHTML(guardian)}</li>`,
+    `</ul>`,
+  ].join("");
+
+  await sendMail({
+    to: recipient,
+    subject: `Under 18 registration: ${fullName}`,
     text: parts.join("\n\n"),
     html: htmlBody,
   });

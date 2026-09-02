@@ -7,6 +7,8 @@ const config: Config = {
     '^~/(.*)$': '<rootDir>/app/$1',
     '^@/(.*)$': '<rootDir>/app/$1',
     '^tests/(.*)$': '<rootDir>/tests/$1',
+    // ESM-only package; see the stub for why it is not transformed instead.
+    '^lucide-react$': '<rootDir>/tests/setup/lucide-react-stub.js',
   },
   // Treat TS as ESM
   extensionsToTreatAsEsm: ['.ts'],
@@ -20,6 +22,8 @@ const config: Config = {
       },
     ],
   },
+  // Browser APIs jsdom omits that Radix needs. A no-op under the node environment.
+  setupFiles: ['<rootDir>/tests/setup/dom-stubs.ts'],
   // Kill and restart workers that retain too much memory between tests
   workerIdleMemoryLimit: '512MB',
   // Reduce noise, improve perf on Windows

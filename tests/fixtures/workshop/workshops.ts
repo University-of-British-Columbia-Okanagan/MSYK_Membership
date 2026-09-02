@@ -104,6 +104,15 @@ export const createMockOccurrence = (overrides?: Partial<any>) => ({
   googleEventId: null,
   equipmentSlots: [],
   userWorkshops: [],
+  // cancelWorkshopOccurrence includes the parent workshop and reads `.type` off it,
+  // so the fixture has to carry the relation the query actually selects.
+  workshop: {
+    id: 1,
+    name: "Test Workshop",
+    type: "workshop",
+    location: "Test Location",
+    price: 100,
+  },
   ...overrides,
 });
 

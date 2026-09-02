@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
-import { json, redirect } from "@remix-run/node";
+import { redirect } from "react-router";
 import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import { AppSidebar } from "~/components/ui/Dashboard/sidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import { AppSidebar } from "~/components/ui/Dashboard/AppSidebar";
 import { createIssue } from "~/models/issue.server";
 import { logger } from "~/logging/logger";
 
@@ -43,7 +43,7 @@ export async function action({ request }: { request: Request }) {
   // const screenshots = form.getAll("screenshots") as string[];
 
   if (!title || !description || !priority) {
-    return json({ success: false, error: "Please fill all required fields." });
+    return Response.json({ success: false, error: "Please fill all required fields." });
   }
 
   try {
@@ -57,10 +57,10 @@ export async function action({ request }: { request: Request }) {
     logger.info(`[User: ${roleUser?.userId ?? "unknown"}] New issue created`, {
       url: request.url,
     });
-    return json({ success: true });
+    return Response.json({ success: true });
   } catch (err) {
     logger.warn(`Error creating new issue ${err}`, { url: request.url });
-    return json({ success: false, error: (err as Error).message || "Error submitting issue." });
+    return Response.json({ success: false, error: (err as Error).message || "Error submitting issue." });
   }
 }
 

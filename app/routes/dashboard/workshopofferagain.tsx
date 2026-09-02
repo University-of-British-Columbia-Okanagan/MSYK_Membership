@@ -12,6 +12,10 @@ import OccurrenceRow from "~/components/ui/Dashboard/OccurrenceRow";
 import DateTypeRadioGroup from "~/components/ui/Dashboard/DateTypeRadioGroup";
 import RepetitionScheduleInputs from "~/components/ui/Dashboard/RepetitionScheduleInputs";
 import {
+  setOccurrenceDateField,
+  sortOccurrencesByStart,
+} from "~/utils/occurrences";
+import {
   offerWorkshopAgain,
   getWorkshopWithPriceVariations,
 } from "~/models/workshop.server";
@@ -45,9 +49,9 @@ import {
 import { logger } from "~/logging/logger";
 import { getEquipmentVisibilityDays } from "~/models/admin.server";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -555,11 +559,10 @@ export default function WorkshopOfferAgain() {
       startDate: new Date(""),
       endDate: new Date(""),
     };
-    const updatedOccurrences = [...occurrences, newOccurrence];
-    // Sort by startDate (if dates are valid)
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
-    );
+    const updatedOccurrences = sortOccurrencesByStart([
+      ...occurrences,
+      newOccurrence,
+    ]);
     setOccurrences(updatedOccurrences);
     form.setValue("occurrences", updatedOccurrences);
   };
@@ -571,38 +574,27 @@ export default function WorkshopOfferAgain() {
     value: string
   ) {
     const localDate = parseDateTimeAsLocal(value);
-    const updatedOccurrences = [...occurrences];
-    updatedOccurrences[index][field] = localDate;
+    const updatedOccurrences = setOccurrenceDateField(
+      occurrences,
+      index,
+      field,
+      localDate
+    );
 
-    // If updating start date and it's valid, automatically set end date to 2 hours later
-    if (field === "startDate" && !isNaN(localDate.getTime())) {
-      const endDate = new Date(localDate.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
-      updatedOccurrences[index].endDate = endDate;
-
-      // Calculate PST dates for both start and end when updating start date
-      const startOffset = localDate.getTimezoneOffset();
-      updatedOccurrences[index].startDatePST = new Date(
-        localDate.getTime() - startOffset * 60000
-      );
-
-      const endOffset = endDate.getTimezoneOffset();
-      updatedOccurrences[index].endDatePST = new Date(
-        endDate.getTime() - endOffset * 60000
-      );
-    } else if (field === "endDate" && !isNaN(localDate.getTime())) {
-      // Calculate PST date when updating end date only
-      const endOffset = localDate.getTimezoneOffset();
-      updatedOccurrences[index].endDatePST = new Date(
-        localDate.getTime() - endOffset * 60000
-      );
+    // Keep the PST mirror of whichever field was edited in step with it
+    if (!isNaN(localDate.getTime())) {
+      const offset = localDate.getTimezoneOffset();
+      const pst = new Date(localDate.getTime() - offset * 60000);
+      if (field === "startDate") {
+        updatedOccurrences[index].startDatePST = pst;
+      } else {
+        updatedOccurrences[index].endDatePST = pst;
+      }
     }
 
-    // Re-sort the list after updating
-    updatedOccurrences.sort(
-      (a, b) => a.startDate.getTime() - b.startDate.getTime()
-    );
-    setOccurrences(updatedOccurrences);
-    form.setValue("occurrences", updatedOccurrences);
+    const sorted = sortOccurrencesByStart(updatedOccurrences);
+    setOccurrences(sorted);
+    form.setValue("occurrences", sorted);
   }
 
   // Remove an occurrence

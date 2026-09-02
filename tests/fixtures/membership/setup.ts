@@ -78,6 +78,81 @@ jest.mock("stripe", () => ({
   Stripe: stripeConstructorMock,
 }));
 
+export const chargeMembershipViaInvoiceMock = jest.fn();
+export const clearMembershipDiscountMock = jest.fn();
+export const getCustomerDiscountMock = jest.fn();
+export const previewMembershipChargeMock = jest.fn();
+export const getOrCreateGstTaxRateMock = jest.fn();
+export const applyMembershipDiscountMock = jest.fn();
+export const getCheckoutSessionCouponIdMock = jest.fn();
+
+jest.mock("~/services/stripe-discounts.server", () => ({
+  chargeMembershipViaInvoice: chargeMembershipViaInvoiceMock,
+  clearMembershipDiscount: clearMembershipDiscountMock,
+  getCustomerDiscount: getCustomerDiscountMock,
+  previewMembershipCharge: previewMembershipChargeMock,
+  getOrCreateGstTaxRate: getOrCreateGstTaxRateMock,
+  applyMembershipDiscount: applyMembershipDiscountMock,
+  getCheckoutSessionCouponId: getCheckoutSessionCouponIdMock,
+}));
+
+const round = (value: number) => Math.round(value * 100) / 100;
+
+/** Undiscounted defaults, so a spec opts in to a discount rather than out of one. */
+const resetDiscountMocks = () => {
+  chargeMembershipViaInvoiceMock.mockReset();
+  chargeMembershipViaInvoiceMock.mockImplementation(
+    async ({
+      baseAmount,
+      gstPercentage,
+    }: {
+      baseAmount: number;
+      gstPercentage: number;
+    }) => {
+      const taxAmount = round(baseAmount * (gstPercentage / 100));
+      return {
+        invoiceId: "in_test",
+        paymentIntentId: "pi_test",
+        status: "paid",
+        subtotal: round(baseAmount),
+        discountAmount: 0,
+        taxAmount,
+        total: round(baseAmount + taxAmount),
+      };
+    }
+  );
+
+  previewMembershipChargeMock.mockReset();
+  previewMembershipChargeMock.mockImplementation(
+    async ({
+      baseAmount,
+      gstPercentage,
+    }: {
+      baseAmount: number;
+      gstPercentage: number;
+    }) => {
+      const taxAmount = round(baseAmount * (gstPercentage / 100));
+      return {
+        baseAmount: round(baseAmount),
+        discountAmount: 0,
+        taxAmount,
+        total: round(baseAmount + taxAmount),
+      };
+    }
+  );
+
+  clearMembershipDiscountMock.mockReset();
+  clearMembershipDiscountMock.mockResolvedValue(false);
+  getCustomerDiscountMock.mockReset();
+  getCustomerDiscountMock.mockResolvedValue(null);
+  getOrCreateGstTaxRateMock.mockReset();
+  getOrCreateGstTaxRateMock.mockResolvedValue("txr_test");
+  applyMembershipDiscountMock.mockReset();
+  applyMembershipDiscountMock.mockResolvedValue(null);
+  getCheckoutSessionCouponIdMock.mockReset();
+  getCheckoutSessionCouponIdMock.mockResolvedValue(null);
+};
+
 type ScheduledJob = {
   expression: string;
   handler: () => unknown;
@@ -126,6 +201,15 @@ const resetAdminSettingMock = () => {
   mockGetAdminSetting.mockResolvedValue("5");
 };
 
+/** Prisma list queries always resolve to an array — an unset mock resolving to
+ *  undefined is a fixture bug that reads like an app crash. */
+const resetDbDefaults = () => {
+  const { db } = require("~/utils/db.server");
+  db.userMembership.findMany.mockResolvedValue([]);
+  db.userMembership.updateMany.mockResolvedValue({ count: 0 });
+  db.userPaymentInformation.findUnique.mockResolvedValue(null);
+};
+
 export { db } from "~/utils/db.server";
 
 export const getMembershipMocks = () => {
@@ -151,6 +235,10 @@ export const getMembershipMocks = () => {
     scheduledJobs,
     stripeConstructorMock: Stripe as jest.Mock,
     stripePaymentIntentsCreateMock,
+    chargeMembershipViaInvoiceMock,
+    clearMembershipDiscountMock,
+    getCustomerDiscountMock,
+    previewMembershipChargeMock,
     resetScheduledJobs,
     resetStripeMocks,
     resetEmailMocks,
@@ -163,5 +251,7 @@ export const resetMembershipMocks = () => {
   resetAdminSettingMock();
   resetEmailMocks();
   resetScheduledJobs();
+  resetDiscountMocks();
+  resetDbDefaults();
 };
 

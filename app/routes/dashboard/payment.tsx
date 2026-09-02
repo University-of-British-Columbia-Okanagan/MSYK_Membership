@@ -17,9 +17,10 @@ import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
 import { Stripe } from "stripe";
 import { getSavedPaymentMethod, getUserById } from "../../models/user.server";
-import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
 import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
+import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -319,6 +320,15 @@ export const loader: LoaderFunction = async ({ params, request }) => {
       throw redirect(getRedirectPath());
     }
 
+    if (
+      isPastRegistrationCutoff(
+        new Date(occurrence.startDate),
+        workshop.registrationCutoff
+      )
+    ) {
+      throw redirect(getRedirectPath());
+    }
+
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     return {
@@ -521,12 +531,15 @@ export async function action({ request }: { request: Request }) {
       }
 
       const gstPercentage = await getAdminSetting("gst_percentage", "5");
-      const gstRate = parseFloat(gstPercentage) / 100;
-      const priceWithGST = price * (1 + gstRate);
+
+      // GST as a tax rate, so a promotion code discounts the base and GST follows the
+      // discounted amount — the same arithmetic the renewal invoices use.
+      const gstTaxRateId = await getOrCreateGstTaxRate(parseFloat(gstPercentage));
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         mode: "payment",
+        allow_promotion_codes: true,
         line_items: [
           {
             price_data: {
@@ -541,12 +554,13 @@ export async function action({ request }: { request: Request }) {
                         (upgradeFee > 0
                           ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
                           : "") +
-                        ` (Includes ${gstPercentage}% GST)`,
+                        ` (plus ${gstPercentage}% GST)`,
                     },
                   }),
-              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
+              unit_amount: Math.round(price * 100),
             },
             quantity: 1,
+            ...(gstTaxRateId ? { tax_rates: [gstTaxRateId] } : {}),
           },
         ],
         success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -922,7 +936,7 @@ export default function Payment() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 border rounded-lg shadow-lg bg-white">
+    <div className="max-w-md mx-auto my-10 p-6 border rounded-lg shadow-lg bg-white">
       {/* Quick Checkout Section for Workshops - only show if price > 0 */}
       {data.workshop && data.savedPaymentMethod &&
         (data.selectedVariation ? data.selectedVariation.price : data.workshop.price) > 0 && (

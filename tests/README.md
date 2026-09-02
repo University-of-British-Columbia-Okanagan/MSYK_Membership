@@ -1,0 +1,297 @@
+# tests/
+
+Jest test suite for the MSYK Membership Management System.
+
+**Current state: 43 suites, 636 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+
+```bash
+npm test                                      # everything
+npx jest --testPathPatterns "workshop"        # one area
+npx jest --testPathPatterns "payment.gst"     # one file
+npx jest --json                               # machine-readable, for checking per-suite counts
+```
+
+---
+
+## The workflow this folder exists to support
+
+Every implementation follows **implement → test → verify end to end**. Which middle step you take depends on what you changed:
+
+| | New functionality | Change to existing functionality |
+|---|---|---|
+| 1 | Implement the feature | Implement the change |
+| 2 | **Add** test files here and make them pass | **Update** the existing tests the change invalidated |
+| 3 | Verify end to end with Playwright MCP | Verify end to end with Playwright MCP |
+| 4 | `npm test` fully green | `npm test` fully green |
+| 5 | `npm run typecheck` | `npm run typecheck` |
+
+Most changes are the right-hand column. When in doubt, assume you are. Full rules live in [CLAUDE.md](../CLAUDE.md); the reader-facing version is in [README.md](../README.md#testing-strategy).
+
+**Step 0 is asking.** Before implementing, put the clarifying questions to the maintainer — *"ask me any clarifying questions and anything you need from me to do this, we are a team"* runs in both directions. Scope, expected behaviour at the edges, which of two designs: settle it before writing the test that encodes it.
+
+### Ask for what you need to test
+
+Testing is where an agent most often gets quietly stuck, and where staying stuck does the most damage. If you cannot finish step 2 or step 3 without something only the maintainer can provide — **ask for it**:
+
+- A Brivo sandbox credential or a Google OAuth test client (the Stripe test card is already documented below — you do not need to ask for that one)
+- A user in a state the seed does not produce. The seed *does* cover role levels 1–4 (`testuser1`–`testuser6` below), so check that table first; the sync cron reverts a hand-edited `roleLevel` within 15s, so ask rather than patching the column
+- A seeded workshop, membership, or booking in a specific state
+- An admin setting flipped, or a `.env` value you do not have
+- A ruling on what the correct behaviour actually *is*, when the existing test and the new code disagree
+
+Asking costs one message. The alternatives — skipping the verification, faking the data, or softening the assertion until it passes — all ship a change nobody checked. Say what you are blocked on and what would unblock you.
+
+---
+
+## Component tests
+
+Almost everything here runs in jest's `node` environment. The register form is the exception,
+because its age gate, guardian field and post-error restore all live in component state and
+are unreachable from a model test.
+
+A component test opts in with a docblock at the top of the file:
+
+```ts
+/**
+ * @jest-environment jest-fixed-jsdom
+ */
+```
+
+`jest-fixed-jsdom` rather than plain `jsdom`: React Router needs `TextEncoder` and the fetch
+globals (`Request`, `Response`) at module load, and jsdom omits them. Two more gaps are
+filled globally in `tests/setup/` and are inert under `node`.
+
+Three things to know before writing another one:
+
+- **Mock the `*.server.ts` import.** A route module imports its own loader and action, which
+  drags in Prisma, bcrypt, pdf-lib and Mailgun. Stub the server module and test the component
+- **Render through `createRoutesStub`** from react-router so `useLoaderData` resolves, then
+  `await` the form appearing. The stub resolves its loader asynchronously, so a query on the
+  first tick finds nothing
+- **Pass `actionData` as a prop.** It cannot be produced by submitting the form: the register
+  form posts natively via `formRef.current.submit()`, which jsdom does not implement. A prop
+  is exactly how React Router delivers an action result anyway
+
+## Layout
+
+```
+tests/
+├── README.md                    # this file
+├── entry.server.test.ts         # boot wiring: the three background jobs start, once each
+├── config/                      # app/config/
+│   └── access-control.test.ts
+├── models/                      # app/models/
+│   ├── access.card-log.test.ts      # access_card + accessLog
+│   ├── admin.settings.test.ts
+│   ├── equipment.{basic,booking,cancellation,settings,slots}.test.ts
+│   ├── issue.server.test.ts
+│   ├── membership.{server,cron}.test.ts
+│   ├── payment.{gst,refunds}.test.ts
+│   ├── profile.volunteer.test.ts
+│   ├── user.rolelevel.test.ts
+│   └── workshop.{basic,cancellation,capacity,move,occurrence-status,registration}.test.ts
+├── services/                    # app/services/
+│   ├── access-control-sync.server.test.ts
+│   ├── brivo.server.test.ts
+│   └── stripe-sync.server.test.ts
+├── schemas/                     # app/schemas/
+│   ├── registration-age-guardian.test.ts  # 14+ gate and the 14-17 guardian name
+│   └── workshop-occurrence-dates.test.ts  # end > start, across both workshop schemas
+├── utils/                       # app/utils/
+│   ├── age.test.ts                        # age boundaries, invalid dates, timezone drift
+│   ├── email.minor-registration.test.ts    # the under-18 staff notice
+│   ├── occurrences.test.ts
+│   ├── registration-restore.test.ts        # re-opening the document gates after a failed submit
+│   ├── session.register-minor.test.ts      # register() stores the guardian, notifies staff
+│   └── session.server.test.ts
+├── setup/                       # jest setup, no tests
+│   ├── dom-stubs.ts                 # ResizeObserver etc. that Radix needs; no-op under node
+│   └── lucide-react-stub.js         # icons; the real package is ESM-only
+├── routes/authentication/       # component tests (jsdom)
+│   └── register.component.test.tsx  # the age gate, guardian field and post-error restore
+├── routes/dashboard/            # route loaders and actions
+│   ├── addequipment.test.ts
+│   ├── addworkshop.test.ts
+│   └── payment.cutoff.test.ts
+├── fixtures/                    # per-domain mock setup + sample data
+│   ├── equipment/   {setup,equipments,addEquimentForm,getEquipmentSlotsWithStatus}.ts
+│   ├── membership/  {setup,memberships}.ts
+│   ├── payment/     setup.ts
+│   ├── session/     {setup,getUser,getRoleUser}.ts
+│   ├── user/        setup.ts
+│   └── workshop/    {setup,workshops}.ts
+└── helpers/
+    ├── db.mock.ts               # shared Prisma client mock
+    └── test-utils.ts            # clearAllMocks, createMockRequest, …
+```
+
+Specs mirror the source tree. A file with more than roughly 20 tests is split by concern (`equipment.booking` vs `equipment.slots`) rather than growing without bound.
+
+`schemas/workshop-occurrence-dates.test.ts` is named for the rule rather than one source file, because it deliberately covers the same rule in **both** `workshopFormSchema` and `workshopOfferAgainSchema` — the offer schema was missing it, and asserting them together is what stops them drifting apart again. It also runs the rule across every `type` × multi-day × price-variations combination, so a future branch that skips the check for one workshop kind fails here.
+
+---
+
+## Background jobs
+
+Three jobs run for the life of the server process, all started from `entry.server.ts`. Each has its own spec, and the wiring that starts them has one too:
+
+| Job | Cadence | Started by | Spec |
+|-----|---------|-----------|------|
+| Role level sync | every 15s (`*/15 * * * * *`, node-cron) | `startRoleLevelSyncCron()` | `models/user.rolelevel.test.ts` |
+| Membership billing | daily at midnight (`0 0 * * *`, node-cron) | `startMonthlyMembershipCheck()` | `models/membership.cron.test.ts` |
+| Occurrence status | every 1s (`setInterval`) | `startWorkshopOccurrenceStatusUpdate()` | `models/workshop.occurrence-status.test.ts` |
+| — all three start at boot | once per process | `entry.server.ts` | `entry.server.test.ts` |
+
+Testing them means never waiting on real time:
+
+- **node-cron is mocked as a recorder.** `fixtures/user/setup.ts` and `fixtures/membership/setup.ts` replace `cron.schedule` with a mock that stores `{ expression, handler }`, so a spec asserts the expression and then calls the handler directly. Note the difference between the two fixtures: the membership recorder *invokes* the handler as it registers it (the spec awaits `job.execution`), while the user one does not (the spec calls `job.handler()` itself)
+- **`setInterval` uses fake timers.** The occurrence job takes no schedule argument, so the spec asserts `setInterval(fn, 1000)` and drives it with `jest.advanceTimersByTime`, counting `db.workshopOccurrence.findMany` calls as passes. `jest.clearAllTimers()` in `afterEach` stops the interval leaking into the next test
+- **Assert the schedule, not just the work.** A job whose handler is correct but whose expression was changed to `0 0 * * *` from `*/15 * * * * *` is still broken
+- **Failure behaviour differs on purpose, so test what each one actually does.** The role-level and membership jobs catch and log, because a throw would kill a job that has to survive until the next tick. `updateWorkshopOccurrenceStatuses()` rethrows
+
+---
+
+## Conventions
+
+### Import the domain setup on the first line
+
+```ts
+import "tests/fixtures/equipment/setup";       // side-effect import, must come first
+import { getEquipmentMocks } from "tests/fixtures/equipment/setup";
+import { addEquipment } from "~/models/equipment.server";
+```
+
+**Ordering is load-bearing.** Several modules do work at import time — `payment.server`, `user.server`, and `stripe-sync.server` each construct a Stripe client from `STRIPE_SECRET_KEY`, and `session.server` throws if `SESSION_SECRET` is unset. If the mocks are not registered first, the suite fails to load and reports **zero tests while still looking green**. That is exactly how five equipment suites went unnoticed for months.
+
+### Put mocks in a fixture, not the spec
+
+Each `tests/fixtures/<domain>/setup.ts` registers the `jest.mock` calls for that domain and exports:
+
+- `get<Domain>Mocks()` — typed handles to the mocks
+- `reset<Domain>Mocks()` — restores default implementations, called from `beforeEach`
+
+Add a new domain folder when you test a module that needs a mock shape none of the existing ones provide.
+
+### Use the shared Prisma mock
+
+`helpers/db.mock.ts` exports `createDbMock()`. When a new query needs a model or method that is not there yet, **add it there** rather than hand-rolling a mock in one spec — a missing method surfaces as `db.x.y is not a function` in whichever suite happens to hit it first.
+
+### Fixtures must match the query, including relations
+
+A fixture has to carry every relation the query `include`s. `cancelWorkshopOccurrence` includes the parent workshop and reads `.type` off it, so `createMockOccurrence` carries a `workshop` object. A fixture missing a relation produces `Cannot read properties of undefined`, which reads like an app bug and is not.
+
+### Mock keyed helpers per key
+
+`getAdminSetting(key, fallback)` returns different shapes per key — some callers `JSON.parse` the result. A blanket `mockResolvedValue("7")` makes `getLevel3ScheduleRestrictions()` return the number `7`, and indexing it by day name yields `undefined`. See `ADMIN_SETTING_TEST_DEFAULTS` in `fixtures/equipment/setup.ts`.
+
+### Test the guard, not just the happy path
+
+Where the defects actually are: capacity limits, role-level gates, refund windows, upload validation, `already cancelled` states, and "what happens when the third-party integration is not configured".
+
+---
+
+## Browser verification accounts
+
+Step 3 needs a real login. `npx tsx seed.ts` (requires `NODE_ENV=development`) creates six users, all with the password `password`, one for every role level:
+
+| Email | Password | Role level | How the level is earned |
+|-------|----------|-----------|--------------------------|
+| `testuser1@gmail.com` | `password` | 1 — **Admin** (`roleUserId: 2`) | Admin role; no orientation or membership |
+| `testuser2@gmail.com` | `password` | 1 | Registered only |
+| `testuser3@gmail.com` | `password` | 1 | Registered only |
+| `testuser4@gmail.com` | `password` | 2 | Passed a past General Orientation |
+| `testuser5@gmail.com` | `password` | 3 | Orientation + active **Makerspace Member** membership |
+| `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
+
+Use `testuser1` for admin flows (settings, user management, workshop and equipment administration), `testuser2`/`testuser3` for a plain registered user — including the check that a non-admin is redirected away from admin routes — and `testuser4`–`testuser6` for anything gated on role level.
+
+### Paying in a browser test (Stripe test card)
+
+Step 3 flows that reach checkout need a card. On **test** Stripe keys, use Stripe's standard test card — `4242 4242 4242 4242`, any future expiry, any CVC, and any non-empty values for name, email, and billing address. Only the number matters. Never use a real card, and never run this against live keys.
+
+Two gotchas that will otherwise cost you a debugging session:
+
+- **`QuickCheckout` renders only when the user has a saved payment method.** With no card on file the payment page shows the ordinary Stripe form instead and the quick-checkout block is absent — that is the designed fallback, not a regression. `getSavedPaymentMethod()` reads the separate `UserPaymentInformation` row and returns `null` unless both `stripeCustomerId` and `stripePaymentMethodId` are set on it
+- **`npx tsx seed.ts` deletes it.** The seed calls `prisma.user.deleteMany()`, and `UserPaymentInformation` cascades on its `user` relation, so saved cards go with the user rows. The seed creates no replacement
+
+To restore one: log in as the user, go to **`/user/profile/paymentinformation` → Add Payment Method**, enter the card above. Quick Checkout then appears on `/dashboard/payment/...` and on the equipment booking page once slots are selected.
+
+None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
+
+---
+
+## Membership discounts and billing cycles
+
+Coverage here is deliberately split, because two different things are being tested.
+
+**Jest covers our half.** `models/membership.cron.test.ts` has a `billing cycles` block that runs every cycle — `monthly`, `quarterly`, `semiannually`, `yearly` (there is no four-month option) — and asserts, per cycle:
+
+- the right price is read (`price`, `price3Months`, `price6Months`, `priceYearly`), and that it falls back to `price` when the cycle price is null
+- `nextPaymentDate` advances by the right interval
+- the plan's `stripeProductId` rides on the invoice line — without it, a coupon restricted with *Apply to specific products* silently stops applying after the first payment
+- a discount taken on a renewal is mirrored onto `UserMembership`
+- the reminder email quotes the cycle price with the discount applied, priced as of the charge date
+
+`services/stripe-discounts.server.test.ts` covers the service itself against the real Stripe response shapes, and `routes/api/stripe-sync.test.ts` covers the admin endpoint — the admin-only gate on every action, the discount listing (including that discounts Stripe has already expired are filtered out while `forever` ones are kept), and ending a discount.
+
+Ending a discount is covered three ways, because there are three routes into it: `models/membership.server.test.ts` asserts the upgrade and downgrade paths clear it and that a brand-new subscription does not, and the route test covers the admin **End** button.
+
+The rest of the path has its own specs:
+
+- `routes/dashboard/paymentsuccess.discount.test.ts` — the capture wiring. Pinning the checkout coupon to the member's Stripe customer is the step that makes the discount recur at all, and it is ordered *after* the subscription exists and wrapped so a Stripe failure cannot cost a member the membership they just paid for
+- `routes/dashboard/payment.membership-gst.test.ts` — membership checkout sends the **base** price with GST as a Stripe tax rate, never folded into `unit_amount`; carries the plan's Product; and allows promotion codes
+- `utils/email.membership-discount.test.ts` — the money quoted in the reminder and payment-success emails, including that GST is derived from the discounted base rather than the gap between list price and total
+
+Each of these was mutation-tested when written: the code was deliberately broken, the expected specs failed, and the change was reverted. A test that cannot fail is not coverage.
+
+**Jest deliberately does not cover coupon duration.** Whether a coupon discounts one payment, six, or all of them is *Stripe's* behaviour, not ours — our code never counts payments or expires anything. Asserting it against a mocked Stripe would only assert the mock. Verify it against real Stripe instead:
+
+```bash
+npx tsx test-scripts/test-coupon-durations.ts <cycle> <once|N|forever>
+```
+
+It drives Stripe test clocks through six real renewals and prints which are discounted. Verified results:
+
+| Cycle | Coupon duration | Discounted payments |
+|---|---|---|
+| monthly | 3 months | 3 of 6 |
+| quarterly | 1 month | 1 of 6 |
+| quarterly | 3 months | **1 of 6** |
+| semiannually | 6 months | **1 of 6** |
+| semiannually | forever | 6 of 6 |
+
+**`Multiple months` counts calendar months, not billing periods**, and the expiry boundary is **exclusive** — a renewal landing exactly on the expiry date is charged full price.
+
+Those two facts give the rule:
+
+> discounted payments = **ceil(coupon months / cycle months)**
+
+So a coupon whose duration *equals* the billing cycle discounts exactly **one** payment — the signup — because the first renewal falls precisely on the expiry date and misses it. Quarterly + 3 months is one discounted payment, not two; semiannual + 6 months is one, not two. Only on a monthly plan do "months" and "payments" line up 1:1.
+
+Run the script before promising a client a specific number of discounted payments.
+
+To exercise a renewal against real Stripe without waiting for the midnight cron:
+
+```bash
+npx tsx test-scripts/test-membership-renewal.ts <email>
+```
+
+The member needs a saved card, or the cron marks the membership inactive instead of charging — that is by design, not a failure.
+
+---
+
+## Things that bite
+
+- **A suite reporting `0 total` is broken, not passing.** Check with `npx jest --json` and look for suites whose `assertionResults` array is empty
+- **Never edit a test purely to make it pass.** Work out whether the test or the code is wrong, say which, and fix that one. Some assertions here were genuinely stale — one was masking a real defect
+- **`clearAllMocks()` does not restore implementations**, only call history. Domain `reset*Mocks()` helpers re-apply defaults; call both in `beforeEach`
+- **`console.error` in a passing test is noise, not failure.** Several model functions log and swallow by design; spy and restore rather than letting it clutter output
+- **Time-dependent logic uses `jest.useFakeTimers()` + `setSystemTime`.** See `utils/session.server.test.ts` for the 3-hour session expiry boundary
+
+---
+
+## What is not here
+
+**End-to-end browser tests.** Step 3 of the workflow is done interactively through the Playwright MCP server (`.mcp.json`) — driving the running app, not an automated spec. A standing Playwright suite was scoped and deferred: it needs an isolated test database, Stripe Checkout stubbing, and a way to handle the 1-second occurrence cron and 48-hour refund windows. Roughly 4–6 days of work, revisit when there is a deploy pipeline to gate.
+
+Until then, "verified" means someone drove it in a browser.

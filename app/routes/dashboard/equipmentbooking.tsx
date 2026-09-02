@@ -3,8 +3,8 @@ import {
   useActionData,
   useNavigation,
   Form,
+  redirect,
 } from "react-router";
-import { json, redirect } from "@remix-run/node";
 import {
   getEquipmentSlotsWithStatus,
   getEquipmentById,
@@ -13,19 +13,19 @@ import {
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
-import EquipmentBookingGrid from "../../components/ui/Dashboard/equipmentbookinggrid";
+import EquipmentBookingGrid from "~/components/ui/Dashboard/EquipmentBookingGrid";
 import { useState, useEffect } from "react";
 import { getAdminSetting, getPlannedClosures } from "../../models/admin.server";
 import { createCheckoutSession } from "../../models/payment.server";
 import { logger } from "~/logging/logger";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import AppSidebar from "~/components/ui/Dashboard/sidebar";
-import AdminAppSidebar from "~/components/ui/Dashboard/adminsidebar";
-import GuestAppSidebar from "~/components/ui/Dashboard/guestsidebar";
+import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
+import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
+import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { getRoleUser } from "../../utils/session.server";
-import QuickCheckout from "~/components/ui/Dashboard/quickcheckout";
+import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
 import { getSavedPaymentMethod } from "../../models/user.server";
 
 type EquipmentWithSlots = Awaited<
@@ -128,7 +128,7 @@ export async function loader({
   const savedPaymentMethod = user ? await getSavedPaymentMethod(user.id) : null;
   const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
-  return json({
+  return Response.json({
     equipment: equipmentWithSlots,
     roleLevel,
     visibleDays: parseInt(visibleDays, 10),
@@ -165,7 +165,7 @@ export async function action({ request }: { request: Request }) {
     logger.warn(`[Guest] Attempt to book equipment without authentication`, {
       url: request.url,
     });
-    return json(
+    return Response.json(
       { errors: { message: "User not authenticated." } },
       { status: 401 }
     );
@@ -194,7 +194,7 @@ export async function action({ request }: { request: Request }) {
     logger.warn(`[User: ${user.id}] Missing equipment or slot data`, {
       url: request.url,
     });
-    return json(
+    return Response.json(
       { errors: { message: "Missing equipment or slot data." } },
       { status: 400 }
     );
@@ -226,7 +226,7 @@ export async function action({ request }: { request: Request }) {
         `[User: ${user.id}] Attempted to book equipment ID ${equipmentId} without completing prerequisites`,
         { url: request.url }
       );
-      return json(
+      return Response.json(
         {
           errors: {
             message:
@@ -278,7 +278,7 @@ export async function action({ request }: { request: Request }) {
         `[User: ${user.id}] Failed to create checkout session - missing URL`,
         { url: request.url }
       );
-      return json(
+      return Response.json(
         { errors: { message: "Payment session failed." } },
         { status: 500 }
       );
@@ -288,7 +288,7 @@ export async function action({ request }: { request: Request }) {
       `[User: ${user.id}] Error creating checkout session: ${error.message}`,
       { url: request.url }
     );
-    return json({ errors: { message: error.message } }, { status: 400 });
+    return Response.json({ errors: { message: error.message } }, { status: 400 });
   }
 }
 

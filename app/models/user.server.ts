@@ -233,7 +233,14 @@ export async function getSavedPaymentMethod(userId: number) {
       where: { userId },
     });
 
-    if (!userPaymentInfo) {
+    // A row can exist with only a customer id — getOrCreateStripeCustomer creates one
+    // before any card is added. That is not a saved payment method, and treating it as
+    // one renders a card with blank digits.
+    if (
+      !userPaymentInfo ||
+      !userPaymentInfo.stripeCustomerId ||
+      !userPaymentInfo.stripePaymentMethodId
+    ) {
       return null;
     }
 

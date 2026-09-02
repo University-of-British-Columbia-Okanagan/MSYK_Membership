@@ -23,14 +23,26 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 ### Technology Stack
 
 - **Frontend**: React Router 7 (SSR), React 19, TypeScript 5.7, Tailwind CSS
-- **Backend**: Node.js, Express (via React Router)
+- **Backend**: Node.js with React Router 7 server-side rendering (`@react-router/serve` in production, `tsx entry.server.ts` for the cron process in development) — Express is not a direct dependency
 - **Database**: PostgreSQL with Prisma ORM 6
 - **External Services**: 
   - Stripe (payment processing)
   - Mailgun (email notifications)
   - Google Calendar API (optional, for workshop events)
   - Brivo API (access control system for door access)
-- **Testing**: Jest with Testing Library
+- **Testing**: Jest with Testing Library, MSW for external API mocking
+
+### Background Jobs
+
+Three jobs start automatically from `entry.server.ts` (the process run by `npm run dev:server`):
+
+| Job | Function | Schedule | File |
+|-----|----------|----------|------|
+| Role level sync | `startRoleLevelSyncCron()` | Every 15 seconds (node-cron `*/15 * * * * *`) | `app/models/user.server.ts` |
+| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight (node-cron `0 0 * * *`) | `app/models/membership.server.ts` |
+| Workshop occurrence status | `startWorkshopOccurrenceStatusUpdate()` | Immediately on startup, then every 1 second (`setInterval`) | `app/models/workshop.server.ts` |
+
+The occurrence status job flips occurrences from `active` to `past` once their `startDate` has passed.
 
 ---
 
@@ -67,7 +79,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Stored in database as encrypted string
 
 **Key Files:**
-- `app/utils/session.server.ts` - `register()`, `generateSignedWaiver()`
+- `app/utils/session.server.ts` - `register()` (exported); `generateSignedWaiver()` (internal helper called by `register()`); `decryptWaiver()` (re-exported)
 - `app/schemas/registrationSchema.tsx` - Validation schema
 - `app/routes/authentication/register.tsx` - Registration form
 
@@ -80,7 +92,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Secure token validation before password update
 
 **Key Files:**
-- `app/utils/email.server.ts` - `sendResetEmail()`, `generateResetToken()`
+- `app/utils/email.server.ts` - `sendResetEmail()` (exported); `generateResetToken()` (internal helper it calls)
 - `app/routes/authentication/passwordReset.tsx` - Reset form and validation
 
 ### 4. Membership Management
@@ -113,10 +125,12 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - UI always treats `autoRenew` as `false` when no payment method is on file, regardless of DB value
 
 **Role Level Impact:**
-- Level 3: Active membership (standard plan)
-- Level 4: Active membership + `needAdminPermission` plan + `allowLevel4` flag
-- Level 2: Cancelled membership but completed orientation(s)
+- Level 3: Membership on file (standard plan) + completed orientation
+- Level 4: Membership on file + `needAdminPermission` plan + `allowLevel4` flag + completed orientation
+- Level 2: No membership on file, but completed orientation(s)
 - Level 1: No membership and no orientation
+
+**"Membership on file" means status `active`, `ending`, or `cancelled`** — `startRoleLevelSyncCron()` treats all three as still granting access, which is what keeps a cancelled member at Level 3 until their term actually lapses. Only when the daily billing cron flips the record to `inactive` (or it is deleted) does the user drop to Level 2/1. Brivo door access is stricter and uses `status === "active"` alone, so a cancelled Level 4 member keeps portal access but loses the physical door immediately.
 
 **Membership Revocation (Admin Action):**
 - Admin can revoke a user's membership access globally (ban status)
@@ -149,6 +163,15 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Registration cutoff (default: 60 minutes before start)
 - Google Calendar integration (optional, creates events when connected)
 
+**Scheduling occurrences (Add Workshop, Edit Workshop, Offer Again):**
+- All three pages enter dates through the same components (`OccurrenceRow`, `RepetitionScheduleInputs`) and share `app/utils/occurrences.ts`, so the rules below apply to every workshop kind — `workshop` and `orientation`, single-day and multi-day, with or without price variations
+- **Start and end are set independently.** Editing a start never changes the end. Moving a session to a different day is therefore two edits, the start then the end
+- The list re-sorts by start date after every edit; rows still being filled in sink to the bottom
+- An end at or before its start is flagged in the row in red and rejected on submit with "End date must be later than start date"
+- The end date and time fields stay disabled until a start is set. Once it is, picking an end time adopts the start's day, so the admin's chosen duration is never overridden by a default
+- A row whose occurrence has registrations is locked entirely and cannot be edited
+- **Append weekly / monthly dates** generates occurrences from the first-occurrence start and end, preserving that duration across every repetition; the append is refused if the template's end is not after its start
+
 **Registration Process:**
 - Prerequisite validation before registration
 - Capacity check (single occurrence or multi-day series)
@@ -170,8 +193,12 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Multi-day workshops group all days per user into one expandable row; per-day results shown on expand; all filters operate on the group's effective result (e.g. a user is "passed" only when all days pass)
 - Works identically for orientation and regular workshop types, single-day and multi-day, with or without price variations
 - **Cancel Registration** (kebab menu ⋮ per row): admin can cancel any individual user's registration regardless of result state (pending/passed/failed); multi-day cancels all sessions together; sends `sendAdminWorkshopCancellationEmail` to the user; creates `WorkshopCancelledRegistration` record with `cancelledByAdmin: true` (always shows as refund-eligible in Cancelled Events)
+- **Move Registration** (`actionType: "moveRegistration"` → `moveUserWorkshopRegistration()`): admin moves a user from one occurrence of the workshop to another. Rejected unless the target occurrence belongs to the same workshop, has status `active`, is single-day (`connectId` is null), is not already actively booked by that user, and has remaining capacity — including capacity on the price variation the user originally chose. The registration retains its price variation, and `sendAdminWorkshopMoveEmail` notifies the user of the old and new dates
+- **Mark results**: individual pass/fail/pending via `updateRegistrationResult()`, or bulk "Pass All" via `updateMultipleRegistrations()` — both handled by the action in `app/routes/dashboard/admindashboardlayout.tsx`
 
 **Key Files:**
+- `app/utils/occurrences.ts` - `setOccurrenceDateField()`, `sortOccurrencesByStart()`, `isEndBeforeStart()` — the occurrence date rules, shared by all three date editors
+- `app/components/ui/Dashboard/OccurrenceRow.tsx` - One editable occurrence row, including the end-before-start warning and the disabled-until-start gating
 - `app/models/workshop.server.ts` - Workshop CRUD, occurrence management, registration; `cancelUserWorkshopRegistration` and `cancelMultiDayWorkshopRegistration` accept optional `cancelledByAdmin` param (default `false`)
 - `app/models/payment.server.ts` - Workshop payment and refund processing
 - `app/routes/dashboard/workshops.tsx` - Workshop browsing and registration
@@ -204,7 +231,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Key Files:**
 - `app/models/equipment.server.ts` - Equipment CRUD, booking, prerequisites
 - `app/models/payment.server.ts` - Equipment payment and refund processing
-- `app/routes/dashboard/equipmentbooking/:id.tsx` - Booking interface
+- `app/routes/dashboard/equipmentbooking.tsx` - Booking interface (route `/dashboard/equipmentbooking/:id`)
 
 ### 7. Payment Processing
 
@@ -228,8 +255,9 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 
 **Key Files:**
 - `app/models/payment.server.ts` - Payment intent creation, checkout sessions, refunds
-- `app/routes/api/paymentupgrade.tsx` - Quick checkout endpoint
-- `app/routes/dashboard/payment/success.tsx` - Payment success handler
+- `app/routes/api/paymentprocess.tsx` - Quick checkout endpoint (saved-card purchase)
+- `app/routes/api/paymentupgrade.tsx`, `app/routes/api/paymentdowngrade.tsx`, `app/routes/api/paymentresubscribe.tsx` - Membership change endpoints
+- `app/routes/dashboard/paymentsuccess.tsx` - Payment success handler (route `/dashboard/payment/success`)
 
 ### 8. Email Notifications
 
@@ -239,6 +267,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Workshop registration confirmation (`sendWorkshopConfirmationEmail`) — with ICS calendar attachment
 - Workshop cancellation confirmation — user-initiated (`sendWorkshopCancellationEmail`)
 - Workshop cancellation notification — admin-initiated (`sendAdminWorkshopCancellationEmail`; distinct subject and wording: "cancelled by an administrator")
+- Workshop registration moved by admin (`sendAdminWorkshopMoveEmail`) — shows the old and new occurrence dates
 - Workshop price variation cancelled — single (`sendWorkshopPriceVariationCancellationEmail`)
 - Workshop price variation cancelled — multi-day (`sendWorkshopPriceVariationCancellationEmailMultiDay`)
 - Workshop occurrence cancelled by admin — single (`sendWorkshopOccurrenceCancellationEmail`)
@@ -270,19 +299,32 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Configurable Settings (stored in `AdminSettings` key-value table):**
 - GST percentage (key: `gst_percentage`, default: `"5"`)
 - Workshop visibility days (key: `workshop_visibility_days`, default: `"60"`)
-- Equipment visibility days (key: `equipment_visibility_days`)
+- Equipment visibility days (key: `equipment_visible_registrable_days`, default: `"7"`) — note the key name, it is not `equipment_visibility_days`
 - Past workshop history days (key: `past_workshop_visibility`, default: `"180"`)
 - Google Calendar ID (key: `google_calendar_id`)
 - Google Calendar timezone (key: `google_calendar_timezone`, default: `"America/Yellowknife"`)
 - Google OAuth refresh token — AES-encrypted (key: `google_oauth_refresh_token_enc`)
-- Brivo access group for Level 4 members (key: `brivo_access_group_level4`) — comma-separated group IDs
-- Planned closures
+- Brivo access group for Level 4 members (key: `brivo_access_group_level4`) — comma-separated group IDs; falls back to the `BRIVO_ACCESS_GROUP_LEVEL4` env var
+- Planned closures (key: `planned_closures`) — JSON array, managed via `getPlannedClosures()` / `updatePlannedClosures()`
+- Level 3 booking hours (key: `level3_start_end_hours`) — JSON map of weekday → `{ start, end }`; empty falls back to 9–17 every day
+- Level 4 unavailable hours (key: `level4_unavaliable_hours`) — JSON `{ start, end }`; unset falls back to `{ start: 0, end: 0 }` (no restriction). **The key is misspelled in the code and must be matched exactly**
+- Max equipment slots per day (key: `max_number_equipment_slots_per_day`, default: `"4"`)
+- Max equipment slots per week (key: `max_number_equipment_slots_per_week`, default: `"14"`)
 
-**Admin Settings Tabs:**
-- **General** — GST, visibility windows, planned closures
-- **Google Calendar** — Connect/disconnect via OAuth, select calendar from dropdown
-- **Brivo** — Access group configuration, webhook management (create/delete), user sync status and retry
-- **Stripe Products** — Bulk sync all workshops/membership plans/equipment to Stripe; "Clear & Re-sync" for environment switching; sync count display per category
+**Admin Settings Tabs** (the `TabsTrigger` values in `app/routes/dashboard/adminsettings.tsx`, in order):
+- **Workshop Settings** — workshop visibility days, past workshop visibility, per-workshop registration cutoffs
+- **User Settings** — user table with admin/role level/membership/door access filters, role level and `allowLevel4` controls, admin status, membership revoke/unrevoke, Brivo sync status and retry
+- **Volunteer Settings** — volunteer status management, volunteer hour approval, recently managed actions
+- **Equipment Settings** — equipment visibility days, Level 3 booking hours, Level 4 unavailable hours, max slots per day/week
+- **Planned Closures** — add and remove closure periods
+- **Cancelled Events** — workshop and equipment cancellations, refund eligibility, resolved toggle
+- **Miscellaneous Settings** — GST/HST percentage, and the under-18 registration notice address (`minor_notification_email`)
+- **Integrations** — Google Calendar (connect/disconnect via OAuth, select calendar, timezone) **and** Brivo (access group, webhook subscription create/delete, integration status)
+- **Security & Access** — access token generation, access card lookup by UUID or email, card permissions
+- **Stripe Products** — bulk sync all workshops/membership plans/equipment to Stripe; "Clear & Re-sync" for environment switching; sync count display per category
+- **Other Settings** — placeholder
+
+Note there is no separate "General", "Google Calendar", or "Brivo" tab — GST lives under Miscellaneous Settings, and Google Calendar and Brivo are both cards inside Integrations.
 
 **Stripe Products Tab (Implemented):**
 - Links each item to a Stripe Product via `stripeProductId` — enables coupon restrictions to specific items
@@ -296,6 +338,10 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Webhook subscription management (create/delete event subscriptions)
 - User sync status display and retry functionality
 - Integration status indicator (shows if Brivo credentials are configured)
+
+**All Users Page (`/dashboard/admin/users`):**
+- Columns are First Name, Last Name, Email, Phone Number, Legal Guardian, Training Card User Number, Role Level
+- **Legal Guardian** shows the name given at registration by a 14 to 17 year old, and a dash for everyone else. It is the fallback for the front desk waiver list if the notification email is lost
 
 **User Management Table (Admin Settings → User Settings tab):**
 - Lists all registered users with columns: First Name, Last Name, Training Card User Number, Email, Phone Number, Role Level, Admin Status, Membership, Door Access
@@ -319,7 +365,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Issue tracking and resolution
 
 **Key Files:**
-- `app/models/admin.server.ts` — `getAdminSetting`, `updateAdminSetting`, `getGoogleCalendarConfig`, `clearGoogleCalendarAuth`, `getPlannedClosures`, `updatePlannedClosures`
+- `app/models/admin.server.ts` — `getAdminSetting`, `updateAdminSetting`, `getWorkshopVisibilityDays`, `getEquipmentVisibilityDays`, `getPastWorkshopVisibility`, `updateWorkshopCutoff`, `getGoogleCalendarConfig`, `clearGoogleCalendarAuth`, `getPlannedClosures`, `updatePlannedClosures`
 - `app/routes/dashboard/adminsettings.tsx` — Admin settings UI (tabbed)
 - `app/routes/api/stripe-sync.tsx` — Stripe Product sync API endpoint
 
@@ -338,8 +384,8 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 - Single-card path and UUID path share the same card details/edit UI
 
 **Key Files:**
-- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `updateAccessCard`)
-- `app/models/accessLog.server.ts` - Log tracking
+- `app/models/access_card.server.ts` - Card management (`getAccessCardByUUID`, `getAccessCardByEmail`, `getAccessCardByBrivoCredentialId`, `getUserIdByAccessCard`, `hasPermissionForType`, `updateAccessCard`)
+- `app/models/accessLog.server.ts` - Log tracking (`logAccessEvent`, `getAccessLogs`)
 - `app/routes/brivo.callback.tsx` - Access system webhook
 
 ### 11. Brivo Access Control Integration
@@ -364,6 +410,7 @@ The MSYK Membership Management System is a comprehensive platform for managing m
 **Integration Points:**
 The `syncUserDoorAccess()` function is automatically called when:
 - New membership subscription is registered (`registerMembershipSubscription()`)
+- A membership plan is deleted (`deleteMembershipPlan()`) — resyncs every affected member
 - Membership is cancelled (`cancelMembership()`)
 - User role level is updated (`updateUserRole()`)
 - User `allowLevel4` flag is updated (`updateUserAllowLevel()`)
@@ -398,15 +445,49 @@ The `syncUserDoorAccess()` function is automatically called when:
 - Checkout sessions reference `price_data.product` when `stripeProductId` is set; fallback to `price_data.product_data` inline if not
 - Each Stripe Product carries metadata: `{ portal_type: "workshop"|"membership"|"equipment", portal_id: "N" }`
 
-**Admin UI (Admin Settings → Stripe Products tab):**
+**Admin UI (Admin Settings → Stripe Integrations tab):**
 - Sync All to Stripe button with per-category success counts
 - Clear & Re-sync button — clears all `stripeProductId` values and re-syncs (required when switching Stripe environments)
 - Integration status display
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — All Stripe sync/archive logic
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
-- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Products tab
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Integrations tab
+
+---
+
+### 13. Recurring Membership Discounts
+
+**Purpose:** A Stripe promotion code entered at membership checkout applies to every subsequent renewal, not only the first payment.
+
+Memberships are **not** Stripe Subscriptions. The portal still owns `nextPaymentDate`, `billingCycle`, and upgrade/downgrade; only the charge mechanism changed.
+
+**How it works:**
+- Renewals are raised as Stripe **Invoices** rather than bare PaymentIntents, because only an invoice carries a discount
+- The coupon is pinned to the member's **Stripe Customer**, which applies to invoices only — it cannot leak into workshop or equipment checkout
+- `UserMembership.stripeCouponId` and `discountEndsAt` mirror the Stripe discount for display; Stripe remains authoritative
+- GST is attached as a Stripe **tax rate** on both checkout and renewals, so a discount reduces the base and GST is charged on the reduced amount
+- The plan's `stripeProductId` is set on the renewal invoice line, so coupons restricted to specific products keep applying after the first payment
+
+**A discount ends when:**
+- The member upgrades or downgrades their plan
+- An admin clicks **End** in Admin Settings → Stripe Integrations
+- Stripe reaches the coupon's expiry date
+- Cancelling does **not** end it: the coupon stays on the Stripe Customer and applies again if the member resubscribes to the same plan
+
+**Coupon duration:** `duration_in_months` counts calendar months from redemption, and the expiry boundary is exclusive, so discounted payments = `ceil(coupon months / cycle months)`. A coupon whose duration equals the billing cycle discounts exactly one payment.
+
+**Admin UI (Admin Settings → Stripe Integrations tab):**
+- GST tax rate status
+- Table of members currently on a recurring discount, with coupon id and expiry, and an **End** action per member. Discounts Stripe has already expired are filtered out
+
+**Key Files:**
+- `app/services/stripe-discounts.server.ts` — tax rate resolution, coupon capture, apply/clear, charge preview, renewal invoices
+- `app/models/membership.server.ts` — `endRecurringDiscountForUser()`, and the billing cron's invoice charge
+- `app/routes/dashboard/paymentsuccess.tsx` — captures the checkout coupon onto the Stripe Customer
+- `test-scripts/test-coupon-durations.ts` — verifies any duration × billing cycle combination against real Stripe test clocks
+- `test-scripts/test-membership-renewal.ts` — drives a renewal on demand without waiting for the cron
 
 ---
 
@@ -417,6 +498,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 1. User navigates to `/register`
 2. Fills registration form:
    - Personal information (name, email, phone, DOB)
+   - Legal guardian's name, shown and required only when the DOB puts them at 14 to 17
    - Emergency contact details
    - Consent agreements (media, data privacy, community guidelines, operations policy)
    - Digital waiver signature (optional)
@@ -425,11 +507,12 @@ The `syncUserDoorAccess()` function is automatically called when:
 5. Waiver PDF generated and encrypted (if signature provided)
 6. User record created in database
 7. Registration confirmation email sent
-8. User redirected to `/login?registered=true`
-9. Login page displays green "Registration successful!" confirmation banner
-10. User enters email and password
-11. Session created with userId, password hash, and loginTime stored in cookie
-12. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
+8. If the user is 14 to 17, staff are emailed the name, age and guardian name at the `minor_notification_email` address (default `info@makerspaceyk.com`) so the maker can be added to the front desk list for the in-person guardian waiver
+9. User redirected to `/login?registered=true`
+10. Login page displays green "Registration successful!" confirmation banner
+11. User enters email and password
+12. Session cookie `RJ_session` created holding `userId`, `userPassword` (the raw password submitted on the login form), and `loginTime`. On every subsequent request `getUserId()` re-reads the user and `bcrypt.compare`s the session password against the stored hash, so a password change invalidates all existing sessions
+13. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
 - Email uniqueness check
@@ -622,15 +705,20 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ### Workflow 10: Workshop Cancellation & Refund
 
-1. User cancels workshop registration from `/dashboard/myworkshops`
-2. System finds registration(s) with payment intent ID
-3. System checks cancellation policy (default: 48-hour refund window)
-4. Stripe refund processed for payment intent
-5. Registration record(s) deleted from database
-6. Cancellation confirmation email sent
-7. User refunded via Stripe
+Cancellation and refund are two separate steps. Cancelling never calls Stripe and never deletes anything — it flags the registration and queues it for an admin.
 
-**Note:** Multi-day workshop cancellations refund all occurrences in the series.
+**Step 1 — user cancels** (`cancelUserWorkshopRegistration()` / `cancelMultiDayWorkshopRegistration()`):
+1. User cancels from `/dashboard/myworkshops` or the workshop details page
+2. `UserWorkshop.result` is set to `"cancelled"` — the row is **not** deleted
+3. A `WorkshopCancelledRegistration` audit record is created, carrying the original `registrationDate`, the `cancellationDate`, the `paymentIntentId`, and `cancelledByAdmin: false`
+4. Cancellation confirmation email sent (`sendWorkshopCancellationEmail`)
+
+**Step 2 — admin refunds** (`refundWorkshopRegistration()`, separate action):
+1. Admin reviews the row in Admin Settings → Cancelled Events, where refund eligibility is displayed (cancelled at least 48 hours before the workshop start; for multi-day, before the earliest session)
+2. Stripe refund created against the stored payment intent
+3. **Only on a successful refund** are the `UserWorkshop` rows deleted
+
+**Note:** Multi-day cancellation marks every occurrence in the series cancelled but creates a single audit record, since the whole series shares one payment intent.
 
 ### Workflow 11: Equipment Booking (Single Slot)
 
@@ -664,22 +752,23 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ### Workflow 13: Equipment Cancellation & Refund
 
-1. User cancels equipment booking from `/dashboard/myequipments`
-2. System finds booking(s) with payment intent ID
-3. System checks refund eligibility:
-   - Cancellation 2+ days before slot start: Eligible
-   - Cancellation < 2 days before: Not eligible
-4. If eligible:
-   - Stripe refund processed
-   - Slot(s) marked as available (`isBooked: false`)
-   - Booking record(s) deleted
-   - Cancellation record created in `EquipmentCancelledBooking`
-5. Cancellation confirmation email sent
-6. User refunded via Stripe (if eligible)
+As with workshops, cancellation and refund are two separate steps. Cancelling never calls Stripe and never deletes the booking.
+
+**Step 1 — user cancels** (`cancelEquipmentBooking()`):
+1. User cancels from `/dashboard/myequipments`
+2. The slot is freed (`isBooked: false`) so someone else can take it
+3. An `EquipmentCancelledBooking` record is created via `createEquipmentCancellation()`, storing `totalSlotsBooked`, `slotsRefunded`, `totalPricePaid`, the proportional `priceToRefund`, the slot times as JSON, and `eligibleForRefund` — computed once at cancellation time as "the earliest cancelled slot starts more than 2 days from now"
+4. `EquipmentBooking.status` is set to `"cancelled"` — the row is **not** deleted
+5. Cancellation confirmation email sent (`sendEquipmentCancellationEmail`)
+
+**Step 2 — admin refunds** (`refundEquipmentBooking()`, separate action):
+1. Admin reviews the row in Admin Settings → Cancelled Events and sees the stored `eligibleForRefund` flag and `priceToRefund`
+2. Stripe refund created against the shared payment intent
+3. **Only on a successful refund** are the slots freed and the `EquipmentBooking` rows deleted
 
 **Partial Cancellation:**
-- User can cancel individual slots from bulk booking
-- Refund calculated proportionally (price per slot × cancelled slots)
+- User can cancel individual slots from a bulk booking
+- Refund calculated proportionally (original total price ÷ original slot count × slots cancelled), with the original totals carried forward from the first cancellation record so repeated partial cancellations stay consistent
 - Remaining slots remain booked
 
 ### Workflow 14: Automated Membership Billing (Cron Job)
@@ -692,13 +781,13 @@ The `syncUserDoorAccess()` function is automatically called when:
      - Set form status to "inactive"
      - Skip charging (membership expires at term end)
    - **If status "active" and `autoRenew=true`:**
-     - Calculate charge amount (base price + GST based on billing cycle)
+     - Select the base price for the billing cycle (`price`, `price3Months`, `price6Months`, `priceYearly`, falling back to `price` when the cycle price is null)
      - Retrieve saved payment method
      - If payment method exists:
-       - Create Stripe payment intent with saved card
-       - Charge user
+       - Raise a Stripe **Invoice** with the base amount, the plan's `stripeProductId`, and GST as a tax rate, then finalize and pay it with the saved card
+       - Any recurring discount on the Stripe Customer is applied by Stripe, before tax
        - Update `nextPaymentDate` based on billing cycle (monthly: +1 month, quarterly: +3 months, semiannually: +6 months, yearly: +1 year)
-       - Store payment intent ID
+       - Store the invoice's payment intent ID, and re-mirror `stripeCouponId` / `discountEndsAt` from Stripe
      - If no payment method:
        - Set membership status to "inactive"
        - Set form status to "inactive"
@@ -707,7 +796,7 @@ The `syncUserDoorAccess()` function is automatically called when:
      - Set status to "inactive"
      - Set form status to "inactive"
 3. Update user role levels based on membership status
-4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`)
+4. Send payment reminders for memberships due within 24 hours (only for `autoRenew=true` and `status="active"`), quoting the discounted total as of the charge date
 
 **Role Level Updates:**
 - If active membership exists and plan has `needAdminPermission` and user has `allowLevel4`: Level 4
@@ -823,7 +912,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 3. Stripe Product marked `active: false` (archived, not deleted — Stripe cannot delete products with payment history)
 
 **Bulk Sync (for Existing Data):**
-1. Admin navigates to Admin Settings → Stripe Products tab
+1. Admin navigates to Admin Settings → Stripe Integrations tab
 2. Clicks "Sync All to Stripe"
 3. `POST /api/stripe-sync` called with action `bulkSync`
 4. System loops through all workshops, membership plans, and equipment
@@ -834,7 +923,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 **Clear & Re-sync (Environment Switch):**
 1. Admin switches Stripe keys in `.env` (e.g. test → live)
 2. All stored `stripeProductId` values are now invalid for the new account
-3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Products tab
+3. Admin clicks "Clear & Re-sync" in Admin Settings → Stripe Integrations tab
 4. `POST /api/stripe-sync` called with action `clearAndResync`
 5. All `stripeProductId` values in DB cleared to `null`
 6. Full bulk sync runs against the new Stripe account
@@ -842,8 +931,8 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — `syncWorkshopToStripe`, `syncMembershipPlanToStripe`, `syncEquipmentToStripe`, `archiveStripeProduct`, `bulkSyncToStripe`
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus` actions
-- `app/routes/dashboard/adminsettings.tsx` — Stripe Products tab UI
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/dashboard/adminsettings.tsx` — Stripe Integrations tab UI
 
 **Known Limitations:**
 - Per-variation coupon targeting not supported (all price variations share one Stripe Product)
@@ -854,6 +943,47 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 ## Test Plan
 
+### Development Workflow
+
+**Before implementing: ask.** Every non-trivial change starts with clarifying questions to the maintainer — *"ask me any clarifying questions and anything you need from me to do this, we are a team."* Ambiguous scope, two defensible designs, an unclear edge case, or credentials the implementer does not have all get settled up front, not discovered halfway through.
+
+Every implementation then follows **implement → test → verify end to end**. The middle step depends on what changed:
+
+**New functionality**
+1. Implement the feature
+2. Add test files under `tests/` and make them pass
+3. Verify end to end in a real browser via the Playwright MCP server
+4. `npm test` — the suite must stay fully green (**43 suites / 636 tests**)
+5. `npm run typecheck`
+
+**Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
+1. Implement the change
+2. Update every affected test file — run the suite to see what broke, and grep `tests/` for the symbols touched, since a test can be stale without failing
+3. Verify end to end in a browser — the changed behaviour *and* the surrounding flow
+4. `npm test` fully green
+5. `npm run typecheck`
+
+Step 3 is not optional: a green unit test says the function behaves, only the browser says the feature works. A test is never edited purely to make it pass — establish whether the test or the code is wrong first, and say which.
+
+**Every UI change must be verified at mobile width as well as desktop.** Responsiveness is part of the change, not a follow-up.
+
+**Ask for whatever testing needs.** A test card, a Brivo sandbox credential, a role level 3/4 account, a record seeded into a particular state, or a ruling on the correct behaviour — ask the maintainer rather than skipping the verification, faking the data, or weakening the assertion.
+
+**Browser test accounts** — created by `npx tsx seed.ts` (`NODE_ENV=development`), all with the password `password`:
+
+| Email | Password | Role level | How the level is earned |
+|-------|----------|-----------|--------------------------|
+| `testuser1@gmail.com` | `password` | 1 — **Admin** (`roleUserId: 2`) | Admin role; no orientation or membership |
+| `testuser2@gmail.com` | `password` | 1 | Registered only |
+| `testuser3@gmail.com` | `password` | 1 | Registered only |
+| `testuser4@gmail.com` | `password` | 2 | Passed a past General Orientation |
+| `testuser5@gmail.com` | `password` | 3 | Orientation + active **Makerspace Member** membership |
+| `testuser6@gmail.com` | `password` | 4 | Orientation + active **Drop-In 10 Pass** (`needAdminPermission`) + `allowLevel4` |
+
+None of these levels are written directly. The seed creates the rows that *earn* them — a `UserWorkshop` with `result: "passed"` on an orientation, a `UserMembership` with status `active`, the `allowLevel4` flag — and then derives `roleLevel` from those rows using the same rules as `startRoleLevelSyncCron()`. That cron re-derives the level every 15 seconds, so **editing `roleLevel` by hand does not stick**; change the underlying rows instead.
+
+See [CLAUDE.md](./CLAUDE.md) for the full rules and [tests/README.md](./tests/README.md) for layout and conventions.
+
 ### Test Strategy
 
 **Testing Framework:**
@@ -861,13 +991,16 @@ The `syncUserDoorAccess()` function is automatically called when:
 - **Testing Library** for React component testing
 - **MSW (Mock Service Worker)** for external API mocking
 
-**Test Focus Areas:**
-- Model functions (business logic)
+**Test Focus Areas (all now covered):**
+- Model functions — workshop, equipment, membership, payment, user, profile, admin, access card, access log, issue
+- Services — Stripe Product sync, Brivo door access sync, Brivo client configuration
+- Auth and session — login, session expiry, password-change invalidation, email case-insensitivity
+- Access control — role-level AND chain, door permission gating
 - Route actions and loaders
-- Form validation schemas
-- Payment processing workflows
-- Email composition
+- Payment processing — GST calculation, refunds, payment method removal
 - Database operations
+
+**Reference:** [tests/README.md](./tests/README.md) documents the folder — layout, fixture conventions, and the failure modes that have bitten here.
 
 **Test Data:**
 - Fixtures in `tests/fixtures/**` for consistent test data
@@ -909,14 +1042,32 @@ The acceptance criteria are organized into three categories:
 | AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
 | AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
 | AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
-| AC19 | Automated Monthly Billing (Cron) | Finds memberships with `nextPaymentDate <= now`; charges monthly memberships with saved payment method; sets non-monthly to "inactive"; updates role levels; sends payment reminders | `tests/models/membership.cron.test.ts` |
-| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder | `tests/models/membership.cron.test.ts` |
+| AC19 | Automated Membership Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges every billing cycle via a Stripe invoice using the saved payment method; sets memberships without a saved card to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
+| AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder; the amount is the discounted total priced as of the charge date | `tests/models/membership.cron.test.ts` |
+| - | Billing Cycles | Every cycle (monthly, quarterly, semiannually, yearly) reads its own price with fallback to `price` when the cycle price is null, advances `nextPaymentDate` by the right interval, and carries the plan's `stripeProductId` on the invoice line | `tests/models/membership.cron.test.ts` |
+| - | Recurring Discount Capture | A promotion code on the completed checkout session is pinned to the member's Stripe customer after the subscription exists; a Stripe failure there does not cost the member the membership they just paid for | `tests/routes/dashboard/paymentsuccess.discount.test.ts` |
+| - | Recurring Discount Service | GST tax rate resolution and reuse, coupon extraction from a session including a typed promotion code, apply and clear, charge preview, and renewal invoices carrying the product and tax rate | `tests/services/stripe-discounts.server.test.ts` |
+| - | Recurring Discount Ends on Plan Change | Upgrade and downgrade both clear the Stripe discount and the mirrored columns; a brand-new subscription does not | `tests/models/membership.server.test.ts` |
+| - | Stripe Integrations Admin Endpoint | Every action is admin-only; the discount listing filters out discounts Stripe has already expired while keeping `forever` ones; ending a discount requires a `userId` and surfaces Stripe failures | `tests/routes/api/stripe-sync.test.ts` |
+| - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/routes/dashboard/payment.membership-gst.test.ts` |
+| AC8 | Missing Required Fields | Zod schema validation fails; field-specific error messages displayed; no user record created. Also covers the guardian name being required for 14 to 17 and stripped for every other age | `tests/schemas/registration-age-guardian.test.ts` |
+| - | Age Arithmetic | Whole-year ages across both boundaries, leap days, malformed and non-existent calendar dates, future dates, and the timezone case where a UTC-parsed birthday used to admit a 13 year old a day early | `tests/utils/age.test.ts` |
+| - | Under-18 Staff Notice | Recipient resolved from `minor_notification_email` and never the registrant, the subject and every body fact, HTML escaping of crafted names, a missing guardian name, and a Mailgun failure propagating to the caller | `tests/utils/email.minor-registration.test.ts` |
+| - | Registering a Minor | `register()` refuses under 14 and a 14 to 17 year old with no guardian, stores and trims `guardianName` for the band and nulls it otherwise, notifies staff at both edges of 14 to 17 but not at 18, and completes the registration even when either email fails | `tests/utils/session.register-minor.test.ts` |
+| - | Register Form Age Gate | Both boundaries drive the notice, the guardian field and the submit button; a typed guardian name is dropped when the birthday moves out of the band and is not resurrected on re-entry | `tests/routes/authentication/register.component.test.tsx` |
+| - | Register Form Error Restore | After a rejected submit the birthday returns to all three dropdowns, the guardian field and notice survive, and the consent gates reopen so the consents are serialised again | `tests/routes/authentication/register.component.test.tsx`, `tests/utils/registration-restore.test.ts` |
+| - | Membership Email Amounts | Reminder and payment-success emails itemise base, discount, and GST, with GST derived from the discounted base rather than the gap between list price and total | `tests/utils/email.membership-discount.test.ts` |
+| - | Saved Payment Method Guard | `getSavedPaymentMethod()` returns `null` for a `UserPaymentInformation` row holding only a customer id, so Quick Checkout and the profile page do not render a card with blank digits | `tests/models/user.payment-method.test.ts` |
 | AC21 | Workshop Prerequisites | System checks user completed required workshops; registration blocked if prerequisites not met | `tests/models/workshop.registration.test.ts` |
 | AC22 | Workshop Capacity | System checks available spots; registration blocked if capacity exceeded | `tests/models/workshop.capacity.test.ts` |
 | AC23 | Single Occurrence Registration | User registers for single workshop occurrence; registration created in `UserWorkshop` | `tests/models/workshop.registration.test.ts` |
 | AC24 | Multi-Day Workshop Registration | Multiple registrations created (one per occurrence); all share same payment intent ID | `tests/models/workshop.registration.test.ts` |
 | - | Workshop Basic Operations | Workshop CRUD operations, occurrence management, duplication and offering | `tests/models/workshop.basic.test.ts` |
 | - | Workshop Cancellation | Workshop cancellation logic and registration removal | `tests/models/workshop.cancellation.test.ts` |
+| - | Occurrence Date Field Editing | Setting a start never derives an end from it (the removed auto-2h rule); each edit returns new objects rather than mutating the array held in state; other rows and the occurrence's own unrelated fields are untouched; an out-of-range index is a no-op | `tests/utils/occurrences.test.ts` |
+| - | Occurrence Sorting | Sorts chronologically and sinks not-yet-filled rows (`new Date("")`) to the bottom, so an invalid date cannot act as a sort barrier that leaves the array partially sorted; never mutates its input | `tests/utils/occurrences.test.ts` |
+| - | Occurrence End-Before-Start Detection | True when an end is before or equal to its start, false while either side is unfilled — drives the red row warning | `tests/utils/occurrences.test.ts` |
+| - | Occurrence Date Range Validation | `endDate > startDate` enforced by both `workshopFormSchema` and `workshopOfferAgainSchema` with the same message and field path, for every `type` × multi-day × price-variations combination; rejects the whole list when any one session is inverted | `tests/schemas/workshop-occurrence-dates.test.ts` |
 | AC28 | Equipment Prerequisites | System checks user completed required workshops; booking blocked if prerequisites not met | `tests/models/equipment.basic.test.ts` |
 | AC29 | Equipment Slot Availability | System validates slot not already booked; slot marked as booked (`isBooked: true`) | `tests/models/equipment.booking.test.ts` |
 | AC30 | Equipment Bulk Booking | Multiple booking records created; all bookings share same payment intent ID; all slots marked as booked | `tests/models/equipment.booking.test.ts` |
@@ -925,21 +1076,26 @@ The acceptance criteria are organized into three categories:
 | - | Equipment Basic Operations | Equipment CRUD operations, slot management, settings | `tests/models/equipment.basic.test.ts`, `tests/models/equipment.slots.test.ts`, `tests/models/equipment.settings.test.ts` |
 | - | Admin Workshop Creation | Admin creates new workshop; workshop form validation | `tests/routes/dashboard/addworkshop.test.ts` |
 | - | Admin Equipment Creation | Admin creates new equipment; equipment form validation | `tests/routes/dashboard/addequipment.test.ts` |
+| - | Workshop Registration Cutoff (server-side) | All four workshop URL shapes accepted by the `payment.tsx` loader — single occurrence, single + variation, multi-day, multi-day + variation — redirect away once `Workshop.registrationCutoff` has passed, and still load while registration is open; a cutoff of `0` means no restriction | `tests/routes/dashboard/payment.cutoff.test.ts` |
+| - | Role Level Sync (Cron) | Registered every 15 seconds (`*/15 * * * * *`); recomputes `roleLevel` from passed orientations, memberships in active/ending/cancelled, the plan's `needAdminPermission`, and `allowLevel4`; promotes and demotes, resyncs door access on every correction, writes nothing when the stored level is already right, and swallows database errors | `tests/models/user.rolelevel.test.ts` |
+| - | Workshop Occurrence Status (Interval) | One pass at startup, then every second (`setInterval`, 1000 ms); flips `active` occurrences whose `startDate` has passed to `past`, leaves upcoming ones and an occurrence starting exactly now alone, and rethrows database failures rather than swallowing them | `tests/models/workshop.occurrence-status.test.ts` |
+| - | Background Job Startup | `entry.server.ts` starts all three jobs — membership billing, occurrence status, role level sync — and starts each exactly once per process; a repeat import hits the module cache instead of registering duplicate jobs | `tests/entry.server.test.ts` |
 
 ---
 
 ### Need Jest Tests
 
+These tests are **not yet written**. The "Recommended Test File" column names where each test *should* live — those files do not exist on disk yet, and their absence is expected. Do not treat them as broken references.
+
 | AC Number | Test Case | Description | Recommended Test File |
 |-----------|-----------|-------------|----------------------|
-| AC1 | Valid Login | Session cookie created with `userId` and `loginTime`; user redirected to appropriate dashboard; session expires after 3 hours | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
+| AC1 | Valid Login | Session cookie created with `userId`, `userPassword`, and `loginTime`; user redirected to appropriate dashboard; session expires after 3 hours | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
 | AC2 | Invalid Credentials | Error message displayed; no session created; user remains on login page | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
 | AC3 | Session Invalidation | User password changed externally; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
 | AC4 | Tampered Session Cookie | Session cookie modified or expired; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
 | AC5 | Valid Registration | User record created; password hashed with bcrypt; registration confirmation email sent; user redirected to login | `tests/utils/session.server.test.ts` |
 | AC6 | Waiver Signature | PDF template loaded; user name, signature, and date added; PDF encrypted with AES; encrypted PDF stored in `User.waiverSignature` | `tests/utils/session.server.test.ts` |
 | AC7 | Duplicate Email | Validation error displayed; no user record created; registration form shows error message | `tests/utils/session.server.test.ts` |
-| AC8 | Missing Required Fields | Zod schema validation fails; field-specific error messages displayed; no user record created | `tests/schemas/registrationSchema.test.ts` |
 | AC9 | Password Reset Request | JWT token generated (1-hour expiration); reset email sent with tokenized link | `tests/utils/email.server.test.ts` |
 | AC10 | Password Reset Token Validation | Token validated (expiration, signature); password reset form displayed; user can enter new password | `tests/routes/authentication/passwordReset.test.ts` |
 | AC11 | Expired Reset Token | Token validation fails; error message displayed; user redirected to password reset request page | `tests/routes/authentication/passwordReset.test.ts` |
@@ -978,7 +1134,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC3 | **Session** Invalidation | Login as user; change password externally (via admin or database); attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC4 | Tampered **Session** Cookie | Login as user; modify session cookie in browser dev tools; attempt to access protected route | Automatic logout; redirect to login page | `N/A` | `11/09/2025`
 | AC5 | **Register** Valid Registration | Navigate to `/register`; fill all required fields with valid data; provide all required consents; submit form | User record created; registration confirmation email received; redirect to login page | `N/A` | `11/09/2025`
-| ---- | **Register** Age Input | Navigate to `/register` and input age | If less than 18 years old, then register should not complete | `N/A` | `11/09/2025`
+| ---- | **Register** Age Input | Navigate to `/register` and input a DOB under 14, then 14 to 17, then 18+ | Under 14 is blocked and the submit button stays disabled; 14 to 17 shows the guardian notice, requires a guardian name, and registers; 18+ registers with no guardian field | `tests/schemas/registration-age-guardian.test.ts` | `28/08/2026`
 | ---- | **Register** Agreements | Navigate to `/register` and have to check the boxes to agree and read agreements | If unchecked, then register should not complete | `N/A` | `11/09/2025`
 | AC6 | **Register** Waiver Signature | During registration, provide digital waiver signature; complete registration | Waiver PDF can be downloaded (admin view); waiver contains user name, signature, and date; waiver is encrypted in database | `N/A` | `11/09/2025`
 | AC7 | **Register** Duplicate Email | Attempt registration with existing email | Validation error displayed; no duplicate user record created; error message shows on form | `N/A` | `11/09/2025`
@@ -1032,8 +1188,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | ---- | **Workshop:** Delete Workshop Button | Go to /dashboard/workshops and click Delete Workshop (should show up) on a card | Workshops can only be deleted by admins and no one else | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Single Occurrence Workshop Dates | Go to workshop details | All dates created by workshop should show up and register individually | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Multi-day Workshop Dates | Go to workshop details | All dates created by workshop should show up and register together | `NA` | `11/17/2025`
-| ---- | **Workshop Details:** Single Occurrence Registration Cutoff | Go to workshop details | Dates that are within the cut off date before (from admin panel) it starts should not allow registration, even when typing in the URL | `NA` | `TODO/TOFIX`
-| ---- | **Workshop Details:** Multi-day Occurrence Registration Cutoff | Go to workshop details | The first date in the multi-day workshop and is within the cut off date (from admin panel) should not allow registration, even when typing in the URL | `NA` | `TODO/TOFIX`
+| ---- | **Workshop Details:** Single Occurrence Registration Cutoff | Go to workshop details, then try pasting `/dashboard/payment/:workshopId/:occurrenceId` and `/dashboard/payment/:workshopId/:occurrenceId/:variationId` for a date inside the cutoff window | Dates within the cutoff window do not allow registration, and typing either URL redirects to the role dashboard. Covered by `tests/routes/dashboard/payment.cutoff.test.ts` | `tests/routes/dashboard/payment.cutoff.test.ts` | `08/23/2026`
+| ---- | **Workshop Details:** Multi-day Occurrence Registration Cutoff | Go to workshop details, then try pasting `/dashboard/payment/:workshopId/connect/:connectId` and the `/:variationId` form | When the first date of the series is inside the cutoff window, registration is refused and both URLs redirect. Covered by `tests/routes/dashboard/payment.cutoff.test.ts`; not re-driven in a browser since the fix | `tests/routes/dashboard/payment.cutoff.test.ts` | `TODO/TOFIX`
 | ---- | **Workshop Details:** Single Occurrence Active Dates | Go to workshop details | All dates that are in the future and greater than the cut off date should be active (allowed for users to register) | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Multi-day Occurrence Active Dates | Go to workshop details | The first workshop date in the multi-day workshop that ius in the future and greater than the cut off date should be active (allowed for users to register) | `NA` | `11/17/2025`
 | ---- | **Workshop Details:** Single Occurrence Past Dates | Go to workshop details | All dates that are in the past and should not be registerable, even when putting in the URL | `NA` | `11/17/2025`
@@ -1114,6 +1270,13 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC24 | Multi-Day **Workshop** Registration | Browse workshops; select multi-day workshop (has `connectId`); review all sessions; complete registration and payment (single payment) | Multiple registrations created (one per occurrence); all registrations share same payment intent ID; confirmation email received with all session dates/times, multi-event ICS attachment, per-session Google Calendar links |
 | AC25 | **Workshop** Price Variation | Create workshop with price variations (e.g., student, early bird); select price variation during registration; complete registration | Selected variation price applied to payment; variation name and description included in confirmation email |
 | AC26 | **Workshop** Refund | Register for workshop; cancel workshop registration from `/dashboard/myworkshops` | Stripe refund processed; registration record deleted; cancellation confirmation email received; refund appears in Stripe dashboard |
+| ---- | **Workshop** Edit Dates — start edit leaves other sessions alone | Open a multi-day workshop whose sessions are longer than 2 hours (seed: "Workshop — Multi-Day", 10:00–14:00); change the first row's start date to a day after the others; then change the start time on whichever row is now at the top | The list re-sorts and the edited session moves; every session the admin did not touch keeps its original start and end; the touched row keeps its end time so the duration changes only by what the admin actually edited; no session is silently reduced to 2 hours | `tests/utils/occurrences.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — moving a session to another day | Change only a row's start date | End date and time are unchanged, so the end now sits before the start; the row is outlined red with "This session ends before it starts"; correcting the end date clears the warning and preserves the original duration | `tests/utils/occurrences.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — new row gating | Click "+ Add Date"; then set the new row's start date; then pick an end time without touching the end date | End date and end time are disabled until a start is set; once set they become editable and no end is filled in automatically; picking an end time fills the end date with the start's day at the chosen time | `NA` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — append weekly/monthly preserves duration | Pick "Append weekly dates"; set the first occurrence to a span longer than 2 hours; change the start date; correct the end; set repetitions to 3 and append | Changing the start leaves the end time alone (flagged red if it now precedes the start); the appended sessions all carry the template's duration, not 2 hours; appending is refused while the template's end is not after its start | `NA` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — save blocked on an inverted range | Leave a row with its end before its start and submit on Add Workshop, Edit Workshop, and Offer Again | Submit is blocked on all three pages with "End date must be later than start date"; nothing is written to the database | `tests/schemas/workshop-occurrence-dates.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — every workshop kind | Repeat the start-date edit on each of: workshop and orientation, single-day and multi-day, with and without price variations (seed workshops #7–#14 by name) | The end never moves on its own in any of the eight combinations; a row whose occurrence has registrations is locked entirely and cannot be edited at all | `tests/schemas/workshop-occurrence-dates.test.ts` | `26/08/2026`
+| ---- | **Workshop** Edit Dates — mobile | Narrow the browser to a phone-width viewport on any workshop date editor | Each row stacks so start date/time sit on one line and end date/time below; the page does not scroll sideways; the red outlines and warning text stay readable | `NA` | `26/08/2026`
 | AC27 | **Equipment** Role Level Restriction | Login as Level 2 user; attempt to book equipment requiring Level 3+; upgrade to Level 3 (via membership); attempt booking again | Booking blocked initially; error message displayed; booking allowed after upgrade |
 | AC28 | **Equipment** Prerequisites | Create equipment with prerequisite workshops; attempt booking without completing prerequisites; complete prerequisite workshop; attempt booking again | Booking blocked initially; error message displayed; booking allowed after completing prerequisites |
 | AC29 | **Equipment** Slot Availability | Navigate to equipment booking grid; select available time slot; complete booking and payment; attempt to book same slot as another user | Booking created; slot marked as booked; booking blocked for same slot (slot unavailable) |
@@ -1146,8 +1309,8 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC46 | Membership Revocation (Admin) | Login as admin; navigate to user management; select user and click "Revoke Membership"; enter custom revocation message; confirm revocation | Revocation alert shown on user's memberships page; user receives revocation email with reason and timestamp; all user memberships show "revoked" status; revocation reason and date visible in admin user list |
 | AC47 | Revoked User Subscription Block | Login as revoked user; navigate to memberships page | Prominent alert displayed at top explaining membership access revoked; subscribe buttons on all membership cards disabled with tooltip; redirect to memberships page if attempting to access membership details or payment |
 | AC48 | Membership Unrevocation (Admin) | Login as admin; navigate to user management; select revoked user and click "Unrevoke Membership"; confirm unrevocation | Unrevocation alert shown; user receives unrevocation email; user can now subscribe to new memberships; no historical memberships are retroactively reactivated |
-| AC49 | **Brivo** Door Access Provisioning (Level 4 member) | Login as admin; ensure user has active membership with `needAdminPermission` plan; set user's `allowLevel4` flag to true; verify user role level is 4; check Brivo integration is configured; navigate to admin settings and verify user's Brivo sync status | User's `brivoPersonId` populated in database; user assigned to Brivo access groups (check Brivo dashboard); mobile pass invitation sent to user email; `brivoMobilePassId` stored in access card; door permission (ID: 0) added to access card permissions; `brivoLastSyncedAt` timestamp recorded; sync status shows "Provisioned" in admin settings | `N/A` | `11/29/2025` |
-| AC50 | **Brivo** Door Access Revocation (membership cancellation) | Have Level 4 user with active membership and Brivo access provisioned; cancel user's membership; check admin settings for user's Brivo sync status; verify in Brivo dashboard | User removed from Brivo access groups (check Brivo dashboard); mobile pass revoked in Brivo; door permission (ID: 0) removed from access card permissions; `brivoMobilePassId` cleared from access cards; `brivoLastSyncedAt` timestamp updated; sync status updated in admin settings | `N/A` | `11/29/2025` |
+| AC49 | **Brivo** Door Access Provisioning (Level 4 member) | Login as admin; ensure user has active membership with `needAdminPermission` plan; set user's `allowLevel4` flag to true; verify user role level is 4; check Brivo integration is configured; navigate to admin settings and verify user's Brivo sync status | User's `brivoPersonId` populated in database; user assigned to Brivo access groups (check Brivo dashboard); mobile pass invitation sent to user email; `brivoMobilePassId` stored in access card; `brivoLastSyncedAt` timestamp recorded (note: local ESP32 card `permissions` are **not** touched — the door-permission sync is deliberately disabled); sync status shows "Provisioned" in admin settings | `N/A` | `11/29/2025` |
+| AC50 | **Brivo** Door Access Revocation (membership cancellation) | Have Level 4 user with active membership and Brivo access provisioned; cancel user's membership; check admin settings for user's Brivo sync status; verify in Brivo dashboard | User removed from Brivo access groups (check Brivo dashboard); mobile pass revoked in Brivo; `brivoMobilePassId` cleared from access cards (local ESP32 card `permissions` are left untouched — they are admin-managed); `brivoLastSyncedAt` timestamp updated; sync status updated in admin settings | `N/A` | `11/29/2025` |
 | AC51 | **Brivo** Webhook Event Processing | Configure Brivo webhook subscription pointing to `/brivo/callback`; set `BRIVO_WEBHOOK_SECRET` environment variable; use Brivo credential (mobile pass or card) at door/equipment; check application logs; query `AccessLog` table | Webhook request received and signature verified; access event logged in `AccessLog` table with correct card ID, user ID, equipment name, and state (enter/exit/denied); response sent to Brivo with status "ok"; no errors in application logs | `N/A` | `N/A` |
 | AC52 | **Brivo** Admin Configuration | Login as admin; navigate to admin settings; scroll to "Brivo Access Control" section; verify integration status; select Brivo access group from dropdown; save settings; create/delete webhook subscription | Integration status shows "✓ Brivo API Connected" if credentials configured; access group dropdown populated with available Brivo groups; selected group ID saved to `brivo_access_group_level4` setting; webhook subscription created/deleted successfully; webhook URL shows `/brivo/callback` | `N/A` | `11/29/2025` |
 | AC53 | **Brivo** Sync Error Handling | Configure Brivo with invalid credentials or simulate API failure; attempt to provision user with Level 4 access; check admin settings for user's sync status; click "Retry Sync" button | Sync error message stored in `brivoSyncError` field; error badge displayed in admin user list; error details shown in sync status dialog; retry button triggers new sync attempt; if retry succeeds, error cleared and status updated | `N/A` | `11/29/2025` |
@@ -1224,6 +1387,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**~~
   - ~~Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"~~
   - ~~Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops~~
+    - The original fix covered only the two URL shapes named above. The price-variation form `/dashboard/payment/:workshopId/:occurrenceId/:variationId` was missed and stayed bypassable until it was fixed later. All four workshop branches of the `payment.tsx` loader now call `isPastRegistrationCutoff`, and `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape so a future branch cannot silently skip it
   - ~~Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)~~
   - ~~People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)~~
   - ~~When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop button, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly. Maybe it only does that if you are going from a workshop that books equipment to one that doesn't anymore after editing)~~
@@ -1403,19 +1567,29 @@ The following acceptance criteria should be manually tested by QA in the applica
 - `app/models/user.server.ts` - User management, role assignment
 - `app/models/profile.server.ts` - Profile data, volunteer tracking
 - `app/models/admin.server.ts` - Admin settings management
+- `app/models/access_card.server.ts` - Access card lookup and permission checks
+- `app/models/accessLog.server.ts` - Access event logging and retrieval
+- `app/models/issue.server.ts` - Issue reporting with screenshot uploads
 
 **Services:**
-- `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes)
-- `app/services/access-control-sync.server.ts` - Door access synchronization
+- `app/services/brivo.server.ts` - Brivo API integration (OAuth, person management, groups, mobile passes); exports the `brivoClient` singleton
+- `app/services/access-control-sync.server.ts` - Door access synchronization (`syncUserDoorAccess()`)
+- `app/services/stripe-sync.server.ts` - Stripe Product sync and archive
+- `app/services/stripe-discounts.server.ts` - Recurring membership discounts, GST tax rate, renewal invoices
 
 **Utilities:**
 - `app/utils/session.server.ts` - Authentication, session management, waiver generation
 - `app/utils/email.server.ts` - Email composition and sending
 - `app/utils/db.server.ts` - Database singleton instance
 - `app/utils/googleCalendar.server.ts` - Google Calendar OAuth and event management
+- `app/utils/singleton.server.ts` - Server singleton pattern helper
 
-**Configuration:**
+**Configuration and logging:**
 - `app/config/access-control.ts` - Access control configuration (door permissions, Brivo groups)
+- `app/logging/logger.ts` - Winston logger (`logs/error.log`, `logs/all_logs.log`)
+
+**Server entry:**
+- `entry.server.ts` - Starts the three background jobs (role level sync, membership billing, workshop occurrence status)
 
 **Database:**
 - `prisma/schema.prisma` - Database schema and model definitions
@@ -1432,8 +1606,12 @@ The following acceptance criteria should be manually tested by QA in the applica
 ### Development Commands
 
 ```bash
-# Start development server
+# Start development server (client + cron server concurrently)
 npm run dev
+
+# Start just one side
+npm run dev:client
+npm run dev:server
 
 # Build for production
 npm run build
@@ -1464,10 +1642,10 @@ npx prisma studio
 - `tests/helpers/db.mock.ts` - Mock database helpers
 
 **Fixtures:**
-- `tests/fixtures/user/*` - User test data
 - `tests/fixtures/workshop/*` - Workshop test data
 - `tests/fixtures/equipment/*` - Equipment test data
-- `tests/fixtures/session/*` - Session test data
+- `tests/fixtures/membership/*` - Membership test data
+- `tests/fixtures/session/*` - Session test data (`getUser`, `getRoleUser`)
 
 ### Testing External Services
 
@@ -1552,5 +1730,15 @@ npx prisma studio
 - Graceful degradation (email failures don't block registration)
 - Retry logic for transient failures
 - Comprehensive error logging
+
+### Related Documentation
+
+- [README.md](./README.md) — setup, env vars, architecture, database schema, model function reference, complete route map
+- [CLAUDE.md](./CLAUDE.md) — quick reference and critical gotchas
+
+Supporting material lives in [docs/](./docs/) — the repo root is reserved for the three docs above. See [docs/README.md](./docs/README.md) for the full index:
+
+- [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md) — vendor Brivo API reference snapshot; authoritative for the door access integration
+- [docs/implementations/](./docs/implementations/) — point-in-time write-ups of individual implementations, written once when the work landed and not maintained afterwards; historical records rather than current behavior
 
 ---
