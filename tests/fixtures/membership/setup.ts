@@ -85,6 +85,8 @@ export const previewMembershipChargeMock = jest.fn();
 export const getOrCreateGstTaxRateMock = jest.fn();
 export const applyMembershipDiscountMock = jest.fn();
 export const getCheckoutSessionCouponIdMock = jest.fn();
+export const resolveDiscountCodeMock = jest.fn();
+export const getCouponDetailsMock = jest.fn();
 
 jest.mock("~/services/stripe-discounts.server", () => ({
   chargeMembershipViaInvoice: chargeMembershipViaInvoiceMock,
@@ -94,6 +96,24 @@ jest.mock("~/services/stripe-discounts.server", () => ({
   getOrCreateGstTaxRate: getOrCreateGstTaxRateMock,
   applyMembershipDiscount: applyMembershipDiscountMock,
   getCheckoutSessionCouponId: getCheckoutSessionCouponIdMock,
+  resolveDiscountCode: resolveDiscountCodeMock,
+  getCouponDetails: getCouponDetailsMock,
+}));
+
+export const loggerInfoMock = jest.fn();
+
+// membership.server logs the Clear and Re-sync worklist. Winston writes to real files,
+// so stub it rather than littering logs/ from the suite.
+jest.mock("~/logging/logger", () => ({
+  logger: { info: loggerInfoMock, warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+
+export const getOrCreateStripeCustomerMock = jest.fn();
+
+// membership.server pulls the Stripe customer helper from user.server, which builds its
+// own Stripe client at import time.
+jest.mock("~/models/user.server", () => ({
+  getOrCreateStripeCustomer: getOrCreateStripeCustomerMock,
 }));
 
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -151,6 +171,13 @@ const resetDiscountMocks = () => {
   applyMembershipDiscountMock.mockResolvedValue(null);
   getCheckoutSessionCouponIdMock.mockReset();
   getCheckoutSessionCouponIdMock.mockResolvedValue(null);
+  resolveDiscountCodeMock.mockReset();
+  resolveDiscountCodeMock.mockResolvedValue(null);
+  getCouponDetailsMock.mockReset();
+  getCouponDetailsMock.mockResolvedValue(new Map());
+  loggerInfoMock.mockReset();
+  getOrCreateStripeCustomerMock.mockReset();
+  getOrCreateStripeCustomerMock.mockResolvedValue("cus_test");
 };
 
 type ScheduledJob = {
@@ -239,6 +266,11 @@ export const getMembershipMocks = () => {
     clearMembershipDiscountMock,
     getCustomerDiscountMock,
     previewMembershipChargeMock,
+    applyMembershipDiscountMock,
+    resolveDiscountCodeMock,
+    getCouponDetailsMock,
+    loggerInfoMock,
+    getOrCreateStripeCustomerMock,
     resetScheduledJobs,
     resetStripeMocks,
     resetEmailMocks,
