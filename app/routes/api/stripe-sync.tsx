@@ -3,7 +3,13 @@ import { bulkSyncToStripe } from "~/services/stripe-sync.server";
 import { db } from "~/utils/db.server";
 import { getAdminSetting } from "~/models/admin.server";
 import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
-import { endRecurringDiscountForUser } from "~/models/membership.server";
+import {
+  endRecurringDiscountForUser,
+  applyRecurringDiscountToMember,
+  listDiscountEligibleMembers,
+  listProductScopedDiscounts,
+  clearOrphanedScopedDiscounts,
+} from "~/models/membership.server";
 
 export async function action({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -32,13 +38,54 @@ export async function action({ request }: { request: Request }) {
     }
   }
 
-  if (actionType === "clearAndResync") {
+  if (actionType === "getResyncImpact") {
     try {
-      const result = await bulkSyncToStripe(true);
-      return new Response(JSON.stringify({ success: true, ...result }), {
+      const affected = await listProductScopedDiscounts();
+      return new Response(JSON.stringify({ success: true, affected }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({ success: false, error: error.message }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  if (actionType === "clearAndResync") {
+    try {
+      // Read the impact before anything moves: once the plans hold new product ids there
+      // is no way to tell which coupons used to match.
+      const affected = await listProductScopedDiscounts();
+
+      const result = await bulkSyncToStripe(true);
+
+      // Every plan now carries a new product id, so these coupons can no longer apply.
+      // Ending them keeps the admin table honest instead of showing a dead discount.
+      const discountsEnded = await clearOrphanedScopedDiscounts(affected);
+
+      // Re-read the plans so the worklist names the product to scope the replacement to.
+      const plans = await db.membershipPlan.findMany({
+        where: { id: { in: affected.map((row) => row.planId) } },
+        select: { id: true, stripeProductId: true },
+      });
+      const newProductIds = new Map(
+        plans.map((plan) => [plan.id, plan.stripeProductId])
+      );
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          ...result,
+          discountsEnded,
+          affected: affected.map((row) => ({
+            ...row,
+            newProductId: newProductIds.get(row.planId) ?? null,
+          })),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     } catch (error: any) {
       return new Response(
         JSON.stringify({ success: false, error: error.message }),
@@ -140,6 +187,52 @@ export async function action({ request }: { request: Request }) {
       }
       const cleared = await endRecurringDiscountForUser(targetUserId);
       return new Response(JSON.stringify({ success: true, cleared }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({ success: false, error: error.message }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  if (actionType === "listDiscountMembers") {
+    try {
+      const members = await listDiscountEligibleMembers();
+      return new Response(JSON.stringify({ success: true, members }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error: any) {
+      return new Response(
+        JSON.stringify({ success: false, error: error.message }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  if (actionType === "applyDiscount") {
+    try {
+      const targetUserId = Number(formData.get("userId"));
+      const code = String(formData.get("code") ?? "").trim();
+      if (!targetUserId || !code) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Missing userId or code" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // A refusal is an expected outcome, not a server fault, so it rides back on a 200
+      // with the reason attached — the UI needs to render the message either way.
+      const membershipId = Number(formData.get("membershipId")) || undefined;
+      const result = await applyRecurringDiscountToMember(
+        targetUserId,
+        code,
+        membershipId
+      );
+      return new Response(JSON.stringify({ success: true, result }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

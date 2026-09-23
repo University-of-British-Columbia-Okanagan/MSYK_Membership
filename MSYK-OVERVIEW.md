@@ -329,9 +329,9 @@ Note there is no separate "General", "Google Calendar", or "Brivo" tab — GST l
 **Stripe Products Tab (Implemented):**
 - Links each item to a Stripe Product via `stripeProductId` — enables coupon restrictions to specific items
 - "Sync All to Stripe" — creates Stripe Products for all unlinked items (safe to run multiple times)
-- "Clear & Re-sync" — clears all `stripeProductId` values and re-creates Products (required when switching Stripe test/live environments)
+- "Clear & Re-sync" — clears all `stripeProductId` values and re-creates Products (required when switching Stripe test/live environments). It first shows which members would lose a product-scoped discount, and ends those discounts when confirmed
 - Auto-sync hooks run non-blocking from model create/update/delete functions
-- API endpoint: `POST /api/stripe-sync` (actions: `bulkSync`, `clearAndResync`, `getSyncStatus`)
+- API endpoint: `POST /api/stripe-sync` (see the Recurring Membership Discounts section for the full action list)
 
 **Brivo Configuration:**
 - Brivo access group for Level 4 members (`brivo_access_group_level4`) — Comma-separated list of group IDs
@@ -452,7 +452,7 @@ The `syncUserDoorAccess()` function is automatically called when:
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — All Stripe sync/archive logic
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount`, `listDiscountMembers`, `applyDiscount`, `getResyncImpact` actions
 - `app/routes/dashboard/adminsettings.tsx` — Admin Settings Stripe Integrations tab
 
 ---
@@ -470,21 +470,28 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 - GST is attached as a Stripe **tax rate** on both checkout and renewals, so a discount reduces the base and GST is charged on the reduced amount
 - The plan's `stripeProductId` is set on the renewal invoice line, so coupons restricted to specific products keep applying after the first payment
 
+**Giving one to an existing member:** Admin Settings → Stripe Integrations → **Apply a discount to a member** takes an active member and a Stripe promotion code and pins it the same way checkout would, from their next renewal onward. Nothing already paid is refunded. The code is redeemed as a **promotion code** rather than a bare coupon, so any limit set on the code (max redemptions, expiry) is enforced by Stripe. Everything is checked before Stripe is touched, so a refusal leaves nothing half-applied. It refuses: a code Stripe does not know, a coupon Stripe reports as invalid, a promotion code carrying a `minimum_amount` or `first_time_transaction` restriction (Stripe will not attach those to a Customer at all), a plan that was never synced, and a coupon limited to products that do not cover the member's plan.
+
 **A discount ends when:**
-- The member upgrades or downgrades their plan
+- The member upgrades or downgrades their plan, because the discount was granted for the old plan
+- **Their membership ends**, by any route: lapsing for want of a saved card, auto-renew running out, a cancellation reaching its term, cancelling after the term has already passed (which deletes the row outright), or an admin revoke. The discount is kept only if a membership they still hold can actually use the coupon, so an unscoped coupon survives while one scoped to the plan that just ended does not
 - An admin clicks **End** in Admin Settings → Stripe Integrations
 - Stripe reaches the coupon's expiry date
-- Cancelling does **not** end it: the coupon stays on the Stripe Customer and applies again if the member resubscribes to the same plan
+- Cancelling **mid-term** does not end it immediately: they remain a member until the term runs out, and the cron ends it then
 
 **Coupon duration:** `duration_in_months` counts calendar months from redemption, and the expiry boundary is exclusive, so discounted payments = `ceil(coupon months / cycle months)`. A coupon whose duration equals the billing cycle discounts exactly one payment.
 
 **Admin UI (Admin Settings → Stripe Integrations tab):**
 - GST tax rate status
+- **Apply a discount to a member:** a searchable picker of active members showing each one's plan, billing cycle and renewal date, plus warnings when they have no saved card or are already on a coupon. The picker lists one row per active membership and the chosen membership is what the product check runs against
 - Table of members currently on a recurring discount, with coupon id and expiry, and an **End** action per member. Discounts Stripe has already expired are filtered out
+- **Clear & Re-sync** opens a preflight naming every member whose product-scoped coupon it would destroy, with a CSV worklist carrying step-by-step restore instructions. Confirming ends those discounts and writes the list to `logs/all_logs.log`, and the result panel offers the CSV again with each plan's new Stripe product id
+
+**Clear & Re-sync and product-scoped coupons:** `bulkSyncToStripe(true)` gives every plan a *new* Stripe Product, and a coupon's `applies_to.products` is fixed at creation, so a product-scoped coupon can never apply again afterwards. It cannot be re-pointed, and re-attaching a replacement would recompute the discount's end date, so there is no safe automated migration. Unscoped coupons are unaffected and are deliberately left alone. Because customer discounts apply to invoices only, and membership renewals are the only invoices the app raises, scoping buys no safety here: scope a coupon only to limit it to particular plans.
 
 **Key Files:**
-- `app/services/stripe-discounts.server.ts` — tax rate resolution, coupon capture, apply/clear, charge preview, renewal invoices
-- `app/models/membership.server.ts` — `endRecurringDiscountForUser()`, and the billing cron's invoice charge
+- `app/services/stripe-discounts.server.ts` — tax rate resolution, coupon capture, `resolveDiscountCode()`, `getCouponDetails()`, apply/clear, charge preview, renewal invoices
+- `app/models/membership.server.ts` — `endRecurringDiscountForUser()`, `endDiscountForEndedMembership()`, `applyRecurringDiscountToMember()`, `listDiscountEligibleMembers()`, `listProductScopedDiscounts()`, `clearOrphanedScopedDiscounts()`, and the billing cron's invoice charge
 - `app/routes/dashboard/paymentsuccess.tsx` — captures the checkout coupon onto the Stripe Customer
 - `test-scripts/test-coupon-durations.ts` — verifies any duration × billing cycle combination against real Stripe test clocks
 - `test-scripts/test-membership-renewal.ts` — drives a renewal on demand without waiting for the cron
@@ -931,7 +938,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 
 **Key Files:**
 - `app/services/stripe-sync.server.ts` — `syncWorkshopToStripe`, `syncMembershipPlanToStripe`, `syncEquipmentToStripe`, `archiveStripeProduct`, `bulkSyncToStripe`
-- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount` actions
+- `app/routes/api/stripe-sync.tsx` — API endpoint with `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount`, `listDiscountMembers`, `applyDiscount`, `getResyncImpact` actions
 - `app/routes/dashboard/adminsettings.tsx` — Stripe Integrations tab UI
 
 **Known Limitations:**
@@ -953,7 +960,7 @@ Every implementation then follows **implement → test → verify end to end**. 
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**43 suites / 636 tests**)
+4. `npm test` — the suite must stay fully green (**46 suites / 737 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -1049,6 +1056,9 @@ The acceptance criteria are organized into three categories:
 | - | Recurring Discount Service | GST tax rate resolution and reuse, coupon extraction from a session including a typed promotion code, apply and clear, charge preview, and renewal invoices carrying the product and tax rate | `tests/services/stripe-discounts.server.test.ts` |
 | - | Recurring Discount Ends on Plan Change | Upgrade and downgrade both clear the Stripe discount and the mirrored columns; a brand-new subscription does not | `tests/models/membership.server.test.ts` |
 | - | Stripe Integrations Admin Endpoint | Every action is admin-only; the discount listing filters out discounts Stripe has already expired while keeping `forever` ones; ending a discount requires a `userId` and surfaces Stripe failures | `tests/routes/api/stripe-sync.test.ts` |
+| - | Apply a Discount to a Member | Refuses an unknown code, an invalid coupon, a promotion code carrying restrictions Stripe will not evaluate on a Customer, a plan never synced to Stripe, and a coupon whose products do not cover the selected membership's plan; every refusal leaves Stripe untouched. Applies across all four billing cycles, redeems the promotion code rather than the bare coupon, reports the renewal the discount first applies to, and uses the membership the admin selected rather than picking one | `tests/models/membership.discount-apply.test.ts` |
+| - | Discount Does Not Outlive Its Membership | Every exit ends the discount: the three cron branches, cancelling after the term has passed (which deletes the row), and an admin revoke. It is kept only when a surviving active membership can actually use the coupon, so an unscoped coupon survives and one scoped to the ended plan does not; an unreadable coupon is left alone | `tests/models/membership.discount-lifecycle.test.ts` |
+| - | Clear and Re-sync Discount Impact | Lists only product-scoped coupons, since unscoped ones survive a re-sync; treats a coupon Stripe cannot read as unknown rather than safe; deduplicates the coupon lookup across members sharing a code; logs the worklist before clearing anything | `tests/models/membership.resync-impact.test.ts` |
 | - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/routes/dashboard/payment.membership-gst.test.ts` |
 | AC8 | Missing Required Fields | Zod schema validation fails; field-specific error messages displayed; no user record created. Also covers the guardian name being required for 14 to 17 and stripped for every other age | `tests/schemas/registration-age-guardian.test.ts` |
 | - | Age Arithmetic | Whole-year ages across both boundaries, leap days, malformed and non-existent calendar dates, future dates, and the timezone case where a UTC-parsed birthday used to admit a 13 year old a day early | `tests/utils/age.test.ts` |

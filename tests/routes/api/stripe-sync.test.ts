@@ -5,7 +5,13 @@ import "tests/fixtures/session/setup";
 import { getRoleUser } from "~/utils/session.server";
 import { getAdminSetting } from "~/models/admin.server";
 import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
-import { endRecurringDiscountForUser } from "~/models/membership.server";
+import {
+  endRecurringDiscountForUser,
+  applyRecurringDiscountToMember,
+  listDiscountEligibleMembers,
+  listProductScopedDiscounts,
+  clearOrphanedScopedDiscounts,
+} from "~/models/membership.server";
 import { bulkSyncToStripe } from "~/services/stripe-sync.server";
 import { db } from "~/utils/db.server";
 import { action } from "~/routes/api/stripe-sync";
@@ -20,6 +26,11 @@ const mockGetRoleUser = getRoleUser as jest.Mock;
 const mockGetAdminSetting = getAdminSetting as jest.Mock;
 const mockGetOrCreateGstTaxRate = getOrCreateGstTaxRate as jest.Mock;
 const mockEndRecurringDiscount = endRecurringDiscountForUser as jest.Mock;
+const mockApplyRecurringDiscount = applyRecurringDiscountToMember as jest.Mock;
+const mockListDiscountEligibleMembers = listDiscountEligibleMembers as jest.Mock;
+const mockListProductScopedDiscounts = listProductScopedDiscounts as jest.Mock;
+const mockClearOrphanedScopedDiscounts =
+  clearOrphanedScopedDiscounts as jest.Mock;
 const mockBulkSync = bulkSyncToStripe as jest.Mock;
 // The session fixture owns the db.server mock and only stocks `user` and `roleUser`.
 // Rather than push membership models into a fixture whose other consumers do not need
@@ -46,6 +57,10 @@ describe("api/stripe-sync route", () => {
     mockGetAdminSetting.mockResolvedValue("5");
     mockGetOrCreateGstTaxRate.mockResolvedValue("txr_1");
     mockEndRecurringDiscount.mockResolvedValue(true);
+    mockApplyRecurringDiscount.mockResolvedValue({ ok: true });
+    mockListDiscountEligibleMembers.mockResolvedValue([]);
+    mockListProductScopedDiscounts.mockResolvedValue([]);
+    mockClearOrphanedScopedDiscounts.mockResolvedValue(0);
     mockBulkSync.mockResolvedValue({
       workshopsSynced: 0,
       membershipPlansSynced: 0,
@@ -54,23 +69,33 @@ describe("api/stripe-sync route", () => {
     });
     mockDb.userMembership = { findMany: jest.fn().mockResolvedValue([]) };
     mockDb.workshop = { count: jest.fn().mockResolvedValue(0) };
-    mockDb.membershipPlan = { count: jest.fn().mockResolvedValue(0) };
+    mockDb.membershipPlan = {
+      count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockResolvedValue([]),
+    };
     mockDb.equipment = { count: jest.fn().mockResolvedValue(0) };
   });
 
   describe("authorisation", () => {
-    it.each(["getDiscountStatus", "endDiscount", "bulkSync", "clearAndResync"])(
-      "rejects %s for a non-admin",
-      async (actionType) => {
-        mockGetRoleUser.mockResolvedValue({ userId: 2, roleName: "User" });
+    it.each([
+      "getDiscountStatus",
+      "endDiscount",
+      "bulkSync",
+      "clearAndResync",
+      "listDiscountMembers",
+      "applyDiscount",
+      "getResyncImpact",
+    ])("rejects %s for a non-admin", async (actionType) => {
+      mockGetRoleUser.mockResolvedValue({ userId: 2, roleName: "User" });
 
-        const response = await post({ actionType, userId: "5" });
+      const response = await post({ actionType, userId: "5", code: "SUMMER50" });
 
-        expect(response.status).toBe(403);
-        expect(mockEndRecurringDiscount).not.toHaveBeenCalled();
-        expect(mockBulkSync).not.toHaveBeenCalled();
-      }
-    );
+      expect(response.status).toBe(403);
+      expect(mockEndRecurringDiscount).not.toHaveBeenCalled();
+      expect(mockBulkSync).not.toHaveBeenCalled();
+      expect(mockApplyRecurringDiscount).not.toHaveBeenCalled();
+      expect(mockListDiscountEligibleMembers).not.toHaveBeenCalled();
+    });
 
     it("rejects a signed-out visitor", async () => {
       mockGetRoleUser.mockResolvedValue(null);
@@ -180,6 +205,283 @@ describe("api/stripe-sync route", () => {
 
       expect(response.status).toBe(500);
       expect(body).toEqual({ success: false, error: "stripe down" });
+    });
+  });
+
+  describe("listDiscountMembers", () => {
+    it("returns the active members a discount can be applied to", async () => {
+      asAdmin();
+      mockListDiscountEligibleMembers.mockResolvedValue([
+        {
+          userId: 5,
+          membershipId: 77,
+          memberName: "Ada Lovelace",
+          email: "ada@example.com",
+          planTitle: "Makerspace Member",
+          planProductId: "prod_member",
+          billingCycle: "monthly",
+          nextPaymentDate: new Date("2026-10-14T00:00:00Z"),
+          currentCouponId: null,
+          hasSavedCard: true,
+        },
+      ]);
+
+      const body = await (
+        await post({ actionType: "listDiscountMembers" })
+      ).json();
+
+      expect(body.success).toBe(true);
+      expect(body.members).toHaveLength(1);
+      expect(body.members[0]).toMatchObject({
+        userId: 5,
+        memberName: "Ada Lovelace",
+        planTitle: "Makerspace Member",
+        hasSavedCard: true,
+      });
+    });
+
+    it("surfaces a database failure instead of an empty picker", async () => {
+      asAdmin();
+      mockListDiscountEligibleMembers.mockRejectedValue(new Error("db down"));
+
+      const response = await post({ actionType: "listDiscountMembers" });
+
+      expect(response.status).toBe(500);
+      expect((await response.json()).success).toBe(false);
+    });
+  });
+
+  describe("applyDiscount", () => {
+    it("applies the typed code to the chosen member", async () => {
+      asAdmin();
+      mockApplyRecurringDiscount.mockResolvedValue({
+        ok: true,
+        couponId: "co_1",
+        couponLabel: "50% off",
+        endsAt: null,
+        firstDiscountedChargeOn: new Date("2026-10-14T00:00:00Z"),
+        replacedCouponId: null,
+        hasSavedCard: true,
+      });
+
+      const body = await (
+        await post({ actionType: "applyDiscount", userId: "5", code: "SUMMER50" })
+      ).json();
+
+      expect(mockApplyRecurringDiscount).toHaveBeenCalledWith(
+        5,
+        "SUMMER50",
+        undefined
+      );
+      expect(body.success).toBe(true);
+      expect(body.result.couponId).toBe("co_1");
+    });
+
+    // The picker lists one row per active membership, so the chosen row has to reach the
+    // model: without it the product check runs against a plan the admin did not pick.
+    it("forwards the chosen membership so the product check uses that plan", async () => {
+      asAdmin();
+
+      await post({
+        actionType: "applyDiscount",
+        userId: "5",
+        membershipId: "88",
+        code: "SUMMER50",
+      });
+
+      expect(mockApplyRecurringDiscount).toHaveBeenCalledWith(5, "SUMMER50", 88);
+    });
+
+    // A refusal is the expected outcome for a mismatched coupon, not a server fault,
+    // so it comes back 200 with the reason the admin needs to read.
+    it("reports a refusal with its reason and message", async () => {
+      asAdmin();
+      mockApplyRecurringDiscount.mockResolvedValue({
+        ok: false,
+        reason: "product_mismatch",
+        message: "This coupon is limited to specific Stripe products",
+      });
+
+      const response = await post({
+        actionType: "applyDiscount",
+        userId: "5",
+        code: "SUMMER50",
+      });
+      const body = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.result.ok).toBe(false);
+      expect(body.result.reason).toBe("product_mismatch");
+    });
+
+    it("rejects a request with no userId", async () => {
+      asAdmin();
+
+      const response = await post({ actionType: "applyDiscount", code: "X" });
+
+      expect(response.status).toBe(400);
+      expect(mockApplyRecurringDiscount).not.toHaveBeenCalled();
+    });
+
+    it("rejects a request with no code", async () => {
+      asAdmin();
+
+      const response = await post({ actionType: "applyDiscount", userId: "5" });
+
+      expect(response.status).toBe(400);
+      expect(mockApplyRecurringDiscount).not.toHaveBeenCalled();
+    });
+
+    it("surfaces an unexpected failure", async () => {
+      asAdmin();
+      mockApplyRecurringDiscount.mockRejectedValue(new Error("stripe down"));
+
+      const response = await post({
+        actionType: "applyDiscount",
+        userId: "5",
+        code: "SUMMER50",
+      });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        success: false,
+        error: "stripe down",
+      });
+    });
+  });
+
+  describe("getResyncImpact", () => {
+    it("reports the members a Clear and Re-sync would cost their discount", async () => {
+      asAdmin();
+      mockListProductScopedDiscounts.mockResolvedValue([
+        {
+          userId: 5,
+          membershipId: 77,
+          planId: 3,
+          memberName: "Ada Lovelace",
+          email: "ada@example.com",
+          planTitle: "Makerspace Member",
+          planProductId: "prod_old",
+          billingCycle: "monthly",
+          couponId: "co_scoped",
+          promotionCode: "WINTER50",
+          discountLabel: "50% off",
+          durationLabel: "forever",
+          discountEndsAt: null,
+        },
+      ]);
+
+      const body = await (await post({ actionType: "getResyncImpact" })).json();
+
+      expect(body.success).toBe(true);
+      expect(body.affected).toHaveLength(1);
+      expect(body.affected[0].promotionCode).toBe("WINTER50");
+    });
+
+    it("reports an empty list when nothing would break", async () => {
+      asAdmin();
+
+      const body = await (await post({ actionType: "getResyncImpact" })).json();
+
+      expect(body).toEqual({ success: true, affected: [] });
+    });
+
+    it("surfaces a failure rather than implying nothing is at risk", async () => {
+      asAdmin();
+      mockListProductScopedDiscounts.mockRejectedValue(new Error("stripe down"));
+
+      const response = await post({ actionType: "getResyncImpact" });
+
+      expect(response.status).toBe(500);
+      expect((await response.json()).success).toBe(false);
+    });
+  });
+
+  describe("clearAndResync", () => {
+    const affected = [
+      {
+        userId: 5,
+        membershipId: 77,
+        planId: 3,
+        memberName: "Ada Lovelace",
+        email: "ada@example.com",
+        planTitle: "Makerspace Member",
+        planProductId: "prod_old",
+        billingCycle: "monthly",
+        couponId: "co_scoped",
+        promotionCode: "WINTER50",
+        discountLabel: "50% off",
+        durationLabel: "forever",
+        discountEndsAt: null,
+      },
+    ];
+
+    // Reading the impact after the sync would be useless: every plan holds a new product
+    // id by then, so there is no way to tell which coupons used to match.
+    it("reads the impact before re-syncing, not after", async () => {
+      asAdmin();
+      const order: string[] = [];
+      mockListProductScopedDiscounts.mockImplementation(async () => {
+        order.push("impact");
+        return affected;
+      });
+      mockBulkSync.mockImplementation(async () => {
+        order.push("sync");
+        return {
+          workshopsSynced: 0,
+          membershipPlansSynced: 1,
+          equipmentSynced: 0,
+          errors: [],
+        };
+      });
+      mockClearOrphanedScopedDiscounts.mockImplementation(async () => {
+        order.push("clear");
+        return 1;
+      });
+
+      await post({ actionType: "clearAndResync" });
+
+      expect(order).toEqual(["impact", "sync", "clear"]);
+    });
+
+    it("ends the orphaned discounts and reports how many", async () => {
+      asAdmin();
+      mockListProductScopedDiscounts.mockResolvedValue(affected);
+      mockClearOrphanedScopedDiscounts.mockResolvedValue(1);
+
+      const body = await (await post({ actionType: "clearAndResync" })).json();
+
+      expect(mockClearOrphanedScopedDiscounts).toHaveBeenCalledWith(affected);
+      expect(body.discountsEnded).toBe(1);
+    });
+
+    // The worklist is only actionable if it names the product to scope the replacement to.
+    it("returns each plan's new product id alongside the member", async () => {
+      asAdmin();
+      mockListProductScopedDiscounts.mockResolvedValue(affected);
+      mockDb.membershipPlan.findMany.mockResolvedValue([
+        { id: 3, stripeProductId: "prod_new" },
+      ]);
+
+      const body = await (await post({ actionType: "clearAndResync" })).json();
+
+      expect(body.affected[0]).toMatchObject({
+        email: "ada@example.com",
+        planProductId: "prod_old",
+        newProductId: "prod_new",
+      });
+    });
+
+    it("still re-syncs when no discount is at risk", async () => {
+      asAdmin();
+
+      const body = await (await post({ actionType: "clearAndResync" })).json();
+
+      expect(mockBulkSync).toHaveBeenCalledWith(true);
+      expect(body.success).toBe(true);
+      expect(body.affected).toEqual([]);
+      expect(body.discountsEnded).toBe(0);
     });
   });
 

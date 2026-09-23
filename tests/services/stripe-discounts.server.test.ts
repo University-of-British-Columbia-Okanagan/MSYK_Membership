@@ -31,6 +31,8 @@ const invoicesPayMock = jest.fn();
 const invoiceItemsCreateMock = jest.fn();
 const sessionsRetrieveMock = jest.fn();
 const promotionCodesRetrieveMock = jest.fn();
+const promotionCodesListMock = jest.fn();
+const couponsRetrieveMock = jest.fn();
 
 const stripeConstructorMock = jest.fn().mockImplementation(() => ({
   customers: {
@@ -50,7 +52,11 @@ const stripeConstructorMock = jest.fn().mockImplementation(() => ({
   },
   invoiceItems: { create: invoiceItemsCreateMock },
   checkout: { sessions: { retrieve: sessionsRetrieveMock } },
-  promotionCodes: { retrieve: promotionCodesRetrieveMock },
+  promotionCodes: {
+    retrieve: promotionCodesRetrieveMock,
+    list: promotionCodesListMock,
+  },
+  coupons: { retrieve: couponsRetrieveMock },
 }));
 
 jest.mock("stripe", () => ({
@@ -68,6 +74,7 @@ import {
   getCustomerDiscount,
   previewMembershipCharge,
   chargeMembershipViaInvoice,
+  resolveDiscountCode,
   GST_TAX_RATE_SETTING_KEY,
 } from "~/services/stripe-discounts.server";
 
@@ -103,6 +110,8 @@ describe("stripe-discounts.server", () => {
     invoiceItemsCreateMock.mockReset().mockResolvedValue({ id: "ii_1" });
     sessionsRetrieveMock.mockReset();
     promotionCodesRetrieveMock.mockReset();
+    promotionCodesListMock.mockReset().mockResolvedValue({ data: [] });
+    couponsRetrieveMock.mockReset();
     db.userMembership.update.mockReset().mockResolvedValue({});
     db.userMembership.updateMany.mockReset().mockResolvedValue({ count: 0 });
     consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -235,6 +244,159 @@ describe("stripe-discounts.server", () => {
     });
   });
 
+  describe("resolveDiscountCode", () => {
+    const promo = (over: Record<string, unknown> = {}) => ({
+      id: "promo_1",
+      code: "SUMMER50",
+      coupon: { id: "co_1" },
+      restrictions: { first_time_transaction: false, minimum_amount: null },
+      ...over,
+    });
+
+    const coupon = (over: Record<string, unknown> = {}) => ({
+      id: "co_1",
+      name: "Half off",
+      percent_off: 50,
+      amount_off: null,
+      duration: "repeating",
+      duration_in_months: 6,
+      valid: true,
+      applies_to: null,
+      ...over,
+    });
+
+    it("resolves a typed promotion code to the coupon behind it", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [promo()] });
+      couponsRetrieveMock.mockResolvedValue(coupon());
+
+      const result = await resolveDiscountCode("SUMMER50");
+
+      expect(promotionCodesListMock).toHaveBeenCalledWith({
+        code: "SUMMER50",
+        active: true,
+        limit: 1,
+      });
+      expect(result).toMatchObject({
+        couponId: "co_1",
+        promotionCodeId: "promo_1",
+        percentOff: 50,
+        durationInMonths: 6,
+        valid: true,
+      });
+    });
+
+    // The whole product-mismatch guard rests on this: a plain retrieve omits
+    // applies_to entirely, so without the expand every scoped coupon reads as
+    // unscoped and the guard waves it through.
+    it("expands applies_to when reading the coupon", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [promo()] });
+      couponsRetrieveMock.mockResolvedValue(coupon());
+
+      await resolveDiscountCode("SUMMER50");
+
+      expect(couponsRetrieveMock).toHaveBeenCalledWith("co_1", {
+        expand: ["applies_to"],
+      });
+    });
+
+    it("reports the products a scoped coupon is limited to", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [promo()] });
+      couponsRetrieveMock.mockResolvedValue(
+        coupon({ applies_to: { products: ["prod_A", "prod_B"] } })
+      );
+
+      const result = await resolveDiscountCode("SUMMER50");
+
+      expect(result?.appliesToProducts).toEqual(["prod_A", "prod_B"]);
+    });
+
+    it("reports null products for an unscoped coupon, which applies to anything", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [promo()] });
+      couponsRetrieveMock.mockResolvedValue(coupon({ applies_to: null }));
+
+      const result = await resolveDiscountCode("SUMMER50");
+
+      expect(result?.appliesToProducts).toBeNull();
+    });
+
+    it.each([
+      ["minimum_amount", { first_time_transaction: false, minimum_amount: 5000 }],
+      ["first_time_transaction", { first_time_transaction: true, minimum_amount: null }],
+    ])(
+      "flags the %s restriction, which Stripe will not evaluate on a customer",
+      async (expected, restrictions) => {
+        promotionCodesListMock.mockResolvedValue({
+          data: [promo({ restrictions })],
+        });
+        couponsRetrieveMock.mockResolvedValue(coupon());
+
+        const result = await resolveDiscountCode("SUMMER50");
+
+        expect(result?.blockingRestrictions).toContain(expected);
+      }
+    );
+
+    it("leaves blockingRestrictions empty for an unrestricted code", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [promo()] });
+      couponsRetrieveMock.mockResolvedValue(coupon());
+
+      const result = await resolveDiscountCode("SUMMER50");
+
+      expect(result?.blockingRestrictions).toEqual([]);
+    });
+
+    it("falls back to treating the input as a coupon id when no promotion code matches", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [] });
+      couponsRetrieveMock.mockResolvedValue(coupon({ id: "co_raw" }));
+
+      const result = await resolveDiscountCode("co_raw");
+
+      expect(couponsRetrieveMock).toHaveBeenCalledWith("co_raw", {
+        expand: ["applies_to"],
+      });
+      expect(result).toMatchObject({
+        couponId: "co_raw",
+        promotionCodeId: null,
+        blockingRestrictions: [],
+      });
+    });
+
+    it("returns null when the code matches neither a promotion code nor a coupon", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [] });
+      couponsRetrieveMock.mockRejectedValue(new Error("No such coupon"));
+
+      await expect(resolveDiscountCode("NOPE")).resolves.toBeNull();
+    });
+
+    it("returns null for a blank code without calling Stripe", async () => {
+      await expect(resolveDiscountCode("   ")).resolves.toBeNull();
+      expect(promotionCodesListMock).not.toHaveBeenCalled();
+      expect(couponsRetrieveMock).not.toHaveBeenCalled();
+    });
+
+    it("trims surrounding whitespace before looking the code up", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [promo()] });
+      couponsRetrieveMock.mockResolvedValue(coupon());
+
+      await resolveDiscountCode("  SUMMER50  ");
+
+      expect(promotionCodesListMock).toHaveBeenCalledWith({
+        code: "SUMMER50",
+        active: true,
+        limit: 1,
+      });
+    });
+
+    it("carries through a coupon Stripe no longer considers valid", async () => {
+      promotionCodesListMock.mockResolvedValue({ data: [] });
+      couponsRetrieveMock.mockResolvedValue(coupon({ valid: false }));
+
+      const result = await resolveDiscountCode("co_spent");
+
+      expect(result?.valid).toBe(false);
+    });
+  });
+
   describe("applyMembershipDiscount", () => {
     it("pins the coupon to the customer and mirrors the expiry locally", async () => {
       const end = 1800000000;
@@ -277,6 +439,57 @@ describe("stripe-discounts.server", () => {
         applyMembershipDiscount("cus_1", "co_bad", 1)
       ).resolves.toBeNull();
       expect(db.userMembership.update).not.toHaveBeenCalled();
+    });
+
+    // Redeeming the promotion code rather than the bare coupon is what makes Stripe
+    // enforce the limits set on the code — a max_redemptions cap is ignored entirely
+    // when the same coupon is applied by id.
+    it("redeems the promotion code when one is supplied", async () => {
+      customersUpdateMock.mockResolvedValue({
+        id: "cus_1",
+        discount: { coupon: { id: "co_1" }, end: null },
+      });
+
+      const result = await applyMembershipDiscount("cus_1", "co_1", 9, "promo_1");
+
+      expect(customersUpdateMock).toHaveBeenCalledWith("cus_1", {
+        promotion_code: "promo_1",
+      });
+      expect(result).toEqual({ couponId: "co_1", endsAt: null });
+      expect(db.userMembership.update).toHaveBeenCalledWith({
+        where: { id: 9 },
+        data: { stripeCouponId: "co_1", discountEndsAt: null },
+      });
+    });
+
+    it("still applies the bare coupon when no promotion code is supplied", async () => {
+      customersUpdateMock.mockResolvedValue({
+        id: "cus_1",
+        discount: { coupon: { id: "co_1" }, end: null },
+      });
+
+      await applyMembershipDiscount("cus_1", "co_1", 9, null);
+
+      expect(customersUpdateMock).toHaveBeenCalledWith("cus_1", {
+        coupon: "co_1",
+      });
+    });
+
+    // Stripe reports the coupon behind the promotion code, and that id is what the
+    // admin discounts table and the End button key off.
+    it("mirrors the coupon id Stripe reports, not the promotion code id", async () => {
+      customersUpdateMock.mockResolvedValue({
+        id: "cus_1",
+        discount: { coupon: { id: "co_behind" }, end: null },
+      });
+
+      const result = await applyMembershipDiscount("cus_1", "co_1", 9, "promo_1");
+
+      expect(result?.couponId).toBe("co_behind");
+      expect(db.userMembership.update).toHaveBeenCalledWith({
+        where: { id: 9 },
+        data: { stripeCouponId: "co_behind", discountEndsAt: null },
+      });
     });
   });
 

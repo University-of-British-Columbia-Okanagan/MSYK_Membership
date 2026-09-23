@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 43 suites, 636 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 46 suites, 737 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -85,7 +85,7 @@ tests/
 │   ├── admin.settings.test.ts
 │   ├── equipment.{basic,booking,cancellation,settings,slots}.test.ts
 │   ├── issue.server.test.ts
-│   ├── membership.{server,cron}.test.ts
+│   ├── membership.{server,cron,discount-apply,discount-lifecycle,resync-impact}.test.ts
 │   ├── payment.{gst,refunds}.test.ts
 │   ├── profile.volunteer.test.ts
 │   ├── user.rolelevel.test.ts
@@ -236,6 +236,8 @@ Coverage here is deliberately split, because two different things are being test
 
 Ending a discount is covered three ways, because there are three routes into it: `models/membership.server.test.ts` asserts the upgrade and downgrade paths clear it and that a brand-new subscription does not, and the route test covers the admin **End** button.
 
+Applying one to an existing member has its own spec, `models/membership.discount-apply.test.ts`. Most of it is refusals, because that is where the value is: a code Stripe does not know, a coupon it no longer considers valid, a promotion code carrying restrictions Stripe will not attach to a Customer, a plan that was never synced, and above all a coupon scoped to products that do not include the member's plan. Every refusal asserts that `applyMembershipDiscount` was **not** called, because the point is that nothing is half-applied. The service spec covers `resolveDiscountCode`, including that it reads the coupon with `expand: ["applies_to"]` — a plain retrieve omits the field, so without the expand every scoped coupon reads as unscoped and the product guard silently passes everything.
+
 The rest of the path has its own specs:
 
 - `routes/dashboard/paymentsuccess.discount.test.ts` — the capture wiring. Pinning the checkout coupon to the member's Stripe customer is the step that makes the discount recur at all, and it is ordered *after* the subscription exists and wrapped so a Stripe failure cannot cost a member the membership they just paid for
@@ -277,6 +279,8 @@ npx tsx test-scripts/test-membership-renewal.ts <email>
 ```
 
 The member needs a saved card, or the cron marks the membership inactive instead of charging — that is by design, not a failure.
+
+It charges the member's **active** membership. A member can also hold an `ending` row from an earlier upgrade or downgrade, which the cron never charges again, so picking the newest row would renew a plan they are not actually on. When a member has more than one row the script says which it chose.
 
 ---
 
