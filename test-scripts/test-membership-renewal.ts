@@ -31,12 +31,24 @@ async function main() {
   });
   if (!user) throw new Error(`No user found for ${email}`);
 
-  const membership = await db.userMembership.findFirst({
+  // Prefer the active row. A member can also hold an "ending" row from an earlier
+  // upgrade or downgrade, and the cron never charges those again, so picking the
+  // newest id would renew a plan the member is not actually on.
+  const candidates = await db.userMembership.findMany({
     where: { userId: user.id, status: { in: ["active", "ending"] } },
     orderBy: { id: "desc" },
     include: { membershipPlan: true },
   });
+  const membership =
+    candidates.find((m) => m.status === "active") ?? candidates[0];
   if (!membership) throw new Error(`${email} has no active membership`);
+
+  if (candidates.length > 1) {
+    console.log(
+      `Note: ${email} has ${candidates.length} membership rows. Charging the ` +
+        `${membership.status} one (id ${membership.id}, ${membership.membershipPlan.title}).\n`,
+    );
+  }
 
   const payment = await db.userPaymentInformation.findUnique({
     where: { userId: user.id },

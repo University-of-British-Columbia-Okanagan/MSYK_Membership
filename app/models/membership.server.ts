@@ -19,12 +19,17 @@ import { PDFDocument as PDFLibDocument, StandardFonts, rgb } from "pdf-lib";
 import * as fs from "fs";
 import * as path from "path";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
+import { logger } from "~/logging/logger";
 import {
+  applyMembershipDiscount,
   chargeMembershipViaInvoice,
+  getCouponDetails,
   clearMembershipDiscount,
   getCustomerDiscount,
   previewMembershipCharge,
+  resolveDiscountCode,
 } from "~/services/stripe-discounts.server";
+import { getOrCreateStripeCustomer } from "~/models/user.server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -370,6 +375,422 @@ export async function endRecurringDiscountForUser(
   );
 
   return clearMembershipDiscount(savedPayment?.stripeCustomerId, ids);
+}
+
+/**
+ * Whether the member's coupon can still discount something they actually hold.
+ *
+ * Surviving a membership is not enough on its own. A coupon scoped to the plan that just
+ * ended is dormant against everything the member keeps: it discounts nothing, it does not
+ * show in the admin list, and it would spring back if they ever rejoined the old plan.
+ *
+ * Unreadable is not the same as unusable, and destroying a working discount is the worse
+ * mistake, so an unknown coupon is treated as still covering them.
+ */
+async function discountCoversAnyOf(
+  userId: number,
+  survivingProductIds: Array<string | null>,
+): Promise<boolean> {
+  const savedPayment = await db.userPaymentInformation.findUnique({
+    where: { userId },
+    select: { stripeCustomerId: true },
+  });
+  if (!savedPayment?.stripeCustomerId) return false;
+
+  const discount = await getCustomerDiscount(savedPayment.stripeCustomerId);
+  if (!discount) return false;
+
+  const detail = (await getCouponDetails([discount.couponId])).get(
+    discount.couponId,
+  );
+  if (!detail) return true;
+  if (!detail.appliesToProducts) return true;
+
+  return detail.appliesToProducts.some((product) =>
+    survivingProductIds.includes(product),
+  );
+}
+
+/**
+ * End a member's recurring discount because one of their memberships has ended.
+ *
+ * Scoped to the member rather than the single row, because the coupon lives on the Stripe
+ * customer: someone who still holds another active membership keeps their discount. That
+ * happens for real after an upgrade, where an "ending" row and an "active" row coexist.
+ *
+ * Distinct from the upgrade and downgrade rule, which ends the discount unconditionally
+ * because the plan changed rather than because the membership stopped.
+ */
+export async function endDiscountForEndedMembership(
+  userId: number,
+  endedMembershipId: number,
+): Promise<boolean> {
+  try {
+    const survivors = await db.userMembership.findMany({
+      where: { userId, status: "active", id: { not: endedMembershipId } },
+      select: { membershipPlan: { select: { stripeProductId: true } } },
+    });
+
+    if (survivors.length > 0) {
+      const survivingProducts = survivors.map(
+        (row) => row.membershipPlan.stripeProductId,
+      );
+      if (await discountCoversAnyOf(userId, survivingProducts)) return false;
+    }
+
+    return await endRecurringDiscountForUser(userId, [endedMembershipId]);
+  } catch (error) {
+    console.error(
+      `[membership] Could not end the discount for user ${userId} after membership ${endedMembershipId} ended:`,
+      error,
+    );
+    return false;
+  }
+}
+
+export type ApplyDiscountFailure =
+  | "no_active_membership"
+  | "unknown_code"
+  | "code_not_valid"
+  | "code_restricted"
+  | "plan_not_synced"
+  | "product_mismatch"
+  | "stripe_error";
+
+export interface ApplyDiscountResult {
+  ok: boolean;
+  reason?: ApplyDiscountFailure;
+  /** Ready to show an admin verbatim. */
+  message?: string;
+  couponId?: string;
+  couponLabel?: string;
+  endsAt?: Date | null;
+  /** The renewal the discount first applies to. Nothing already paid is refunded. */
+  firstDiscountedChargeOn?: Date;
+  replacedCouponId?: string | null;
+  /** False means the renewal will not be charged at all, so the discount is moot. */
+  hasSavedCard?: boolean;
+}
+
+const RESTRICTION_LABELS: Record<string, string> = {
+  minimum_amount: "a minimum order amount",
+  first_time_transaction: "first-time purchases only",
+};
+
+/** "50% off" / "$10.00 off", for confirming back what was applied. */
+function describeDiscount(percentOff: number | null, amountOff: number | null) {
+  if (percentOff != null) return `${percentOff}% off`;
+  if (amountOff != null) return `$${(amountOff / 100).toFixed(2)} off`;
+  return "Discount";
+}
+
+/**
+ * Give an existing member a recurring discount, the same way checkout would have.
+ *
+ * The mirror image of `endRecurringDiscountForUser`. Everything is checked before Stripe
+ * is touched, so a refusal leaves nothing half-applied. The product check is the one that
+ * earns its keep: Stripe silently ignores a product-scoped coupon on an invoice line for
+ * a different product, charging full price while reporting success.
+ */
+export async function applyRecurringDiscountToMember(
+  userId: number,
+  rawCode: string,
+  membershipId?: number,
+): Promise<ApplyDiscountResult> {
+  const code = rawCode.trim();
+  if (!code) {
+    return {
+      ok: false,
+      reason: "unknown_code",
+      message: "Enter a Stripe promotion code.",
+    };
+  }
+
+  // A member can hold more than one active membership, and the admin picks one in the UI.
+  // Honour that choice: the product check has to run against the plan they selected, or a
+  // scoped coupon can be validated against a different plan and slip past the guard.
+  const membership = await db.userMembership.findFirst({
+    where: {
+      userId,
+      status: "active",
+      ...(membershipId ? { id: membershipId } : {}),
+    },
+    include: { membershipPlan: true },
+    orderBy: { nextPaymentDate: "asc" },
+  });
+
+  if (!membership) {
+    return {
+      ok: false,
+      reason: "no_active_membership",
+      message: membershipId
+        ? "That membership is no longer active, so there is no renewal to discount."
+        : "This member has no active membership, so there is no renewal to discount.",
+    };
+  }
+
+  const resolved = await resolveDiscountCode(code);
+  if (!resolved) {
+    return {
+      ok: false,
+      reason: "unknown_code",
+      message: `Stripe has no active promotion code or coupon matching "${code}".`,
+    };
+  }
+
+  if (!resolved.valid) {
+    return {
+      ok: false,
+      reason: "code_not_valid",
+      message:
+        "Stripe reports this coupon is no longer valid. It may have expired or reached its redemption limit.",
+    };
+  }
+
+  if (resolved.blockingRestrictions.length > 0) {
+    const labels = resolved.blockingRestrictions
+      .map((key) => RESTRICTION_LABELS[key] ?? key)
+      .join(" and ");
+    return {
+      ok: false,
+      reason: "code_restricted",
+      message: `This promotion code is restricted to ${labels}, which Stripe cannot evaluate on a member account. Use a code without restrictions.`,
+    };
+  }
+
+  const planTitle = membership.membershipPlan.title;
+  const planProductId = membership.membershipPlan.stripeProductId;
+
+  if (resolved.appliesToProducts) {
+    if (!planProductId) {
+      return {
+        ok: false,
+        reason: "plan_not_synced",
+        message: `This coupon is limited to specific Stripe products, and ${planTitle} has no Stripe product yet. Run Sync All to Stripe, then try again.`,
+      };
+    }
+    if (!resolved.appliesToProducts.includes(planProductId)) {
+      return {
+        ok: false,
+        reason: "product_mismatch",
+        message: `This coupon is limited to specific Stripe products and ${planTitle} is not one of them.`,
+      };
+    }
+  }
+
+  const savedPayment = await db.userPaymentInformation.findUnique({
+    where: { userId },
+    select: { stripePaymentMethodId: true },
+  });
+
+  let customerId: string;
+  try {
+    customerId = await getOrCreateStripeCustomer(userId);
+  } catch (error) {
+    console.error(
+      `[membership] Could not resolve a Stripe customer for user ${userId}:`,
+      error,
+    );
+    return {
+      ok: false,
+      reason: "stripe_error",
+      message: "Could not reach Stripe for this member. Nothing was applied.",
+    };
+  }
+
+  const applied = await applyMembershipDiscount(
+    customerId,
+    resolved.couponId,
+    membership.id,
+    resolved.promotionCodeId,
+  );
+
+  if (!applied) {
+    return {
+      ok: false,
+      reason: "stripe_error",
+      message:
+        "Stripe rejected the discount, so nothing was applied. Check the server logs for the reason.",
+    };
+  }
+
+  return {
+    ok: true,
+    couponId: applied.couponId,
+    couponLabel: describeDiscount(resolved.percentOff, resolved.amountOff),
+    endsAt: applied.endsAt,
+    firstDiscountedChargeOn: membership.nextPaymentDate,
+    replacedCouponId: membership.stripeCouponId ?? null,
+    hasSavedCard: Boolean(savedPayment?.stripePaymentMethodId),
+  };
+}
+
+export interface ScopedDiscountImpact {
+  userId: number;
+  membershipId: number;
+  planId: number;
+  memberName: string;
+  email: string;
+  planTitle: string;
+  planProductId: string | null;
+  billingCycle: string;
+  couponId: string;
+  promotionCode: string | null;
+  discountLabel: string;
+  durationLabel: string;
+  discountEndsAt: Date | null;
+}
+
+/** "forever" / "6 months" / "one payment", for a human reading the worklist. */
+function describeDuration(duration: string, months: number | null) {
+  if (duration === "forever") return "forever";
+  if (duration === "once") return "one payment";
+  return months ? `${months} months` : duration;
+}
+
+/**
+ * Members whose discount would be destroyed by a Clear and Re-sync.
+ *
+ * Only product-scoped coupons are at risk. An unscoped coupon matches whatever product
+ * the renewal invoice carries, so it survives new product ids untouched and must not be
+ * listed or cleared, or we would be destroying working discounts for no reason.
+ */
+export async function listProductScopedDiscounts(): Promise<
+  ScopedDiscountImpact[]
+> {
+  const rows = await db.userMembership.findMany({
+    where: {
+      stripeCouponId: { not: null },
+      status: { in: ["active", "ending"] },
+    },
+    include: {
+      user: {
+        select: { id: true, firstName: true, lastName: true, email: true },
+      },
+      membershipPlan: {
+        select: { id: true, title: true, stripeProductId: true },
+      },
+    },
+  });
+
+  if (rows.length === 0) return [];
+
+  const details = await getCouponDetails(
+    rows.map((row) => row.stripeCouponId!).filter(Boolean),
+  );
+
+  return rows.flatMap((row) => {
+    const detail = details.get(row.stripeCouponId!);
+    // Unknown or unscoped coupons are not at risk, so they stay off the list.
+    if (!detail?.appliesToProducts) return [];
+
+    return [
+      {
+        userId: row.user.id,
+        membershipId: row.id,
+        planId: row.membershipPlan.id,
+        memberName: `${row.user.firstName} ${row.user.lastName}`.trim(),
+        email: row.user.email,
+        planTitle: row.membershipPlan.title,
+        planProductId: row.membershipPlan.stripeProductId ?? null,
+        billingCycle: row.billingCycle,
+        couponId: detail.couponId,
+        promotionCode: detail.promotionCodes[0] ?? null,
+        discountLabel: describeDiscount(detail.percentOff, detail.amountOff),
+        durationLabel: describeDuration(
+          detail.duration,
+          detail.durationInMonths,
+        ),
+        discountEndsAt: row.discountEndsAt ?? null,
+      },
+    ];
+  });
+}
+
+/**
+ * End the discounts a Clear and Re-sync has just orphaned, and record who they belonged
+ * to. Clearing without a record would lose the only trace of who needs restoring, so the
+ * log is written even when the download is never taken.
+ */
+export async function clearOrphanedScopedDiscounts(
+  affected: ScopedDiscountImpact[],
+): Promise<number> {
+  if (affected.length === 0) return 0;
+
+  logger.info("Clear and Re-sync ended product-scoped membership discounts", {
+    count: affected.length,
+    members: affected.map((row) => ({
+      userId: row.userId,
+      email: row.email,
+      plan: row.planTitle,
+      couponId: row.couponId,
+      promotionCode: row.promotionCode,
+      discount: row.discountLabel,
+      duration: row.durationLabel,
+    })),
+  });
+
+  let cleared = 0;
+  for (const row of affected) {
+    const ok = await endRecurringDiscountForUser(row.userId, [
+      row.membershipId,
+    ]);
+    if (ok) cleared++;
+  }
+  return cleared;
+}
+
+export interface DiscountEligibleMember {
+  userId: number;
+  membershipId: number;
+  memberName: string;
+  email: string;
+  planTitle: string;
+  planProductId: string | null;
+  billingCycle: string;
+  nextPaymentDate: Date;
+  currentCouponId: string | null;
+  hasSavedCard: boolean;
+}
+
+/**
+ * Members a recurring discount can actually reach: status "active" is the only one the
+ * billing cron charges again.
+ */
+export async function listDiscountEligibleMembers(): Promise<
+  DiscountEligibleMember[]
+> {
+  const memberships = await db.userMembership.findMany({
+    where: { status: "active" },
+    include: {
+      user: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          paymentInformation: { select: { stripePaymentMethodId: true } },
+        },
+      },
+      membershipPlan: {
+        select: { id: true, title: true, stripeProductId: true },
+      },
+    },
+    orderBy: { user: { firstName: "asc" } },
+  });
+
+  return memberships.map((row) => ({
+    userId: row.user.id,
+    membershipId: row.id,
+    memberName: `${row.user.firstName} ${row.user.lastName}`.trim(),
+    email: row.user.email,
+    planTitle: row.membershipPlan.title,
+    planProductId: row.membershipPlan.stripeProductId ?? null,
+    billingCycle: row.billingCycle,
+    nextPaymentDate: row.nextPaymentDate,
+    currentCouponId: row.stripeCouponId ?? null,
+    hasSavedCard: Boolean(row.user.paymentInformation?.stripePaymentMethodId),
+  }));
 }
 
 export async function registerMembershipSubscription(
@@ -730,6 +1151,10 @@ export async function cancelMembership(
       where: { id: activeRecord.id },
     });
 
+    // This path deletes the row rather than retiring it, so the cron never sees it and
+    // the discount has to be ended here or it outlives the membership entirely.
+    await endDiscountForEndedMembership(userId, activeRecord.id);
+
     // Set the form to inactive since the membership is completely deleted
     await updateMembershipFormStatus(userId, membershipPlanId, "inactive");
 
@@ -1023,6 +1448,9 @@ export function startMonthlyMembershipCheck() {
             data: { status: "inactive" },
           });
 
+          // The membership is over, so the recurring discount goes with it.
+          await endDiscountForEndedMembership(membership.userId, membership.id);
+
           await updateMembershipFormStatus(
             membership.userId,
             membership.membershipPlanId,
@@ -1083,6 +1511,9 @@ export function startMonthlyMembershipCheck() {
               where: { id: membership.id },
               data: { status: "inactive" },
             });
+
+            // The membership is over, so the recurring discount goes with it.
+            await endDiscountForEndedMembership(membership.userId, membership.id);
 
             await updateMembershipFormStatus(
               membership.userId,
@@ -1214,6 +1645,9 @@ export function startMonthlyMembershipCheck() {
             where: { id: membership.id },
             data: { status: "inactive" },
           });
+
+          // The membership is over, so the recurring discount goes with it.
+          await endDiscountForEndedMembership(membership.userId, membership.id);
 
           // Sync the UserMembershipForm status to inactive as well
           await updateMembershipFormStatus(
@@ -1551,6 +1985,12 @@ export async function revokeUserMembershipByAdmin(
       reason: normalizedReason,
     };
   });
+
+  // Revoking never passes through "inactive", and unrevoking restores only the user-level
+  // block rather than the membership rows, so this is the one chance to end the discount.
+  if (result.affectedMemberships > 0) {
+    await endRecurringDiscountForUser(userId);
+  }
 
   if (!result.alreadyRevoked) {
     try {
