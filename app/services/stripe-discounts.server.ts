@@ -108,6 +108,150 @@ export async function getCheckoutSessionCouponId(
   }
 }
 
+/** A discount code an admin typed, resolved against Stripe. */
+export interface ResolvedDiscountCode {
+  couponId: string;
+  /** Null when the admin typed a bare coupon id rather than a promotion code. */
+  promotionCodeId: string | null;
+  couponName: string | null;
+  percentOff: number | null;
+  /** Cents, as Stripe reports it. */
+  amountOff: number | null;
+  duration: string;
+  durationInMonths: number | null;
+  valid: boolean;
+  /** Products the coupon is limited to; null means it applies to anything. */
+  appliesToProducts: string[] | null;
+  /** Promotion-code restrictions Stripe refuses to evaluate on a Customer. */
+  blockingRestrictions: string[];
+}
+
+/**
+ * Resolve what an admin typed — a promotion code like SUMMER50, or a raw coupon id —
+ * into the coupon behind it.
+ *
+ * `applies_to` is the reason this always re-reads the coupon with an expand: a plain
+ * retrieve omits the field entirely and a list returns it as null, so a product-scoped
+ * coupon is indistinguishable from an unscoped one unless you ask for it explicitly.
+ * Every caller that checks product scope depends on that expand being here.
+ */
+export async function resolveDiscountCode(
+  code: string,
+): Promise<ResolvedDiscountCode | null> {
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+
+  try {
+    const matches = await stripe.promotionCodes.list({
+      code: trimmed,
+      active: true,
+      limit: 1,
+    });
+    const promotionCode = matches.data[0] ?? null;
+
+    const couponId = promotionCode
+      ? typeof promotionCode.coupon === "string"
+        ? promotionCode.coupon
+        : promotionCode.coupon.id
+      : trimmed;
+
+    const coupon = await stripe.coupons.retrieve(couponId, {
+      expand: ["applies_to"],
+    });
+
+    const restrictions = promotionCode?.restrictions;
+    const blockingRestrictions: string[] = [];
+    if (restrictions?.minimum_amount != null) {
+      blockingRestrictions.push("minimum_amount");
+    }
+    if (restrictions?.first_time_transaction) {
+      blockingRestrictions.push("first_time_transaction");
+    }
+
+    return {
+      couponId: coupon.id,
+      promotionCodeId: promotionCode?.id ?? null,
+      couponName: coupon.name ?? null,
+      percentOff: coupon.percent_off ?? null,
+      amountOff: coupon.amount_off ?? null,
+      duration: coupon.duration,
+      durationInMonths: coupon.duration_in_months ?? null,
+      valid: coupon.valid,
+      appliesToProducts: coupon.applies_to?.products ?? null,
+      blockingRestrictions,
+    };
+  } catch (error) {
+    console.error(
+      `[stripe-discounts] Could not resolve discount code "${trimmed}":`,
+      error,
+    );
+    return null;
+  }
+}
+
+export interface CouponDetail {
+  couponId: string;
+  /** Products the coupon is limited to; null means it applies to anything. */
+  appliesToProducts: string[] | null;
+  percentOff: number | null;
+  amountOff: number | null;
+  duration: string;
+  durationInMonths: number | null;
+  /** The human-facing codes pointing at this coupon, for an admin to recognise it. */
+  promotionCodes: string[];
+}
+
+/**
+ * Look up several coupons at once, deduplicated.
+ *
+ * One Stripe round trip per distinct coupon, not per member: a handful of coupons
+ * usually covers every discounted member. A coupon that cannot be read is omitted
+ * rather than guessed at, so callers treat "missing" as unknown, never as unscoped.
+ */
+export async function getCouponDetails(
+  couponIds: string[],
+): Promise<Map<string, CouponDetail>> {
+  const unique = Array.from(new Set(couponIds.filter(Boolean)));
+  const found = new Map<string, CouponDetail>();
+
+  await Promise.all(
+    unique.map(async (couponId) => {
+      try {
+        const coupon = await stripe.coupons.retrieve(couponId, {
+          expand: ["applies_to"],
+        });
+        let promotionCodes: string[] = [];
+        try {
+          const codes = await stripe.promotionCodes.list({
+            coupon: couponId,
+            limit: 10,
+          });
+          promotionCodes = codes.data.map((entry) => entry.code);
+        } catch {
+          // The code is a convenience for the admin, not load-bearing.
+        }
+
+        found.set(couponId, {
+          couponId: coupon.id,
+          appliesToProducts: coupon.applies_to?.products ?? null,
+          percentOff: coupon.percent_off ?? null,
+          amountOff: coupon.amount_off ?? null,
+          duration: coupon.duration,
+          durationInMonths: coupon.duration_in_months ?? null,
+          promotionCodes,
+        });
+      } catch (error) {
+        console.error(
+          `[stripe-discounts] Could not read coupon ${couponId}:`,
+          error,
+        );
+      }
+    }),
+  );
+
+  return found;
+}
+
 /**
  * Pin a coupon to the Stripe Customer so every membership invoice we raise inherits it.
  *
@@ -115,27 +259,38 @@ export async function getCheckoutSessionCouponId(
  * bare PaymentIntents ignore them, so this cannot leak into workshop or equipment sales.
  * A repeating coupon gets a wall-clock `end` from Stripe, which expires it without us
  * counting cycles.
+ *
+ * Pass `promotionCodeId` to redeem the promotion code rather than the bare coupon. That
+ * is what makes Stripe enforce the limits set on the code: a max_redemptions cap is
+ * ignored entirely when the same coupon is applied by id.
  */
 export async function applyMembershipDiscount(
   customerId: string,
   couponId: string,
   userMembershipId?: number,
+  promotionCodeId?: string | null,
 ): Promise<{ couponId: string; endsAt: Date | null } | null> {
   try {
-    const customer = await stripe.customers.update(customerId, {
-      coupon: couponId,
-    });
+    const customer = await stripe.customers.update(
+      customerId,
+      promotionCodeId
+        ? { promotion_code: promotionCodeId }
+        : { coupon: couponId },
+    );
     const discount = customer.discount;
     const endsAt = discount?.end ? new Date(discount.end * 1000) : null;
+    // Stripe is authoritative about which coupon actually landed, and the admin table
+    // and End button key off that id.
+    const appliedCouponId = discount?.coupon?.id ?? couponId;
 
     if (userMembershipId) {
       await db.userMembership.update({
         where: { id: userMembershipId },
-        data: { stripeCouponId: couponId, discountEndsAt: endsAt },
+        data: { stripeCouponId: appliedCouponId, discountEndsAt: endsAt },
       });
     }
 
-    return { couponId, endsAt };
+    return { couponId: appliedCouponId, endsAt };
   } catch (error) {
     console.error(
       `[stripe-discounts] Failed to apply coupon ${couponId} to customer ${customerId}:`,
