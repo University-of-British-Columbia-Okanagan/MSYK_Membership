@@ -2107,6 +2107,68 @@ function StripeSyncSection() {
   } | null>(null);
   const [discountLoading, setDiscountLoading] = React.useState(false);
   const [endingUserId, setEndingUserId] = React.useState<number | null>(null);
+  // One controlled dialog for the whole table rather than one per row.
+  const [endCandidate, setEndCandidate] = React.useState<{
+    userId: number;
+    memberName: string;
+    planTitle: string;
+    couponId: string | null;
+  } | null>(null);
+
+  type EligibleMember = {
+    userId: number;
+    membershipId: number;
+    memberName: string;
+    email: string;
+    planTitle: string;
+    planProductId: string | null;
+    billingCycle: string;
+    nextPaymentDate: string;
+    currentCouponId: string | null;
+    hasSavedCard: boolean;
+  };
+  type ScopedImpactRow = {
+    userId: number;
+    membershipId: number;
+    planId: number;
+    memberName: string;
+    email: string;
+    planTitle: string;
+    planProductId: string | null;
+    billingCycle: string;
+    couponId: string;
+    promotionCode: string | null;
+    discountLabel: string;
+    durationLabel: string;
+    discountEndsAt: string | null;
+    newProductId?: string | null;
+  };
+  const [resyncChecking, setResyncChecking] = React.useState(false);
+  const [resyncDialogOpen, setResyncDialogOpen] = React.useState(false);
+  const [resyncImpact, setResyncImpact] = React.useState<ScopedImpactRow[]>([]);
+  const [resyncResult, setResyncResult] = React.useState<{
+    discountsEnded?: number;
+    affected?: ScopedImpactRow[];
+  } | null>(null);
+
+  const [members, setMembers] = React.useState<EligibleMember[]>([]);
+  const [membersLoading, setMembersLoading] = React.useState(false);
+  const [memberQuery, setMemberQuery] = React.useState("");
+  const [selectedMember, setSelectedMember] =
+    React.useState<EligibleMember | null>(null);
+  const [discountCode, setDiscountCode] = React.useState("");
+  const [applying, setApplying] = React.useState(false);
+  const [applyResult, setApplyResult] = React.useState<{
+    ok: boolean;
+    reason?: string;
+    message?: string;
+    couponId?: string;
+    couponLabel?: string;
+    endsAt?: string | null;
+    firstDiscountedChargeOn?: string;
+    replacedCouponId?: string | null;
+    hasSavedCard?: boolean;
+  } | null>(null);
 
   const fetchDiscounts = async () => {
     setDiscountLoading(true);
@@ -2157,10 +2219,179 @@ function StripeSyncSection() {
     }
   };
 
+  const buildRestoreCsv = (rows: ScopedImpactRow[]) => {
+    // The steps travel with the file, because the list is no use if the instructions stay
+    // behind in the browser. Each step is one whole cell: a step split across columns on
+    // its commas is what makes a spreadsheet unreadable.
+    const steps = [
+      "HOW TO RESTORE THESE DISCOUNTS",
+      "1. Open Stripe Dashboard > Product Catalog > Coupons.",
+      "2. For each coupon below, create a new coupon with the same discount and duration. The old coupon cannot be reused, because a coupon's product limit is fixed when it is created.",
+      "3. On the new coupon, tick 'Apply to specific products' and choose the product named in the last column of this sheet. Skip this step if the discount does not need to be limited to one plan, since a coupon with no product limit is simpler and will not break on a future re-sync.",
+      "4. Add a promotion code to the new coupon. You can reuse the old code once the old coupon is archived.",
+      "5. In Admin Settings > Stripe Integrations, use 'Apply a discount to a member' to give each member below their new code.",
+      "",
+    ];
+    const header = [
+      "member",
+      "email",
+      "plan",
+      "billing cycle",
+      "promotion code",
+      "old coupon id",
+      "discount",
+      "duration",
+      "was ending",
+      "create replacement coupon for this product",
+    ];
+    const cell = (value: unknown) => {
+      const text = value == null ? "" : String(value);
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const body = rows.map((row) =>
+      [
+        row.memberName,
+        row.email,
+        row.planTitle,
+        row.billingCycle,
+        row.promotionCode ?? "(no code found)",
+        row.couponId,
+        row.discountLabel,
+        row.durationLabel,
+        row.discountEndsAt
+          ? new Date(row.discountEndsAt).toLocaleDateString()
+          : "no expiry",
+        // Before the re-sync runs the new product does not exist yet, and naming the old
+        // one here would send an admin to scope a replacement at a dead product.
+        row.newProductId ?? "(run the re-sync, then download this list again)",
+      ]
+        .map(cell)
+        .join(",")
+    );
+    return [...steps.map(cell), header.join(","), ...body].join("\n");
+  };
+
+  const downloadRestoreCsv = (rows: ScopedImpactRow[]) => {
+    const blob = new Blob([buildRestoreCsv(rows)], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `discounts-to-restore-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const openResyncPreflight = async () => {
+    setResyncChecking(true);
+    setError(null);
+    setResyncResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "getResyncImpact");
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error ?? "Could not check what a re-sync would affect");
+        return;
+      }
+      setResyncImpact(data.affected ?? []);
+      setResyncDialogOpen(true);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setResyncChecking(false);
+    }
+  };
+
+  const confirmResync = async () => {
+    setLoading(true);
+    setSyncResult(null);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "clearAndResync");
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error ?? "Sync failed");
+        return;
+      }
+      setSyncResult(data);
+      setResyncResult(data);
+      setResyncDialogOpen(false);
+      await Promise.all([fetchStatus(), fetchDiscounts(), fetchEligibleMembers()]);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchEligibleMembers = async () => {
+    setMembersLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "listDiscountMembers");
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.success) setMembers(data.members ?? []);
+      else setError(data.error ?? "Could not load members");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setMembersLoading(false);
+    }
+  };
+
+  const applyDiscount = async () => {
+    if (!selectedMember || !discountCode.trim()) return;
+    setApplying(true);
+    setApplyResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("actionType", "applyDiscount");
+      fd.append("userId", String(selectedMember.userId));
+      fd.append("membershipId", String(selectedMember.membershipId));
+      fd.append("code", discountCode.trim());
+      const res = await fetch("/api/stripe-sync", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.error ?? "Could not apply the discount");
+        return;
+      }
+      setApplyResult(data.result);
+      if (data.result?.ok) {
+        setDiscountCode("");
+        await Promise.all([fetchDiscounts(), fetchEligibleMembers()]);
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
   React.useEffect(() => {
     fetchStatus();
     fetchDiscounts();
+    fetchEligibleMembers();
   }, []);
+
+  const matchingMembers = React.useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return members.slice(0, 8);
+    return members
+      .filter((m) =>
+        `${m.memberName} ${m.email} ${m.planTitle}`.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [members, memberQuery]);
 
   const runSync = async (actionType: "bulkSync" | "clearAndResync") => {
     setLoading(true);
@@ -2274,6 +2505,148 @@ function StripeSyncSection() {
             </Alert>
           )}
 
+          <Dialog open={resyncDialogOpen} onOpenChange={setResyncDialogOpen}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Clear and Re-sync</DialogTitle>
+                <DialogDescription className="leading-relaxed sm:leading-relaxed">
+                  This gives every workshop, membership plan and piece of
+                  equipment a brand new Stripe Product. Use it when switching
+                  Stripe environments, for example test to live.
+                </DialogDescription>
+              </DialogHeader>
+
+              {resyncImpact.length === 0 ? (
+                <Alert>
+                  <AlertTitle>No discounts are at risk</AlertTitle>
+                  <AlertDescription className="text-sm leading-relaxed sm:leading-relaxed">
+                    No member is on a coupon that only works for specific
+                    Stripe products. Coupons without that limit keep working
+                    after a re-sync, so nobody loses a discount.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <Alert variant="destructive">
+                    <AlertTitle>
+                      {resyncImpact.length} member
+                      {resyncImpact.length === 1 ? "" : "s"} will lose their
+                      discount
+                    </AlertTitle>
+                    <AlertDescription className="text-sm leading-relaxed sm:leading-relaxed">
+                      Their coupons only work for specific Stripe products.
+                      Re-syncing gives every plan a brand new product, and
+                      Stripe does not let you change which products a coupon
+                      covers, so these coupons can never apply again. These
+                      discounts will be ended as part of the re-sync, because
+                      leaving them in place would show these members as
+                      discounted while they were actually being charged full
+                      price.
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="max-h-56 overflow-auto rounded-md border">
+                    <table className="w-full min-w-[520px] text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                          <th className="p-2 font-medium">Member</th>
+                          <th className="p-2 font-medium">Plan</th>
+                          <th className="p-2 font-medium">Code</th>
+                          <th className="p-2 font-medium">Discount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resyncImpact.map((row) => (
+                          <tr
+                            key={row.membershipId}
+                            className="border-b last:border-0"
+                          >
+                            <td className="p-2">
+                              <div className="font-medium">
+                                {row.memberName}
+                              </div>
+                              <div className="text-xs text-muted-foreground break-all">
+                                {row.email}
+                              </div>
+                            </td>
+                            <td className="p-2">{row.planTitle}</td>
+                            <td className="p-2">
+                              <code className="text-xs">
+                                {row.promotionCode ?? row.couponId}
+                              </code>
+                            </td>
+                            <td className="p-2">
+                              {row.discountLabel}, {row.durationLabel}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <p className="text-xs leading-relaxed sm:leading-relaxed text-muted-foreground">
+                    Download the list before continuing. It has step by step
+                    instructions for putting these discounts back. A copy is
+                    also saved to the server log at{" "}
+                    <code>logs/all_logs.log</code> when you continue, so you can
+                    still recover it if the download is lost.
+                  </p>
+                </>
+              )}
+
+              <DialogFooter className="flex-col gap-2 sm:flex-row">
+                {resyncImpact.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => downloadRestoreCsv(resyncImpact)}
+                  >
+                    Download list as CSV
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setResyncDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="button" onClick={confirmResync} disabled={loading}>
+                  {loading ? "Re-syncing..." : "Clear and Re-sync"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {resyncResult && (resyncResult.affected?.length ?? 0) > 0 && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertTitle>
+                {resyncResult.discountsEnded} discount
+                {resyncResult.discountsEnded === 1 ? "" : "s"} ended
+              </AlertTitle>
+              <AlertDescription className="text-sm leading-relaxed sm:leading-relaxed">
+                The re-sync gave every plan a new Stripe product, so the
+                coupons these members were on can no longer apply to them.
+                Download the list to put the discounts back. It now names the
+                new Stripe product to use when you create each replacement
+                coupon. The same list is saved in{" "}
+                <code>logs/all_logs.log</code> on the server.
+                <span className="mt-2 block">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      downloadRestoreCsv(resyncResult.affected ?? [])
+                    }
+                  >
+                    Download list as CSV
+                  </Button>
+                </span>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Action buttons */}
           <div className="flex flex-col sm:flex-row gap-3">
             <Button
@@ -2285,19 +2658,11 @@ function StripeSyncSection() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "This will clear all stored Stripe Product IDs and re-create them. Use this when switching Stripe environments. Continue?"
-                  )
-                ) {
-                  runSync("clearAndResync");
-                }
-              }}
-              disabled={loading}
+              onClick={openResyncPreflight}
+              disabled={loading || resyncChecking}
               className="flex-1"
             >
-              Clear &amp; Re-sync
+              {resyncChecking ? "Checking impact..." : "Clear & Re-sync"}
             </Button>
           </div>
 
@@ -2357,6 +2722,189 @@ function StripeSyncSection() {
           <div className="rounded-lg border">
             <div className="border-b p-4">
               <span className="text-sm font-medium">
+                Apply a discount to a member
+              </span>
+              <p className="mt-1 text-xs leading-relaxed sm:leading-relaxed text-muted-foreground">
+                Gives an existing member a recurring discount. It applies from
+                their next renewal onward.
+              </p>
+            </div>
+
+            <div className="space-y-4 p-4">
+              <div>
+                <Label htmlFor="discount-member-search" className="text-xs">
+                  Member
+                </Label>
+                {selectedMember ? (
+                  <div className="mt-1 flex flex-col gap-2 rounded-md border bg-muted/40 p-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="font-medium">
+                        {selectedMember.memberName}
+                      </div>
+                      <div className="text-xs text-muted-foreground break-all">
+                        {selectedMember.email}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {selectedMember.planTitle} ·{" "}
+                        {selectedMember.billingCycle} · renews{" "}
+                        {new Date(
+                          selectedMember.nextPaymentDate
+                        ).toLocaleDateString()}
+                      </div>
+                      {!selectedMember.hasSavedCard && (
+                        <div className="mt-2 text-xs text-amber-700">
+                          This member has no saved card, so their renewal will
+                          not be charged at all. A discount will have no effect
+                          until they add one.
+                        </div>
+                      )}
+                      {selectedMember.currentCouponId && (
+                        <div className="mt-2 text-xs text-amber-700">
+                          Already on coupon{" "}
+                          <code>{selectedMember.currentCouponId}</code>. Applying
+                          a new code replaces it.
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => {
+                        setSelectedMember(null);
+                        setApplyResult(null);
+                      }}
+                    >
+                      Change
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <Input
+                      id="discount-member-search"
+                      className="mt-1"
+                      placeholder={
+                        membersLoading
+                          ? "Loading members..."
+                          : "Search active members by name or email"
+                      }
+                      value={memberQuery}
+                      onChange={(e) => setMemberQuery(e.target.value)}
+                    />
+                    {!membersLoading && members.length === 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        No members currently have an active membership.
+                      </p>
+                    ) : (
+                      <div className="mt-2 max-h-60 overflow-y-auto rounded-md border">
+                        {matchingMembers.length === 0 ? (
+                          <p className="p-3 text-xs text-muted-foreground">
+                            No active member matches that search.
+                          </p>
+                        ) : (
+                          matchingMembers.map((m) => (
+                            <button
+                              key={m.membershipId}
+                              type="button"
+                              className="block w-full border-b px-3 py-2 text-left last:border-0 hover:bg-muted"
+                              onClick={() => {
+                                setSelectedMember(m);
+                                setMemberQuery("");
+                                setApplyResult(null);
+                              }}
+                            >
+                              <span className="block text-sm font-medium">
+                                {m.memberName}
+                              </span>
+                              <span className="block text-xs text-muted-foreground break-all">
+                                {m.email} · {m.planTitle}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="discount-code" className="text-xs">
+                  Stripe promotion code
+                </Label>
+                <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="discount-code"
+                    className="sm:flex-1"
+                    placeholder="Enter promotion code"
+                    value={discountCode}
+                    disabled={!selectedMember}
+                    onChange={(e) => setDiscountCode(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    className="shrink-0"
+                    disabled={
+                      !selectedMember || !discountCode.trim() || applying
+                    }
+                    onClick={applyDiscount}
+                  >
+                    {applying ? "Applying..." : "Apply discount"}
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed sm:leading-relaxed text-muted-foreground">
+                  Use the promotion code from Stripe in Product Catalog &gt;
+                  Coupons in the Stripe Dashboard for that coupon so the limits
+                  set on the code are enforced. A coupon limited to specific
+                  products is refused unless it covers the member's plan.
+                </p>
+              </div>
+
+              {applyResult && (
+                <Alert
+                  variant={applyResult.ok ? undefined : "destructive"}
+                  className={
+                    applyResult.ok ? "border-green-200 bg-green-50" : undefined
+                  }
+                >
+                  <AlertTitle>
+                    {applyResult.ok ? "Discount applied" : "Not applied"}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {applyResult.ok ? (
+                      <span className="text-sm">
+                        {applyResult.couponLabel} applied to{" "}
+                        {selectedMember?.memberName}.{" "}
+                        {applyResult.firstDiscountedChargeOn
+                          ? `First discounted charge is their renewal on ${new Date(
+                              applyResult.firstDiscountedChargeOn
+                            ).toLocaleDateString()}.`
+                          : ""}{" "}
+                        {applyResult.endsAt
+                          ? `The discount stops after ${new Date(
+                              applyResult.endsAt
+                            ).toLocaleDateString()}.`
+                          : "It has no expiry, so it applies until you end it."}
+                        {applyResult.replacedCouponId
+                          ? ` It replaced coupon ${applyResult.replacedCouponId}.`
+                          : ""}
+                        {applyResult.hasSavedCard === false
+                          ? " Note this member has no saved card, so no renewal will be charged until they add one."
+                          : ""}
+                      </span>
+                    ) : (
+                      <span className="text-sm">{applyResult.message}</span>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-lg border">
+            <div className="border-b p-4">
+              <span className="text-sm font-medium">
                 Members on a recurring discount
                 {discountInfo?.discounts
                   ? ` (${discountInfo.discounts.length})`
@@ -2403,15 +2951,7 @@ function StripeSyncSection() {
                             variant="outline"
                             size="sm"
                             disabled={endingUserId === row.userId}
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  `End the recurring discount for ${row.memberName}? Their next renewal will be charged at full price.`
-                                )
-                              ) {
-                                endDiscount(row.userId);
-                              }
-                            }}
+                            onClick={() => setEndCandidate(row)}
                           >
                             {endingUserId === row.userId ? "Ending…" : "End"}
                           </Button>
@@ -2424,10 +2964,41 @@ function StripeSyncSection() {
             )}
           </div>
 
+          <AlertDialog
+            open={endCandidate !== null}
+            onOpenChange={(open) => {
+              if (!open) setEndCandidate(null);
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>End this discount?</AlertDialogTitle>
+                <AlertDialogDescription className="leading-relaxed sm:leading-relaxed">
+                  {endCandidate?.memberName} will be charged full price for{" "}
+                  {endCandidate?.planTitle} from their next renewal. The coupon
+                  is removed from their Stripe customer, so it will not come
+                  back if they resubscribe. To give it back later, apply the
+                  code again above.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep the discount</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    if (endCandidate) endDiscount(endCandidate.userId);
+                    setEndCandidate(null);
+                  }}
+                >
+                  End discount
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <p className="text-xs text-muted-foreground">
             A discount ends automatically when the member upgrades or downgrades
-            their plan, and when Stripe reaches its expiry date. Use{" "}
-            <strong>End</strong> to stop one early.
+            their plan, when their membership ends, and when Stripe reaches its
+            expiry date. Use <strong>End</strong> to stop one early.
           </p>
         </CardContent>
       </Card>
