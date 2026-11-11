@@ -23,7 +23,7 @@ const config: Config = {
     ],
   },
   // Browser APIs jsdom omits that Radix needs. A no-op under the node environment.
-  setupFiles: ['<rootDir>/tests/setup/dom-stubs.ts'],
+  setupFiles: ['<rootDir>/tests/setup/dom-stubs.ts', '<rootDir>/tests/setup/env.ts'],
   // Kill and restart workers that retain too much memory between tests
   workerIdleMemoryLimit: '512MB',
   // Reduce noise, improve perf on Windows
