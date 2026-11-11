@@ -16,6 +16,11 @@ import { useNavigate } from "react-router-dom";
 import { useFetcher } from "react-router";
 import { FiMoreVertical } from "react-icons/fi";
 import { useState } from "react";
+import {
+  formatBusinessDate,
+  formatBusinessTime,
+  isSameBusinessDay,
+} from "~/utils/business-time";
 
 interface WorkshopProps {
   id: number;
@@ -53,20 +58,20 @@ function SingleSessionDisplay({ occurrence }: { occurrence: any }) {
   const end = new Date(occurrence.endDate);
 
   const formatDate = (date: Date) =>
-    date.toLocaleDateString("en-US", {
+    formatBusinessDate(date, "en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
 
   const formatTime = (date: Date) =>
-    date.toLocaleTimeString("en-US", {
+    formatBusinessTime(date, "en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
     });
 
-  const isSameDay = start.toDateString() === end.toDateString();
+  const isSameDay = isSameBusinessDay(start, end);
 
   if (isSameDay) {
     return (
@@ -101,14 +106,14 @@ function MultiDaySessionDisplay({
   const INITIAL_DISPLAY_COUNT = 3;
 
   const formatDate = (date: Date) =>
-    date.toLocaleDateString("en-US", {
+    formatBusinessDate(date, "en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
 
   const formatTime = (date: Date) =>
-    date.toLocaleTimeString("en-US", {
+    formatBusinessTime(date, "en-US", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,

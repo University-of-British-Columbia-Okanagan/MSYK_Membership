@@ -21,6 +21,7 @@ import { PlusCircle, Ban } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { logger } from "~/logging/logger";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
+import { formatBusinessDateTime } from "~/utils/business-time";
 
 // Define a TypeScript type that matches the union
 type MembershipStatus = "active" | "cancelled" | "inactive";
@@ -329,7 +330,7 @@ export default function MembershipPage() {
                           Date
                         </span>
                         <span className="text-red-950">
-                          {membershipRevokedAt.toLocaleString(undefined, {
+                          {formatBusinessDateTime(membershipRevokedAt, undefined, {
                             dateStyle: "medium",
                             timeStyle: "short",
                           })}

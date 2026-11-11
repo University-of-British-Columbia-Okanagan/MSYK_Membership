@@ -21,6 +21,7 @@ import {
 } from "~/components/ui/Dashboard/ShadTable";
 import { getAllRegistrations } from "~/models/workshop.server";
 import { ConfirmButton } from "~/components/ui/Dashboard/ConfirmButton";
+import { formatBusinessDateTime } from "~/utils/business-time";
 
 interface LoaderData {
   roleUser: {
@@ -172,20 +173,20 @@ export default function AllUserWorkshop() {
     },
     {
       header: "Registration Date",
-      render: (reg) => (reg.date ? new Date(reg.date).toLocaleString() : "N/A"),
+      render: (reg) => (reg.date ? formatBusinessDateTime(reg.date) : "N/A"),
     },
     {
       header: "Occurrence Start Time",
       render: (reg) =>
         reg.occurrence?.startDate
-          ? new Date(reg.occurrence.startDate).toLocaleString()
+          ? formatBusinessDateTime(reg.occurrence.startDate)
           : "N/A",
     },
     {
       header: "Occurrence End Time",
       render: (reg) =>
         reg.occurrence?.endDate
-          ? new Date(reg.occurrence.endDate).toLocaleString()
+          ? formatBusinessDateTime(reg.occurrence.endDate)
           : "N/A",
     },
   ];

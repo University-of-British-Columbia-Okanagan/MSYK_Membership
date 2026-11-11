@@ -54,6 +54,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { formatBusinessDateTime } from "~/utils/business-time";
 
 export async function loader({
   request,
@@ -935,7 +936,7 @@ export default function MembershipDetails() {
                     {membershipRevokedAt && (
                       <p className="text-sm">
                         Since{" "}
-                        {membershipRevokedAt.toLocaleString(undefined, {
+                        {formatBusinessDateTime(membershipRevokedAt, undefined, {
                           dateStyle: "medium",
                           timeStyle: "short",
                         })}

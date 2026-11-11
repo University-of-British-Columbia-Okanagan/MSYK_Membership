@@ -50,6 +50,13 @@ import {
 } from "~/models/workshop.server";
 import { getRoleUser } from "~/utils/session.server";
 import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  formatBusinessTime,
+  parseBusinessDateTime,
+  toBusinessDateInput,
+} from "~/utils/business-time";
+import {
   Table,
   TableBody,
   TableCaption,
@@ -1207,7 +1214,7 @@ function DoorAccessStatus({
   const lastSynced =
     user.brivoLastSyncedAt &&
     !Number.isNaN(new Date(user.brivoLastSyncedAt).getTime())
-      ? new Date(user.brivoLastSyncedAt).toLocaleString(undefined, {
+      ? formatBusinessDateTime(new Date(user.brivoLastSyncedAt), undefined, {
           dateStyle: "medium",
           timeStyle: "short",
         })
@@ -1413,7 +1420,7 @@ function MembershipControl({
           {user.membershipRevokedAt && (
             <p>
               Since:{" "}
-              {new Date(user.membershipRevokedAt).toLocaleString(undefined, {
+              {formatBusinessDateTime(new Date(user.membershipRevokedAt), undefined, {
                 dateStyle: "medium",
                 timeStyle: "short",
               })}
@@ -2259,7 +2266,7 @@ function StripeSyncSection() {
         row.discountLabel,
         row.durationLabel,
         row.discountEndsAt
-          ? new Date(row.discountEndsAt).toLocaleDateString()
+          ? formatBusinessDate(new Date(row.discountEndsAt))
           : "no expiry",
         // Before the re-sync runs the new product does not exist yet, and naming the old
         // one here would send an admin to scope a replacement at a dead product.
@@ -2278,9 +2285,7 @@ function StripeSyncSection() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `discounts-to-restore-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
+    link.download = `discounts-to-restore-${toBusinessDateInput(new Date())}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -2747,9 +2752,9 @@ function StripeSyncSection() {
                       <div className="mt-1 text-xs text-muted-foreground">
                         {selectedMember.planTitle} ·{" "}
                         {selectedMember.billingCycle} · renews{" "}
-                        {new Date(
+                        {formatBusinessDate(new Date(
                           selectedMember.nextPaymentDate
-                        ).toLocaleDateString()}
+                        ))}
                       </div>
                       {!selectedMember.hasSavedCard && (
                         <div className="mt-2 text-xs text-amber-700">
@@ -2877,14 +2882,14 @@ function StripeSyncSection() {
                         {applyResult.couponLabel} applied to{" "}
                         {selectedMember?.memberName}.{" "}
                         {applyResult.firstDiscountedChargeOn
-                          ? `First discounted charge is their renewal on ${new Date(
+                          ? `First discounted charge is their renewal on ${formatBusinessDate(new Date(
                               applyResult.firstDiscountedChargeOn
-                            ).toLocaleDateString()}.`
+                            ))}.`
                           : ""}{" "}
                         {applyResult.endsAt
-                          ? `The discount stops after ${new Date(
+                          ? `The discount stops after ${formatBusinessDate(new Date(
                               applyResult.endsAt
-                            ).toLocaleDateString()}.`
+                            ))}.`
                           : "It has no expiry, so it applies until you end it."}
                         {applyResult.replacedCouponId
                           ? ` It replaced coupon ${applyResult.replacedCouponId}.`
@@ -2943,7 +2948,7 @@ function StripeSyncSection() {
                         </td>
                         <td className="p-3">
                           {row.endsAt
-                            ? new Date(row.endsAt).toLocaleDateString()
+                            ? formatBusinessDate(new Date(row.endsAt))
                             : "No expiry"}
                         </td>
                         <td className="p-3 text-right">
@@ -3577,10 +3582,10 @@ export default function AdminSettings() {
         appliedVolunteerToTime
       ) {
         const entryStartDate = new Date(hour.startTime);
-        const fromDateTime = new Date(
+        const fromDateTime = parseBusinessDateTime(
           `${appliedVolunteerFromDate}T${appliedVolunteerFromTime}`
         );
-        const toDateTime = new Date(
+        const toDateTime = parseBusinessDateTime(
           `${appliedVolunteerToDate}T${appliedVolunteerToTime}`
         );
         dateTimeMatch =
@@ -3644,10 +3649,10 @@ export default function AdminSettings() {
         appliedActionsToTime
       ) {
         const entryStartDate = new Date(action.startTime);
-        const fromDateTime = new Date(
+        const fromDateTime = parseBusinessDateTime(
           `${appliedActionsFromDate}T${appliedActionsFromTime}`
         );
-        const toDateTime = new Date(
+        const toDateTime = parseBusinessDateTime(
           `${appliedActionsToDate}T${appliedActionsToTime}`
         );
         dateTimeMatch =
@@ -3823,10 +3828,9 @@ export default function AdminSettings() {
     }))
   );
 
+  // Dates are business-clock "YYYY-MM-DD" strings, as the date inputs use.
   const [newClosure, setNewClosure] = useState(() => {
-    // Initialize with today's date
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Set to midnight
+    const today = toBusinessDateInput(new Date());
 
     return {
       startDate: today,
@@ -4227,38 +4231,22 @@ export default function AdminSettings() {
 
   // Function to add a new planned closure
   const handleAddClosure = () => {
-    // Create dates from user input, preserving the selected day
-    const startDateInput = newClosure.startDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
-    const endDateInput = newClosure.endDate.toISOString().split("T")[0]; // Get YYYY-MM-DD
-
-    // Parse the dates using the date string directly to avoid timezone issues
-    const [startYear, startMonth, startDay] = startDateInput
-      .split("-")
-      .map(Number);
-    const [startHours, startMinutes] = newClosure.startTime
-      .split(":")
-      .map(Number);
-
-    const [endYear, endMonth, endDay] = endDateInput.split("-").map(Number);
-    const [endHours, endMinutes] = newClosure.endTime.split(":").map(Number);
-
-    // Create Date objects with the correct day, ensuring we use local timezone
-    const start = new Date(
-      startYear,
-      startMonth - 1,
-      startDay,
-      startHours,
-      startMinutes,
-      0
+    // The admin types business wall times; store the instants they name.
+    const start = parseBusinessDateTime(
+      `${newClosure.startDate}T${newClosure.startTime}`
     );
-    const end = new Date(
-      endYear,
-      endMonth - 1,
-      endDay,
-      endHours,
-      endMinutes,
-      0
+    const end = parseBusinessDateTime(
+      `${newClosure.endDate}T${newClosure.endTime}`
     );
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      setValidationError({
+        show: true,
+        title: "Invalid Time Period",
+        message: "Choose a start and end date.",
+      });
+      return;
+    }
 
     // Validate dates
     if (end <= start) {
@@ -4320,7 +4308,7 @@ export default function AdminSettings() {
     submit(formData, { method: "post" });
 
     // Reset form with today's date
-    const today = new Date();
+    const today = toBusinessDateInput(new Date());
 
     setNewClosure({
       startDate: today,
@@ -5981,14 +5969,14 @@ export default function AdminSettings() {
                                             key={period.id}
                                             className="text-xs"
                                           >
-                                            {new Date(
+                                            {formatBusinessDate(new Date(
                                               period.volunteerStart
-                                            ).toLocaleDateString()}{" "}
+                                            ))}{" "}
                                             -{" "}
                                             {period.volunteerEnd
-                                              ? new Date(
+                                              ? formatBusinessDate(new Date(
                                                   period.volunteerEnd
-                                                ).toLocaleDateString()
+                                                ))
                                               : "Active"}
                                           </div>
                                         ))}
@@ -6271,17 +6259,17 @@ export default function AdminSettings() {
                           {
                             header: "Date",
                             render: (hour: any) =>
-                              new Date(hour.startTime).toLocaleDateString(),
+                              formatBusinessDate(new Date(hour.startTime)),
                           },
                           {
                             header: "Time",
                             render: (hour: any) => {
                               const start = new Date(hour.startTime);
                               const end = new Date(hour.endTime);
-                              return `${start.toLocaleTimeString([], {
+                              return `${formatBusinessTime(start, [], {
                                 hour: "2-digit",
                                 minute: "2-digit",
-                              })} - ${end.toLocaleTimeString([], {
+                              })} - ${formatBusinessTime(end, [], {
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })}`;
@@ -6321,7 +6309,7 @@ export default function AdminSettings() {
                           {
                             header: "Logged",
                             render: (hour: any) =>
-                              new Date(hour.createdAt).toLocaleDateString(),
+                              formatBusinessDate(new Date(hour.createdAt)),
                           },
                         ]}
                         data={paginatedVolunteerHours}
@@ -6536,13 +6524,13 @@ export default function AdminSettings() {
                               appliedActionsToTime && (
                                 <span className="ml-2 text-indigo-600">
                                   (filtered from{" "}
-                                  {new Date(
+                                  {formatBusinessDateTime(new Date(
                                     `${appliedActionsFromDate}T${appliedActionsFromTime}`
-                                  ).toLocaleString()}{" "}
+                                  ))}{" "}
                                   to{" "}
-                                  {new Date(
+                                  {formatBusinessDateTime(new Date(
                                     `${appliedActionsToDate}T${appliedActionsToTime}`
-                                  ).toLocaleString()}
+                                  ))}
                                   )
                                 </span>
                               )}
@@ -6586,17 +6574,17 @@ export default function AdminSettings() {
                         {
                           header: "Date",
                           render: (action: any) =>
-                            new Date(action.startTime).toLocaleDateString(),
+                            formatBusinessDate(new Date(action.startTime)),
                         },
                         {
                           header: "Time",
                           render: (action: any) => {
                             const start = new Date(action.startTime);
                             const end = new Date(action.endTime);
-                            return `${start.toLocaleTimeString([], {
+                            return `${formatBusinessTime(start, [], {
                               hour: "2-digit",
                               minute: "2-digit",
-                            })} - ${end.toLocaleTimeString([], {
+                            })} - ${formatBusinessTime(end, [], {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}`;
@@ -6663,7 +6651,7 @@ export default function AdminSettings() {
                         {
                           header: "Last Modified",
                           render: (action: any) =>
-                            new Date(action.updatedAt).toLocaleString(),
+                            formatBusinessDateTime(new Date(action.updatedAt)),
                         },
                       ]}
                       data={paginatedRecentActions}
@@ -6716,11 +6704,9 @@ export default function AdminSettings() {
                             <Input
                               id="start-date"
                               type="date"
-                              value={
-                                newClosure.startDate.toISOString().split("T")[0]
-                              }
+                              value={newClosure.startDate}
                               onChange={(e) => {
-                                const date = new Date(e.target.value);
+                                const date = e.target.value;
                                 setNewClosure((prev) => ({
                                   ...prev,
                                   startDate: date,
@@ -6753,11 +6739,9 @@ export default function AdminSettings() {
                             <Input
                               id="end-date"
                               type="date"
-                              value={
-                                newClosure.endDate.toISOString().split("T")[0]
-                              }
+                              value={newClosure.endDate}
                               onChange={(e) => {
-                                const date = new Date(e.target.value);
+                                const date = e.target.value;
                                 setNewClosure((prev) => ({
                                   ...prev,
                                   endDate: date,
@@ -6871,15 +6855,15 @@ export default function AdminSettings() {
                                       {closure.id}
                                     </TableCell>
                                     <TableCell>
-                                      {start.toLocaleDateString()}{" "}
-                                      {start.toLocaleTimeString([], {
+                                      {formatBusinessDate(start)}{" "}
+                                      {formatBusinessTime(start, [], {
                                         hour: "2-digit",
                                         minute: "2-digit",
                                       })}
                                     </TableCell>
                                     <TableCell>
-                                      {end.toLocaleDateString()}{" "}
-                                      {end.toLocaleTimeString([], {
+                                      {formatBusinessDate(end)}{" "}
+                                      {formatBusinessTime(end, [], {
                                         hour: "2-digit",
                                         minute: "2-digit",
                                       })}
@@ -6996,15 +6980,15 @@ export default function AdminSettings() {
                               return (
                                 <div className="text-sm">
                                   <div className="font-medium">
-                                    {startDate.toLocaleDateString()}
+                                    {formatBusinessDate(startDate)}
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {startDate.toLocaleTimeString([], {
+                                    {formatBusinessTime(startDate, [], {
                                       hour: "2-digit",
                                       minute: "2-digit",
                                     })}{" "}
                                     →{" "}
-                                    {endDate.toLocaleTimeString([], {
+                                    {formatBusinessTime(endDate, [], {
                                       hour: "2-digit",
                                       minute: "2-digit",
                                     })}
@@ -7235,15 +7219,15 @@ export default function AdminSettings() {
                               return (
                                 <div className="text-sm">
                                   <div className="font-medium">
-                                    {startDate.toLocaleDateString()}
+                                    {formatBusinessDate(startDate)}
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {startDate.toLocaleTimeString([], {
+                                    {formatBusinessTime(startDate, [], {
                                       hour: "2-digit",
                                       minute: "2-digit",
                                     })}{" "}
                                     →{" "}
-                                    {endDate.toLocaleTimeString([], {
+                                    {formatBusinessTime(endDate, [], {
                                       hour: "2-digit",
                                       minute: "2-digit",
                                     })}
@@ -7449,15 +7433,15 @@ export default function AdminSettings() {
                               const time = times[0];
                               return (
                                 <div className="text-sm">
-                                  {new Date(
+                                  {formatBusinessDate(new Date(
                                     time.startTime
-                                  ).toLocaleDateString()}{" "}
-                                  {new Date(time.startTime).toLocaleTimeString(
+                                  ))}{" "}
+                                  {formatBusinessTime(new Date(time.startTime),
                                     [],
                                     { hour: "2-digit", minute: "2-digit" }
                                   )}{" "}
                                   -{" "}
-                                  {new Date(time.endTime).toLocaleTimeString(
+                                  {formatBusinessTime(new Date(time.endTime),
                                     [],
                                     { hour: "2-digit", minute: "2-digit" }
                                   )}
@@ -7480,19 +7464,19 @@ export default function AdminSettings() {
                                     <div className="space-y-1">
                                       {times.map((time: any, index: number) => (
                                         <div key={index} className="text-xs">
-                                          {new Date(
+                                          {formatBusinessDate(new Date(
                                             time.startTime
-                                          ).toLocaleDateString()}{" "}
-                                          {new Date(
+                                          ))}{" "}
+                                          {formatBusinessTime(new Date(
                                             time.startTime
-                                          ).toLocaleTimeString([], {
+                                          ), [], {
                                             hour: "2-digit",
                                             minute: "2-digit",
                                           })}{" "}
                                           -{" "}
-                                          {new Date(
+                                          {formatBusinessTime(new Date(
                                             time.endTime
-                                          ).toLocaleTimeString([], {
+                                          ), [], {
                                             hour: "2-digit",
                                             minute: "2-digit",
                                           })}
@@ -7643,15 +7627,15 @@ export default function AdminSettings() {
                               const time = times[0];
                               return (
                                 <div className="text-sm">
-                                  {new Date(
+                                  {formatBusinessDate(new Date(
                                     time.startTime
-                                  ).toLocaleDateString()}{" "}
-                                  {new Date(time.startTime).toLocaleTimeString(
+                                  ))}{" "}
+                                  {formatBusinessTime(new Date(time.startTime),
                                     [],
                                     { hour: "2-digit", minute: "2-digit" }
                                   )}{" "}
                                   -{" "}
-                                  {new Date(time.endTime).toLocaleTimeString(
+                                  {formatBusinessTime(new Date(time.endTime),
                                     [],
                                     { hour: "2-digit", minute: "2-digit" }
                                   )}
@@ -7674,19 +7658,19 @@ export default function AdminSettings() {
                                     <div className="space-y-1">
                                       {times.map((time: any, index: number) => (
                                         <div key={index} className="text-xs">
-                                          {new Date(
+                                          {formatBusinessDate(new Date(
                                             time.startTime
-                                          ).toLocaleDateString()}{" "}
-                                          {new Date(
+                                          ))}{" "}
+                                          {formatBusinessTime(new Date(
                                             time.startTime
-                                          ).toLocaleTimeString([], {
+                                          ), [], {
                                             hour: "2-digit",
                                             minute: "2-digit",
                                           })}{" "}
                                           -{" "}
-                                          {new Date(
+                                          {formatBusinessTime(new Date(
                                             time.endTime
-                                          ).toLocaleTimeString([], {
+                                          ), [], {
                                             hour: "2-digit",
                                             minute: "2-digit",
                                           })}
@@ -8364,7 +8348,7 @@ export default function AdminSettings() {
                                   <span className="font-mono font-medium">{card.id}</span>
                                   <span className="ml-3 text-gray-500">
                                     Last updated:{" "}
-                                    {new Date(card.updatedAt).toLocaleString()}
+                                    {formatBusinessDateTime(new Date(card.updatedAt))}
                                   </span>
                                 </button>
                               ))}
@@ -8407,9 +8391,9 @@ export default function AdminSettings() {
                                   Last Updated:
                                 </span>{" "}
                                 {actionData.accessCardExists
-                                  ? new Date(
+                                  ? formatBusinessDateTime(new Date(
                                       actionData.accessCard.updatedAt
-                                    ).toLocaleString()
+                                    ))
                                   : "Unregistered"}
                               </p>
                             </div>

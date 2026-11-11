@@ -1,5 +1,21 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  addBusinessDays,
+  formatBusinessDate,
+  parseBusinessDate,
+  toBusinessDateInput,
+} from "~/utils/business-time";
+import {
+  createEquipmentCellResolver,
+  equipmentDayKey,
+  equipmentGridDays,
+  equipmentTimeKey,
+} from "~/utils/business-time-equipment";
+import {
+  isInPlannedClosure as isInPlannedClosureRule,
+  isLevel4RestrictedHour,
+} from "~/utils/equipment-booking-rules";
 
 // Function to generate times in 30-minute increments between startHour and endHour
 const generateTimeSlots = (startHour: number, endHour: number) => {
@@ -8,22 +24,6 @@ const generateTimeSlots = (startHour: number, endHour: number) => {
     result.push(`${h.toString().padStart(2, "0")}:00`);
     result.push(`${h.toString().padStart(2, "0")}:30`);
   }
-  return result;
-};
-
-// Generate date-specific day labels (e.g., "Thu 8", "Fri 9", etc.)
-const generateDateLabels = (visibleDays: number) => {
-  const result: string[] = [];
-  const today = new Date();
-
-  for (let i = 0; i < visibleDays; i++) {
-    const date = new Date();
-    date.setDate(today.getDate() + i);
-    const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-    const dayNumber = date.getDate();
-    result.push(`${dayName} ${dayNumber}`);
-  }
-
   return result;
 };
 
@@ -97,6 +97,10 @@ export default function EquipmentBookingGrid({
   const isDragging = useRef(false);
   const [activeTab, setActiveTab] = useState("week-0");
 
+  // Grid cells are business wall times, so "Thu 8" at "10:00" is 10:00 in
+  // the business zone whatever zone this device is in.
+  const cellInstant = createEquipmentCellResolver(visibleDays);
+
   // Helper function to check if a slot is restricted by admin settings for level 3 users
   const isRestrictedByAdmin = (day: string, time: string): boolean => {
     if (!level3Restrictions) return false;
@@ -158,113 +162,18 @@ export default function EquipmentBookingGrid({
     return { startHour: earliestStart, endHour: latestEnd };
   };
 
-  // Helper function to check if a slot is restricted by admin settings for level 4 users
-  const isLevel4Restricted = (day: string, time: string): boolean => {
-    // If there are no restrictions or settings are 0,0 (no restrictions)
-    if (
-      !level4Restrictions ||
-      (level4Restrictions.start === 0 && level4Restrictions.end === 0)
-    ) {
-      return false;
-    }
+  // Shared with the server, which enforces the same rules before checkout and at booking.
+  const isLevel4Restricted = (day: string, time: string): boolean =>
+    isLevel4RestrictedHour(parseInt(time.split(":")[0], 10), level4Restrictions);
 
-    // Get the hour from the time (e.g., "09:00" -> 9)
-    const hour = parseInt(time.split(":")[0], 10);
-
-    // For restrictions that span overnight (e.g., 20 to 2)
-    if (level4Restrictions.start > level4Restrictions.end) {
-      return hour >= level4Restrictions.start || hour < level4Restrictions.end;
-    }
-    // For restrictions within the same day (e.g., 9 to 17)
-    else {
-      return hour >= level4Restrictions.start && hour < level4Restrictions.end;
-    }
-  };
-
-  // Convert planned closures dates to Date objects if they're strings
-  const normalizedPlannedClosures = useMemo(() => {
-    return plannedClosures.map((closure) => ({
-      id: closure.id,
-      startDate:
-        closure.startDate instanceof Date
-          ? closure.startDate
-          : new Date(closure.startDate),
-      endDate:
-        closure.endDate instanceof Date
-          ? closure.endDate
-          : new Date(closure.endDate),
-    }));
-  }, [plannedClosures]);
-
-  // Add function to check if a slot is within a planned closure
-  const isInPlannedClosure = (day: string, time: string): boolean => {
-    if (!normalizedPlannedClosures.length || userRoleLevel !== 3) return false;
-
-    // Extract day parts and create a date for the slot
-    const dayParts = day.split(" ");
-    const dayName = dayParts[0]; // e.g., "Thu"
-    const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
-
-    const [hour, minute] = time.split(":").map(Number);
-
-    // Get current month and year
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    // Create a date for the slot
-    const slotDate = new Date(
-      currentYear,
-      currentMonth,
-      dayNumber,
-      hour,
-      minute
-    );
-
-    // If the day is less than today's date and we're near the end of the month,
-    // it probably means we're booking for the next month
-    if (dayNumber < now.getDate() && now.getDate() > 20) {
-      slotDate.setMonth(currentMonth + 1);
-    }
-
-    // Check if the slot date falls within any planned closure
-    return normalizedPlannedClosures.some((closure) => {
-      return slotDate >= closure.startDate && slotDate < closure.endDate;
-    });
-  };
+  const isInPlannedClosure = (day: string, time: string): boolean =>
+    userRoleLevel === 3 && isInPlannedClosureRule(cellInstant(day, time), plannedClosures);
 
   const isSlotInPast = (day: string, time: string): boolean => {
-    const now = new Date();
-
-    // Extract day parts
-    const dayParts = day.split(" ");
-    const dayName = dayParts[0]; // e.g., "Thu"
-    const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
-
-    // Extract time parts
-    const [hour, minute] = time.split(":").map(Number);
-
-    // Create a date for the slot
-    const slotDate = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      dayNumber,
-      hour,
-      minute
-    );
-
-    // If the day is less than today's date and we're near the end of the month,
-    // it probably means we're booking for the next month
-    if (dayNumber < now.getDate() && now.getDate() > 20) {
-      slotDate.setMonth(now.getMonth() + 1);
-    }
-
-    // Check if the slot is in the past
-    return slotDate < now;
+    return cellInstant(day, time) < new Date();
   };
 
-  // Generate day labels for all visible days
-  const allDays = generateDateLabels(visibleDays);
+  const allDays = equipmentGridDays(visibleDays).map((d) => d.key);
 
   // Calculate how many weeks we need to display
   const totalWeeks = Math.ceil(visibleDays / 7);
@@ -299,34 +208,10 @@ export default function EquipmentBookingGrid({
       return;
     }
 
-    // Extract day parts (e.g., "Thu 8" -> "Thu" and "8")
-    const dayParts = day.split(" ");
-    const dayName = dayParts[0]; // e.g., "Thu"
-    const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
-
-    // Get current month and year
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    // Create date for the selected day
-    const [hour, minute] = time.split(":").map(Number);
-
-    // Start by using the current month and year
-    const startTime = new Date(
-      currentYear,
-      currentMonth,
-      dayNumber,
-      hour,
-      minute,
-      0,
-      0
-    );
-
-    // If the day is less than today's date and we're near the end of the month,
-    // it probably means we're booking for the next month
-    if (dayNumber < now.getDate() && now.getDate() > 20) {
-      startTime.setMonth(currentMonth + 1);
+    const startTime = cellInstant(day, time);
+    if (isNaN(startTime.getTime())) {
+      setErrorMessage("This slot is already booked or unavailable.");
+      return;
     }
 
     const endTime = new Date(startTime.getTime() + 30 * 60 * 1000);
@@ -350,12 +235,7 @@ export default function EquipmentBookingGrid({
 
     // Include slots selected in the current session
     for (const s of selectedSlots) {
-      const [start] = s.split("|");
-      const slotDate = new Date(start);
-      // Use the same day format (e.g., "Thu 8") for consistency
-      const d = `${slotDate.toLocaleDateString("en-US", {
-        weekday: "short",
-      })} ${slotDate.getDate()}`;
+      const d = equipmentDayKey(s.split("|")[0]);
       slotsPerDay[d] = (slotsPerDay[d] || 0) + 1;
       totalSlots += 1;
     }
@@ -705,191 +585,60 @@ export default function EquipmentBookingGrid({
     }
     // Check sliding 7-day period limits - each day creates a new 7-day period
     if (!isAlreadySelected) {
-      // Helper function to create date from day and time
-      const createDateFromDayTime = (day: string, time: string): Date => {
-        const dayParts = day.split(" ");
-        const dayNumber = parseInt(dayParts[1], 10);
-        const [hour, minute] = time.split(":").map(Number);
-
-        const now = new Date();
-        const date = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          dayNumber,
-          hour,
-          minute
-        );
-
-        // Adjust month if day is in next month
-        if (dayNumber < now.getDate() && now.getDate() > 20) {
-          date.setMonth(date.getMonth() + 1);
+      // Business dates as "YYYY-MM-DD", which sort and compare as strings.
+      const bookedDays: string[] = [];
+      for (const [dayKey, daySlots] of Object.entries(slotsByDay)) {
+        for (const [slotTime, slotValue] of Object.entries(daySlots)) {
+          // This checks ALL bookings by you even in the past
+          if (slotValue?.bookedByMe) {
+            bookedDays.push(toBusinessDateInput(cellInstant(dayKey, slotTime)));
+          }
         }
-
-        return date;
-      };
-
-      // Get all dates from the grid PLUS a week before the first visible date
-      const allDaysFromGrid = Object.keys(slotsByDay);
-      const allGridDates: Date[] = [];
-
-      // First, get all visible dates from the grid
-      for (const day of allDaysFromGrid) {
-        const dayParts = day.split(" ");
-        const dayNumber = parseInt(dayParts[1], 10);
-        const now = new Date();
-        const date = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          dayNumber,
-          0,
-          0,
-          0,
-          0
-        );
-
-        // Adjust month if day is in next month
-        if (dayNumber < now.getDate() && now.getDate() > 20) {
-          date.setMonth(date.getMonth() + 1);
-        }
-
-        allGridDates.push(date);
       }
-
-      // Find the first visible date
-      const sortedGridDates = allGridDates.sort(
-        (a, b) => a.getTime() - b.getTime()
+      const selectedDays = selectedSlots.map((s) =>
+        toBusinessDateInput(s.split("|")[0])
       );
-      const firstVisibleDate = sortedGridDates[0];
+      const currentDay = toBusinessDateInput(startTime);
 
-      // Add 7 days before the first visible date to capture previous bookings
-      if (firstVisibleDate) {
-        for (let i = 1; i <= 7; i++) {
-          const earlierDate = new Date(firstVisibleDate);
-          earlierDate.setDate(firstVisibleDate.getDate() - i);
-          allGridDates.push(earlierDate);
-        }
-      }
+      // Each day with a booking or selection starts a 7-day period to check.
+      const periodStarts = Array.from(
+        new Set([...bookedDays, ...selectedDays, currentDay])
+      ).sort();
 
-      // Sort dates and remove duplicates
-      const uniqueDates = Array.from(
-        new Set(allGridDates.map((d) => d.toDateString()))
-      )
-        .map((dateStr) => new Date(dateStr))
-        .sort((a, b) => a.getTime() - b.getTime());
+      for (const startKey of periodStarts) {
+        const periodStart = parseBusinessDate(startKey);
+        const endKey = toBusinessDateInput(addBusinessDays(periodStart, 7));
+        if (currentDay < startKey || currentDay >= endKey) continue;
 
-      // Update allDays to include the expanded date range for booking checks
-      const allDays = [...allDaysFromGrid]; // Keep original grid days for slot checking
+        const inPeriod = (k: string) => k >= startKey && k < endKey;
+        const totalSlotsInPeriod =
+          bookedDays.filter(inPeriod).length +
+          selectedDays.filter(inPeriod).length;
 
-      // Check ALL possible 7-day periods that could contain this slot
-      // Each day can be the start of a 7-day period
-      // Get all dates that have actual bookings or selections
-      const datesWithBookings = new Set<string>();
+        if (totalSlotsInPeriod + 1 > maxSlotsPerWeek) {
+          const labelOptions: Intl.DateTimeFormatOptions = {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          };
+          const periodStartStr = formatBusinessDate(
+            periodStart,
+            "en-US",
+            labelOptions
+          );
+          const periodEndStr = formatBusinessDate(
+            addBusinessDays(periodStart, 6),
+            "en-US",
+            labelOptions
+          );
 
-      // Add dates from existing bookings (check both visible grid and expanded date range)
-      for (const day of allDaysFromGrid) {
-        const daySlots = slotsByDay[day];
-        for (const time of Object.keys(daySlots)) {
-          const slot = daySlots[time];
-          if (slot?.bookedByMe) {
-            // This checks ALL bookings by you even in the past
-            const slotDate = createDateFromDayTime(day, time);
-            const dateOnly = new Date(slotDate);
-            dateOnly.setHours(0, 0, 0, 0);
-            datesWithBookings.add(dateOnly.toDateString());
-          }
-        }
-      }
-
-      // Add dates from current selections
-      for (const s of selectedSlots) {
-        const [start] = s.split("|");
-        const slotDate = new Date(start);
-        const dateOnly = new Date(slotDate);
-        dateOnly.setHours(0, 0, 0, 0);
-        datesWithBookings.add(dateOnly.toDateString());
-      }
-
-      // Add the current slot date
-      const currentSlotDateOnly = new Date(startTime);
-      currentSlotDateOnly.setHours(0, 0, 0, 0);
-      datesWithBookings.add(currentSlotDateOnly.toDateString());
-
-      // Convert back to Date objects and sort
-      const relevantDates = Array.from(datesWithBookings)
-        .map((dateStr) => new Date(dateStr))
-        .sort((a, b) => a.getTime() - b.getTime());
-
-      // Check periods that start from any date that has bookings/selections
-      // and could contain the current slot
-      for (const periodStartDate of relevantDates) {
-        const periodStart = new Date(periodStartDate);
-        periodStart.setHours(0, 0, 0, 0);
-
-        const periodEnd = new Date(periodStart);
-        periodEnd.setDate(periodStart.getDate() + 7);
-        periodEnd.setHours(0, 0, 0, 0);
-
-        // Check if the current slot falls within this 7-day period
-        if (
-          currentSlotDateOnly >= periodStart &&
-          currentSlotDateOnly < periodEnd
-        ) {
-          let totalSlotsInPeriod = 0;
-
-          // Count existing booked slots in this 7-day period (check all visible days)
-          for (const day of allDaysFromGrid) {
-            const daySlots = slotsByDay[day];
-            for (const time of Object.keys(daySlots)) {
-              const slot = daySlots[time];
-              if (slot?.bookedByMe) {
-                // This checks ALL bookings by you even in the past
-                const slotDate = createDateFromDayTime(day, time);
-                const slotDateOnly = new Date(slotDate);
-                slotDateOnly.setHours(0, 0, 0, 0);
-
-                if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
-                  totalSlotsInPeriod++;
-                }
-              }
-            }
-          }
-
-          // Count current session selections in this 7-day period
-          for (const s of selectedSlots) {
-            const [start] = s.split("|");
-            const slotDate = new Date(start);
-            const slotDateOnly = new Date(slotDate);
-            slotDateOnly.setHours(0, 0, 0, 0);
-
-            if (slotDateOnly >= periodStart && slotDateOnly < periodEnd) {
-              totalSlotsInPeriod++;
-            }
-          }
-
-          // Check if adding this slot would exceed the limit for THIS period
-          if (totalSlotsInPeriod + 1 > maxSlotsPerWeek) {
-            const periodStartStr = periodStart.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            });
-            const periodEndDate = new Date(
-              periodEnd.getTime() - 24 * 60 * 60 * 1000
-            ); // Get the last day of the period
-            const periodEndStr = periodEndDate.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            });
-
-            const hoursLimit = (maxSlotsPerWeek * 30) / 60; // Convert slots to hours
-            setErrorMessage(
-              `You can only select up to ${hoursLimit} hours (${maxSlotsPerWeek} slots) within any 7-day period. Period ${periodStartStr} - ${periodEndStr} would have ${
-                totalSlotsInPeriod + 1
-              } slots if you add this selection.`
-            );
-            return;
-          }
+          const hoursLimit = (maxSlotsPerWeek * 30) / 60; // Convert slots to hours
+          setErrorMessage(
+            `You can only select up to ${hoursLimit} hours (${maxSlotsPerWeek} slots) within any 7-day period. Period ${periodStartStr} - ${periodEndStr} would have ${
+              totalSlotsInPeriod + 1
+            } slots if you add this selection.`
+          );
+          return;
         }
       }
     }
@@ -904,7 +653,7 @@ export default function EquipmentBookingGrid({
     onSelectSlots(updatedSlots);
   };
 
-  const today = new Date().getDate();
+  const todayKey = equipmentDayKey(new Date());
 
   // Render a single week grid
   const renderWeekGrid = (days: string[]) => {
@@ -920,12 +669,7 @@ export default function EquipmentBookingGrid({
               const dayParts = day.split(" ");
               const dayName = dayParts[0]; // e.g., "Thu"
               const dayNumber = parseInt(dayParts[1], 10); // e.g., 8
-              const isToday =
-                dayNumber === today &&
-                dayName ===
-                  new Date().toLocaleDateString("en-US", {
-                    weekday: "short",
-                  });
+              const isToday = day === todayKey;
 
               return (
                 <th
@@ -977,21 +721,10 @@ export default function EquipmentBookingGrid({
 
                   const isSelected = selectedSlots.some((slotStr) => {
                     const [start] = slotStr.split("|");
-                    const slotDate = new Date(start);
-                    const slotDayStr = `${slotDate.toLocaleDateString("en-US", {
-                      weekday: "short",
-                    })} ${slotDate.getDate()}`;
-                    const hours = slotDate
-                      .getHours()
-                      .toString()
-                      .padStart(2, "0");
-                    const minutes = slotDate
-                      .getMinutes()
-                      .toString()
-                      .padStart(2, "0");
-                    const slotTimeStr = `${hours}:${minutes}`;
-
-                    return slotDayStr === day && slotTimeStr === time;
+                    return (
+                      equipmentDayKey(start) === day &&
+                      equipmentTimeKey(start) === time
+                    );
                   });
 
                   const isAdminRestricted =
@@ -1022,30 +755,7 @@ export default function EquipmentBookingGrid({
                             return false;
                           }
 
-                          // Extract day parts
-                          const dayParts = day.split(" ");
-                          if (dayParts.length !== 2) return false;
-
-                          const dayNumber = parseInt(dayParts[1], 10);
-
-                          // Parse time
-                          const [hour, minute] = time.split(":").map(Number);
-
-                          // Create a date object for this slot
-                          const now = new Date();
-                          const slotDate = new Date(
-                            now.getFullYear(),
-                            now.getMonth(),
-                            dayNumber,
-                            hour,
-                            minute
-                          );
-
-                          // Adjust month if day is in next month
-                          if (dayNumber < now.getDate() && now.getDate() > 20) {
-                            slotDate.setMonth(slotDate.getMonth() + 1);
-                          }
-
+                          const slotDate = cellInstant(day, time);
                           return (
                             slotDate >= occ.startDate && slotDate < occ.endDate
                           );
@@ -1193,38 +903,18 @@ export default function EquipmentBookingGrid({
       const firstDay = days[0].split(" ")[1];
       const lastDay = days[days.length - 1].split(" ")[1];
 
-      // Get month names
-      const today = new Date();
-      const currentMonth = today.getMonth();
-      const currentYear = today.getFullYear();
+      const firstDate = cellInstant(days[0], "00:00");
+      const lastDate = cellInstant(days[days.length - 1], "00:00");
+      const monthName = (d: Date) =>
+        formatBusinessDate(d, "en-US", { month: "short" });
+      const firstMonthName = monthName(firstDate);
+      const lastMonthName = monthName(lastDate);
 
-      // Find the month for the first day
-      let firstDayMonth = currentMonth;
-      if (parseInt(firstDay) < today.getDate() && today.getDate() > 20) {
-        firstDayMonth = (currentMonth + 1) % 12;
-      }
-
-      // Find the month for the last day
-      let lastDayMonth = firstDayMonth;
-      if (parseInt(lastDay) < parseInt(firstDay)) {
-        // Last day is in the next month
-        lastDayMonth = (firstDayMonth + 1) % 12;
-      }
-
-      const firstMonthName = new Date(
-        currentYear,
-        firstDayMonth,
-        1
-      ).toLocaleString("default", { month: "short" });
-
-      const lastMonthName = new Date(
-        currentYear,
-        lastDayMonth,
-        1
-      ).toLocaleString("default", { month: "short" });
-
-      // Check if both days are in the same month
-      if (firstDayMonth === lastDayMonth) {
+      // "YYYY-MM" prefixes compare month and year together
+      if (
+        toBusinessDateInput(firstDate).slice(0, 7) ===
+        toBusinessDateInput(lastDate).slice(0, 7)
+      ) {
         return `${firstMonthName} ${firstDay}-${lastDay}`;
       } else {
         return `${firstMonthName} ${firstDay} - ${lastMonthName} ${lastDay}`;
