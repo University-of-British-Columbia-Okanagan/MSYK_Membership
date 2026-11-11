@@ -20,6 +20,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 import { logger } from "~/logging/logger";
+import { BUSINESS_TIME_ZONE } from "~/config/timezone";
+import { addBusinessMonths, formatBusinessDate } from "~/utils/business-time";
 import {
   applyMembershipDiscount,
   chargeMembershipViaInvoice,
@@ -30,6 +32,7 @@ import {
   resolveDiscountCode,
 } from "~/services/stripe-discounts.server";
 import { getOrCreateStripeCustomer } from "~/models/user.server";
+import { MembershipChangeError, assertPlanPermission } from "~/utils/membership-rules";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
@@ -52,17 +55,44 @@ function addMonthsForCycle(
   date: Date,
   cycle: "monthly" | "quarterly" | "semiannually" | "yearly",
 ): Date {
-  const newDate = new Date(date);
-  if (cycle === "yearly") {
-    newDate.setFullYear(newDate.getFullYear() + 1);
-  } else if (cycle === "semiannually") {
-    newDate.setMonth(newDate.getMonth() + 6);
-  } else if (cycle === "quarterly") {
-    newDate.setMonth(newDate.getMonth() + 3);
-  } else {
-    newDate.setMonth(newDate.getMonth() + 1);
+  const months =
+    cycle === "yearly" ? 12 : cycle === "semiannually" ? 6 : cycle === "quarterly" ? 3 : 1;
+  // On the business clock so a due date keeps its NWT time of day; ms carried over
+  // because fromWallClock works in whole seconds.
+  const next = addBusinessMonths(date, months);
+  return new Date(next.getTime() + (date.getTime() % 1000));
+}
+
+export {
+  MembershipChangeError,
+  assertPlanPermission,
+  getPlanPriceForCycle,
+  type BillingCycle,
+} from "~/utils/membership-rules";
+
+/** The member's own membership in `status`, with its plan; throws otherwise. */
+export async function getOwnedMembership(
+  userId: number,
+  membershipId: number,
+  status: "active" | "cancelled",
+) {
+  const membership = Number.isInteger(membershipId)
+    ? await db.userMembership.findUnique({
+        where: { id: membershipId },
+        include: { membershipPlan: true },
+      })
+    : null;
+  if (!membership || membership.userId !== userId) {
+    throw new MembershipChangeError("That membership could not be found on your account.");
   }
-  return newDate;
+  if (membership.status !== status) {
+    throw new MembershipChangeError(
+      status === "active"
+        ? "Only an active membership can be upgraded or downgraded."
+        : "Only a cancelled membership can be resubscribed.",
+    );
+  }
+  return membership;
 }
 
 /**
@@ -85,8 +115,7 @@ export function calculateProratedUpgradeAmount(
   newMonthly: number,
 ): number {
   if (newMonthly <= oldMonthly) return 0;
-  const effectiveStart = new Date(nextPaymentDate);
-  effectiveStart.setMonth(effectiveStart.getMonth() - 1);
+  const effectiveStart = addBusinessMonths(nextPaymentDate, -1);
   const totalMs = Math.max(
     0,
     nextPaymentDate.getTime() - effectiveStart.getTime(),
@@ -822,14 +851,16 @@ export async function registerMembershipSubscription(
     where: { id: membershipPlanId },
   });
   if (!plan) throw new Error("Plan not found");
+  assertPlanPermission(userDetails, plan);
 
   if (isResubscription) {
     console.log("Entering resubscription branch");
     let cancelledMembership;
     if (currentMembershipId) {
-      cancelledMembership = await db.userMembership.findUnique({
-        where: { id: currentMembershipId },
-      });
+      cancelledMembership = await getOwnedMembership(userId, currentMembershipId, "cancelled");
+      if (cancelledMembership.membershipPlanId !== membershipPlanId) {
+        throw new MembershipChangeError("That membership is for a different plan.");
+      }
     } else {
       cancelledMembership = await db.userMembership.findFirst({
         where: { userId, membershipPlanId, status: "cancelled" },
@@ -838,14 +869,12 @@ export async function registerMembershipSubscription(
     if (!cancelledMembership) {
       throw new Error("No cancelled membership found for resubscription");
     }
-    const now = new Date();
-    const newNextPaymentDate = addMonthsForCycle(now, billingCycle);
-
+    // Resubscribing is free, so the next charge stays at the date already paid up to.
+    // Moving it to now + one cycle gave the gap away (up to a year on a yearly plan).
     subscription = await db.userMembership.update({
       where: { id: cancelledMembership.id },
       data: {
         status: "active",
-        nextPaymentDate: newNextPaymentDate,
         autoRenew,
       },
     });
@@ -857,15 +886,7 @@ export async function registerMembershipSubscription(
       subscription.id,
     );
   } else if (isDowngrade && currentMembershipId) {
-    console.log("hello world2");
-    const currentMembership = await db.userMembership.findUnique({
-      where: { id: currentMembershipId },
-      include: { membershipPlan: true },
-    });
-
-    if (!currentMembership) {
-      throw new Error("Current membership not found");
-    }
+    const currentMembership = await getOwnedMembership(userId, currentMembershipId, "active");
 
     // For downgrades, keep the current membership active until the next payment date
     // and schedule the new (cheaper) membership to start at the next payment date.
@@ -936,15 +957,7 @@ export async function registerMembershipSubscription(
       subscription.id,
     );
   } else if (currentMembershipId) {
-    console.log("hello world3");
-    const currentMembership = await db.userMembership.findUnique({
-      where: { id: currentMembershipId },
-      include: { membershipPlan: true },
-    });
-
-    if (!currentMembership) {
-      throw new Error("Current membership not found");
-    }
+    const currentMembership = await getOwnedMembership(userId, currentMembershipId, "active");
 
     // Enforce monthly -> monthly for upgrades
     if (
@@ -1038,16 +1051,7 @@ export async function registerMembershipSubscription(
     // Standard new subscription or simple update logic
     console.log("Creating brand‑new subscription record");
     const startDate = new Date(now);
-    const nextPaymentDate = new Date(startDate);
-    if (billingCycle === "semiannually") {
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 6);
-    } else if (billingCycle === "quarterly") {
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 3);
-    } else if (billingCycle === "yearly") {
-      nextPaymentDate.setFullYear(nextPaymentDate.getFullYear() + 1);
-    } else {
-      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
-    }
+    const nextPaymentDate = addMonthsForCycle(startDate, billingCycle);
 
     subscription = await db.userMembership.create({
       data: {
@@ -1256,7 +1260,7 @@ export async function getUserActiveMembership(userId: number) {
  * Handles payment processing via Stripe and updates user role levels based on membership status
  */
 export function startMonthlyMembershipCheck() {
-  // Run every day at midnight (adjust the cron expression as needed)
+  // Midnight on the business clock, whatever zone the server runs in.
   cron.schedule("0 0 * * *", async () => {
     console.log("Running monthly membership check...");
 
@@ -1662,7 +1666,7 @@ export function startMonthlyMembershipCheck() {
     } catch (error) {
       console.error("Error in monthly membership check:", error);
     }
-  });
+  }, { timezone: BUSINESS_TIME_ZONE });
 }
 
 /**
@@ -2158,7 +2162,7 @@ async function generateSignedMembershipAgreement(
     }
 
     // Add date
-    const currentDate = new Date().toLocaleDateString("en-US");
+    const currentDate = formatBusinessDate(new Date(), "en-US");
     lastPage.drawText(currentDate, {
       x: baseX,
       y: 114,
@@ -2249,7 +2253,7 @@ async function generateSignedMembershipAgreement247(
     }
 
     // Add date
-    const currentDate = new Date().toLocaleDateString("en-US");
+    const currentDate = formatBusinessDate(new Date(), "en-US");
     lastPage.drawText(currentDate, {
       x: baseX,
       y: 114,
