@@ -23,14 +23,14 @@ For every changed file (code, config, scripts — not markdowns), read it comple
 This includes:
 - TypeScript/TSX source under `app/` — models, services, utils, routes, components, schemas, config, logging
 - `prisma/schema.prisma` and anything under `prisma/migrations/`
-- `entry.server.ts`, `seed.ts`, and scripts under `test-scripts/`
+- `entry.server.ts`, `seed.ts`, scripts under `test-scripts/`, and production tools under `scripts/`
 - Tests under `tests/`
 - Root config: `package.json`, `app/routes.ts`, `vite.config.ts`, `tsconfig.json`, `components.json`, `jest.config.*`
 
 Pay special attention to:
 - New or modified Prisma models, fields, and unique constraints
 - New or modified exported functions in `app/models/` and `app/services/`
-- New environment variables (`process.env.*`) referenced anywhere
+- New environment variables (`process.env.*`) referenced anywhere. `.env.example` lists every variable; if it is missing one, say so in your report (it is not a markdown file, so do not edit it here)
 - New `AdminSettings` keys (string literals passed to `getAdminSetting`/`updateAdminSetting` or used as `key:` in a Prisma query)
 - New cron jobs, `setInterval` timers, or startup hooks wired into `entry.server.ts`
 - New or changed auth/session behavior in `app/utils/session.server.ts`
@@ -129,9 +129,9 @@ Before reporting, run these checks and fix anything they surface:
 
 ```bash
 # Every file path referenced in the docs must exist
-for doc in README.md CLAUDE.md MSYK-OVERVIEW.md docs/README.md .claude/README.md; do
+for doc in README.md CLAUDE.md MSYK-OVERVIEW.md tests/README.md docs/README.md .claude/README.md; do
   echo "=== $doc — referenced paths that do not exist ==="
-  grep -ohE '`?(app|prisma|tests|test-scripts|public|docs)/[A-Za-z0-9_./:*-]+' "$doc" \
+  grep -ohE '`?(app|prisma|tests|test-scripts|scripts|public|docs)/[A-Za-z0-9_./:*-]+' "$doc" \
     | tr -d '`' | sed 's/[.,)]*$//' | sort -u | while read p; do
         case "$p" in *'*'*) continue;; esac
         [ -e "$p" ] || echo "  $p"

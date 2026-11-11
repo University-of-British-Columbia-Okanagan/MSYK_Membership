@@ -70,6 +70,15 @@ import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Input } from "~/components/ui/input";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  getWallClock,
+  parseBusinessDateTime,
+  toBusinessDateTimeInput,
+  toBusinessTimeInput,
+  toWallClockMirror,
+} from "~/utils/business-time";
 
 /**
  * Loader to fetch available workshops for prerequisites.
@@ -122,49 +131,23 @@ export async function loader({ request }: { request: Request }) {
 }
 
 /**
- * Helper: Parse a datetime-local string as a local Date.
+ * Helper: Parse a datetime-local string as business wall time.
  */
 function parseDateTimeAsLocal(value: string): Date {
-  try {
-    if (!value) return new Date("");
-
-    // Use Date.parse to handle various date input formats
-    const timestamp = Date.parse(value);
-
-    if (isNaN(timestamp)) {
-      return new Date("");
-    }
-
-    const date = new Date(timestamp);
-
-    // Ensure the date is valid
-    if (isNaN(date.getTime())) {
-      return new Date("");
-    }
-
-    return date;
-  } catch (error) {
-    return new Date("");
-  }
+  return parseBusinessDateTime(value);
 }
 
 /**
- * Helper: Format a Date as a datetime-local string using local time.
+ * Helper: Format a Date as a datetime-local string on the business clock.
  */
 function formatLocalDatetime(date: Date): string {
-  if (isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return toBusinessDateTimeInput(date);
 }
 
 // Helper for formatting display dates
 // Format example: Thu, Feb 27, 2025, 01:24 AM
 function formatDisplayDate(date: Date): string {
-  return date.toLocaleString(undefined, {
+  return formatBusinessDateTime(date, undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -229,15 +212,15 @@ function checkForEquipmentOverlaps(
       const currentTime = new Date(occ.startDate);
       while (currentTime < occ.endDate) {
         // Format day as "Sat 24"
-        const dayName = currentTime.toLocaleDateString("en-US", {
+        const dayName = formatBusinessDate(currentTime, "en-US", {
           weekday: "short",
         });
-        const dayNumber = currentTime.getDate();
+        const dayNumber = getWallClock(currentTime).day;
         const dayKey = `${dayName} ${dayNumber}`;
 
         // Format time as "05:00"
-        const hours = String(currentTime.getHours()).padStart(2, "0");
-        const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+        const hours = toBusinessTimeInput(currentTime).slice(0, 2);
+        const minutes = toBusinessTimeInput(currentTime).slice(3, 5);
         const timeKey = `${hours}:${minutes}`;
 
         // Check if this slot exists in the equipment's slots and is booked or unavailable
@@ -245,8 +228,8 @@ function checkForEquipmentOverlaps(
         if (slot && (slot.isBooked || slot.reservedForWorkshop)) {
           // Calculate end time (30 minutes later)
           const endTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
-          const endHours = String(endTime.getHours()).padStart(2, "0");
-          const endMinutes = String(endTime.getMinutes()).padStart(2, "0");
+          const endHours = toBusinessTimeInput(endTime).slice(0, 2);
+          const endMinutes = toBusinessTimeInput(endTime).slice(3, 5);
 
           const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes} - ${endHours}:${endMinutes}`;
 
@@ -324,15 +307,15 @@ function getEquipmentSlotsForOccurrences(
     const currentTime = new Date(occ.startDate);
     while (currentTime < occ.endDate) {
       // Format day as "Sat 24" (using the actual day name and number)
-      const dayName = currentTime.toLocaleDateString("en-US", {
+      const dayName = formatBusinessDate(currentTime, "en-US", {
         weekday: "short",
       });
-      const dayNumber = currentTime.getDate();
+      const dayNumber = getWallClock(currentTime).day;
       const dayKey = `${dayName} ${dayNumber}`;
 
       // Format time as "05:00"
-      const hours = String(currentTime.getHours()).padStart(2, "0");
-      const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+      const hours = toBusinessTimeInput(currentTime).slice(0, 2);
+      const minutes = toBusinessTimeInput(currentTime).slice(3, 5);
       const timeKey = `${hours}:${minutes}`;
 
       // Add to slots map
@@ -521,10 +504,9 @@ export async function action({ request }: { request: Request }) {
           throw new Error("End date must be later than start date");
         }
 
-        const startOffset = localStart.getTimezoneOffset();
-        const utcStart = new Date(localStart.getTime() - startOffset * 60000);
-        const endOffset = localEnd.getTimezoneOffset();
-        const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+        // The PST columns hold the typed wall clock, so rows can be re-anchored later.
+        const utcStart = toWallClockMirror(localStart);
+        const utcEnd = toWallClockMirror(localEnd);
 
         return {
           startDate: localStart,
@@ -620,7 +602,7 @@ export async function action({ request }: { request: Request }) {
           );
 
           if (conflictingSlot) {
-            const formattedTime = new Date(currentTime).toLocaleString(
+            const formattedTime = formatBusinessDateTime(new Date(currentTime), 
               undefined,
               {
                 weekday: "short",

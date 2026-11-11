@@ -8,7 +8,10 @@ import {
   ShadTable,
   type ColumnDefinition,
 } from "~/components/ui/Dashboard/ShadTable";
-import { format } from "date-fns";
+import {
+  equipmentDayKey,
+  equipmentTimeKey,
+} from "~/utils/business-time-equipment";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 
@@ -91,7 +94,7 @@ export default function AllEquipmentBookings() {
         eq.slots.length ? (
           <ul className="text-xs space-y-1">
             {eq.slots.map((slot) => {
-              const time = format(new Date(slot.startTime), "EEE HH:mm");
+              const time = `${equipmentDayKey(slot.startTime).split(" ")[0]} ${equipmentTimeKey(slot.startTime)}`;
               const source = slot.workshopOccurrence
                 ? `Workshop: ${slot.workshopOccurrence.workshop?.name}`
                 : slot.bookings.length

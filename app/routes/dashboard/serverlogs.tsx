@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "~/components/ui/sidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import { getRoleUser } from "~/utils/session.server";
+import { formatBusinessDateTime, parseBusinessDateTime } from "~/utils/business-time";
 export type LoaderData = {
   logs: string;
 };
@@ -46,8 +47,8 @@ export async function loader({ request }: { request: Request }) {
         const matchesLevel = levels.length === 0 || levels.includes(log.level);
         const matchesQuery = query === "" || line.toLowerCase().includes(query);
 
-        const matchesStart = !start || logTime >= new Date(start).getTime();
-        const matchesEnd = !end || logTime <= new Date(end).getTime();
+        const matchesStart = !start || logTime >= parseBusinessDateTime(start).getTime();
+        const matchesEnd = !end || logTime <= parseBusinessDateTime(end).getTime();
 
         return matchesLevel && matchesQuery && matchesStart && matchesEnd;
       } catch {
@@ -162,7 +163,7 @@ export default function LogsTab() {
               .map((line, i) => {
                 try {
                   const log = JSON.parse(line);
-                  const time = new Date(log.timestamp).toLocaleString();
+                  const time = formatBusinessDateTime(log.timestamp);
                   const level = log.level?.toUpperCase() ?? "INFO";
 
                   let color = "text-green-400";

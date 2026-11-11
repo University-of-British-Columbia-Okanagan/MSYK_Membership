@@ -5,6 +5,12 @@ jest.mock("~/utils/db.server", () => createDbMock());
 jest.mock("~/utils/session.server");
 jest.mock("~/models/equipment.server");
 jest.mock("~/utils/googleCalendar.server");
+// Without this the real sync ran and sent live requests to the Stripe test account
+// from every workshop suite, logging after the suite had finished.
+jest.mock("~/services/stripe-sync.server", () => ({
+  syncWorkshopToStripe: jest.fn().mockResolvedValue(undefined),
+  archiveStripeProduct: jest.fn().mockResolvedValue(undefined),
+}));
 
 // Re-export commonly used imports for convenience
 export { db } from "~/utils/db.server";

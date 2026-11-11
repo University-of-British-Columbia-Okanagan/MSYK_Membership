@@ -2,7 +2,7 @@
 
 Jest test suite for the MSYK Membership Management System.
 
-**Current state: 46 suites, 737 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
+**Current state: 71 suites, 1028 tests, all passing.** Every server module under `app/models/`, `app/services/`, `app/utils/session.server.ts`, and `app/config/` has coverage. That green baseline is what makes a failure meaningful — if the suite goes red after your change, you caused it.
 
 ```bash
 npm test                                      # everything
@@ -45,9 +45,11 @@ Asking costs one message. The alternatives — skipping the verification, faking
 
 ## Component tests
 
-Almost everything here runs in jest's `node` environment. The register form is the exception,
-because its age gate, guardian field and post-error restore all live in component state and
-are unreachable from a model test.
+Almost everything here runs in jest's `node` environment. Two components are the exception:
+the register form, because its age gate, guardian field and post-error restore all live in
+component state and are unreachable from a model test, and `EquipmentBookingGrid`
+(`components/EquipmentBookingGrid.component.test.tsx`), whose cells must read as business
+wall times whatever zone the test host is in.
 
 A component test opts in with a docblock at the top of the file:
 
@@ -78,51 +80,82 @@ Three things to know before writing another one:
 tests/
 ├── README.md                    # this file
 ├── entry.server.test.ts         # boot wiring: the three background jobs start, once each
+├── components/                  # component tests (jsdom)
+│   └── EquipmentBookingGrid.component.test.tsx  # grid cells, today and past on the business clock
 ├── config/                      # app/config/
 │   └── access-control.test.ts
 ├── models/                      # app/models/
 │   ├── access.card-log.test.ts      # access_card + accessLog
 │   ├── admin.settings.test.ts
-│   ├── equipment.{basic,booking,cancellation,settings,slots}.test.ts
+│   ├── equipment.{basic,booking,cancellation,checkout,settings,slots}.test.ts
 │   ├── issue.server.test.ts
-│   ├── membership.{server,cron,discount-apply,discount-lifecycle,resync-impact}.test.ts
-│   ├── payment.{gst,refunds}.test.ts
+│   ├── membership.{server,cron,discount-apply,discount-lifecycle,ownership,resync-impact}.test.ts
+│   ├── payment.{checkout,gst,membership-gst,quickcheckout,refunds}.test.ts
 │   ├── profile.volunteer.test.ts
-│   ├── user.rolelevel.test.ts
+│   ├── user.{payment-method,rolelevel}.test.ts
 │   └── workshop.{basic,cancellation,capacity,move,occurrence-status,registration}.test.ts
 ├── services/                    # app/services/
 │   ├── access-control-sync.server.test.ts
 │   ├── brivo.server.test.ts
+│   ├── stripe-discounts.server.test.ts
 │   └── stripe-sync.server.test.ts
+├── scripts/                     # scripts/
+│   └── reanchor-times.test.ts       # the timezone re-anchor tool
 ├── schemas/                     # app/schemas/
 │   ├── registration-age-guardian.test.ts  # 14+ gate and the 14-17 guardian name
 │   └── workshop-occurrence-dates.test.ts  # end > start, across both workshop schemas
 ├── utils/                       # app/utils/
 │   ├── age.test.ts                        # age boundaries, invalid dates, timezone drift
+│   ├── business-time.test.ts              # the business-clock helpers, run under several real TZs
+│   ├── business-time-equipment.test.ts    # grid keys, run under several real TZs
+│   ├── business-time.guard.test.ts        # fails on any host-clock date call in app/
+│   ├── email.business-time.test.ts        # email times on the business clock
+│   ├── email.dev-guard.test.ts            # EMAIL_DEV_REDIRECT and development suppression
+│   ├── email.membership-discount.test.ts
+│   ├── email.membership-resubscribe.test.ts # the saved date, every cycle
 │   ├── email.minor-registration.test.ts    # the under-18 staff notice
+│   ├── equipment-booking-rules.test.ts    # level 3 hours, closures, level 4 window
+│   ├── googleCalendar.event-time.test.ts  # RFC 3339 with the -06:00 offset
 │   ├── occurrences.test.ts
 │   ├── registration-restore.test.ts        # re-opening the document gates after a failed submit
 │   ├── session.register-minor.test.ts      # register() stores the guardian, notifies staff
 │   └── session.server.test.ts
 ├── setup/                       # jest setup, no tests
 │   ├── dom-stubs.ts                 # ResizeObserver etc. that Radix needs; no-op under node
+│   ├── env.ts                       # blanks EMAIL_DEV_REDIRECT so a developer's .env cannot reroute test mail
 │   └── lucide-react-stub.js         # icons; the real package is ESM-only
-├── routes/authentication/       # component tests (jsdom)
-│   └── register.component.test.tsx  # the age gate, guardian field and post-error restore
-├── routes/dashboard/            # route loaders and actions
-│   ├── addequipment.test.ts
-│   ├── addworkshop.test.ts
-│   └── payment.cutoff.test.ts
+├── routes/
+│   ├── routes-config.test.ts        # purchases still route through paymentprocess and the success page
+│   ├── authentication/
+│   │   ├── logout.test.ts               # POST signs out everywhere, GET signs nobody out
+│   │   └── register.component.test.tsx  # (jsdom) the age gate, guardian field and post-error restore
+│   ├── api/
+│   │   ├── payment-membership-changes.test.ts  # upgrade/downgrade/resubscribe act on your own membership
+│   │   ├── paymentprocess.test.ts
+│   │   ├── paymentresubscribe.test.ts
+│   │   └── stripe-sync.test.ts
+│   └── dashboard/               # route loaders and actions
+│       ├── addequipment.test.ts
+│       ├── addworkshop.test.ts
+│       ├── equipmentbooking.rules.test.ts
+│       ├── equipments.auth.test.ts
+│       ├── payment.cutoff.test.ts
+│       ├── payment.loader-rules.test.ts
+│       ├── paymentsuccess.discount.test.ts
+│       ├── paymentsuccess.verify.test.ts
+│       ├── profile.volunteer-hours.test.ts
+│       └── workshopofferagain.auth.test.ts
 ├── fixtures/                    # per-domain mock setup + sample data
 │   ├── equipment/   {setup,equipments,addEquimentForm,getEquipmentSlotsWithStatus}.ts
 │   ├── membership/  {setup,memberships}.ts
 │   ├── payment/     setup.ts
-│   ├── session/     {setup,getUser,getRoleUser}.ts
+│   ├── session/     {setup,getUser,getRoleUser,cookie}.ts
 │   ├── user/        setup.ts
 │   └── workshop/    {setup,workshops}.ts
 └── helpers/
     ├── db.mock.ts               # shared Prisma client mock
-    └── test-utils.ts            # clearAllMocks, createMockRequest, …
+    ├── test-utils.ts            # clearAllMocks, createMockRequest, …
+    └── business-time{,-equipment}-snapshot.ts  # run as child processes under a real TZ
 ```
 
 Specs mirror the source tree. A file with more than roughly 20 tests is split by concern (`equipment.booking` vs `equipment.slots`) rather than growing without bound.
@@ -138,7 +171,7 @@ Three jobs run for the life of the server process, all started from `entry.serve
 | Job | Cadence | Started by | Spec |
 |-----|---------|-----------|------|
 | Role level sync | every 15s (`*/15 * * * * *`, node-cron) | `startRoleLevelSyncCron()` | `models/user.rolelevel.test.ts` |
-| Membership billing | daily at midnight (`0 0 * * *`, node-cron) | `startMonthlyMembershipCheck()` | `models/membership.cron.test.ts` |
+| Membership billing | daily at midnight business time (`0 0 * * *`, node-cron, `{ timezone: "Etc/GMT+6" }`) | `startMonthlyMembershipCheck()` | `models/membership.cron.test.ts` |
 | Occurrence status | every 1s (`setInterval`) | `startWorkshopOccurrenceStatusUpdate()` | `models/workshop.occurrence-status.test.ts` |
 | — all three start at boot | once per process | `entry.server.ts` | `entry.server.test.ts` |
 
@@ -241,7 +274,7 @@ Applying one to an existing member has its own spec, `models/membership.discount
 The rest of the path has its own specs:
 
 - `routes/dashboard/paymentsuccess.discount.test.ts` — the capture wiring. Pinning the checkout coupon to the member's Stripe customer is the step that makes the discount recur at all, and it is ordered *after* the subscription exists and wrapped so a Stripe failure cannot cost a member the membership they just paid for
-- `routes/dashboard/payment.membership-gst.test.ts` — membership checkout sends the **base** price with GST as a Stripe tax rate, never folded into `unit_amount`; carries the plan's Product; and allows promotion codes
+- `models/payment.membership-gst.test.ts` — membership checkout sends the **base** price with GST as a Stripe tax rate, never folded into `unit_amount`; carries the plan's Product; and allows promotion codes
 - `utils/email.membership-discount.test.ts` — the money quoted in the reminder and payment-success emails, including that GST is derived from the discounted base rather than the gap between list price and total
 
 Each of these was mutation-tested when written: the code was deliberately broken, the expected specs failed, and the change was reverted. A test that cannot fail is not coverage.
@@ -291,6 +324,10 @@ It charges the member's **active** membership. A member can also hold an `ending
 - **`clearAllMocks()` does not restore implementations**, only call history. Domain `reset*Mocks()` helpers re-apply defaults; call both in `beforeEach`
 - **`console.error` in a passing test is noise, not failure.** Several model functions log and swallow by design; spy and restore rather than letting it clutter output
 - **Time-dependent logic uses `jest.useFakeTimers()` + `setSystemTime`.** See `utils/session.server.test.ts` for the 3-hour session expiry boundary
+- **Setting `process.env.TZ` inside a jest worker proves nothing.** The worker's zone is fixed at start, so `business-time.test.ts` and `business-time-equipment.test.ts` run `helpers/business-time*-snapshot.ts` as child processes with a real `TZ` and compare the output. Do the same for any new test whose point is "same answer in every zone"
+- **The business-time guard fails on host-clock date calls in `app/`.** `utils/business-time.guard.test.ts` rejects `toLocale*String()`, `.getHours()`-style getters and setters, `new Date(y, m, d)` and the like. Use the helpers in `app/utils/business-time.ts`; a line that genuinely means the host clock ends with `// host-clock-ok: <reason>`
+- **A fixture that skips a module's side effects can still leak them.** The workshop fixture mocks `stripe-sync.server` because the real sync used to send live requests to the Stripe test account from every workshop suite, logging after the suite had finished
+- **`resetSessionMocks()` resets every `db` mock**, because `clearAllMocks` keeps implementations and a fake user row would otherwise leak between session tests
 
 ---
 

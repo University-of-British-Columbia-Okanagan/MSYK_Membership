@@ -5,6 +5,11 @@ import { randomUUID } from "crypto";
 import formData from "form-data";
 import { db } from "./db.server";
 import { getMinorNotificationEmail } from "../models/admin.server";
+import { logger } from "../logging/logger";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+} from "./business-time";
 
 dotenv.config();
 
@@ -51,6 +56,19 @@ async function sendMail({
   html?: string;
   attachments?: MailgunAttachment;
 }): Promise<void> {
+  // Local .env points at the live Mailgun domain, so dev must never reach real
+  // recipients. EMAIL_DEV_REDIRECT reroutes all mail; otherwise development
+  // suppresses it. Read per call; an unset NODE_ENV (prod cron) still sends.
+  const devRedirect = process.env.EMAIL_DEV_REDIRECT;
+  if (devRedirect) {
+    logger.info(`Email to ${to} redirected to ${devRedirect}`, { subject });
+    subject = `[DEV for ${to}] ${subject}`;
+    to = devRedirect;
+  } else if (process.env.NODE_ENV === "development") {
+    logger.info(`Email to ${to} suppressed in development`, { subject });
+    return;
+  }
+
   assertEmailEnvConfigured();
   const domain = MAILGUN_DOMAIN as string;
   const from = `Makerspace YK <${MAILGUN_FROM_EMAIL as string}>`;
@@ -268,7 +286,7 @@ export async function sendWorkshopConfirmationEmail(params: {
     const lines = sessions
       .map(
         (s, idx) =>
-          `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+          `${idx + 1}. ${formatBusinessDateTime(s.startDate)} - ${formatBusinessDateTime(s.endDate)}`
       )
       .join("\n");
     detailsBlock =
@@ -276,7 +294,7 @@ export async function sendWorkshopConfirmationEmail(params: {
         ? `Sessions confirmed:\n${lines}`
         : `Session confirmed:\n${lines}`;
   } else if (startDate && endDate) {
-    detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
+    detailsBlock = `Session: ${formatBusinessDateTime(startDate)} - ${formatBusinessDateTime(endDate)}`;
   }
 
   const calendarSectionLines: string[] = [];
@@ -404,8 +422,8 @@ export async function sendEquipmentConfirmationEmail(params: {
   price?: number;
 }): Promise<void> {
   const { userEmail, equipmentName, startTime, endTime, price } = params;
-  const start = new Date(startTime).toLocaleString();
-  const end = new Date(endTime).toLocaleString();
+  const start = formatBusinessDateTime(startTime);
+  const end = formatBusinessDateTime(endTime);
 
   const parts = [
     `Your equipment booking for "${equipmentName}" has been confirmed.`,
@@ -431,7 +449,7 @@ export async function sendEquipmentBulkConfirmationEmail(params: {
   const lines = slots
     .map(
       (s, idx) =>
-        `${idx + 1}. ${new Date(s.startTime).toLocaleString()} - ${new Date(s.endTime).toLocaleString()}`
+        `${idx + 1}. ${formatBusinessDateTime(s.startTime)} - ${formatBusinessDateTime(s.endTime)}`
     )
     .join("\n");
 
@@ -498,7 +516,7 @@ export async function sendWorkshopCancellationEmail(params: {
     const lines = sessions
       .map(
         (s, idx) =>
-          `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+          `${idx + 1}. ${formatBusinessDateTime(s.startDate)} - ${formatBusinessDateTime(s.endDate)}`
       )
       .join("\n");
     detailsBlock =
@@ -506,7 +524,7 @@ export async function sendWorkshopCancellationEmail(params: {
         ? `Sessions cancelled:\n${lines}`
         : `Session cancelled:\n${lines}`;
   } else if (startDate && endDate) {
-    detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
+    detailsBlock = `Session: ${formatBusinessDateTime(startDate)} - ${formatBusinessDateTime(endDate)}`;
   }
 
   const parts = [
@@ -551,11 +569,11 @@ export async function sendAdminWorkshopCancellationEmail(params: {
   let detailsBlock = "";
   if (sessions && sessions.length > 0) {
     const lines = sessions
-      .map((s, idx) => `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`)
+      .map((s, idx) => `${idx + 1}. ${formatBusinessDateTime(s.startDate)} - ${formatBusinessDateTime(s.endDate)}`)
       .join("\n");
     detailsBlock = sessions.length > 1 ? `Sessions cancelled:\n${lines}` : `Session cancelled:\n${lines}`;
   } else if (startDate && endDate) {
-    detailsBlock = `Session: ${new Date(startDate).toLocaleString()} - ${new Date(endDate).toLocaleString()}`;
+    detailsBlock = `Session: ${formatBusinessDateTime(startDate)} - ${formatBusinessDateTime(endDate)}`;
   }
 
   const parts = [
@@ -579,8 +597,8 @@ export async function sendEquipmentCancellationEmail(params: {
   endTime: Date;
 }): Promise<void> {
   const { userEmail, equipmentName, startTime, endTime } = params;
-  const start = new Date(startTime).toLocaleString();
-  const end = new Date(endTime).toLocaleString();
+  const start = formatBusinessDateTime(startTime);
+  const end = formatBusinessDateTime(endTime);
   const text = `Your booking for "${equipmentName}" has been cancelled.\nTime: ${start} - ${end}.`;
   await sendMail({
     to: userEmail,
@@ -641,7 +659,7 @@ export async function sendMembershipConfirmationEmail(params: {
 
   const showNextLine = billingCycle === "monthly" && nextBillingDate;
   const nextLine = showNextLine
-    ? `\nNext billing date: ${new Date(nextBillingDate as Date).toLocaleDateString()}`
+    ? `\nNext billing date: ${formatBusinessDate(nextBillingDate as Date)}`
     : "";
 
   const cycleLabel =
@@ -719,7 +737,7 @@ export async function sendMembershipPaymentReminderEmail(params: {
     gstPercentage,
     needsPaymentMethod,
   } = params;
-  const dateOnly = new Date(nextPaymentDate).toLocaleDateString(undefined, {
+  const dateOnly = formatBusinessDate(nextPaymentDate, undefined, {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -783,7 +801,8 @@ export async function sendMembershipPaymentSuccessEmail(params: {
 
   const discountedBase = baseAmount - discountAmount;
   const gstAmount = amountCharged - discountedBase;
-  const nextDateFormatted = new Date(nextPaymentDate).toLocaleDateString(
+  const nextDateFormatted = formatBusinessDate(
+    nextPaymentDate,
     undefined,
     {
       weekday: "long",
@@ -845,7 +864,7 @@ export async function sendMembershipDowngradeEmail(params: {
     `Current plan: ${currentPlanTitle}`,
     `New plan: ${newPlanTitle}`,
     priceLine,
-    `Effective on: ${new Date(effectiveDate).toLocaleDateString()}`,
+    `Effective on: ${formatBusinessDate(effectiveDate)}`,
     `You'll continue to enjoy your current benefits until the effective date.`,
     paymentMethodAction(needsPaymentMethod),
   ].filter(Boolean) as string[];
@@ -864,7 +883,7 @@ export async function sendMembershipCancellationEmail(params: {
 }): Promise<void> {
   const { userEmail, planTitle, accessUntil, needsPaymentMethod } = params;
   const accessLine = accessUntil
-    ? `You'll retain access until ${new Date(accessUntil).toLocaleDateString()}.`
+    ? `You'll retain access until ${formatBusinessDate(accessUntil)}.`
     : `Your access has ended.`;
   const text = `Your membership for "${planTitle}" has been cancelled.\n${accessLine}\nIf this was a mistake, you can resubscribe from your dashboard at any time.`;
   const parts = [
@@ -913,10 +932,11 @@ export async function sendMembershipResubscribeEmail(params: {
     priceVal != null
       ? `Price: $${priceVal.toFixed(2)} (${cycleLabel})`
       : `Billing cycle: ${cycleLabel}`;
-  const nextLine =
-    billingCycle === "monthly" && nextBillingDate
-      ? `Next billing date: ${new Date(nextBillingDate).toLocaleDateString()}`
-      : undefined;
+  const nextLine = !nextBillingDate
+    ? undefined
+    : autoRenew === false
+      ? `Membership ends on: ${formatBusinessDate(nextBillingDate)}`
+      : `Next billing date: ${formatBusinessDate(nextBillingDate)}`;
   const autoRenewLine =
     autoRenew === false
       ? `Auto-Renew: Off. Your membership will expire at the end of the billing period and will not be automatically renewed.`
@@ -1163,8 +1183,8 @@ export async function sendWorkshopPriceVariationCancellationEmail(params: {
 
   const workshopsUrl = new URL("/dashboard/workshops", origin);
 
-  const start = new Date(startDate).toLocaleString();
-  const end = new Date(endDate).toLocaleString();
+  const start = formatBusinessDateTime(startDate);
+  const end = formatBusinessDateTime(endDate);
 
   const pricingLines: string[] = [];
   pricingLines.push(
@@ -1266,7 +1286,7 @@ export async function sendWorkshopPriceVariationCancellationEmailMultiDay(params
   const sessionLines = sessions
     .map(
       (s, idx) =>
-        `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+        `${idx + 1}. ${formatBusinessDateTime(s.startDate)} - ${formatBusinessDateTime(s.endDate)}`
     )
     .join("\n");
 
@@ -1308,7 +1328,7 @@ export async function sendWorkshopPriceVariationCancellationEmailMultiDay(params
   const sessionLinesHtml = sessions
     .map(
       (s, idx) =>
-        `<li>${escapeHTML(new Date(s.startDate).toLocaleString())} - ${escapeHTML(new Date(s.endDate).toLocaleString())}</li>`
+        `<li>${escapeHTML(formatBusinessDateTime(s.startDate))} - ${escapeHTML(formatBusinessDateTime(s.endDate))}</li>`
     )
     .join("");
 
@@ -1388,8 +1408,8 @@ export async function sendWorkshopOccurrenceCancellationEmail(params: {
 
   const workshopsUrl = new URL("/dashboard/workshops", origin);
 
-  const start = new Date(startDate).toLocaleString();
-  const end = new Date(endDate).toLocaleString();
+  const start = formatBusinessDateTime(startDate);
+  const end = formatBusinessDateTime(endDate);
 
   const workshopTypeLabel =
     workshopType === "orientation" ? "Orientation" : "Workshop";
@@ -1523,7 +1543,7 @@ export async function sendWorkshopOccurrenceCancellationEmailMultiDay(params: {
   const sessionLines = sessions
     .map(
       (s, idx) =>
-        `${idx + 1}. ${new Date(s.startDate).toLocaleString()} - ${new Date(s.endDate).toLocaleString()}`
+        `${idx + 1}. ${formatBusinessDateTime(s.startDate)} - ${formatBusinessDateTime(s.endDate)}`
     )
     .join("\n");
 
@@ -1566,7 +1586,7 @@ export async function sendWorkshopOccurrenceCancellationEmailMultiDay(params: {
   const sessionLinesHtml = sessions
     .map(
       (s, idx) =>
-        `<li>${escapeHTML(new Date(s.startDate).toLocaleString())} - ${escapeHTML(new Date(s.endDate).toLocaleString())}</li>`
+        `<li>${escapeHTML(formatBusinessDateTime(s.startDate))} - ${escapeHTML(formatBusinessDateTime(s.endDate))}</li>`
     )
     .join("");
 
@@ -1649,8 +1669,8 @@ export async function sendAdminWorkshopMoveEmail(params: {
 
   const parts = [
     `Your registration for "${workshopName}" has been moved to a new date by an administrator.`,
-    `Previous date: ${new Date(fromStartDate).toLocaleString()} - ${new Date(fromEndDate).toLocaleString()}`,
-    `New date: ${new Date(toStartDate).toLocaleString()} - ${new Date(toEndDate).toLocaleString()}`,
+    `Previous date: ${formatBusinessDateTime(fromStartDate)} - ${formatBusinessDateTime(fromEndDate)}`,
+    `New date: ${formatBusinessDateTime(toStartDate)} - ${formatBusinessDateTime(toEndDate)}`,
     pricingLines.join("\n"),
     `If you have any questions about this change, please contact us.`,
   ].filter(Boolean);

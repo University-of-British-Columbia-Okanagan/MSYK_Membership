@@ -18,6 +18,7 @@ import { useLoaderData } from "react-router";
 import { FiPlus } from "react-icons/fi";
 import { logger } from "~/logging/logger";
 import { getPastWorkshopVisibility } from "~/models/admin.server";
+import { addBusinessDays } from "~/utils/business-time";
 
 export async function loader({ request }: { request: Request }) {
   const roleUser = await getRoleUser(request);
@@ -226,8 +227,7 @@ export default function AdminDashboard() {
 
   // Filtering logic based on current date and past visibility setting
   const now = new Date();
-  const pastCutoffDate = new Date();
-  pastCutoffDate.setDate(pastCutoffDate.getDate() - pastVisibilityDays);
+  const pastCutoffDate = addBusinessDays(now, -pastVisibilityDays);
 
   const activeWorkshops = workshops.filter((event) => {
     if (event.type !== "workshop") return false;

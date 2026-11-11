@@ -7,6 +7,7 @@ import { useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 import { redirect } from "react-router-dom";
+import { formatBusinessDateTime } from "~/utils/business-time";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const roleUser = await getRoleUser(request);
@@ -244,7 +245,7 @@ export default function AccessLogPage() {
                         </td>
                         <td className="px-4 py-2">{log.accessCardId}</td>
                         <td className="px-4 py-2 text-gray-600">
-                          {new Date(log.createdAt).toLocaleString()}
+                          {formatBusinessDateTime(log.createdAt)}
                         </td>
                       </tr>
                     ))}

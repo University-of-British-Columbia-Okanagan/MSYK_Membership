@@ -17,6 +17,8 @@ import {
   getEquipmentSlotsWithStatus,
   getAllEquipmentWithBookings,
 } from "~/models/equipment.server";
+import { withBusinessTime } from "~/utils/business-time";
+import { equipmentDayKey } from "~/utils/business-time-equipment";
 
 describe("equipment.server - Slots", () => {
   let db: any;
@@ -189,11 +191,13 @@ describe("equipment.server - Slots", () => {
   });
 
   describe("getEquipmentSlotsWithStatus", () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
     it("builds slot grid with booking info", async () => {
-      // Use a start time within the visible range (today at 10:00)
-      const now = new Date();
-      const slotDate = new Date(now);
-      slotDate.setHours(10, 0, 0, 0);
+      // Today at 10:00 on the business clock, so the slot is inside the visible range
+      const slotDate = withBusinessTime(new Date(), 10, 0);
       const slot = createMockSlot({
         startTime: slotDate,
         isBooked: true,
@@ -213,10 +217,7 @@ describe("equipment.server - Slots", () => {
       const result = await getEquipmentSlotsWithStatus(1, false);
 
       expect(result[0].slotsByDay).toBeDefined();
-      // find the exact dayKey from the slot's date
-      const day = slot.startTime;
-      const dayName = day.toLocaleDateString("en-US", { weekday: "short" });
-      const dayKey = `${dayName} ${day.getDate()}`;
+      const dayKey = equipmentDayKey(slot.startTime);
       expect(result[0].slotsByDay[dayKey]["10:00"]).toEqual(
         expect.objectContaining({
           isBooked: true,
@@ -225,6 +226,47 @@ describe("equipment.server - Slots", () => {
           userLastName: "Smith",
         })
       );
+    });
+
+    // Fixed instants whose business (UTC-6) reading differs from any dev
+    // machine's zone, so a host-clock regression fails here.
+    it("files slots under their business-clock day and time", async () => {
+      jest.useFakeTimers({
+        now: new Date("2026-11-14T14:00:00Z"), // Sat Nov 14, 08:00 business
+        doNotFake: ["nextTick", "setImmediate"],
+      });
+      const morning = createMockSlot({
+        id: 1,
+        startTime: new Date("2026-11-14T16:00:00Z"),
+        isBooked: true,
+      });
+      const lateEvening = createMockSlot({
+        id: 2,
+        startTime: new Date("2026-11-15T05:30:00Z"),
+        isBooked: true,
+      });
+      db.equipment.findMany.mockResolvedValue([
+        createMockEquipment({ slots: [morning, lateEvening] }),
+      ]);
+
+      const [eq] = await getEquipmentSlotsWithStatus(1, false);
+
+      expect(Object.keys(eq.slotsByDay)).toEqual([
+        "Sat 14",
+        "Sun 15",
+        "Mon 16",
+        "Tue 17",
+        "Wed 18",
+        "Thu 19",
+        "Fri 20",
+      ]);
+      expect(eq.slotsByDay["Sat 14"]["10:00"]).toEqual(
+        expect.objectContaining({ id: 1, isBooked: true })
+      );
+      expect(eq.slotsByDay["Sat 14"]["23:30"]).toEqual(
+        expect.objectContaining({ id: 2, isBooked: true })
+      );
+      expect(eq.slotsByDay["Sun 15"]["05:30"].id).toBeNull();
     });
   });
 

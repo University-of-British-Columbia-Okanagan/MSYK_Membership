@@ -31,6 +31,7 @@ import {
   splitDateOfBirth,
 } from "~/utils/age";
 import { documentViewsFromSavedValues } from "~/utils/registration-restore";
+import { getWallClock } from "~/utils/business-time";
 
 export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
@@ -613,8 +614,8 @@ export default function Register({ actionData }: { actionData?: ActionData }) {
                             >
                               <option value="">Year</option>
                               {Array.from(
-                                { length: new Date().getFullYear() - 1900 + 1 },
-                                (_, i) => new Date().getFullYear() - i
+                                { length: getWallClock(new Date()).year - 1900 + 1 },
+                                (_, i) => getWallClock(new Date()).year - i
                               ).map((y) => (
                                 <option key={y} value={String(y)}>
                                   {y}

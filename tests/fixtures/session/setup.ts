@@ -83,6 +83,11 @@ export const getSessionMocks = () => {
 };
 
 export const resetSessionMocks = () => {
+  // clearAllMocks keeps implementations, so a fake user row would leak between tests.
+  const { db } = require("~/utils/db.server");
+  for (const model of Object.values(db) as Record<string, jest.Mock>[]) {
+    for (const fn of Object.values(model)) fn.mockReset();
+  }
   bcryptHashMock.mockClear();
   bcryptCompareMock.mockClear();
   bcryptHashMock.mockImplementation(async (value: string) => `hashed:${value}`);

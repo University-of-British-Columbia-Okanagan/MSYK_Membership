@@ -6,19 +6,322 @@ import {
   registerForWorkshop,
   registerUserForAllOccurrences,
   getWorkshopPriceVariation,
+  checkWorkshopCapacity,
+  checkMultiDayWorkshopCapacity,
 } from "./workshop.server";
-import { getMembershipPlanById } from "./membership.server";
-import { calculateProratedUpgradeAmount } from "./membership.server";
+import {
+  getMembershipPlanById,
+  calculateProratedUpgradeAmount,
+  getOwnedMembership,
+  registerMembershipSubscription,
+  activateMembershipForm,
+  MEMBERSHIP_REVOKED_ERROR,
+} from "./membership.server";
+import {
+  prepareEquipmentBooking,
+  createEquipmentCheckout,
+  fulfilEquipmentCheckout,
+  bookEquipmentBulkByTimes,
+  EquipmentBookingError,
+} from "./equipment.server";
 import { getSavedPaymentMethod } from "./user.server";
 import { db } from "../utils/db.server";
 import { getAdminSetting } from "./admin.server";
 import { syncUserDoorAccess } from "~/services/access-control-sync.server";
 import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
+import { addBusinessMonths, formatBusinessDateTime } from "~/utils/business-time";
+import {
+  BILLING_CYCLE_LABELS,
+  MembershipChangeError,
+  assertPlanPermission,
+  getPlanPriceForCycle,
+  isBillingCycle,
+  type BillingCycle,
+} from "~/utils/membership-rules";
+import { isPastRegistrationCutoff } from "~/utils/registration-cutoff";
+import {
+  sendWorkshopConfirmationEmail,
+  sendMembershipConfirmationEmail,
+  checkPaymentMethodStatus,
+} from "~/utils/email.server";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+
+export type FulfillmentKind = "workshop" | "membership" | "equipment";
+
+/**
+ * Records that a Stripe payment (cs_... or pi_...) is being turned into a
+ * registration, membership or booking. Returns false when it already was, so
+ * a reloaded success page cannot fulfil the same payment twice.
+ */
+export async function claimPaymentFulfillment(
+  stripeRef: string,
+  userId: number,
+  kind: FulfillmentKind
+): Promise<boolean> {
+  try {
+    await db.paymentFulfillment.create({ data: { stripeRef, userId, kind } });
+    return true;
+  } catch (error: any) {
+    if (error?.code === "P2002") return false;
+    throw error;
+  }
+}
+
+/** Drops a claim whose fulfilment failed, so the success page can retry it on reload. */
+export async function releasePaymentFulfillment(stripeRef: string) {
+  await db.paymentFulfillment.deleteMany({ where: { stripeRef } });
+}
+
+type WorkshopSelection = {
+  workshopId: number;
+  occurrenceId?: number | null;
+  connectId?: number | null;
+  variationId?: number | null;
+};
+
+const toId = (value: unknown): number | null => {
+  const n = Number(value);
+  return value != null && value !== "" && Number.isInteger(n) && n > 0 ? n : null;
+};
+
+/**
+ * Loads a workshop purchase and prices it from the database. Refuses what the
+ * payment page refuses (cancelled, ended, full, past the registration cutoff)
+ * and a price variation that belongs to another workshop.
+ */
+export async function resolveWorkshopPurchase(selection: WorkshopSelection) {
+  const fail = (error: string) => ({ ok: false as const, error });
+  const { workshopId, occurrenceId, connectId, variationId } = selection;
+
+  let workshop;
+  let occurrences;
+  try {
+    workshop = await getWorkshopById(workshopId);
+    if (occurrenceId) {
+      occurrences = [await getWorkshopOccurrence(workshopId, occurrenceId)];
+    } else if (connectId) {
+      occurrences = await getWorkshopOccurrencesByConnectId(workshopId, connectId);
+    }
+  } catch {
+    return fail("Workshop or session not found.");
+  }
+  if (!workshop || !occurrences || occurrences.length === 0) {
+    return fail("Workshop or session not found.");
+  }
+
+  let variation = null;
+  if (variationId) {
+    variation = await getWorkshopPriceVariation(variationId);
+    if (!variation || variation.workshopId !== workshopId) {
+      return fail("That price option does not belong to this workshop.");
+    }
+  }
+
+  const now = new Date();
+  if (occurrences.some((o) => o.status === "cancelled")) {
+    return fail("This workshop session has been cancelled.");
+  }
+  if (occurrences.some((o) => new Date(o.endDate) < now)) {
+    return fail("This workshop session has already ended.");
+  }
+  if (isPastRegistrationCutoff(new Date(occurrences[0].startDate), workshop.registrationCutoff)) {
+    return fail("Registration for this workshop has closed.");
+  }
+
+  const capacity = occurrenceId
+    ? await checkWorkshopCapacity(workshopId, occurrenceId, variationId ?? null)
+    : await checkMultiDayWorkshopCapacity(workshopId, connectId!, variationId ?? null);
+  if (!capacity?.hasCapacity) return fail("This workshop is full.");
+
+  return {
+    ok: true as const,
+    workshop,
+    occurrences,
+    variation,
+    isMultiDay: !occurrenceId,
+    price: variation ? variation.price : workshop.price,
+    displayName: variation ? `${workshop.name} - ${variation.name}` : workshop.name,
+  };
+}
+
+type ResolvedWorkshop = Extract<Awaited<ReturnType<typeof resolveWorkshopPurchase>>, { ok: true }>;
+
+/** Registers the member for a resolved workshop purchase and sends the confirmation email. */
+async function registerWorkshopPurchase(
+  userId: number,
+  userEmail: string | null | undefined,
+  selection: WorkshopSelection,
+  purchase: ResolvedWorkshop,
+  paymentIntentId?: string
+) {
+  const variationId = purchase.variation?.id ?? null;
+  if (purchase.isMultiDay) {
+    await registerUserForAllOccurrences(
+      selection.workshopId,
+      selection.connectId!,
+      userId,
+      variationId,
+      paymentIntentId
+    );
+  } else {
+    await registerForWorkshop(
+      selection.workshopId,
+      selection.occurrenceId!,
+      userId,
+      variationId,
+      paymentIntentId
+    );
+  }
+
+  if (!userEmail) return;
+  try {
+    const { workshop, variation, occurrences } = purchase;
+    await sendWorkshopConfirmationEmail({
+      userEmail,
+      workshopName: workshop.name,
+      ...(purchase.isMultiDay
+        ? { sessions: occurrences.map((o) => ({ startDate: o.startDate, endDate: o.endDate })) }
+        : { startDate: occurrences[0].startDate, endDate: occurrences[0].endDate }),
+      location: workshop.location,
+      basePrice: workshop.price,
+      priceVariation: variation
+        ? { name: variation.name, description: variation.description, price: variation.price }
+        : null,
+    });
+  } catch (emailError) {
+    console.error("Failed to send workshop confirmation email:", emailError);
+  }
+}
+
+/**
+ * Prices a membership purchase from the plan and the chosen billing cycle, or
+ * the server's proration for an upgrade from the member's own active monthly plan.
+ */
+export async function resolveMembershipPurchase(
+  userId: number,
+  input: { membershipPlanId: unknown; billingCycle?: unknown; currentMembershipId?: unknown }
+) {
+  const fail = (error: string, status = 400) => ({ ok: false as const, error, status });
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { email: true, membershipStatus: true, roleLevel: true, allowLevel4: true },
+  });
+  if (!user) return fail("User not found.", 404);
+  if (user.membershipStatus === "revoked") {
+    return fail("Your membership access has been revoked.", 403);
+  }
+
+  const plan = await getMembershipPlanById(Number(input.membershipPlanId));
+  if (!plan) return fail("Membership plan not found.", 404);
+
+  const billingCycle = input.billingCycle ?? "monthly";
+  const cyclePrice = isBillingCycle(billingCycle) ? getPlanPriceForCycle(plan, billingCycle) : null;
+  if (!isBillingCycle(billingCycle) || cyclePrice == null) {
+    const label = isBillingCycle(billingCycle) ? BILLING_CYCLE_LABELS[billingCycle] : "that";
+    return fail(`This plan is not offered with ${label} billing. Please choose another billing cycle.`);
+  }
+
+  try {
+    assertPlanPermission(user, plan);
+  } catch (error) {
+    return fail((error as Error).message, 403);
+  }
+
+  let price = cyclePrice;
+  let currentMembershipId: number | null = null;
+  if (input.currentMembershipId) {
+    let current;
+    try {
+      current = await getOwnedMembership(userId, Number(input.currentMembershipId), "active");
+    } catch (error) {
+      if (error instanceof MembershipChangeError) return fail(error.message);
+      throw error;
+    }
+    if (current.billingCycle !== "monthly" || billingCycle !== "monthly") {
+      return fail(
+        "Only monthly-to-monthly upgrades are supported. Please cancel your current term."
+      );
+    }
+    const fee = calculateProratedUpgradeAmount(
+      new Date(),
+      new Date(current.nextPaymentDate),
+      Number(current.membershipPlan.price),
+      Number(plan.price)
+    );
+    if (fee <= 0) return fail("No payment required for this switch.", 200);
+    price = fee;
+    currentMembershipId = current.id;
+  }
+
+  return { ok: true as const, user, plan, billingCycle, price, currentMembershipId };
+}
+
+type ResolvedMembership = Extract<
+  Awaited<ReturnType<typeof resolveMembershipPurchase>>,
+  { ok: true }
+>;
+
+/** Creates the member's subscription for a resolved purchase, then the form and email. */
+async function registerMembershipPurchase(
+  userId: number,
+  purchase: ResolvedMembership,
+  autoRenew: boolean,
+  paymentIntentId?: string
+) {
+  const { plan, billingCycle } = purchase;
+  const subscription = await registerMembershipSubscription(
+    userId,
+    plan.id,
+    purchase.currentMembershipId,
+    false,
+    false,
+    paymentIntentId,
+    billingCycle,
+    autoRenew
+  );
+
+  // The membership exists from here on; nothing below may undo or repeat it.
+  try {
+    await activateMembershipForm(userId, plan.id, subscription.id);
+  } catch (error) {
+    console.error("Failed to activate membership form:", error);
+  }
+
+  try {
+    const months =
+      billingCycle === "semiannually" ? 6 : billingCycle === "quarterly" ? 3 : billingCycle === "yearly" ? 12 : 1;
+    const gstSetting = await getAdminSetting("gst_percentage", "5");
+    await sendMembershipConfirmationEmail({
+      userEmail: purchase.user.email,
+      planTitle: plan.title,
+      planDescription: plan.description,
+      monthlyPrice: plan.price,
+      features: plan.feature as Record<string, string>,
+      needAdminPermission: plan.needAdminPermission,
+      billingCycle,
+      planPrice: getPlanPriceForCycle(plan, billingCycle) ?? plan.price,
+      nextBillingDate:
+        billingCycle === "monthly" ? addBusinessMonths(new Date(), months) : undefined,
+      needsPaymentMethod: await checkPaymentMethodStatus(userId),
+      autoRenew,
+      gstPercentage: parseFloat(gstSetting),
+    });
+  } catch (emailError) {
+    console.error("Failed to send membership confirmation email:", emailError);
+  }
+  return subscription;
+}
 
 /**
  * Creates a payment intent using a user's saved card with automatic GST calculation
@@ -46,7 +349,6 @@ export async function createPaymentIntentWithSavedCard(
   }
 
   // Get dynamic GST rate from admin settings
-  const { getAdminSetting } = await import("./admin.server");
   const gstPercentage = await getAdminSetting("gst_percentage", "5");
   const gstRate = parseFloat(gstPercentage) / 100;
   const amountWithGST = amount * (1 + gstRate);
@@ -72,588 +374,130 @@ export async function createPaymentIntentWithSavedCard(
   return paymentIntent;
 }
 
+export type QuickCheckoutData = {
+  type: "workshop" | "equipment" | "membership";
+  workshopId?: number;
+  occurrenceId?: number | null;
+  connectId?: number | null;
+  variationId?: number | null;
+  equipmentId?: number;
+  slots?: unknown;
+  membershipPlanId?: number;
+  currentMembershipId?: number | null;
+  billingCycle?: BillingCycle;
+  autoRenew?: boolean;
+};
+
 /**
- * Processes a quick checkout for various service types using saved payment methods
- * @param userId - The ID of the user making the purchase
- * @param checkoutData - Object containing checkout details including type, IDs, and pricing
- * @returns Promise<Object> - Payment result with success status and details
- * @throws Error if payment processing fails
+ * Charges the member's saved card for a workshop, equipment booking or
+ * membership, priced on the server, and fulfils it before reporting success.
+ * @param userId - The signed-in member; never taken from the request body
  */
-export async function quickCheckout(
-  userId: number,
-  checkoutData: {
-    type: "workshop" | "equipment" | "membership";
-    workshopId?: number;
-    occurrenceId?: number;
-    connectId?: number;
-    equipmentId?: number;
-    slotCount?: number;
-    slots?: string[];
-    slotsDataKey?: string;
-    membershipPlanId?: number;
-    price?: number;
-    currentMembershipId?: number;
-    upgradeFee?: number;
-    variationId?: number;
-    billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
-    autoRenew?: boolean;
-  }
-) {
+export async function quickCheckout(userId: number, checkoutData: QuickCheckoutData) {
+  const type = checkoutData.type;
+  const fail = (error: string) => ({ success: false as const, error, type });
+
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { email: true, membershipStatus: true },
+    select: { email: true, membershipStatus: true, roleLevel: true, allowLevel4: true },
   });
-
   if (!user) throw new Error("User not found");
 
+  const metadata: Record<string, string> = { userId: userId.toString() };
   let description = "";
   let price = 0;
-  let autoRenew = true;
-  let metadata: Record<string, string> = {
-    userId: userId.toString(),
-  };
+  // Turns the purchase into a registration, booking or membership.
+  let fulfil: (paymentIntentId?: string) => Promise<unknown>;
 
-  if (
-    checkoutData.type === "membership" &&
-    user.membershipStatus === "revoked"
-  ) {
-    return {
-      success: false,
-      error: "Your membership access has been revoked.",
-      type: "membership",
-    };
-  }
-
-  switch (checkoutData.type) {
-    case "workshop":
-      if (!checkoutData.workshopId) throw new Error("Workshop ID required");
-
-      const workshop = await getWorkshopById(checkoutData.workshopId);
-      if (!workshop) throw new Error("Workshop not found");
-
-      description = workshop.name;
-      price = workshop.price;
-      metadata.workshopId = checkoutData.workshopId.toString();
-
-      // Handle price variation
-      if (checkoutData.variationId) {
-        const variation = await getWorkshopPriceVariation(
-          checkoutData.variationId
-        );
-        if (variation) {
-          description += ` - ${variation.name}`;
-          price = variation.price;
-          metadata.variationId = checkoutData.variationId.toString();
-        }
+  switch (type) {
+    case "workshop": {
+      const selection: WorkshopSelection = {
+        workshopId: Number(checkoutData.workshopId),
+        occurrenceId: toId(checkoutData.occurrenceId),
+        connectId: toId(checkoutData.connectId),
+        variationId: toId(checkoutData.variationId),
+      };
+      if (!selection.workshopId || (!selection.occurrenceId && !selection.connectId)) {
+        return fail("Workshop details are missing.");
       }
+      const purchase = await resolveWorkshopPurchase(selection);
+      if (!purchase.ok) return fail(purchase.error);
 
-      if (checkoutData.occurrenceId) {
-        const occurrence = await getWorkshopOccurrence(
-          checkoutData.workshopId,
-          checkoutData.occurrenceId
-        );
-        if (!occurrence) throw new Error("Occurrence not found");
-        description += ` - ${new Date(occurrence.startDate).toLocaleString()}`;
-        metadata.occurrenceId = checkoutData.occurrenceId.toString();
-      } else if (checkoutData.connectId) {
-        const occurrences = await getWorkshopOccurrencesByConnectId(
-          checkoutData.workshopId,
-          checkoutData.connectId
-        );
-        if (!occurrences || occurrences.length === 0)
-          throw new Error("Occurrences not found");
-        description += ` - ${occurrences.length} sessions`;
-        metadata.connectId = checkoutData.connectId.toString();
-      }
+      price = purchase.price;
+      description = purchase.isMultiDay
+        ? `${purchase.displayName} - ${purchase.occurrences.length} sessions`
+        : `${purchase.displayName} - ${formatBusinessDateTime(purchase.occurrences[0].startDate)}`;
+      metadata.workshopId = String(selection.workshopId);
+      if (selection.occurrenceId) metadata.occurrenceId = String(selection.occurrenceId);
+      if (selection.connectId) metadata.connectId = String(selection.connectId);
+      if (purchase.variation) metadata.variationId = String(purchase.variation.id);
+      fulfil = (pi) => registerWorkshopPurchase(userId, user.email, selection, purchase, pi);
       break;
+    }
 
-    case "equipment":
-      if (
-        !checkoutData.equipmentId ||
-        !checkoutData.slotCount ||
-        checkoutData.price == null ||
-        !checkoutData.slotsDataKey
-      ) {
-        throw new Error(
-          "Equipment ID, slot count, price, and slots data required"
-        );
+    case "equipment": {
+      const equipmentId = Number(checkoutData.equipmentId);
+      let prepared;
+      try {
+        prepared = await prepareEquipmentBooking(userId, equipmentId, checkoutData.slots);
+      } catch (error) {
+        if (error instanceof EquipmentBookingError) return fail(error.message);
+        throw error;
       }
-      description = `Equipment Booking (ID: ${checkoutData.equipmentId}) - ${checkoutData.slotCount} slots`;
-      price = checkoutData.price;
-      metadata.equipmentId = checkoutData.equipmentId.toString();
-      metadata.slotCount = checkoutData.slotCount.toString();
+      price = prepared.amount;
+      description = `${prepared.equipment.name} - ${prepared.slots.length} slots`;
+      metadata.equipmentId = String(equipmentId);
       metadata.isEquipmentBooking = "true";
-      metadata.slotsDataKey = checkoutData.slotsDataKey;
-      break;
 
-    case "membership":
-      if (!checkoutData.membershipPlanId)
-        throw new Error("Membership plan ID required");
-
-      {
-        const membershipPlan = await getMembershipPlanById(
-          checkoutData.membershipPlanId
-        );
-        if (!membershipPlan) throw new Error("Membership plan not found");
-
-        description = membershipPlan.title;
-        const billingCycle = checkoutData.billingCycle || "monthly";
-        autoRenew = checkoutData.autoRenew ?? true;
-        metadata.billingCycle = billingCycle;
-        metadata.membershipPlanId = checkoutData.membershipPlanId.toString();
-        metadata.autoRenew = String(autoRenew);
-
-        // Default for brand-new membership purchase
-        price = checkoutData.price || membershipPlan.price;
-
-        // If upgrading from an existing membership, compute proration server-side
-        if (checkoutData.currentMembershipId) {
-          const current = await db.userMembership.findUnique({
-            where: { id: checkoutData.currentMembershipId },
-            include: { membershipPlan: true },
-          });
-
-          if (!current) throw new Error("Current membership not found");
-
-          if (
-            current.billingCycle !== "monthly" ||
-            billingCycle !== "monthly"
-          ) {
-            throw new Error(
-              "Only monthly-to-monthly upgrades can be paid; cancel non-monthly instead"
-            );
-          }
-
-          const now = new Date();
-          const oldMonthly = Number(current.membershipPlan.price);
-          const newMonthly = Number(membershipPlan.price);
-          const fee = calculateProratedUpgradeAmount(
-            now,
-            new Date(current.nextPaymentDate),
-            oldMonthly,
-            newMonthly
-          );
-
-          if (fee <= 0) {
-            return {
-              success: false,
-              error: "No payment required for this switch.",
-              type: "membership",
-            };
-          }
-
-          price = fee;
-          metadata.currentMembershipId =
-            checkoutData.currentMembershipId.toString();
-        }
+      if (price === 0) {
+        fulfil = () => bookEquipmentBulkByTimes(userId, equipmentId, prepared.slots);
+      } else {
+        const checkout = await createEquipmentCheckout(userId, equipmentId, prepared.slots, price);
+        metadata.equipmentCheckoutId = checkout.id;
+        fulfil = (pi) => fulfilEquipmentCheckout(checkout.id, userId, pi ?? null);
       }
       break;
+    }
+
+    case "membership": {
+      const autoRenew = checkoutData.autoRenew ?? true;
+      const purchase = await resolveMembershipPurchase(userId, {
+        membershipPlanId: checkoutData.membershipPlanId,
+        billingCycle: checkoutData.billingCycle,
+        currentMembershipId: checkoutData.currentMembershipId,
+      });
+      if (!purchase.ok) return fail(purchase.error);
+
+      price = purchase.price;
+      description = purchase.plan.title;
+      metadata.membershipPlanId = String(purchase.plan.id);
+      metadata.billingCycle = purchase.billingCycle;
+      metadata.autoRenew = String(autoRenew);
+      if (purchase.currentMembershipId) {
+        metadata.currentMembershipId = String(purchase.currentMembershipId);
+      }
+      fulfil = (pi) => registerMembershipPurchase(userId, purchase, autoRenew, pi);
+      break;
+    }
 
     default:
       throw new Error("Invalid checkout type");
   }
 
-  // If price is 0, skip payment and complete the action directly
+  // Free only when the server's price is zero.
   if (price === 0) {
-    if (checkoutData.type === "workshop") {
-      if (checkoutData.connectId) {
-        // Multi-day workshop registration
-        await registerUserForAllOccurrences(
-          checkoutData.workshopId!,
-          checkoutData.connectId,
-          userId,
-          checkoutData.variationId || null,
-          undefined
-        );
-
-        // Send confirmation email for multi-day workshop
-        try {
-          const { sendWorkshopConfirmationEmail } = await import(
-            "../utils/email.server"
-          );
-          const {
-            getWorkshopById,
-            getWorkshopOccurrencesByConnectId,
-            getWorkshopPriceVariation,
-          } = await import("./workshop.server");
-
-          const workshop = await getWorkshopById(checkoutData.workshopId!);
-          const occurrences = await getWorkshopOccurrencesByConnectId(
-            checkoutData.workshopId!,
-            checkoutData.connectId
-          );
-
-          if (workshop && occurrences) {
-            let priceVariation = null;
-            if (checkoutData.variationId) {
-              priceVariation = await getWorkshopPriceVariation(
-                checkoutData.variationId
-              );
-            }
-
-            const sessions = occurrences.map((occ) => ({
-              startDate: occ.startDate,
-              endDate: occ.endDate,
-            }));
-
-            await sendWorkshopConfirmationEmail({
-              userEmail: user.email,
-              workshopName: workshop.name,
-              sessions,
-              location: workshop.location,
-              basePrice: workshop.price,
-              priceVariation: priceVariation
-                ? {
-                    name: priceVariation.name,
-                    description: priceVariation.description,
-                    price: priceVariation.price,
-                  }
-                : null,
-            });
-          }
-        } catch (emailError) {
-          console.error(
-            "Failed to send workshop confirmation email:",
-            emailError
-          );
-        }
-      } else if (checkoutData.occurrenceId) {
-        // Single occurrence registration
-        await registerForWorkshop(
-          checkoutData.workshopId!,
-          checkoutData.occurrenceId,
-          userId,
-          checkoutData.variationId || null,
-          undefined
-        );
-
-        // Send confirmation email for single occurrence workshop
-        try {
-          const { sendWorkshopConfirmationEmail } = await import(
-            "../utils/email.server"
-          );
-          const {
-            getWorkshopById,
-            getWorkshopOccurrence,
-            getWorkshopPriceVariation,
-          } = await import("./workshop.server");
-
-          const workshop = await getWorkshopById(checkoutData.workshopId!);
-          const occurrence = await getWorkshopOccurrence(
-            checkoutData.workshopId!,
-            checkoutData.occurrenceId
-          );
-
-          if (workshop && occurrence) {
-            let priceVariation = null;
-            if (checkoutData.variationId) {
-              priceVariation = await getWorkshopPriceVariation(
-                checkoutData.variationId
-              );
-            }
-
-            await sendWorkshopConfirmationEmail({
-              userEmail: user.email,
-              workshopName: workshop.name,
-              startDate: occurrence.startDate,
-              endDate: occurrence.endDate,
-              location: workshop.location,
-              basePrice: workshop.price,
-              priceVariation: priceVariation
-                ? {
-                    name: priceVariation.name,
-                    description: priceVariation.description,
-                    price: priceVariation.price,
-                  }
-                : null,
-            });
-          }
-        } catch (emailError) {
-          console.error(
-            "Failed to send workshop confirmation email:",
-            emailError
-          );
-        }
-      }
-    } else if (checkoutData.type === "equipment") {
-      // For free equipment, just return success and let the success page handle booking
-      return {
-        success: true,
-        paymentIntentId: null,
-        amount: 0,
-        type: checkoutData.type,
-      };
+    try {
+      await fulfil();
+    } catch (error) {
+      console.error(`Free ${type} quick checkout failed:`, error);
+      return fail(userMessage(error, "We could not complete this. Please try again."));
     }
-
-    return {
-      success: true,
-      paymentIntentId: null,
-      amount: 0,
-      type: checkoutData.type,
-    };
+    return { success: true, paymentIntentId: null, amount: 0, type };
   }
 
+  let paymentIntent;
   try {
-    const paymentIntent = await createPaymentIntentWithSavedCard(
-      userId,
-      price,
-      description,
-      metadata
-    );
-
-    // If payment is successful and it's a workshop, register the user
-    if (paymentIntent.status === "succeeded") {
-      try {
-        if (checkoutData.type === "workshop") {
-          if (checkoutData.connectId) {
-            // Multi-day workshop registration
-            await registerUserForAllOccurrences(
-              checkoutData.workshopId!,
-              checkoutData.connectId,
-              userId,
-              checkoutData.variationId || null,
-              paymentIntent.id
-            );
-
-            // Send confirmation email for multi-day workshop
-            try {
-              const { sendWorkshopConfirmationEmail } = await import(
-                "../utils/email.server"
-              );
-              const {
-                getWorkshopById,
-                getWorkshopOccurrencesByConnectId,
-                getWorkshopPriceVariation,
-              } = await import("./workshop.server");
-
-              const workshop = await getWorkshopById(checkoutData.workshopId!);
-              const occurrences = await getWorkshopOccurrencesByConnectId(
-                checkoutData.workshopId!,
-                checkoutData.connectId
-              );
-
-              if (workshop && occurrences) {
-                let priceVariation = null;
-                if (checkoutData.variationId) {
-                  priceVariation = await getWorkshopPriceVariation(
-                    checkoutData.variationId
-                  );
-                }
-
-                const sessions = occurrences.map((occ) => ({
-                  startDate: occ.startDate,
-                  endDate: occ.endDate,
-                }));
-
-                await sendWorkshopConfirmationEmail({
-                  userEmail: user.email,
-                  workshopName: workshop.name,
-                  sessions,
-                  location: workshop.location,
-                  basePrice: workshop.price,
-                  priceVariation: priceVariation
-                    ? {
-                        name: priceVariation.name,
-                        description: priceVariation.description,
-                        price: priceVariation.price,
-                      }
-                    : null,
-                });
-              }
-            } catch (emailError) {
-              console.error(
-                "Failed to send workshop confirmation email:",
-                emailError
-              );
-            }
-          } else if (checkoutData.occurrenceId) {
-            // Single occurrence registration
-            await registerForWorkshop(
-              checkoutData.workshopId!,
-              checkoutData.occurrenceId,
-              userId,
-              checkoutData.variationId || null,
-              paymentIntent.id
-            );
-
-            // Send confirmation email for single occurrence workshop
-            try {
-              const { sendWorkshopConfirmationEmail } = await import(
-                "../utils/email.server"
-              );
-              const {
-                getWorkshopById,
-                getWorkshopOccurrence,
-                getWorkshopPriceVariation,
-              } = await import("./workshop.server");
-
-              const workshop = await getWorkshopById(checkoutData.workshopId!);
-              const occurrence = await getWorkshopOccurrence(
-                checkoutData.workshopId!,
-                checkoutData.occurrenceId
-              );
-
-              if (workshop && occurrence) {
-                let priceVariation = null;
-                if (checkoutData.variationId) {
-                  priceVariation = await getWorkshopPriceVariation(
-                    checkoutData.variationId
-                  );
-                }
-
-                await sendWorkshopConfirmationEmail({
-                  userEmail: user.email,
-                  workshopName: workshop.name,
-                  startDate: occurrence.startDate,
-                  endDate: occurrence.endDate,
-                  location: workshop.location,
-                  basePrice: workshop.price,
-                  priceVariation: priceVariation
-                    ? {
-                        name: priceVariation.name,
-                        description: priceVariation.description,
-                        price: priceVariation.price,
-                      }
-                    : null,
-                });
-              }
-            } catch (emailError) {
-              console.error(
-                "Failed to send workshop confirmation email:",
-                emailError
-              );
-            }
-          }
-      } else if (checkoutData.type === "membership") {
-          // Handle membership subscription
-          const {
-            registerMembershipSubscription,
-            getMembershipPlanById,
-            activateMembershipForm,
-          MEMBERSHIP_REVOKED_ERROR,
-          } = await import("./membership.server");
-
-          const currentMembershipId = checkoutData.currentMembershipId || null;
-          const billingCycle = checkoutData.billingCycle || "monthly";
-
-          // Register the subscription and get the subscription object
-          let subscription;
-          try {
-            subscription = await registerMembershipSubscription(
-              userId,
-              checkoutData.membershipPlanId!,
-              currentMembershipId,
-              false, // Not a downgrade
-              false, // Not a resubscription
-              paymentIntent.id,
-              billingCycle as
-                | "monthly"
-                | "quarterly"
-                | "semiannually"
-                | "yearly",
-              autoRenew
-            );
-          } catch (error) {
-            if (
-              error instanceof Error &&
-              error.message === MEMBERSHIP_REVOKED_ERROR
-            ) {
-              return {
-                success: false,
-                error:
-                  "Membership access revoked. Payment succeeded but no subscription was created.",
-                type: "membership",
-              };
-            }
-            throw error;
-          }
-
-          // Activate the pending membership form and link it to the subscription
-          await activateMembershipForm(
-            userId,
-            checkoutData.membershipPlanId!,
-            subscription.id // Pass the subscription ID!
-          );
-
-          // Send confirmation email for membership
-          try {
-            const {
-              sendMembershipConfirmationEmail,
-              checkPaymentMethodStatus,
-            } = await import("../utils/email.server");
-            const membershipPlan = await getMembershipPlanById(
-              checkoutData.membershipPlanId!
-            );
-
-            if (membershipPlan) {
-              // Calculate next billing date (one month from now)
-              const nextBillingDate = new Date();
-              if (billingCycle === "semiannually") {
-                nextBillingDate.setMonth(nextBillingDate.getMonth() + 6);
-              } else if (billingCycle === "quarterly") {
-                nextBillingDate.setMonth(nextBillingDate.getMonth() + 3);
-              } else if (billingCycle === "yearly") {
-                nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
-              } else {
-                nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-              }
-
-              const needsPaymentMethod = await checkPaymentMethodStatus(userId);
-              const gstSetting = await getAdminSetting("gst_percentage", "5");
-              await sendMembershipConfirmationEmail({
-                userEmail: user.email,
-                planTitle: membershipPlan.title,
-                planDescription: membershipPlan.description,
-                monthlyPrice: membershipPlan.price,
-                features: membershipPlan.feature as Record<string, string>,
-                needAdminPermission: membershipPlan.needAdminPermission,
-                billingCycle,
-                planPrice:
-                  billingCycle === "quarterly"
-                    ? (membershipPlan.price3Months ?? membershipPlan.price)
-                    : billingCycle === "semiannually"
-                      ? (membershipPlan.price6Months ?? membershipPlan.price)
-                      : billingCycle === "yearly"
-                        ? (membershipPlan.priceYearly ?? membershipPlan.price)
-                        : membershipPlan.price,
-                nextBillingDate:
-                  billingCycle === "monthly" ? nextBillingDate : undefined,
-                needsPaymentMethod,
-                autoRenew,
-                gstPercentage: parseFloat(gstSetting),
-              });
-            }
-          } catch (emailError) {
-            console.error(
-              "Failed to send membership confirmation email:",
-              emailError
-            );
-          }
-        } else if (checkoutData.type === "equipment") {
-          // Equipment booking will be handled by the frontend after success
-          // Just mark it as successful here - the actual booking happens in the frontend
-          console.log(
-            `Equipment payment successful for user ${userId}, equipment ${checkoutData.equipmentId}`
-          );
-          // We store the payment intent ID in the frontend handling
-          // The actual booking with payment intent ID happens in paymentsuccess.tsx
-        }
-      } catch (registrationError) {
-        console.error(
-          "Auto-registration failed after payment:",
-          registrationError
-        );
-        // Don't fail the payment, but log the error
-        // The user can still be manually registered if needed
-      }
-    }
-
-    return {
-      success: true,
-      paymentIntentId: paymentIntent.id,
-      amount: price,
-      type: checkoutData.type,
-    };
+    paymentIntent = await createPaymentIntentWithSavedCard(userId, price, description, metadata);
   } catch (error: any) {
     // If payment requires authentication, return the client secret
     if (error.raw?.payment_intent) {
@@ -662,11 +506,47 @@ export async function quickCheckout(
         requiresAction: true,
         clientSecret: error.raw.payment_intent.client_secret,
         paymentIntentId: error.raw.payment_intent.id,
-        type: checkoutData.type,
+        type,
       };
+    }
+    if (error instanceof Error && error.message === "No saved payment method found") {
+      return fail("You have no saved card. Please use the regular checkout below.");
     }
     throw error;
   }
+
+  if (paymentIntent.status !== "succeeded") {
+    return fail("The payment was not completed. Please use the regular checkout below.");
+  }
+
+  await claimPaymentFulfillment(paymentIntent.id, userId, type);
+  try {
+    await fulfil(paymentIntent.id);
+  } catch (error) {
+    // Released so the payment is not recorded as fulfilled when it was not.
+    await releasePaymentFulfillment(paymentIntent.id).catch(() => {});
+    console.error(`Fulfilment failed after quick checkout payment ${paymentIntent.id}:`, error);
+    const reason =
+      error instanceof Error && error.message === MEMBERSHIP_REVOKED_ERROR
+        ? "Membership access revoked."
+        : userMessage(error, "Something went wrong.");
+    return {
+      success: false,
+      error: `Your card was charged but we could not complete your ${type === "equipment" ? "booking" : type === "membership" ? "membership" : "registration"}. ${reason} Please contact support.`,
+      paymentIntentId: paymentIntent.id,
+      type,
+    };
+  }
+
+  return { success: true, paymentIntentId: paymentIntent.id, amount: price, type };
+}
+
+/** A thrown error's message when it is written for members, else `fallback`. */
+function userMessage(error: unknown, fallback: string) {
+  if (error instanceof EquipmentBookingError || error instanceof MembershipChangeError) {
+    return error.message;
+  }
+  return fallback;
 }
 
 /**
@@ -839,12 +719,13 @@ export async function createOrUpdatePaymentMethod(
 }
 
 /**
- * Creates a Stripe checkout session for different payment scenarios (workshops, memberships, equipment)
- * @param request - The HTTP request containing payment data in JSON format
- * @returns Promise<Response> - JSON response with checkout session URL or error
- * @throws Error if required payment data is missing or Stripe session creation fails
+ * Starts a Stripe Checkout Session (or a saved-card quick checkout) for a
+ * workshop, membership or held equipment checkout. Everything is priced here;
+ * any price or user id in the body is ignored.
+ * @param request - The JSON request from the payment page or booking action
+ * @param userId - The signed-in member, from the caller's session
  */
-export async function createCheckoutSession(request: Request) {
+export async function createCheckoutSession(request: Request, userId: number) {
   const body = await request.json();
   const autoRenew =
     typeof body.autoRenew === "boolean"
@@ -853,11 +734,8 @@ export async function createCheckoutSession(request: Request) {
         ? false
         : true;
 
-  // Check if user wants to use saved card
-  if (body.useSavedCard && body.userId) {
-    // Determine checkout type and prepare data
-    let checkoutData: any = { userId: body.userId };
-
+  if (body.useSavedCard) {
+    let checkoutData: QuickCheckoutData | null = null;
     if (body.workshopId) {
       checkoutData = {
         type: "workshop",
@@ -867,118 +745,29 @@ export async function createCheckoutSession(request: Request) {
         variationId: body.variationId,
       };
     } else if (body.equipmentId) {
-      checkoutData = {
-        type: "equipment",
-        equipmentId: body.equipmentId,
-        slotCount: body.slotCount,
-        price: body.price,
-        slots: body.slots,
-        slotsDataKey: body.slotsDataKey,
-      };
+      checkoutData = { type: "equipment", equipmentId: body.equipmentId, slots: body.slots };
     } else if (body.membershipPlanId) {
       checkoutData = {
         type: "membership",
         membershipPlanId: body.membershipPlanId,
-        price: body.price,
         currentMembershipId: body.currentMembershipId,
-        upgradeFee: body.upgradeFee,
         billingCycle: body.billingCycle || "monthly",
         autoRenew,
       };
     }
-
-    if (checkoutData.type) {
-      return quickCheckout(body.userId, checkoutData);
-    }
+    if (checkoutData) return quickCheckout(userId, checkoutData);
   }
 
-  // Membership Payment Branch
   if (body.membershipPlanId) {
-    const {
-      membershipPlanId,
-      userId,
-      currentMembershipId,
-      billingCycle = "monthly",
-    } = body;
-    if (!membershipPlanId || !userId) {
-      throw new Error("Missing required membership payment data");
+    const purchase = await resolveMembershipPurchase(userId, body);
+    if (!purchase.ok) {
+      return jsonResponse({ success: false, error: purchase.error }, purchase.status);
     }
-
-    const membershipPlan = await getMembershipPlanById(
-      Number(membershipPlanId)
-    );
-    if (!membershipPlan) {
-      throw new Error("Membership Plan not found");
-    }
-
-    const membershipUser = await db.user.findUnique({
-      where: { id: Number(userId) },
-      select: { membershipStatus: true },
-    });
-
-    if (membershipUser?.membershipStatus === "revoked") {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Your membership access has been revoked.",
-        }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Compute server-side proration when upgrading from an existing monthly plan
-    let chargeAmount: number;
-    if (billingCycle === "quarterly" && membershipPlan.price3Months) {
-      chargeAmount = Number(membershipPlan.price3Months);
-    } else if (billingCycle === "semiannually" && membershipPlan.price6Months) {
-      chargeAmount = Number(membershipPlan.price6Months);
-    } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
-      chargeAmount = Number(membershipPlan.priceYearly);
-    } else {
-      chargeAmount = Number(membershipPlan.price);
-    }
-
-    if (currentMembershipId) {
-      const current = await db.userMembership.findUnique({
-        where: { id: Number(currentMembershipId) },
-        include: { membershipPlan: true },
-      });
-      if (!current) throw new Error("Current membership not found");
-
-      if (current.billingCycle !== "monthly" || billingCycle !== "monthly") {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error:
-              "Only monthly-to-monthly upgrades are supported. Please cancel your current term.",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      const fee = calculateProratedUpgradeAmount(
-        new Date(),
-        new Date(current.nextPaymentDate),
-        Number(current.membershipPlan.price),
-        Number(membershipPlan.price)
-      );
-
-      if (fee <= 0) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "No payment required for this switch.",
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-      chargeAmount = fee;
-    }
-
+    const { plan, billingCycle, price } = purchase;
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
 
     // GST rides as a tax rate rather than being folded into unit_amount, so a promotion
-    // code discounts the base and GST is charged on the discounted amount — matching how
+    // code discounts the base and GST is charged on the discounted amount, matching how
     // renewals are invoiced. Folding it in would tax the full price at signup only.
     const gstTaxRateId = await getOrCreateGstTaxRate(parseFloat(gstPercentage));
 
@@ -993,15 +782,15 @@ export async function createCheckoutSession(request: Request) {
         {
           price_data: {
             currency: "cad",
-            ...(membershipPlan.stripeProductId
-              ? { product: membershipPlan.stripeProductId }
+            ...(plan.stripeProductId
+              ? { product: plan.stripeProductId }
               : {
                   product_data: {
-                    name: membershipPlan.title,
-                    description: `${membershipPlan.description || "Membership"} (plus ${gstPercentage}% GST)`,
+                    name: plan.title,
+                    description: `${plan.description || "Membership"} (plus ${gstPercentage}% GST)`,
                   },
                 }),
-            unit_amount: Math.round(chargeAmount * 100),
+            unit_amount: Math.round(price * 100),
           },
           quantity: 1,
           ...(gstTaxRateId ? { tax_rates: [gstTaxRateId] } : {}),
@@ -1010,112 +799,50 @@ export async function createCheckoutSession(request: Request) {
       success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.BASE_URL}dashboard/memberships`,
       metadata: {
-        membershipPlanId: membershipPlanId.toString(),
+        membershipPlanId: plan.id.toString(),
         userId: userId.toString(),
-        originalPrice: membershipPlan.price.toString(),
-        currentMembershipId: currentMembershipId
-          ? String(currentMembershipId)
+        originalPrice: plan.price.toString(),
+        currentMembershipId: purchase.currentMembershipId
+          ? String(purchase.currentMembershipId)
           : null,
-        billingCycle: billingCycle,
+        billingCycle,
         autoRenew: String(autoRenew),
       },
     });
-    return new Response(JSON.stringify({ url: session.url }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ url: session.url });
   }
-  // Workshop Single Occurrence Payment
-  else if (body.workshopId && body.occurrenceId) {
-    const { workshopId, occurrenceId, price, userId, variationId } = body;
-    if (!workshopId || !occurrenceId || price == null || !userId) {
-      throw new Error("Missing required payment data");
-    }
-    const workshop = await getWorkshopById(Number(workshopId));
-    const occurrence = await getWorkshopOccurrence(
-      Number(workshopId),
-      Number(occurrenceId)
-    );
-    if (!workshop || !occurrence) {
-      throw new Error("Workshop or Occurrence not found");
-    }
 
-    let workshopDisplayName = workshop.name;
-    if (variationId) {
-      const variation = await getWorkshopPriceVariation(Number(variationId));
-      if (variation) {
-        workshopDisplayName = `${workshop.name} - ${variation.name}`;
-      }
-    }
+  if (body.workshopId && (body.occurrenceId || body.connectId)) {
+    const selection: WorkshopSelection = {
+      workshopId: Number(body.workshopId),
+      occurrenceId: toId(body.occurrenceId),
+      connectId: body.occurrenceId ? null : toId(body.connectId),
+      variationId: toId(body.variationId),
+    };
+    const purchase = await resolveWorkshopPurchase(selection);
+    if (!purchase.ok) return jsonResponse({ error: purchase.error }, 400);
 
-    // If price is 0, register immediately without payment
-    if (price === 0) {
+    if (purchase.price === 0) {
       try {
-        await registerForWorkshop(
-          Number(workshopId),
-          Number(occurrenceId),
-          Number(userId),
-          variationId ? Number(variationId) : null,
-          undefined
-        );
-
-        // Send confirmation email
-        const user = await db.user.findUnique({
-          where: { id: Number(userId) },
-          select: { email: true },
-        });
-
-        if (user) {
-          const { sendWorkshopConfirmationEmail } = await import(
-            "../utils/email.server"
-          );
-
-          let priceVariation = null;
-          if (variationId) {
-            priceVariation = await getWorkshopPriceVariation(Number(variationId));
-          }
-
-          await sendWorkshopConfirmationEmail({
-            userEmail: user.email,
-            workshopName: workshop.name,
-            startDate: occurrence.startDate,
-            endDate: occurrence.endDate,
-            location: workshop.location,
-            basePrice: workshop.price,
-            priceVariation: priceVariation
-              ? {
-                  name: priceVariation.name,
-                  description: priceVariation.description,
-                  price: priceVariation.price,
-                }
-              : null,
-          });
-        }
-
-        return new Response(
-          JSON.stringify({
-            url: `/dashboard/payment/success?quick_checkout=true&type=workshop&free=1`,
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+        const user = await db.user.findUnique({ where: { id: userId }, select: { email: true } });
+        await registerWorkshopPurchase(userId, user?.email, selection, purchase);
       } catch (error: any) {
-        return new Response(
-          JSON.stringify({ error: error.message }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+        return jsonResponse({ error: error.message }, 500);
       }
+      return jsonResponse({
+        url: `/dashboard/payment/success?quick_checkout=true&type=workshop&free=1`,
+      });
     }
 
-    // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
     const gstRate = parseFloat(gstPercentage) / 100;
-    const priceWithGST = price * (1 + gstRate);
+    const priceWithGST = purchase.price * (1 + gstRate);
+    const { workshop, occurrences } = purchase;
+    const description = purchase.isMultiDay
+      ? `Occurrences:\n${occurrences
+          .map((o) => `  ${formatBusinessDateTime(o.startDate)} - ${formatBusinessDateTime(o.endDate)}`)
+          .join("\n")}`
+      : `Occurrence on ${formatBusinessDateTime(occurrences[0].startDate)}`;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -1129,149 +856,7 @@ export async function createCheckoutSession(request: Request) {
               ? { product: workshop.stripeProductId }
               : {
                   product_data: {
-                    name: workshopDisplayName,
-                    description: `Occurrence on ${new Date(occurrence.startDate).toLocaleString()} (Includes ${gstPercentage}% GST)`,
-                  },
-                }),
-            unit_amount: Math.round(priceWithGST * 100),
-          },
-          quantity: 1,
-        },
-      ],
-      success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
-      metadata: {
-        workshopId: workshopId.toString(),
-        occurrenceId: occurrenceId.toString(),
-        userId: userId.toString(),
-        variationId: variationId ? variationId.toString() : "",
-      },
-    });
-
-    return new Response(JSON.stringify({ url: session.url }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  // Multi-day Workshop Payment
-  else if (body.workshopId && body.connectId) {
-    const { workshopId, connectId, price, userId, variationId } = body;
-    if (!workshopId || !connectId || price == null || !userId) {
-      throw new Error("Missing required payment data");
-    }
-    const workshop = await getWorkshopById(Number(workshopId));
-    const occurrences = await getWorkshopOccurrencesByConnectId(
-      Number(workshopId),
-      Number(connectId)
-    );
-    if (!workshop || !occurrences || occurrences.length === 0) {
-      throw new Error("Workshop or Occurrences not found");
-    }
-
-    let workshopDisplayName = workshop.name;
-    if (variationId) {
-      const variation = await getWorkshopPriceVariation(Number(variationId));
-      if (variation) {
-        workshopDisplayName = `${workshop.name} - ${variation.name}`;
-      }
-    }
-
-    // If price is 0, register immediately without payment
-    if (price === 0) {
-      try {
-        await registerUserForAllOccurrences(
-          Number(workshopId),
-          Number(connectId),
-          Number(userId),
-          variationId ? Number(variationId) : null,
-          undefined
-        );
-
-        // Send confirmation email
-        const user = await db.user.findUnique({
-          where: { id: Number(userId) },
-          select: { email: true },
-        });
-
-        if (user) {
-          const { sendWorkshopConfirmationEmail } = await import(
-            "../utils/email.server"
-          );
-
-          let priceVariation = null;
-          if (variationId) {
-            priceVariation = await getWorkshopPriceVariation(Number(variationId));
-          }
-
-          const sessions = occurrences.map((occ) => ({
-            startDate: occ.startDate,
-            endDate: occ.endDate,
-          }));
-
-          await sendWorkshopConfirmationEmail({
-            userEmail: user.email,
-            workshopName: workshop.name,
-            sessions,
-            location: workshop.location,
-            basePrice: workshop.price,
-            priceVariation: priceVariation
-              ? {
-                  name: priceVariation.name,
-                  description: priceVariation.description,
-                  price: priceVariation.price,
-                }
-              : null,
-          });
-        }
-
-        return new Response(
-          JSON.stringify({
-            url: `/dashboard/payment/success?quick_checkout=true&type=workshop&free=1`,
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      } catch (error: any) {
-        return new Response(
-          JSON.stringify({ error: error.message }),
-          {
-            status: 500,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
-
-    const occurrencesDescription = occurrences
-      .map((occ) => {
-        const startStr = new Date(occ.startDate).toLocaleString();
-        const endStr = new Date(occ.endDate).toLocaleString();
-        return `  ${startStr} - ${endStr}`;
-      })
-      .join("\n");
-
-    const description = `Occurrences:\n${occurrencesDescription}`;
-
-    const gstPercentage = await getAdminSetting("gst_percentage", "5");
-    const gstRate = parseFloat(gstPercentage) / 100;
-    const priceWithGST = price * (1 + gstRate);
-
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      allow_promotion_codes: true,
-      line_items: [
-        {
-          price_data: {
-            currency: "cad",
-            ...(workshop.stripeProductId
-              ? { product: workshop.stripeProductId }
-              : {
-                  product_data: {
-                    name: workshopDisplayName,
+                    name: purchase.displayName,
                     description: `${description} (Includes ${gstPercentage}% GST)`,
                   },
                 }),
@@ -1283,50 +868,32 @@ export async function createCheckoutSession(request: Request) {
       success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
       metadata: {
-        workshopId: workshopId.toString(),
-        connectId: connectId.toString(),
+        workshopId: selection.workshopId.toString(),
+        ...(selection.occurrenceId
+          ? { occurrenceId: selection.occurrenceId.toString() }
+          : { connectId: String(selection.connectId) }),
         userId: userId.toString(),
-        variationId: variationId ? variationId.toString() : "",
+        variationId: purchase.variation ? purchase.variation.id.toString() : "",
       },
     });
-
-    return new Response(JSON.stringify({ url: session.url }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse({ url: session.url });
   }
 
-  // Equipment Booking Payment
-  else if (
-    body.equipmentId &&
-    body.slotCount &&
-    body.price != null &&
-    body.userId &&
-    body.slotsDataKey
-  ) {
-    const { equipmentId, slotCount, price, userId, slots, slotsDataKey } = body;
-
-    // If price is 0, redirect to success page where booking will occur
-    if (price === 0) {
-      return new Response(
-        JSON.stringify({
-          url: `/dashboard/payment/success?quick_checkout=true&type=equipment&equipment_id=${equipmentId}&slots_data_key=${slotsDataKey}&free=1`,
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+  if (body.equipmentCheckoutId) {
+    const checkout = await db.equipmentCheckout.findUnique({
+      where: { id: String(body.equipmentCheckoutId) },
+    });
+    if (!checkout || checkout.userId !== userId || checkout.fulfilledAt || checkout.amount <= 0) {
+      return jsonResponse({ error: "Booking details not found." }, 404);
     }
+    const slotCount = Array.isArray(checkout.slots) ? checkout.slots.length : 0;
 
-    // Calculate GST
     const gstPercentage = await getAdminSetting("gst_percentage", "5");
     const gstRate = parseFloat(gstPercentage) / 100;
-    const priceWithGST = price * (1 + gstRate);
+    const priceWithGST = checkout.amount * (1 + gstRate);
 
-    // Fetch equipment for name and stripeProductId
     const equipment = await db.equipment.findUnique({
-      where: { id: Number(equipmentId) },
+      where: { id: checkout.equipmentId },
       select: { name: true, stripeProductId: true },
     });
 
@@ -1342,7 +909,7 @@ export async function createCheckoutSession(request: Request) {
               ? { product: equipment.stripeProductId }
               : {
                   product_data: {
-                    name: equipment?.name ?? `Equipment Booking (ID: ${equipmentId})`,
+                    name: equipment?.name ?? `Equipment Booking (ID: ${checkout.equipmentId})`,
                     description: `Booking for ${slotCount} slots (Includes ${gstPercentage}% GST)`,
                   },
                 }),
@@ -1354,21 +921,17 @@ export async function createCheckoutSession(request: Request) {
       success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.BASE_URL}dashboard/equipments`,
       metadata: {
-        equipmentId: equipmentId.toString(),
+        equipmentId: checkout.equipmentId.toString(),
+        equipmentCheckoutId: checkout.id,
         userId: userId.toString(),
         slotCount: slotCount.toString(),
-        slotsDataKey: slotsDataKey,
         isEquipmentBooking: "true",
       },
     });
-
-    return new Response(JSON.stringify({ url: session.url }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  } else {
-    throw new Error("Missing required payment parameters");
+    return jsonResponse({ url: session.url });
   }
+
+  return jsonResponse({ error: "Missing required payment parameters" }, 400);
 }
 
 /**

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { getRoleUser } from "~/utils/session.server";
 import { logger } from "~/logging/logger";
 import { redirect } from "react-router-dom";
+import { formatBusinessDateTime } from "~/utils/business-time";
 
 function computeUsageSessions(logs: any[]) {
   const sessions: any[] = [];
@@ -278,11 +279,11 @@ export default function AccessUsagePage() {
                     <td className="px-4 py-2">{row.user}</td>
                     <td className="px-4 py-2">{row.equipment}</td>
                     <td className="px-4 py-2 text-gray-600">
-                      {row.inTime ? new Date(row.inTime).toLocaleString() : "—"}
+                      {row.inTime ? formatBusinessDateTime(row.inTime) : "—"}
                     </td>
                     <td className="px-4 py-2 text-gray-600">
                       {row.outTime
-                        ? new Date(row.outTime).toLocaleString()
+                        ? formatBusinessDateTime(row.outTime)
                         : "—"}
                     </td>
                     <td className="px-4 py-2">{row.totalTime?.toFixed(1)}</td>

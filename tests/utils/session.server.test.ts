@@ -2,6 +2,13 @@ import "tests/fixtures/session/setup";
 
 import { getSessionMocks, resetSessionMocks } from "tests/fixtures/session/setup";
 import type { SessionDbMock } from "tests/fixtures/session/setup";
+import {
+  decodeSessionCookie,
+  expectedPwf,
+  forgeSessionCookie,
+  requestWithCookie as requestWithSessionCookie,
+  useFakeUserRow,
+} from "tests/fixtures/session/cookie";
 import { clearAllMocks } from "tests/helpers/test-utils";
 import {
   login,
@@ -15,17 +22,22 @@ import {
 } from "~/utils/session.server";
 
 /**
- * Builds a Request carrying the session cookie that createUserSession issued.
- * This exercises the real cookie round-trip rather than stubbing the session,
- * which is the only way to meaningfully test expiry and password invalidation.
+ * Issues a real session cookie through createUserSession, which reads the user's
+ * current hash and sessionVersion. Tests then replay it as a Request, which is the
+ * only way to meaningfully test expiry, password changes and sign out.
  */
-const requestWithSessionCookie = (setCookieHeader: string) =>
-  new Request("http://localhost:5173/dashboard", {
-    headers: { Cookie: setCookieHeader.split(";")[0] },
+const sessionCookieFor = async (
+  db: SessionDbMock,
+  userId: number,
+  passwordHash = "hashed:correct-horse",
+  sessionVersion = 0
+) => {
+  db.user.findUnique.mockResolvedValueOnce({
+    id: userId,
+    password: passwordHash,
+    sessionVersion,
   });
-
-const sessionCookieFor = async (userId: number, password: string) => {
-  const response = await createUserSession(userId, password, "/dashboard/user");
+  const response = await createUserSession(userId, "/dashboard/user");
   const setCookie = response.headers.get("Set-Cookie");
   if (!setCookie) throw new Error("createUserSession did not set a cookie");
   return setCookie;
@@ -67,7 +79,7 @@ describe("session.server - authentication and session lifecycle", () => {
       );
     });
 
-    it("returns the raw submitted password so it can be stored in the session", async () => {
+    it("returns the account without the submitted password", async () => {
       db.user.findFirst.mockResolvedValue({
         id: 7,
         email: "person@example.com",
@@ -84,7 +96,6 @@ describe("session.server - authentication and session lifecycle", () => {
         id: 7,
         email: "person@example.com",
         roleUserId: 2,
-        password: "correct-horse",
       });
     });
 
@@ -130,25 +141,65 @@ describe("session.server - authentication and session lifecycle", () => {
 
   describe("createUserSession", () => {
     it("redirects to the requested destination with a session cookie", async () => {
-      const response = await createUserSession(1, "correct-horse", "/dashboard/user");
+      db.user.findUnique.mockResolvedValueOnce({
+        id: 1,
+        password: "hashed:correct-horse",
+        sessionVersion: 0,
+      });
+
+      const response = await createUserSession(1, "/dashboard/user");
 
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe("/dashboard/user");
       expect(response.headers.get("Set-Cookie")).toContain("RJ_session");
     });
+
+    it("never puts the password into the cookie", async () => {
+      const setCookie = await sessionCookieFor(db, 1, "hashed:correct-horse");
+
+      const { json, data } = decodeSessionCookie(setCookie);
+
+      expect(data).not.toHaveProperty("userPassword");
+      expect(json).not.toContain("correct-horse");
+      expect(json).not.toContain("hashed:correct-horse");
+    });
+
+    it("stores the user id, login time, session version and a fingerprint of the hash", async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+      const setCookie = await sessionCookieFor(db, 3, "hashed:correct-horse", 5);
+
+      expect(decodeSessionCookie(setCookie).data).toEqual({
+        userId: "3",
+        loginTime: String(new Date("2026-01-01T00:00:00Z").getTime()),
+        sessionVersion: 5,
+        pwf: expectedPwf("hashed:correct-horse"),
+      });
+      expect(db.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 3 } })
+      );
+    });
+
+    it("issues no cookie when the account cannot be found", async () => {
+      db.user.findUnique.mockResolvedValueOnce(null);
+
+      const response = await createUserSession(99, "/dashboard/user");
+
+      expect(response.headers.get("Location")).toBe("/login");
+      expect(response.headers.get("Set-Cookie")).toBeNull();
+    });
   });
 
   describe("getUserId", () => {
-    it("returns the user id for a valid, fresh session", async () => {
-      const cookie = await sessionCookieFor(1, "correct-horse");
-      db.user.findUnique.mockResolvedValue({
-        id: 1,
-        password: "hashed:correct-horse",
-      });
+    it("returns the user id for a valid, fresh session without a bcrypt compare", async () => {
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const cookie = await sessionCookieFor(db, 1);
 
       const userId = await getUserId(requestWithSessionCookie(cookie));
 
       expect(userId).toBe("1");
+      expect(bcryptCompareMock).not.toHaveBeenCalled();
     });
 
     it("logs out when there is no session cookie at all", async () => {
@@ -161,11 +212,8 @@ describe("session.server - authentication and session lifecycle", () => {
     it("logs out once the session passes the 3 hour limit", async () => {
       jest.useFakeTimers();
       jest.setSystemTime(new Date("2026-01-01T00:00:00Z"));
-      const cookie = await sessionCookieFor(1, "correct-horse");
-      db.user.findUnique.mockResolvedValue({
-        id: 1,
-        password: "hashed:correct-horse",
-      });
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const cookie = await sessionCookieFor(db, 1);
 
       // 2h59m — still inside the window
       jest.setSystemTime(new Date("2026-01-01T02:59:00Z"));
@@ -181,7 +229,7 @@ describe("session.server - authentication and session lifecycle", () => {
     });
 
     it("logs out when the account no longer exists", async () => {
-      const cookie = await sessionCookieFor(1, "correct-horse");
+      const cookie = await sessionCookieFor(db, 1);
       db.user.findUnique.mockResolvedValue(null);
 
       await expect(
@@ -189,30 +237,98 @@ describe("session.server - authentication and session lifecycle", () => {
       ).resolves.toBeNull();
     });
 
-    it("invalidates the session when the stored password no longer matches", async () => {
-      const cookie = await sessionCookieFor(1, "old-password");
-
-      // Session still carries "old-password"; the account has since been changed.
-      db.user.findUnique.mockResolvedValue({
+    it("invalidates the session after a password change", async () => {
+      const row = useFakeUserRow(db, {
         id: 1,
-        password: "hashed:new-password",
+        password: "hashed:old-password",
+        sessionVersion: 0,
       });
+      const cookie = await sessionCookieFor(db, 1, "hashed:old-password");
+      await expect(getUserId(requestWithSessionCookie(cookie))).resolves.toBe("1");
+
+      row.password = "hashed:new-password";
 
       await expect(
         getUserId(requestWithSessionCookie(cookie))
       ).resolves.toBeNull();
-      expect(bcryptCompareMock).toHaveBeenCalledWith(
-        "old-password",
-        "hashed:new-password"
-      );
+    });
+
+    it("rejects a signed cookie whose password fingerprint was tampered with", async () => {
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const real = decodeSessionCookie(await sessionCookieFor(db, 1)).data;
+      const flipped = String(real.pwf).replace(/^./, (c) => (c === "0" ? "1" : "0"));
+
+      for (const pwf of [flipped, "short", expectedPwf("hashed:other-password")]) {
+        const forged = await forgeSessionCookie({ ...real, pwf });
+        await expect(
+          getUserId(requestWithSessionCookie(forged))
+        ).resolves.toBeNull();
+      }
+    });
+
+    it("rejects a session whose sessionVersion no longer matches the account", async () => {
+      const row = useFakeUserRow(db, {
+        id: 1,
+        password: "hashed:correct-horse",
+        sessionVersion: 0,
+      });
+      const cookie = await sessionCookieFor(db, 1);
+
+      row.sessionVersion = 1;
+
+      await expect(
+        getUserId(requestWithSessionCookie(cookie))
+      ).resolves.toBeNull();
+    });
+
+    it("rejects an old-format cookie that carries only the raw password", async () => {
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const legacy = await forgeSessionCookie({
+        userId: "1",
+        userPassword: "correct-horse",
+        loginTime: Date.now().toString(),
+      });
+
+      await expect(
+        getUserId(requestWithSessionCookie(legacy))
+      ).resolves.toBeNull();
+    });
+
+    it("rejects a cookie missing any one of the required fields", async () => {
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const real = decodeSessionCookie(await sessionCookieFor(db, 1)).data;
+
+      for (const field of ["userId", "loginTime", "pwf", "sessionVersion"]) {
+        const { [field]: _dropped, ...rest } = real;
+        const forged = await forgeSessionCookie(rest);
+        await expect(
+          getUserId(requestWithSessionCookie(forged))
+        ).resolves.toBeNull();
+      }
+    });
+
+    it("does not bump sessionVersion when it rejects a session", async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const cookie = await sessionCookieFor(db, 1);
+      jest.setSystemTime(new Date("2026-01-01T04:00:00Z"));
+
+      await expect(getUserId(requestWithSessionCookie(cookie))).resolves.toBeNull();
+
+      expect(db.user.update).not.toHaveBeenCalled();
     });
   });
 
   describe("getUser", () => {
     it("returns the id, email and role level for a valid session", async () => {
-      const cookie = await sessionCookieFor(4, "correct-horse");
+      const cookie = await sessionCookieFor(db, 4);
       db.user.findUnique
-        .mockResolvedValueOnce({ id: 4, password: "hashed:correct-horse" })
+        .mockResolvedValueOnce({
+          id: 4,
+          password: "hashed:correct-horse",
+          sessionVersion: 0,
+        })
         .mockResolvedValueOnce({
           id: 4,
           email: "person@example.com",
@@ -237,9 +353,13 @@ describe("session.server - authentication and session lifecycle", () => {
 
   describe("getRoleUser", () => {
     it("flattens the role relation into userId, roleId and roleName", async () => {
-      const cookie = await sessionCookieFor(2, "correct-horse");
+      const cookie = await sessionCookieFor(db, 2);
       db.user.findUnique
-        .mockResolvedValueOnce({ id: 2, password: "hashed:correct-horse" })
+        .mockResolvedValueOnce({
+          id: 2,
+          password: "hashed:correct-horse",
+          sessionVersion: 0,
+        })
         .mockResolvedValueOnce({
           id: 2,
           roleUser: { id: 2, name: "Admin" },
@@ -266,6 +386,67 @@ describe("session.server - authentication and session lifecycle", () => {
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe("/login");
       expect(response.headers.get("Set-Cookie")).toContain("RJ_session=");
+      expect(db.user.update).not.toHaveBeenCalled();
+    });
+
+    it("bumps sessionVersion exactly once and destroys the cookie", async () => {
+      const row = useFakeUserRow(db, {
+        id: 1,
+        password: "hashed:correct-horse",
+        sessionVersion: 0,
+      });
+      const cookie = await sessionCookieFor(db, 1);
+
+      const response = await logout(requestWithSessionCookie(cookie));
+
+      expect(db.user.update).toHaveBeenCalledTimes(1);
+      expect(db.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 1 },
+          data: { sessionVersion: { increment: 1 } },
+        })
+      );
+      expect(row.sessionVersion).toBe(1);
+      expect(response.headers.get("Location")).toBe("/login");
+      expect(response.headers.get("Set-Cookie")).toMatch(/^RJ_session=;/);
+    });
+
+    it("makes a copy of the pre-logout cookie useless", async () => {
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const cookie = await sessionCookieFor(db, 1);
+      await expect(getUserId(requestWithSessionCookie(cookie))).resolves.toBe("1");
+
+      await logout(requestWithSessionCookie(cookie));
+
+      await expect(
+        getUserId(requestWithSessionCookie(cookie))
+      ).resolves.toBeNull();
+    });
+
+    it("does not bump sessionVersion for an expired session", async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const cookie = await sessionCookieFor(db, 1);
+      jest.setSystemTime(new Date("2026-01-01T04:00:00Z"));
+
+      const response = await logout(requestWithSessionCookie(cookie));
+
+      expect(db.user.update).not.toHaveBeenCalled();
+      expect(response.headers.get("Set-Cookie")).toMatch(/^RJ_session=;/);
+    });
+
+    it("still clears the cookie when the sessionVersion update fails", async () => {
+      useFakeUserRow(db, { id: 1, password: "hashed:correct-horse", sessionVersion: 0 });
+      const cookie = await sessionCookieFor(db, 1);
+      db.user.update.mockRejectedValueOnce(new Error("db down"));
+      const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+
+      const response = await logout(requestWithSessionCookie(cookie));
+
+      expect(response.headers.get("Location")).toBe("/login");
+      expect(response.headers.get("Set-Cookie")).toMatch(/^RJ_session=;/);
+      consoleError.mockRestore();
     });
   });
 

@@ -55,30 +55,29 @@ import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  formatBusinessTime,
+  getWallClock,
+  parseBusinessDateTime,
+  toBusinessDateTimeInput,
+  toBusinessTimeInput,
+  toWallClockMirror,
+} from "~/utils/business-time";
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  1) Helper: format a Date as "YYYY-MM-DDTHH:mm" for datetime-local
 // ─────────────────────────────────────────────────────────────────────────────
 function formatLocalDatetime(dateInput: Date): string {
-  const date = new Date(dateInput);
-  if (isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return toBusinessDateTimeInput(dateInput);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  2) Helper: parse a "YYYY-MM-DDTHH:mm" string into a local Date
 // ─────────────────────────────────────────────────────────────────────────────
 function parseDateTimeAsLocal(value: string): Date {
-  if (!value) return new Date(""); // invalid date
-  const [datePart, timePart] = value.split("T");
-  const [year, month, day] = datePart.split("-").map(Number);
-  const [hours, minutes] = timePart.split(":").map(Number);
-  return new Date(year, month - 1, day, hours, minutes);
+  return parseBusinessDateTime(value);
 }
 
 /**
@@ -122,15 +121,15 @@ function getEquipmentSlotsForOccurrences(
     const currentTime = new Date(occ.startDate);
     while (currentTime < occ.endDate) {
       // Format day as "Sat 24" (using the actual day name and number)
-      const dayName = currentTime.toLocaleDateString("en-US", {
+      const dayName = formatBusinessDate(currentTime, "en-US", {
         weekday: "short",
       });
-      const dayNumber = currentTime.getDate();
+      const dayNumber = getWallClock(currentTime).day;
       const dayKey = `${dayName} ${dayNumber}`;
 
       // Format time as "05:00"
-      const hours = String(currentTime.getHours()).padStart(2, "0");
-      const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+      const hours = toBusinessTimeInput(currentTime).slice(0, 2);
+      const minutes = toBusinessTimeInput(currentTime).slice(3, 5);
       const timeKey = `${hours}:${minutes}`;
 
       // Add to slots map
@@ -161,8 +160,16 @@ export async function loader({
   request: Request;
   params: { id: string };
 }) {
-  const workshopId = Number(params.id);
   const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(
+      `[User: ${roleUser?.userId ?? "unknown"}] Not authorized to access offer workshop again page`,
+      { url: request.url }
+    );
+    throw new Response("Not Authorized", { status: 403 });
+  }
+
+  const workshopId = Number(params.id);
 
   // Get workshop details including existing occurrences
   const workshop = await getWorkshopWithPriceVariations(workshopId);
@@ -219,16 +226,12 @@ export async function action({
 
   try {
     occurrences = JSON.parse(rawValues.occurrences as string).map(
-      (occ: {
-        startDate: string;
-        endDate: string;
-        startDatePST: string;
-        endDatePST: string;
-      }) => {
+      (occ: { startDate: string; endDate: string }) => {
         const localStart = new Date(occ.startDate);
         const localEnd = new Date(occ.endDate);
-        const startDatePST = new Date(occ.startDatePST);
-        const endDatePST = new Date(occ.endDatePST);
+        // Derived here, not trusted from the browser, so every page stores the same thing.
+        const startDatePST = toWallClockMirror(localStart);
+        const endDatePST = toWallClockMirror(localEnd);
 
         // Validation: Ensure end date is later than start date
         if (localEnd.getTime() <= localStart.getTime()) {
@@ -298,14 +301,14 @@ export async function action({
       ) {
         const formatDate = (date: Date) => {
           return (
-            date.toLocaleDateString("en-US", {
+            formatBusinessDate(date, "en-US", {
               weekday: "short",
               year: "numeric",
               month: "short",
               day: "numeric",
             }) +
             ", " +
-            date.toLocaleTimeString("en-US", {
+            formatBusinessTime(date, "en-US", {
               hour: "numeric",
               minute: "2-digit",
               hour12: true,
@@ -344,15 +347,15 @@ export async function action({
         const currentTime = new Date(newOcc.startDate);
         while (currentTime < newOcc.endDate) {
           // Format day as "Sat 24"
-          const dayName = currentTime.toLocaleDateString("en-US", {
+          const dayName = formatBusinessDate(currentTime, "en-US", {
             weekday: "short",
           });
-          const dayNumber = currentTime.getDate();
+          const dayNumber = getWallClock(currentTime).day;
           const dayKey = `${dayName} ${dayNumber}`;
 
           // Format time as "05:00"
-          const hours = String(currentTime.getHours()).padStart(2, "0");
-          const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+          const hours = toBusinessTimeInput(currentTime).slice(0, 2);
+          const minutes = toBusinessTimeInput(currentTime).slice(3, 5);
           const timeKey = `${hours}:${minutes}`;
 
           // Check if this slot exists and is booked
@@ -366,19 +369,19 @@ export async function action({
 
             // Calculate end time for display
             const endTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
-            const endHours = String(endTime.getHours()).padStart(2, "0");
-            const endMinutes = String(endTime.getMinutes()).padStart(2, "0");
+            const endHours = toBusinessTimeInput(endTime).slice(0, 2);
+            const endMinutes = toBusinessTimeInput(endTime).slice(3, 5);
 
             const formatDate = (date: Date) => {
               return (
-                date.toLocaleDateString("en-US", {
+                formatBusinessDate(date, "en-US", {
                   weekday: "short",
                   year: "numeric",
                   month: "short",
                   day: "numeric",
                 }) +
                 ", " +
-                date.toLocaleTimeString("en-US", {
+                formatBusinessTime(date, "en-US", {
                   hour: "numeric",
                   minute: "2-digit",
                   hour12: true,
@@ -581,17 +584,6 @@ export default function WorkshopOfferAgain() {
       localDate
     );
 
-    // Keep the PST mirror of whichever field was edited in step with it
-    if (!isNaN(localDate.getTime())) {
-      const offset = localDate.getTimezoneOffset();
-      const pst = new Date(localDate.getTime() - offset * 60000);
-      if (field === "startDate") {
-        updatedOccurrences[index].startDatePST = pst;
-      } else {
-        updatedOccurrences[index].endDatePST = pst;
-      }
-    }
-
     const sorted = sortOccurrencesByStart(updatedOccurrences);
     setOccurrences(sorted);
     form.setValue("occurrences", sorted);
@@ -641,7 +633,7 @@ export default function WorkshopOfferAgain() {
   // Format date for display
   function formatDisplayDate(date: Date): string {
     // Format example: Thu, Feb 27, 2025, 01:24 AM
-    return date.toLocaleString(undefined, {
+    return formatBusinessDateTime(date, undefined, {
       weekday: "short",
       month: "short",
       day: "numeric",
@@ -1053,18 +1045,18 @@ export default function WorkshopOfferAgain() {
 
                               if (allFutureOccurrences.length === 1) {
                                 const occ = allFutureOccurrences[0];
-                                return `${occ.startDate.toLocaleDateString(
+                                return `${formatBusinessDate(occ.startDate, 
                                   "en-US",
                                   {
                                     weekday: "short",
                                     month: "short",
                                     day: "numeric",
                                   }
-                                )} ${occ.startDate.toLocaleTimeString("en-US", {
+                                )} ${formatBusinessTime(occ.startDate, "en-US", {
                                   hour: "numeric",
                                   minute: "2-digit",
                                   hour12: true,
-                                })} - ${occ.endDate.toLocaleTimeString(
+                                })} - ${formatBusinessTime(occ.endDate, 
                                   "en-US",
                                   {
                                     hour: "numeric",
@@ -1082,13 +1074,13 @@ export default function WorkshopOfferAgain() {
                               const firstOcc = sortedOccs[0];
                               const lastOcc = sortedOccs[sortedOccs.length - 1];
 
-                              return `${sortedOccs.length} sessions: ${firstOcc.startDate.toLocaleDateString(
+                              return `${sortedOccs.length} sessions: ${formatBusinessDate(firstOcc.startDate, 
                                 "en-US",
                                 {
                                   month: "short",
                                   day: "numeric",
                                 }
-                              )} - ${lastOcc.endDate.toLocaleDateString(
+                              )} - ${formatBusinessDate(lastOcc.endDate, 
                                 "en-US",
                                 {
                                   month: "short",
@@ -1148,7 +1140,7 @@ export default function WorkshopOfferAgain() {
                                               className="text-sm"
                                             >
                                               <div className="font-medium text-gray-700">
-                                                {occ.startDate.toLocaleDateString(
+                                                {formatBusinessDate(occ.startDate, 
                                                   "en-US",
                                                   {
                                                     weekday: "short",
@@ -1156,7 +1148,7 @@ export default function WorkshopOfferAgain() {
                                                     day: "numeric",
                                                   }
                                                 )}{" "}
-                                                {occ.startDate.toLocaleTimeString(
+                                                {formatBusinessTime(occ.startDate, 
                                                   "en-US",
                                                   {
                                                     hour: "numeric",
@@ -1167,7 +1159,7 @@ export default function WorkshopOfferAgain() {
                                               </div>
                                               <div className="text-xs text-gray-500">
                                                 to{" "}
-                                                {occ.endDate.toLocaleTimeString(
+                                                {formatBusinessTime(occ.endDate, 
                                                   "en-US",
                                                   {
                                                     hour: "numeric",
@@ -1203,27 +1195,10 @@ export default function WorkshopOfferAgain() {
                           !isNaN(occ.startDate.getTime()) &&
                           !isNaN(occ.endDate.getTime())
                       )
-                      .map((occ) => {
-                        // Calculate PST dates for any entries missing them
-                        const startOffset = occ.startDate.getTimezoneOffset();
-                        const startDatePST =
-                          occ.startDatePST ||
-                          new Date(
-                            occ.startDate.getTime() - startOffset * 60000
-                          );
-
-                        const endOffset = occ.endDate.getTimezoneOffset();
-                        const endDatePST =
-                          occ.endDatePST ||
-                          new Date(occ.endDate.getTime() - endOffset * 60000);
-
-                        return {
-                          startDate: occ.startDate.toISOString(),
-                          endDate: occ.endDate.toISOString(),
-                          startDatePST: startDatePST.toISOString(),
-                          endDatePST: endDatePST.toISOString(),
-                        };
-                      })
+                      .map((occ) => ({
+                        startDate: occ.startDate.toISOString(),
+                        endDate: occ.endDate.toISOString(),
+                      }))
                   )}
                 />
 

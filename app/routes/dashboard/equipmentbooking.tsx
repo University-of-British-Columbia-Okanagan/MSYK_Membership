@@ -7,9 +7,12 @@ import {
 } from "react-router";
 import {
   getEquipmentSlotsWithStatus,
-  getEquipmentById,
   getLevel3ScheduleRestrictions,
   getLevel4UnavailableHours,
+  prepareEquipmentBooking,
+  createEquipmentCheckout,
+  bookEquipmentBulkByTimes,
+  EquipmentBookingError,
 } from "../../models/equipment.server";
 import { getUser } from "../../utils/session.server";
 import { Button } from "@/components/ui/button";
@@ -147,19 +150,11 @@ export async function loader({
   });
 }
 
-// Action
+// Action: validate and price the selected slots on the server, then book them
+// directly when free or hold them in an EquipmentCheckout and start Stripe.
 export async function action({ request }: { request: Request }) {
   const formData = await request.formData();
   const user = await getUser(request);
-  const roleLevel = user?.roleLevel ?? 1;
-  const roleUser = await getRoleUser(request);
-  const isAdmin =
-    roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
-  const roleRedirectPath = !roleUser
-    ? "/dashboard"
-    : isAdmin
-      ? "/dashboard/admin"
-      : "/dashboard/user";
 
   if (!user) {
     logger.warn(`[Guest] Attempt to book equipment without authentication`, {
@@ -187,10 +182,9 @@ export async function action({ request }: { request: Request }) {
   }
 
   const equipmentId = Number(formData.get("equipmentId"));
-  const slotCount = Number(formData.get("slotCount"));
-  const slotsDataKey = formData.get("slotsData");
+  const slotTimes = formData.get("slotTimes");
 
-  if (!equipmentId || !slotCount || !slotsDataKey) {
+  if (!equipmentId || !slotTimes) {
     logger.warn(`[User: ${user.id}] Missing equipment or slot data`, {
       url: request.url,
     });
@@ -200,95 +194,69 @@ export async function action({ request }: { request: Request }) {
     );
   }
 
-  const equipment = await getEquipmentById(equipmentId);
-  const isAdminForAction =
-    roleUser?.roleName && roleUser.roleName.toLowerCase() === "admin";
-  if (!equipment || (!equipment.availability && !isAdminForAction)) {
-    logger.warn(
-      `[User: ${user.id}] Equipment ID ${equipmentId} unavailable or missing`,
-      { url: request.url }
-    );
-    return redirect(roleRedirectPath);
-  }
-
-  // Check prerequisites before allowing booking
-  if (user && (roleLevel === 3 || roleLevel === 4)) {
-    const { hasUserCompletedEquipmentPrerequisites } =
-      await import("../../models/equipment.server");
-
-    const hasPrereqs = await hasUserCompletedEquipmentPrerequisites(
-      user.id,
-      equipmentId
-    );
-
-    if (!hasPrereqs) {
-      logger.warn(
-        `[User: ${user.id}] Attempted to book equipment ID ${equipmentId} without completing prerequisites`,
-        { url: request.url }
-      );
-      return Response.json(
-        {
-          errors: {
-            message:
-              "You must complete the required orientation before booking this equipment.",
-          },
-        },
-        { status: 403 }
-      );
-    }
-  }
-
-  // Create Stripe checkout session
+  let prepared;
   try {
-    // const totalPrice = equipment?.price * slots.length;
-    const totalPrice = equipment?.price * slotCount;
+    prepared = await prepareEquipmentBooking(user.id, equipmentId, slotTimes);
+  } catch (error) {
+    if (!(error instanceof EquipmentBookingError)) throw error;
+    logger.warn(`[User: ${user.id}] Equipment slots refused before checkout: ${error.message}`, {
+      url: request.url,
+    });
+    return Response.json({ errors: { message: error.message } }, { status: 400 });
+  }
 
+  try {
+    if (prepared.amount === 0) {
+      await bookEquipmentBulkByTimes(user.id, equipmentId, prepared.slots);
+      logger.info(`[User: ${user.id}] Booked ${prepared.slots.length} free slots on equipment ${equipmentId}`, {
+        url: request.url,
+      });
+      return redirect("/dashboard/payment/success?quick_checkout=true&type=equipment&free=1");
+    }
+
+    const checkout = await createEquipmentCheckout(
+      user.id,
+      equipmentId,
+      prepared.slots,
+      prepared.amount
+    );
     logger.info(
-      `[User: ${user.id}] Initiating checkout session for equipment ID ${equipmentId} with ${slotCount} slots`,
+      `[User: ${user.id}] Initiating checkout session for equipment ID ${equipmentId} with ${prepared.slots.length} slots`,
       { url: request.url }
     );
 
-    const fakeRequest = new Request(getBaseUrlWithoutPort(), {
+    const checkoutRequest = new Request(getBaseUrlWithoutPort(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        equipmentId,
-        userId: user.id,
-        price: totalPrice,
-        slotCount: slotCount,
-        slotsDataKey: slotsDataKey.toString(),
-      }),
+      body: JSON.stringify({ equipmentCheckoutId: checkout.id }),
     });
-
-    const response = await createCheckoutSession(fakeRequest);
-    let sessionRes;
-    if (response instanceof Response) {
-      sessionRes = await response.json();
-    } else {
-      sessionRes = response;
-    }
+    const response = await createCheckoutSession(checkoutRequest, user.id);
+    const sessionRes = response instanceof Response ? await response.json() : response;
 
     if (sessionRes?.url) {
       logger.info(`[User: ${user.id}] Checkout session created successfully`, {
         url: request.url,
       });
       return redirect(sessionRes.url);
-    } else {
-      logger.error(
-        `[User: ${user.id}] Failed to create checkout session - missing URL`,
-        { url: request.url }
-      );
-      return Response.json(
-        { errors: { message: "Payment session failed." } },
-        { status: 500 }
-      );
     }
+    logger.error(
+      `[User: ${user.id}] Failed to create checkout session - missing URL`,
+      { url: request.url }
+    );
+    return Response.json(
+      { errors: { message: sessionRes?.error || "Payment session failed." } },
+      { status: 500 }
+    );
   } catch (error: any) {
     logger.error(
       `[User: ${user.id}] Error creating checkout session: ${error.message}`,
       { url: request.url }
     );
-    return Response.json({ errors: { message: error.message } }, { status: 400 });
+    const message =
+      error instanceof EquipmentBookingError
+        ? error.message
+        : "Something went wrong starting your booking. Please try again.";
+    return Response.json({ errors: { message } }, { status: 400 });
   }
 }
 
@@ -525,23 +493,8 @@ export default function EquipmentBookingForm() {
               />
               <input
                 type="hidden"
-                name="slotCount"
-                value={selectedSlots.length}
-              />
-              <input
-                type="hidden"
-                name="slotsData"
-                value={(() => {
-                  // Store slots in sessionStorage with a unique key
-                  const storageKey = `equipment_slots_${Date.now()}_${Math.random()}`;
-                  if (typeof window !== "undefined") {
-                    sessionStorage.setItem(
-                      storageKey,
-                      JSON.stringify(selectedSlots)
-                    );
-                  }
-                  return storageKey;
-                })()}
+                name="slotTimes"
+                value={JSON.stringify(selectedSlots)}
               />
 
               {/* Quick Checkout Section - only show if price > 0 */}
@@ -552,23 +505,10 @@ export default function EquipmentBookingForm() {
                 parseFloat(totalPrice) > 0 && (
                   <div className="mt-6">
                     <QuickCheckout
-                      userId={roleUser?.userId || 0}
                       checkoutData={{
                         type: "equipment",
                         equipmentId: selectedEquipment,
-                        slotCount: selectedSlots.length,
-                        price: parseFloat(totalPrice),
-                        slotsDataKey: (() => {
-                          // Store slots in sessionStorage with a unique key for quick checkout
-                          const storageKey = `equipment_slots_quick_${Date.now()}_${Math.random()}`;
-                          if (typeof window !== "undefined") {
-                            sessionStorage.setItem(
-                              storageKey,
-                              JSON.stringify(selectedSlots)
-                            );
-                          }
-                          return storageKey;
-                        })(),
+                        slots: selectedSlots,
                       }}
                       itemName={`${selectedEquip?.name} Booking`}
                       itemPrice={parseFloat(totalPrice)}

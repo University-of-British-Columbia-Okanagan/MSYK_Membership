@@ -53,6 +53,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  toBusinessDateInput,
+} from "~/utils/business-time";
 
 interface Registration {
   id: number;
@@ -408,9 +413,7 @@ export default function WorkshopUsers() {
 
       if (dateFilter) {
         const hasMatchingDate = group.registrations.some((reg) => {
-          const d = new Date(reg.occurrence.startDate);
-          const occDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          return occDateStr === dateFilter;
+          return toBusinessDateInput(reg.occurrence.startDate) === dateFilter;
         });
         if (!hasMatchingDate) return false;
       }
@@ -846,35 +849,29 @@ export default function WorkshopUsers() {
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           {firstReg.date
-                            ? new Date(firstReg.date).toLocaleString()
+                            ? formatBusinessDateTime(firstReg.date)
                             : "N/A"}
                         </td>
                         <td className="px-4 py-3">
                           {group.isMultiDay ? (
                             <div className="text-sm">
                               <div>
-                                {new Date(
-                                  group.registrations[0].occurrence.startDate
-                                ).toLocaleDateString()}{" "}
+                                {formatBusinessDate(group.registrations[0].occurrence.startDate)}{" "}
                                 -{" "}
-                                {new Date(
+                                {formatBusinessDate(
                                   group.registrations[
                                     group.registrations.length - 1
                                   ].occurrence.endDate
-                                ).toLocaleDateString()}
+                                )}
                               </div>
                               {isExpanded && (
                                 <div className="mt-2 space-y-1 text-xs text-gray-600 pl-4 border-l-2 border-gray-200">
                                   {group.registrations.map((reg, idx) => (
                                     <div key={reg.id}>
                                       Day {idx + 1}:{" "}
-                                      {new Date(
-                                        reg.occurrence.startDate
-                                      ).toLocaleString()}{" "}
+                                      {formatBusinessDateTime(reg.occurrence.startDate)}{" "}
                                       -{" "}
-                                      {new Date(
-                                        reg.occurrence.endDate
-                                      ).toLocaleString()}
+                                      {formatBusinessDateTime(reg.occurrence.endDate)}
                                       <span
                                         className={`ml-2 px-1 rounded ${
                                           reg.result === "passed"
@@ -893,13 +890,9 @@ export default function WorkshopUsers() {
                             </div>
                           ) : (
                             <div className="text-sm">
-                              {new Date(
-                                firstReg.occurrence.startDate
-                              ).toLocaleString()}{" "}
+                              {formatBusinessDateTime(firstReg.occurrence.startDate)}{" "}
                               -{" "}
-                              {new Date(
-                                firstReg.occurrence.endDate
-                              ).toLocaleString()}
+                              {formatBusinessDateTime(firstReg.occurrence.endDate)}
                             </div>
                           )}
                         </td>
@@ -975,13 +968,9 @@ export default function WorkshopUsers() {
                   <div className="rounded-md bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700 space-y-1">
                     <div>
                       <span className="font-medium">Current date: </span>
-                      {new Date(
-                        moveGroup.registrations[0].occurrence.startDate
-                      ).toLocaleString()}{" "}
+                      {formatBusinessDateTime(moveGroup.registrations[0].occurrence.startDate)}{" "}
                       &ndash;{" "}
-                      {new Date(
-                        moveGroup.registrations[0].occurrence.endDate
-                      ).toLocaleString()}
+                      {formatBusinessDateTime(moveGroup.registrations[0].occurrence.endDate)}
                     </div>
                     {moveGroup.priceVariation && (
                       <div>
@@ -1010,8 +999,8 @@ export default function WorkshopUsers() {
                               workshopOccurrences.workshopCapacity - occ.totalRegistrations;
                             return (
                               <SelectItem key={occ.id} value={String(occ.id)}>
-                                {new Date(occ.startDate).toLocaleString()} &ndash;{" "}
-                                {new Date(occ.endDate).toLocaleString()}
+                                {formatBusinessDateTime(occ.startDate)} &ndash;{" "}
+                                {formatBusinessDateTime(occ.endDate)}
                                 {" "}({spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left)
                               </SelectItem>
                             );

@@ -107,6 +107,38 @@ describe('action', () => {
     });
   });
 
+  it('stores the typed NWT wall time in the PST mirror, whatever zone the server is in', async () => {
+    mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
+    mockGetAvailableEquipmentForAdmin.mockResolvedValue([]);
+    mockAddWorkshop.mockResolvedValue({ id: 100, occurrences: [] });
+
+    const formData = new FormData();
+    formData.append('name', 'Woodshop Orientation');
+    formData.append('description', 'A description');
+    formData.append('price', '0');
+    formData.append('location', 'Shop');
+    formData.append('capacity', '8');
+    formData.append('type', 'orientation');
+    // The browser sends 10:30 NWT as an instant.
+    formData.append('occurrences', JSON.stringify([
+      { startDate: '2026-11-14T16:30:00.000Z', endDate: '2026-11-14T20:00:00.000Z' },
+    ]));
+    formData.append('prerequisites', JSON.stringify([]));
+    formData.append('equipments', JSON.stringify([]));
+    formData.append('isWorkshopContinuation', 'false');
+    formData.append('selectedSlots', JSON.stringify({}));
+
+    await action({
+      request: new Request('http://localhost:5173/dashboard/addworkshop', { method: 'POST', body: formData }),
+    });
+
+    // This Mac's stale tz data put the mirror at 08:30 before the fix.
+    const [{ occurrences }] = mockAddWorkshop.mock.calls[0];
+    expect(occurrences[0].startDate.toISOString()).toBe('2026-11-14T16:30:00.000Z');
+    expect(occurrences[0].startDatePST.toISOString()).toBe('2026-11-14T10:30:00.000Z');
+    expect(occurrences[0].endDatePST.toISOString()).toBe('2026-11-14T14:00:00.000Z');
+  });
+
   it('should create a workshop successfully for admin with valid input', async () => {
     mockGetRoleUser.mockResolvedValue(getRoleUserAdminFixture);
     mockGetAvailableEquipmentForAdmin.mockResolvedValue([{ id: 1 }]);

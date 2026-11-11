@@ -52,7 +52,7 @@ This is the single source of truth for the project — setup, user documentation
 
 3. **Database configuration**
 
-   Create a `.env` file in the root directory. See [Environment Variables & Configuration](#environment-variables--configuration) for the complete list of required and optional variables.
+   Copy `.env.example` to `.env` and fill it in (`cp .env.example .env`). It lists every variable with placeholders only. See [Environment Variables & Configuration](#environment-variables--configuration) for what each one does.
 
    For Stripe: visit the [Stripe dashboard](https://dashboard.stripe.com) to get API keys. Use `sk_live_`/`pk_live_` for production and `sk_test_`/`pk_test_` for development.
 
@@ -61,6 +61,8 @@ This is the single source of truth for the project — setup, user documentation
    npx prisma generate --schema prisma/schema.prisma
    npx prisma migrate dev
    ```
+
+   Production applies migrations with `npx prisma migrate deploy`, never `migrate dev`. `20261111005403_payment_fulfillment_and_session_version` (`User.sessionVersion`, `PaymentFulfillment`, `EquipmentCheckout`) must be deployed before the code that uses it.
 
 5. **Start development server**
    ```bash
@@ -166,11 +168,13 @@ The server writes page snapshots and console logs into `.playwright-mcp/` at the
 
 ## Environment Variables & Configuration
 
+`.env.example` at the repo root lists every variable below with placeholders. Copy it to `.env`; never commit `.env`.
+
 ### Required Environment Variables
 
 ```env
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA"
-SESSION_SECRET=          # Cookie encryption key (session expiry: 3 hours)
+SESSION_SECRET=          # Signs the session cookie and keys its password-hash fingerprint (session expiry: 3 hours)
 STRIPE_SECRET_KEY=       # Stripe secret key (sk_live_... or sk_test_...)
 STRIPE_PUBLIC_KEY=       # Stripe publishable key (pk_live_... or pk_test_...)
 BASE_URL=                # Application base URL (dev: http://localhost:5173)
@@ -180,7 +184,18 @@ JWT_SECRET=              # Secret for password reset JWT tokens (1-hour expiry)
 MAILGUN_API_KEY=         # Mailgun API key
 MAILGUN_DOMAIN=          # Mailgun sending domain
 MAILGUN_FROM_EMAIL=      # "From" email address
+NODE_ENV=                # "development" locally; production sends email normally, and so does an unset value
 ```
+
+`docker-compose` also reads `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` to create the database container.
+
+### Development Email Guard
+
+```env
+EMAIL_DEV_REDIRECT=      # Development only. Every email goes to this address instead
+```
+
+The internal `sendMail()` helper in `app/utils/email.server.ts` (every email goes through it) checks this on every send. When `EMAIL_DEV_REDIRECT` is set, every email is delivered to that address with the subject prefixed `[DEV for <real recipient>] `. When it is unset and `NODE_ENV=development`, nothing is sent at all and the suppressed send is logged. In production, or with `NODE_ENV` unset (as the billing cron may run), mail is sent normally. The guard exists because a local `.env` can point at the live Mailgun domain. **Never set `EMAIL_DEV_REDIRECT` in production**, or every member's mail goes to one inbox. `tests/setup/env.ts` blanks it for jest so a developer's `.env` cannot reroute test mail.
 
 ### Optional Integration Variables
 
@@ -334,7 +349,7 @@ After login, users are redirected to role-appropriate dashboards:
 - Mailgun (transactional email, via `mailgun.js`)
 - Winston (structured logging) → `logs/error.log` and `logs/all_logs.log`
 - node-cron + setInterval (background jobs)
-- Session-based authentication with encrypted cookies (3-hour expiry)
+- Session-based authentication with signed cookies (3-hour expiry)
 
 **Frontend:**
 - React 19 + TypeScript
@@ -358,6 +373,8 @@ After login, users are redirected to role-appropriate dashboards:
 - `app/routes.ts` — Application routing configuration
 - `seed.ts` — Database seed script
 - `tests/`, `test-scripts/` — Jest tests and test-data scripts
+- `scripts/reanchor-times.cjs` — production repair tool that re-anchors future session and slot times when the business timezone's rule changes (see [Business Timezone](#business-timezone))
+- `.env.example` — every environment variable, with placeholders
 
 **Application Structure:**
 ```
@@ -398,10 +415,14 @@ app/
 │   ├── email.server.ts          # All transactional emails via Mailgun
 │   ├── googleCalendar.server.ts # Google Calendar OAuth + event CRUD
 │   ├── singleton.server.ts      # Server singleton pattern helper
-│   └── occurrences.ts           # Workshop occurrence date rules (shared by the date editors, not server-only)
+│   ├── occurrences.ts           # Workshop occurrence date rules (shared by the date editors, not server-only)
+│   ├── business-time.ts         # Business-clock date helpers (client-safe; see Business Timezone)
+│   ├── business-time-equipment.ts # Equipment grid day/time keys on the business clock (client-safe)
+│   ├── equipment-booking-rules.ts # Level 3 hours, planned closures, level 4 window (shared by grid and server)
+│   ├── membership-rules.ts      # Billing-cycle pricing and the needAdminPermission gate
+│   └── registration-cutoff.ts   # isPastRegistrationCutoff()
 │
 ├── layouts/             # Shared layout components
-│   ├── DashboardLayout.tsx
 │   └── MainLayout.tsx
 │
 ├── components/          # UI components (see Components Architecture)
@@ -421,7 +442,8 @@ app/
 │   └── bookingFormSchema.tsx
 │
 ├── config/              # Application configuration
-│   └── access-control.ts  # DOOR_PERMISSION_ID, getBrivoGroupsForRole, requiresDoorPermission
+│   ├── access-control.ts  # DOOR_PERMISSION_ID, getBrivoGroupsForRole, requiresDoorPermission
+│   └── timezone.ts        # BUSINESS_TIME_ZONE
 │
 ├── hooks/
 │   └── use-mobile.tsx   # Viewport breakpoint hook used by the sidebar
@@ -473,12 +495,26 @@ Three background jobs are started from `entry.server.ts` (the server process, ru
 | Job | Function | Schedule | File |
 |-----|----------|----------|------|
 | Role level sync | `startRoleLevelSyncCron()` | Every 15 seconds (node-cron `*/15 * * * * *`) | `app/models/user.server.ts` |
-| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight (node-cron `0 0 * * *`) | `app/models/membership.server.ts` |
+| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight business time (node-cron `0 0 * * *` with `{ timezone: BUSINESS_TIME_ZONE }`) | `app/models/membership.server.ts` |
 | Workshop status update | `startWorkshopOccurrenceStatusUpdate()` | Every 1 second (setInterval) | `app/models/workshop.server.ts` |
 
 The workshop status job runs immediately on startup and then every 1 second, keeping `WorkshopOccurrence.status` up-to-date as time passes.
 
 All three jobs are covered by tests, along with the startup wiring itself: `tests/models/user.rolelevel.test.ts`, `tests/models/membership.cron.test.ts`, `tests/models/workshop.occurrence-status.test.ts`, and `tests/entry.server.test.ts`. The specs replace `node-cron` with a recorder and drive `setInterval` with fake timers, so nothing waits on real time — see [tests/README.md](./tests/README.md#background-jobs).
+
+### Business Timezone
+
+Every instant is stored in UTC, and everything a person reads or types is a wall clock time on one fixed **business clock**, whatever zone the server, an admin's laptop or a member's phone is set to.
+
+- **The zone:** `BUSINESS_TIME_ZONE = "Etc/GMT+6"` in `app/config/timezone.ts`. The POSIX sign is inverted, so `+6` means UTC-6. NWT stopped changing clocks on 2026-11-01 and keeps UTC-6 all year. A fixed offset is used instead of `America/Yellowknife` on purpose: a named zone is only right on devices with current tz data, and stale tz data is what shifted every November 2026 session by an hour
+- **The helpers:** `app/utils/business-time.ts` is client-safe and is the only place date maths on the host clock is allowed. It exports `getWallClock`, `fromWallClock`, `parseBusinessDateTime`, `parseBusinessDate`, `toBusinessDateInput`, `toBusinessTimeInput`, `toBusinessDateTimeInput`, `toBusinessIsoString`, `startOfBusinessDay`, `addBusinessDays`, `addBusinessMonths`, `withBusinessTime`, `isSameBusinessDay`, `toWallClockMirror`, `formatBusinessDateTime`, `formatBusinessDate`, `formatBusinessTime`, and the FullCalendar bridge `offsetMinutesForWallArray` / `wallArrayForTimestamp`. `app/utils/business-time-equipment.ts` builds the equipment grid's `"Thu 12"` / `"HH:mm"` keys on the same clock for both server and browser
+- **The guard:** `tests/utils/business-time.guard.test.ts` fails the suite on any host-clock call in `app/` (`toLocale*String()`, `.getHours()`-style getters and setters, `.getTimezoneOffset()`, `new Date(y, m, d)`, `Date.parse`, `new Date(e.target.value)`, `toISOString().split(...)`). `business-time.ts` and `age.ts` are exempt; any other line that genuinely means the host clock opts out with a trailing `// host-clock-ok: <reason>`
+- **Where it shows:** every page, form and email formats and parses through the helpers. Google Calendar events are sent as RFC 3339 with the `-06:00` offset (`buildEventResource()`), the `/home` FullCalendar runs on `businessTimeZonePlugin` (`app/components/ui/Home/businessTimeZonePlugin.ts`), and the membership billing cron fires at midnight business time
+- **`startDatePST` / `endDatePST`:** these `WorkshopOccurrence` columns hold the wall clock the admin typed, as a Date whose UTC fields read the business time (`toWallClockMirror()`). Add Workshop, Edit Workshop and Offer Again derive them on the server rather than trusting the browser. They exist so future rows can be re-anchored, and are not instants
+- **If NWT's rules change again,** change `BUSINESS_TIME_ZONE` **and** re-anchor existing future rows in the same deploy, or every stored session moves by the difference. `scripts/reanchor-times.cjs` reads each future `WorkshopOccurrence` (start, end and the PST mirrors) and `EquipmentSlot` on the old rule's clock and re-stores the same wall time on the new rule's clock. `--from` / `--to` take an IANA zone, a fixed zone, or `legacy-mountain-dst` (Canada's Mountain rules before NWT dropped DST, written out in the script rather than read from tz data). It is a dry run by default; `--apply` needs the `--ids` and `--slot-ids` the dry run printed, writes in one transaction, and records the `AdminSettings` marker `tz_reanchor:<from>:<to>:<since>` so the same re-anchor cannot be applied twice. In production, from `/srv/www/my.makerspaceyk.com`:
+  ```bash
+  sudo docker compose exec -T web node - --from=legacy-mountain-dst --to=Etc/GMT+6 --since=2026-11-01 < scripts/reanchor-times.cjs
+  ```
 
 ### Workshop System Architecture
 
@@ -505,7 +541,7 @@ All three jobs are covered by tests, along with the startup wiring itself: `test
 - **A row with registrations is fully locked** (`disabled`), and `updateOccurrence` early-returns, so no date on it can change
 
 **Registration Rules:**
-- **Cutoff Time**: `Workshop.registrationCutoff`, in minutes before start (schema default 60); `0` or null means no cutoff. Set per-workshop from Admin Settings via `updateWorkshopCutoff()`. Enforced in the UI in `workshopdetails.tsx`, and server-side by the module-local `isPastRegistrationCutoff` helper (internal to `payment.tsx`, not exported) in **all four** workshop branches of the `payment.tsx` loader — single occurrence, single + variation, multi-day, and multi-day + variation. The loader is the only server-side gate: neither `quickCheckout()` nor `paymentsuccess.tsx` re-checks the cutoff, so a branch that skips it is bypassable by URL. `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape
+- **Cutoff Time**: `Workshop.registrationCutoff`, in minutes before start (schema default 60); `0` or null means no cutoff. Set per-workshop from Admin Settings via `updateWorkshopCutoff()`. Enforced in the UI in `workshopdetails.tsx`, and server-side by `isPastRegistrationCutoff()` (`app/utils/registration-cutoff.ts`) in **every purchase path**: all four workshop branches of the `payment.tsx` loader (single occurrence, single + variation, multi-day, multi-day + variation), and `resolveWorkshopPurchase()` in `payment.server.ts`, which both Stripe Checkout and quick checkout go through before charging. `paymentsuccess.tsx` does not re-check it. `tests/routes/dashboard/payment.cutoff.test.ts` covers every loader shape
 - **Capacity**: Tracked per occurrence or across multi-day series
 - **Price Variations**: `WorkshopPriceVariation` records with individual capacity limits
 - **Cancellation Policy**: Refund eligible if cancelled at least 48 hours before the workshop start time (eligibility checked in Cancelled Events tab in Admin Settings). The policy text is hardcoded in `app/routes/dashboard/workshopdetails.tsx` — the `Workshop.cancellationPolicy` DB field exists but is no longer rendered in the UI
@@ -518,6 +554,7 @@ When an admin connects their Google Calendar account via OAuth, workshop occurre
 - `googleEventId` stored on `WorkshopOccurrence` to track the linked event
 - OAuth flow via `/api/google-calendar/connect` → callback → disconnect; admin connects via Admin Settings → Google Calendar tab
 - Refresh token stored AES-encrypted in `AdminSettings` (`google_oauth_refresh_token_enc`)
+- Event times are sent as RFC 3339 with the business offset (`2026-11-14T10:30:00-06:00`, via `toBusinessIsoString()`), so the event lands at the same instant whatever zone the server runs in. The `google_calendar_timezone` setting is still sent as the event's `timeZone`
 - Requires: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, `GOOGLE_OAUTH_ENCRYPTION_KEY`
 
 ### Equipment Booking System
@@ -529,12 +566,15 @@ When an admin connects their Google Calendar account via OAuth, workshop occurre
   - Bulk booking support (multiple slots in one transaction)
   - Real-time availability checking
   - Payment via Stripe Checkout or saved card
+- **Server-side booking flow:** the grid posts the selected `"<start>|<end>"` slot strings (`slotTimes`). `prepareEquipmentBooking()` refuses anything that is not exactly one half-hour grid cell, a repeated slot, a past slot, a slot beyond the `equipment_visible_registrable_days` window, unavailable equipment (admins excepted), a member below level 3 who is not an admin, missing prerequisites, a level-rule violation, a taken slot, or a breach of the daily or sliding 7-day limit, then prices it as `equipment.price` x slots. Free equipment is booked at once. Paid slots are held in an `EquipmentCheckout` row (`createEquipmentCheckout()`); the Stripe session or quick-checkout PaymentIntent carries only its id, and `fulfilEquipmentCheckout()` books exactly those slots for their owner once payment is verified, marking the row `fulfilledAt` so it never books twice. `EquipmentBookingError` carries the member-facing refusal message
+- **Booking rules shared with the grid:** `app/utils/equipment-booking-rules.ts` decides both which grid cells are greyed out and what the server accepts. Level 3 is limited to the weekly `level3_start_end_hours` and blocked during `planned_closures`; level 4 is blocked during the one `level4_unavaliable_hours` window (which may wrap overnight; `0`/`0` means none), and closures do not apply to it. `assertEquipmentSlotsAllowed()` enforces them before checkout and again in `bookEquipment()` / `bookEquipmentBulkByTimes()`. Messages quote 12-hour times ("between 9 AM and 5 PM")
+- **Slot limits on the server:** `assertEquipmentSlotLimits()` applies `max_number_equipment_slots_per_day` and `max_number_equipment_slots_per_week` the way the grid counts them: this member's live bookings of this equipment inside the booking window plus the new slots, bucketed by business day, with a sliding 7-day period
 - **Cancellation Policy:** Eligible for refund if cancelled 2+ days before slot start
   - Partial refunds supported (cancel selected slots from bulk booking)
   - Cancellation record created in `EquipmentCancelledBooking`
 - **Conflict detection:** Check availability across all active workshop offers to prevent double-booking
 - **Workshop integration:** Equipment can be bulk-booked during workshop registration (`bookedFor: "workshop"`)
-- **Schedule restrictions:** Role level-specific time restrictions via `getLevel3ScheduleRestrictions()` and `getLevel4UnavailableHours()` in equipment model
+- **Schedule restrictions:** Role level-specific time restrictions via `getLevel3ScheduleRestrictions()` and `getLevel4UnavailableHours()` in equipment model, combined per level by `loadEquipmentBookingRules()`
 
 ### Membership System
 
@@ -552,10 +592,14 @@ When an admin connects their Google Calendar account via OAuth, workshop occurre
   - Missing payment method sets membership to "inactive" and sends notification
   - Renewals are charged as **Stripe Invoices**, not bare PaymentIntents (see Recurring Membership Discounts below)
 - **Changes:** Support upgrade/downgrade with prorated billing (monthly→monthly only)
-  - **Upgrade**: Prorated charge, immediate activation, old membership marked "ending"
-  - **Downgrade**: Scheduled at next payment date, old membership "ending", new "active" at transition
+  - **Upgrade**: Prorated charge, immediate activation, old membership marked "ending". The prorated fee is computed on the server from the member's own active monthly plan; the no-payment upgrade route (`/dashboard/payment/upgrade`) refuses a cheaper plan and refuses when a fee is due
+  - **Downgrade**: Scheduled at next payment date, old membership "ending", new "active" at transition. The new plan's monthly price must be lower than the current one
   - Either change ends any recurring discount via `endRecurringDiscountForUser()`
+- **Ownership:** every change acts on the signed-in member's own membership. `getOwnedMembership(userId, membershipId, status)` throws `MembershipChangeError` for another member's membership or one in the wrong status (`active` for upgrade and downgrade, `cancelled` for resubscribe); `registerMembershipSubscription()` uses it too
+- **Plan permission:** `assertPlanPermission()` (`app/utils/membership-rules.ts`) refuses a `needAdminPermission` plan unless the member is level 3+ with `allowLevel4`. It runs in `registerMembershipSubscription()` and in `resolveMembershipPurchase()` before any charge, and the payment page loader applies the same rule even with `?resubscribe=true`
+- **Cycle pricing:** `getPlanPriceForCycle()` returns the plan's price for a cycle, or `null` when that cycle's column is empty. Checkout and the payment page refuse such a cycle rather than charging the monthly price
 - **Cancellation:** Status "cancelled", access retained until `nextPaymentDate`, then deleted
+- **Resubscription:** free, and keeps the cancelled membership's paid-through `nextPaymentDate` (it used to restart at now + one cycle, which gave away the gap). The resubscribe email quotes that saved date for every cycle, as "Next billing date" or, with auto-renew off, "Membership ends on"
 - **Revocation (Admin):** Admin can globally ban users from all memberships with custom message
   - All memberships set to "revoked" status, user cannot resubscribe until admin unrevokes
   - `membershipStatus`, `membershipRevokedAt`, `membershipRevokedReason` stored on `User`
@@ -574,7 +618,7 @@ Each workshop, membership plan, and equipment item is automatically linked to a 
   - `archiveStripeProduct(stripeProductId)` — marks Stripe Product inactive (used on delete; items are archived, not deleted)
   - `bulkSyncToStripe(clearExisting = false)` — syncs all three categories in one pass; `clearExisting: true` backs the Clear & Re-sync action
 - **Auto-Sync Hooks:** Create, update, and duplicate call the sync non-blocking (`.catch()`) in the workshop, membership, and equipment models. Delete instead `await`s `archiveStripeProduct()` before removing the row — that call swallows its own errors, so a Stripe outage still cannot block the delete
-- **Checkout:** `payment.server.ts` and `payment.tsx` use `price_data.product` when `stripeProductId` exists, falling back to inline `price_data.product_data` if not set
+- **Checkout:** `createCheckoutSession()` in `payment.server.ts` uses `price_data.product` when `stripeProductId` exists, falling back to inline `price_data.product_data` if not set
 - **Admin API:** `POST /api/stripe-sync` with actions: `bulkSync`, `clearAndResync`, `getSyncStatus`, `getDiscountStatus`, `endDiscount`, `listDiscountMembers`, `applyDiscount`, `getResyncImpact` (all admin-only)
 - **Admin UI:** Admin Settings → "Stripe Integrations" tab — Sync All, Clear & Re-sync buttons with status display
 - **Metadata:** Each Stripe Product has `{ portal_type: "workshop"|"membership"|"equipment", portal_id: "N" }` for dashboard identification
@@ -622,9 +666,11 @@ A Stripe promotion code entered at membership checkout applies to every later re
 ### Payment Integration
 
 - **Stripe:** Primary payment processor (API version: `2025-02-24.acacia`)
-- **Two checkout methods:**
+- **Two checkout methods**, both started by `POST /dashboard/paymentprocess` (`routes/api/paymentprocess.tsx`), which passes the session user's id to `createCheckoutSession(request, userId)`. `payment.tsx` has no action:
   - **Stripe Checkout Session** (`createCheckoutSession`): Full hosted payment flow with card input; GST and billing cycle price applied server-side
-  - **Quick Checkout** (`quickCheckout`): One-click purchases using saved payment method via `PaymentIntent`
+  - **Quick Checkout** (`quickCheckout(userId, data)`): One-click purchases using saved payment method via `PaymentIntent`, chosen when the body sets `useSavedCard`. It fulfils the purchase on the server before reporting success, and if fulfilment fails after the charge it says the card was charged and asks the member to contact support
+- **The server decides who pays and how much.** Any `userId` or price in the request body is ignored. `resolveWorkshopPurchase()` prices a workshop from the workshop or its price variation (which must belong to that workshop) and refuses a cancelled, ended, or full session or one past its registration cutoff. `resolveMembershipPurchase()` prices a membership from the chosen billing cycle, refuses a revoked member, a cycle with no price, or a plan needing admin permission, and computes an upgrade's proration from the member's own active monthly membership. Equipment is `equipment.price` x the slots held in its `EquipmentCheckout`. A purchase is free only when the server's price is zero
+- **The success page verifies before it fulfils.** `/dashboard/payment/success` requires a login (signed-out visitors go to `/login?redirect=...`). For a Checkout Session it requires `payment_status: "paid"`, or `"no_payment_required"` on a `complete` session (a 100%-off promotion code), and `metadata.userId` equal to the signed-in user. It then claims the session id with `claimPaymentFulfillment()` (a `PaymentFulfillment` row, unique on `stripeRef`) before registering, subscribing or booking, so a reload only shows the confirmation. If fulfilment fails, `releasePaymentFulfillment()` drops the claim so a reload retries. Quick checkout claims its PaymentIntent id the same way. Quick checkout, free registration, downgrade and resubscribe have already completed on the server when the browser lands on the success page, which only confirms them
 - **Payment Methods:** Stored via Stripe customer IDs; card tokenized via `stripe.tokens.create`; saved in `UserPaymentInformation`
 - **Payment Types:**
   - Workshop registration (single or multi-day), with optional price variation
@@ -695,19 +741,18 @@ See [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.c
 ### Core Models
 
 #### User Management
-- **User**: Central user entity — personal info, emergency contacts, `guardianName` (nullable; only populated for accounts that registered aged 14 to 17), four consent booleans (`mediaConsent`, `dataPrivacy`, `communityGuidelines`, `operationsPolicy`), `roleLevel`, `allowLevel4`, `avatarUrl`, encrypted `waiverSignature`, revocation fields (`membershipStatus` — `"active"`/`"revoked"`, `membershipRevokedAt`, `membershipRevokedReason`), and Brivo sync fields (`brivoPersonId`, `brivoLastSyncedAt`, `brivoSyncError`)
+- **User**: Central user entity — personal info, emergency contacts, `sessionVersion` (Int, default 0; bumped by Sign Out to invalidate every cookie), `guardianName` (nullable; only populated for accounts that registered aged 14 to 17), four consent booleans (`mediaConsent`, `dataPrivacy`, `communityGuidelines`, `operationsPolicy`), `roleLevel`, `allowLevel4`, `avatarUrl`, encrypted `waiverSignature`, revocation fields (`membershipStatus` — `"active"`/`"revoked"`, `membershipRevokedAt`, `membershipRevokedReason`), and Brivo sync fields (`brivoPersonId`, `brivoLastSyncedAt`, `brivoSyncError`)
 - **RoleUser**: Role definitions — User (id: 1) and Admin (id: 2)
 - **UserPaymentInformation**: Stripe customer and payment method storage
 
 #### Membership System
 - **MembershipPlan**: Subscription plans — `title`, `description`, four price columns (`price` monthly, plus nullable `price3Months`, `price6Months`, `priceYearly`), `feature` (Json, singular), `needAdminPermission` flag, `stripeProductId`
 - **UserMembership**: A member's subscription — `status`, `autoRenew`, `billingCycle`, `nextPaymentDate`, `paymentIntentId`, plus `stripeCouponId` and `discountEndsAt` mirroring any recurring discount held on the Stripe Customer
-- **UserMembership**: Active subscriptions — status, billingCycle, nextPaymentDate, autoRenew, paymentIntentId
 - **UserMembershipForm**: Signed membership agreements — encrypted signature, status lifecycle
 
 #### Workshop & Training System
 - **Workshop**: Workshop definitions — pricing, capacity, type (workshop/orientation), registrationCutoff, `stripeProductId`
-- **WorkshopOccurrence**: Scheduled instances — `startDate`/`endDate` plus nullable `startDatePST`/`endDatePST`, `status`, `connectId` (multi-day), `offerId` (default 1), `googleEventId`. Status values actually written by the app are `"active"` (default), `"past"` (set by the 1-second cron once `startDate` passes), and `"cancelled"` — the `// "open", "closed", "cancelled"` comment in `schema.prisma` is stale
+- **WorkshopOccurrence**: Scheduled instances — `startDate`/`endDate` plus nullable `startDatePST`/`endDatePST` (the typed business wall clock, not instants; see [Business Timezone](#business-timezone)), `status`, `connectId` (multi-day), `offerId` (default 1), `googleEventId`. Status values actually written by the app are `"active"` (default), `"past"` (set by the 1-second cron once `startDate` passes), and `"cancelled"` — the `// "open", "closed", "cancelled"` comment in `schema.prisma` is stale
 - **UserWorkshop**: Enrollment records — `result` (`"passed"` default, `"failed"`, `"pending"`, `"cancelled"`), `date`, `paymentIntentId`, `priceVariationId`
 - **WorkshopPrerequisite**: Prerequisite chains between workshops
 - **WorkshopPriceVariation**: Alternative pricing tiers with individual capacity limits
@@ -718,7 +763,11 @@ See [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.c
 - **EquipmentSlot**: 30-minute time slots — `startTime`/`endTime`, `isAvailable`, `isBooked`, optional `workshopOccurrenceId`
 - **EquipmentBooking**: Booking records — `status` (default `"pending"`), `bookedFor` (`"user"` or `"workshop"`), `paymentIntentId`, optional `workshopId`
 - **EquipmentPrerequisite**: Workshop prerequisites required for equipment access
+- **EquipmentCheckout**: Slots held between checkout and payment — `id` (cuid), `userId`, `equipmentId`, `slots` (JSON `[{ startTime, endTime }]`), `amount` (pre-GST, `equipment.price` x slots), `fulfilledAt`. Cascades on both user and equipment delete
 - **EquipmentCancelledBooking**: Cancellation records — `totalSlotsBooked`, `slotsRefunded`, `totalPricePaid`, `priceToRefund`, `eligibleForRefund` (computed from the 2-day rule at cancellation time), `resolved`, and slot-level detail in JSON `cancelledSlotTimes`
+
+#### Payments
+- **PaymentFulfillment**: One row per Stripe payment that has been turned into a registration, membership or booking — `stripeRef` (unique; a Checkout Session `cs_...` or PaymentIntent `pi_...` id), `userId`, `kind` (`"workshop"`, `"membership"`, `"equipment"`). The unique `stripeRef` is what stops a reloaded success page fulfilling twice
 
 #### Access Control
 - **AccessCard**: Fob/card records — permissions (Int[]), `brivoCredentialId`, `brivoMobilePassId`; linked to user
@@ -746,7 +795,7 @@ See [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.c
 - Historical data preserved across offers
 
 **Cascade Deletions:**
-- User deletion cascades to all bookings, memberships, volunteer records, access cards, logs
+- User deletion cascades to all bookings, memberships, volunteer records, access cards, logs, `PaymentFulfillment` records and held `EquipmentCheckout` rows
 
 **Unique Constraints:**
 - One registration per user per occurrence — `@@unique([userId, occurrenceId])` on `UserWorkshop`
@@ -754,6 +803,7 @@ See [docs/apidocs.brivo.com_.2025-11-25T01_49_47.688Z.md](./docs/apidocs.brivo.c
 - One prerequisite edge per pair — `@@unique([workshopId, prerequisiteId])` on `WorkshopPrerequisite`, `@@unique([equipmentId, workshopPrerequisiteId])` on `EquipmentPrerequisite`
 - One price variation name per workshop — `@@unique([workshopId, name])` on `WorkshopPriceVariation`
 - `brivoPersonId` on `User`, and `brivoCredentialId` / `brivoMobilePassId` on `AccessCard`
+- One fulfilment per Stripe payment — `@unique` on `PaymentFulfillment.stripeRef`
 - **`EquipmentBooking` has no unique constraint on `slotId`.** The `@@unique([slotId])` line is deliberately commented out in the schema so that a cancelled booking and a new booking can coexist for the same slot. Double-booking is prevented in application code (`EquipmentSlot.isBooked` plus availability checks), not by the database
 
 **Soft Deletion:**
@@ -787,7 +837,7 @@ Key-value configuration storage for system-wide settings:
 | `equipment_visible_registrable_days` | `"7"` | Equipment booking window in days |
 | `past_workshop_visibility` | `"180"` | Days of past workshop history to show |
 | `google_calendar_id` | `""` | Selected Google Calendar ID |
-| `google_calendar_timezone` | `"America/Yellowknife"` | Timezone for Google Calendar events |
+| `google_calendar_timezone` | `"America/Yellowknife"` | `timeZone` sent on Google Calendar events. The event times themselves carry the business offset, so this does not move them |
 | `google_oauth_refresh_token_enc` | `""` | AES-encrypted Google OAuth refresh token |
 | `brivo_access_group_level4` | `""` | Comma-separated Brivo group IDs for Level 4 access (falls back to the `BRIVO_ACCESS_GROUP_LEVEL4` env var) |
 | `planned_closures` | `""` | JSON array of planned closure periods (managed via `getPlannedClosures`/`updatePlannedClosures`) |
@@ -796,6 +846,7 @@ Key-value configuration storage for system-wide settings:
 | `max_number_equipment_slots_per_day` | `"4"` | Maximum equipment slots a user may book in one day |
 | `max_number_equipment_slots_per_week` | `"14"` | Maximum equipment slots a user may book in one week |
 | `stripe_gst_tax_rate_id` | *(unset)* | Stripe Tax Rate id matching `gst_percentage`, used on membership checkout and renewal invoices. Created on first use by `getOrCreateGstTaxRate()`; Stripe tax rates are immutable, so changing GST creates a new one |
+| `tz_reanchor:<from>:<to>:<since>` | *(unset)* | Marker written by `scripts/reanchor-times.cjs --apply` so the same re-anchor cannot be applied twice. One key per run, never read by the app |
 | `minor_notification_email` | `"info@makerspaceyk.com"` | Address notified when a 14 to 17 year old registers. Read through `getMinorNotificationEmail()`, which falls back to the default when the key is unset or stored empty, so an emptied field cannot silently drop the notice. Editable in Admin Settings under Miscellaneous |
 
 All values are stored as strings; helpers in `app/models/admin.server.ts` and `app/models/equipment.server.ts` parse them. Defaults listed above are the fallbacks supplied at each call site — a key may be absent from the table entirely.
@@ -836,7 +887,7 @@ app/components/
     │   ├── GuestAppSidebar.tsx     # Guest sidebar
     │   ├── ConfirmButton.tsx       # Action confirmation with loading state
     │   ├── DateTypeRadioGroup.tsx  # Single/multi-day/recurring selector
-    │   ├── EquipmentBookingGrid.tsx # Time-slot booking grid
+    │   ├── EquipmentBookingGrid.tsx # Time-slot booking grid (business-clock cells)
     │   ├── EquipmentCard.tsx       # Equipment item card
     │   ├── EquipmentList.tsx       # Equipment list component
     │   ├── GenericFormField.tsx    # Reusable form field with validation
@@ -853,7 +904,8 @@ app/components/
     │   ├── WorkshopCard.tsx        # Workshop display card
     │   └── WorkshopList.tsx        # Workshop list component
     ├── About/              # About page sections
-    ├── Home/               # Home page sections (hero, facilities, calendar, etc.)
+    ├── Home/               # Home page sections (hero, facilities, calendar, etc.);
+    │                       # businessTimeZonePlugin.ts puts FullCalendar on the business clock
     ├── Programming/        # Programming/workshops public sections
     ├── Spaces and Services/# Space rental and equipment info sections
     ├── Get Involved/       # Volunteer and community sections
@@ -886,12 +938,12 @@ Files in `app/components/ui/Dashboard/` are **PascalCase and named for the compo
 - **ConfirmButton**: Action confirmation with loading state
 
 **Equipment Components:**
-- **EquipmentBookingGrid** (`EquipmentBookingGrid.tsx`): Time-slot grid for equipment reservations
+- **EquipmentBookingGrid** (`EquipmentBookingGrid.tsx`): Time-slot grid for equipment reservations. Cells are business wall times (`createEquipmentCellResolver()`), so "Thu 12" at "10:00" is 10:00 business time on any device. It greys out cells with the same `equipment-booking-rules.ts` the server enforces, and posts the selected slots as `slotTimes`
 - **EquipmentCard** (`EquipmentCard.tsx`): Equipment item display
 - **EquipmentList** (`EquipmentList.tsx`): Equipment listing component
 
 **Payment Components:**
-- **QuickCheckout** (`QuickCheckout.tsx`): One-click payment with saved card
+- **QuickCheckout** (`QuickCheckout.tsx`): One-click payment with saved card. Sends only what is being bought (no user id or price); the server decides who pays and how much
 
 **Data Display:**
 - **ShadTable**: Styled table wrapper
@@ -937,7 +989,10 @@ All models are in `app/models/` (*.server.ts). Some API logic is also in `app/ro
 #### Equipment Management (`equipment.server.ts`)
 - `getAvailableEquipment()`, `getAvailableEquipmentForAdmin()`, `getAllEquipment()`, `getEquipmentById()`
 - `addEquipment()`, `updateEquipment()`, `deleteEquipment()`, `duplicateEquipment()`
-- `bookEquipment()`, `bookEquipmentBulkByTimes()`, `bulkBookEquipment()`
+- `bookEquipment(userId, ...)`, `bookEquipmentBulkByTimes(userId, ...)`, `bulkBookEquipment()` — the first two take the member's id, not a `Request`, and re-check the level rules and slot limits before writing
+- `prepareEquipmentBooking()` — validates and prices a slot selection on the server; `createEquipmentCheckout()` holds it, `fulfilEquipmentCheckout()` books it once after payment
+- `loadEquipmentBookingRules()`, `assertEquipmentSlotsAllowed()`, `assertEquipmentSlotLimits()` — the level rules and daily/7-day limits, enforced before checkout and at booking
+- `EquipmentBookingError` — exported error class whose message is safe to show the member
 - `cancelEquipmentBooking()`, `approveEquipmentBooking()`
 - `getUserBookedEquipments()`, `getAllEquipmentWithBookings()`
 - `getEquipmentSlotsWithStatus()`, `createEquipmentSlot()`, `createEquipmentSlotsForOccurrence()`
@@ -966,6 +1021,8 @@ All models are in `app/models/` (*.server.ts). Some API logic is also in `app/ro
 - `decryptMembershipAgreement()`
 - `revokeUserMembershipByAdmin()`, `unrevokeUserMembershipByAdmin()`
 - `calculateProratedUpgradeAmount()`, `getAccessHours()`, `getCancelledMembership()`
+- `getOwnedMembership(userId, membershipId, status)` — the member's own membership in the given status, with its plan; throws `MembershipChangeError` otherwise
+- Re-exports `MembershipChangeError`, `assertPlanPermission`, `getPlanPriceForCycle` and the `BillingCycle` type from `app/utils/membership-rules.ts`
 - `endRecurringDiscountForUser()` — removes a member's recurring discount in Stripe and clears the mirrored columns; called on upgrade, downgrade, an admin revoke, and the admin **End** action
 - `endDiscountForEndedMembership(userId, endedMembershipId)` — the membership-ended rule: ends the discount unless a membership the member still holds can actually use the coupon. An unscoped coupon survives, one scoped to the plan that just ended does not, and a coupon Stripe cannot be read for is left alone
 - `applyRecurringDiscountToMember(userId, code, membershipId?)` — the mirror image: gives an existing active member a recurring discount from an admin-typed promotion code. Validates everything before touching Stripe, so a refusal leaves nothing half-applied; returns a typed `reason` and a message ready to show an admin. Pass `membershipId` when the member holds more than one active membership, so the product check runs against the plan the admin actually chose
@@ -973,7 +1030,7 @@ All models are in `app/models/` (*.server.ts). Some API logic is also in `app/ro
 - `listProductScopedDiscounts()` — members whose product-scoped coupon a Clear & Re-sync would destroy, with the coupon's terms and promotion code; unscoped coupons are excluded because they survive
 - `clearOrphanedScopedDiscounts(affected)` — ends those discounts and logs the worklist to `logs/all_logs.log` first, so the record survives even if the download is never taken
 - `MEMBERSHIP_REVOKED_ERROR` — exported error constant thrown when a revoked user attempts to subscribe
-- **`startMonthlyMembershipCheck()`** — daily at midnight (`0 0 * * *`)
+- **`startMonthlyMembershipCheck()`** — daily at midnight business time (`0 0 * * *`, `{ timezone: BUSINESS_TIME_ZONE }`)
 
 #### Administrative Controls (`admin.server.ts`)
 - `getAdminSetting()`, `updateAdminSetting()`
@@ -985,8 +1042,10 @@ All models are in `app/models/` (*.server.ts). Some API logic is also in `app/ro
 
 #### Payment Processing (`payment.server.ts`)
 - `createPaymentIntentWithSavedCard()` — saved card quick checkout
-- `quickCheckout()` — one-click purchase for workshops, equipment, memberships
-- `createCheckoutSession()` — Stripe hosted checkout session
+- `quickCheckout(userId, data)` — one-click purchase for workshops, equipment, memberships; prices and fulfils on the server
+- `createCheckoutSession(request, userId)` — Stripe hosted checkout session, or quick checkout when the body sets `useSavedCard`
+- `resolveWorkshopPurchase()`, `resolveMembershipPurchase()` — load and price a purchase from the database, refusing what the payment page refuses
+- `claimPaymentFulfillment()`, `releasePaymentFulfillment()` — record a Stripe payment as fulfilled exactly once, or drop the claim so a retry can run
 - `createOrUpdatePaymentMethod()` — payment method management
 - `deletePaymentMethod()`
 - `refundWorkshopRegistration()`, `refundEquipmentBooking()`, `refundMembershipSubscription()`
@@ -1034,15 +1093,17 @@ const form = useForm<FormValues>({
 ### Authentication Flow
 
 1. Session stored in a signed cookie named `RJ_session` via `createCookieSessionStorage` (3-hour `maxAge`, `sameSite: "lax"`, `secure` only in production)
-2. The session holds three values, set by `createUserSession()`: `userId`, `userPassword` (the raw password submitted at login), and `loginTime`
+2. The session holds four values, set by `createUserSession(userId, redirectTo)`: `userId`, `loginTime`, `sessionVersion` (copied from `User.sessionVersion`), and `pwf`, an HMAC-SHA256 of the user's bcrypt hash keyed with `SESSION_SECRET`. The password itself never enters the cookie. `login()` no longer returns it either
 3. There is **no** `requireAuth()` helper. Routes call `getRoleUser(request)` (used by ~42 route files), `getUser(request)`, or `getUserId(request)` in their loader/action and issue their own `redirect()` when the result is null or the role is wrong
-4. `getUserId()` runs three checks on every request and calls `logout()` if any fails:
-   - `userId` and `userPassword` are present in the session
+4. `getUserId()` returns `null` unless every check passes. Rejecting a cookie has no side effects, so one bad cookie never signs the user out elsewhere:
+   - `userId`, `pwf` and a numeric `sessionVersion` are present
    - `loginTime` is within the last 3 hours (`SESSION_DURATION_MS = 3 * 60 * 60 * 1000`)
-   - `bcrypt.compare(userPassword, user.password)` still matches the stored hash — this is what invalidates every existing session when a password changes
-5. Full user data is loaded in loaders rather than stored in the session
-6. Role checks happen at route level and in business logic
-7. All email lookups (login, password reset, access card provisioning) use case-insensitive matching (`mode: "insensitive"` in Prisma); new registrations store emails as lowercase
+   - the user still exists and `pwf` matches a fresh fingerprint of the stored hash (compared with `crypto.timingSafeEqual`). A password change alters the hash, which invalidates every existing session
+   - `sessionVersion` equals `User.sessionVersion`
+5. **Sign Out signs the member out on every device.** The Sign Out buttons POST to `/logout`, whose action calls `logout()`: for a valid session it increments `User.sessionVersion`, so every copy of the cookie stops working, then destroys the cookie and redirects to `/login`. A GET to `/logout` only redirects to `/login`, so a link on another site cannot sign anyone out
+6. Full user data is loaded in loaders rather than stored in the session
+7. Role checks happen at route level and in business logic
+8. All email lookups (login, password reset, access card provisioning) use case-insensitive matching (`mode: "insensitive"` in Prisma); new registrations store emails as lowercase
 
 ### Registration Flow
 
@@ -1093,6 +1154,10 @@ logger.error("Operation failed", { error, userId, context });
 
 **Email Provider:** Mailgun — requires `MAILGUN_API_KEY`, `MAILGUN_DOMAIN`, `MAILGUN_FROM_EMAIL`
 
+**Development guard:** the internal `sendMail()` helper reroutes every email to `EMAIL_DEV_REDIRECT` when it is set, and sends nothing when it is unset and `NODE_ENV=development`. See [Development Email Guard](#development-email-guard).
+
+**Times in emails** are formatted on the business clock (`formatBusinessDateTime()` / `formatBusinessDate()`), never the server's zone.
+
 **All transactional emails in `app/utils/email.server.ts`:**
 
 | Function | Trigger |
@@ -1116,7 +1181,7 @@ logger.error("Operation failed", { error, userId, context });
 | `sendMembershipPaymentSuccessEmail` | Successful recurring membership charge |
 | `sendMembershipDowngradeEmail` | Membership downgrade scheduled |
 | `sendMembershipCancellationEmail` | Membership cancelled |
-| `sendMembershipResubscribeEmail` | Membership resubscribed (includes auto-renew status) |
+| `sendMembershipResubscribeEmail` | Membership resubscribed (includes auto-renew status, and quotes the saved `nextPaymentDate` for every cycle: "Next billing date", or "Membership ends on" with auto-renew off) |
 | `sendMembershipEndedNoPaymentMethodEmail` | Membership expired — no payment method on file |
 | `sendMembershipRevokedEmail` | Admin revokes user membership (includes custom reason) |
 | `sendMembershipUnrevokedEmail` | Admin unrevokes user membership |
@@ -1131,7 +1196,7 @@ logger.error("Operation failed", { error, userId, context });
 ### Security & Authorization
 
 #### Role-Based Access Control
-- Admin functions verified at route loader/action level
+- Admin functions verified at route loader/action level. The `/dashboard/equipments` action (equipment changes) returns 401 to non-admins, and the Offer Again loader (`/dashboard/workshops/offer/:id`) returns 403
 - Role level and `allowLevel4` flag checked before equipment/feature access
 - Data isolation: users can only access their own data
 
@@ -1142,6 +1207,7 @@ logger.error("Operation failed", { error, userId, context });
 
 #### Cryptography
 - `bcryptjs` for password hashing (note: `bcrypt` is also a dependency but the auth path uses `bcryptjs`)
+- HMAC-SHA256 (Node `crypto`, keyed with `SESSION_SECRET`) for the session's password-hash fingerprint
 - AES via crypto-js for waiver and membership agreement PDF encryption
 - JWT (jsonwebtoken) for password reset tokens (1-hour expiry)
 - HMAC SHA256 for Brivo webhook signature verification
@@ -1186,7 +1252,7 @@ Assume you are here whenever you edit an existing function, route, query, or sch
 
 **Most changes are the second kind.** When unsure, treat it as the second kind.
 
-The suite is currently **fully green — 46 suites, 737 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
+The suite is currently **fully green — 71 suites, 1028 tests** — and every server module is covered. That baseline is what makes step 4 meaningful: a failure after your change is a regression you introduced, not background noise. Do not commit on a red suite without saying so explicitly.
 
 Suites run in jest's `node` environment by default. A component test opts into a DOM by declaring `@jest-environment jest-fixed-jsdom` in a docblock at the top of the file, and must mock the route's `*.server.ts` import; see [tests/README.md](./tests/README.md#component-tests) for the three things that catch people out.
 
@@ -1203,7 +1269,7 @@ Suites run in jest's `node` environment by default. A component test opts into a
 
 - Jest with ts-jest; Testing Library for component tests; MSW available for mocking external APIs
 - Run everything with `npm test`, or one area with `npx jest --testPathPatterns "workshop"`
-- **Specs** mirror the source tree: `tests/models/`, `tests/services/`, `tests/utils/`, `tests/schemas/`, `tests/config/`, `tests/routes/dashboard/`, `tests/routes/api/`
+- **Specs** mirror the source tree: `tests/models/`, `tests/services/`, `tests/utils/`, `tests/schemas/`, `tests/config/`, `tests/components/`, `tests/routes/authentication/`, `tests/routes/dashboard/`, `tests/routes/api/`, and `tests/scripts/` for `scripts/`
 - **Per-domain mocks** live in `tests/fixtures/<domain>/setup.ts` and are imported for their side effects on the *first line* of a spec, before the module under test:
   ```ts
   import "tests/fixtures/equipment/setup";
@@ -1216,13 +1282,19 @@ Suites run in jest's `node` environment by default. A component test opts into a
 **[tests/README.md](./tests/README.md) is the full reference** for the folder — layout, fixture conventions, the import-ordering rule, and the failure modes that have actually bitten here. Read it before adding or changing a test
 
 **Model tests** (`tests/models/`):
-`access.card-log`, `admin.settings`, `equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.settings`, `equipment.slots`, `issue.server`, `membership.cron`, `membership.server`, `payment.gst`, `payment.refunds`, `profile.volunteer`, `user.payment-method`, `user.rolelevel`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.move`, `workshop.occurrence-status`, `workshop.registration`
+`access.card-log`, `admin.settings`, `equipment.basic`, `equipment.booking`, `equipment.cancellation`, `equipment.checkout`, `equipment.settings`, `equipment.slots`, `issue.server`, `membership.cron`, `membership.discount-apply`, `membership.discount-lifecycle`, `membership.ownership`, `membership.resync-impact`, `membership.server`, `payment.checkout`, `payment.gst`, `payment.membership-gst`, `payment.quickcheckout`, `payment.refunds`, `profile.volunteer`, `user.payment-method`, `user.rolelevel`, `workshop.basic`, `workshop.cancellation`, `workshop.capacity`, `workshop.move`, `workshop.occurrence-status`, `workshop.registration`
 
 **Service tests** (`tests/services/`):
 `access-control-sync.server`, `brivo.server`, `stripe-discounts.server`, `stripe-sync.server`
 
-**Util and config tests:**
-`tests/utils/session.server.test.ts`, `tests/utils/occurrences.test.ts`, `tests/utils/email.membership-discount.test.ts`, `tests/config/access-control.test.ts`
+**Util and config tests** (`tests/utils/`, `tests/config/`):
+`age`, `business-time`, `business-time-equipment`, `business-time.guard`, `email.business-time`, `email.dev-guard`, `email.membership-discount`, `email.membership-resubscribe`, `email.minor-registration`, `equipment-booking-rules`, `googleCalendar.event-time`, `occurrences`, `registration-restore`, `session.register-minor`, `session.server`, and `config/access-control`. `business-time.test.ts` and `business-time-equipment.test.ts` run their checks in child processes under several real `TZ` values (`tests/helpers/business-time*-snapshot.ts`), because jest workers ignore a `process.env.TZ` change
+
+**Component tests** (jsdom):
+`tests/components/EquipmentBookingGrid.component.test.tsx` (grid cells on the business clock), `tests/routes/authentication/register.component.test.tsx`
+
+**Script tests:**
+`tests/scripts/reanchor-times.test.ts` — the `legacy-mountain-dst` rule, the production re-anchor, a future rule change, and argument parsing
 
 **Schema tests** (`tests/schemas/`):
 `workshop-occurrence-dates.test.ts` — the "end must be later than start" rule in both `workshopFormSchema` and `workshopOfferAgainSchema`, across every `type` × multi-day × price-variations combination
@@ -1230,12 +1302,13 @@ Suites run in jest's `node` environment by default. A component test opts into a
 **Boot wiring test:**
 `tests/entry.server.test.ts` — asserts `entry.server.ts` starts all three background jobs, and starts each one only once per process
 
-**Route tests** (`tests/routes/dashboard/`, `tests/routes/api/`):
-`addequipment.test.ts`, `addworkshop.test.ts`, `payment.cutoff.test.ts`, `payment.membership-gst.test.ts`, `paymentsuccess.discount.test.ts`, `api/stripe-sync.test.ts`
+**Route tests** (`tests/routes/`):
+`dashboard/addequipment`, `dashboard/addworkshop`, `dashboard/equipmentbooking.rules`, `dashboard/equipments.auth`, `dashboard/payment.cutoff`, `dashboard/payment.loader-rules`, `dashboard/paymentsuccess.discount`, `dashboard/paymentsuccess.verify`, `dashboard/profile.volunteer-hours`, `dashboard/workshopofferagain.auth`, `api/payment-membership-changes`, `api/paymentprocess`, `api/paymentresubscribe`, `api/stripe-sync`, `authentication/logout`, and `routes-config.test.ts` (purchases still route through `paymentprocess` and the success page)
 
 **Support:**
 - `tests/helpers/db.mock.ts`, `tests/helpers/test-utils.ts`
-- Fixtures in `tests/fixtures/` — `equipment/`, `membership/`, `payment/`, `session/`, `user/`, `workshop/`
+- Fixtures in `tests/fixtures/` — `equipment/`, `membership/`, `payment/`, `session/`, `user/`, `workshop/`. The workshop fixture mocks `stripe-sync.server`, which otherwise sent live requests to the Stripe test account from every workshop suite
+- `tests/setup/env.ts` blanks `EMAIL_DEV_REDIRECT` for every suite
 
 **Seed data:**
 - `seed.ts` provides consistent test data; **requires `NODE_ENV=development`** — it logs `Seed aborted` and exits immediately otherwise. Occurrence dates are relative to `now` (e.g. `addDays(now, 7)`) so workshops always appear upcoming regardless of when the seed runs. It truncates and reseeds `RoleUser`, restarting the sequence so `User` = 1 and `Admin` = 2
@@ -1338,8 +1411,6 @@ Suites run in jest's `node` environment by default. A component test opts into a
 ### API Routes
 | Path | File |
 |------|------|
-| `/dashboard/register/:id` | `routes/api/register.tsx` |
-| `/dashboard/equipments/book-slot` | `routes/api/bookequipmentslot.tsx` |
 | `/dashboard/equipment/delete/:id` | `routes/api/equipmentsdelete.tsx` |
 | `/dashboard/profile/download-waiver` | `routes/api/download-waiver.tsx` |
 | `/dashboard/profile/download-membership-agreement/:formId` | `routes/api/download-membership-agreement.tsx` |
@@ -1367,6 +1438,7 @@ Suites run in jest's `node` environment by default. A component test opts into a
 2. Run `npx prisma migrate dev --name descriptive_name`
 3. Run `npx prisma generate` to update types
 4. Update `seed.ts` if needed for new test data
+5. In production, apply it with `npx prisma migrate deploy` before the code that depends on it runs
 
 ### Adding Business Logic
 1. Add functions to appropriate model file in `app/models/`

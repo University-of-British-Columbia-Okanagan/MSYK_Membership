@@ -14,6 +14,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  formatBusinessDate,
+  formatBusinessTime,
+  isSameBusinessDay,
+} from "~/utils/business-time";
 
 interface EquipmentProps {
   id: number;
@@ -79,7 +84,7 @@ export default function EquipmentCard({
     const end = new Date(endTime);
 
     const formatDate = (date: Date) => {
-      return date.toLocaleDateString("en-US", {
+      return formatBusinessDate(date, "en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -87,14 +92,14 @@ export default function EquipmentCard({
     };
 
     const formatTime = (date: Date) => {
-      return date.toLocaleTimeString("en-US", {
+      return formatBusinessTime(date, "en-US", {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
       });
     };
 
-    const isSameDay = start.toDateString() === end.toDateString();
+    const isSameDay = isSameBusinessDay(start, end);
 
     if (isSameDay) {
       return (

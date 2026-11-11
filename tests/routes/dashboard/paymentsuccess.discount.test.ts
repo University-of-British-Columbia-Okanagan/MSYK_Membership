@@ -13,6 +13,8 @@ import {
   getCheckoutSessionCouponId,
 } from "~/services/stripe-discounts.server";
 import { getAdminSetting } from "~/models/admin.server";
+import { getUser } from "~/utils/session.server";
+import { claimPaymentFulfillment } from "~/models/payment.server";
 import { loader } from "~/routes/dashboard/paymentsuccess";
 
 // The route builds a Stripe client at module load from STRIPE_SECRET_KEY, absent here.
@@ -29,6 +31,12 @@ jest.mock("stripe", () => {
 const sessionsRetrieveMock = (require("stripe") as { __retrieve: jest.Mock })
   .__retrieve;
 
+// The page only fulfils a paid session for the member who paid it, once.
+jest.mock("~/utils/session.server", () => ({ getUser: jest.fn() }));
+jest.mock("~/models/payment.server", () => ({
+  claimPaymentFulfillment: jest.fn(),
+  releasePaymentFulfillment: jest.fn(),
+}));
 jest.mock("~/models/membership.server");
 jest.mock("~/models/workshop.server");
 jest.mock("~/models/equipment.server");
@@ -76,7 +84,11 @@ describe("paymentsuccess loader - membership discount capture", () => {
     jest.clearAllMocks();
     // The loader logs and swallows on the discount and email paths by design.
     consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+    (getUser as jest.Mock).mockResolvedValue({ id: 4, email: "member@example.com" });
+    (claimPaymentFulfillment as jest.Mock).mockResolvedValue(true);
     sessionsRetrieveMock.mockResolvedValue({
+      id: SESSION_ID,
+      payment_status: "paid",
       payment_intent: "pi_1",
       metadata: { membershipPlanId: "1", userId: "4", billingCycle: "monthly" },
     });

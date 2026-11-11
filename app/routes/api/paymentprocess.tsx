@@ -12,7 +12,8 @@ export async function action({ request }: { request: Request }) {
       });
     }
 
-    return createCheckoutSession(request);
+    // Who pays is always the session user; any userId in the body is ignored.
+    return await createCheckoutSession(request, user.id);
   } catch (error) {
     logger.error(`Payment action error: ${error}`, { url: request.url });
     return new Response(JSON.stringify({ error: "Internal server error" }), {

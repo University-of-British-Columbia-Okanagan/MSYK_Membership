@@ -455,7 +455,7 @@ describe("membership.server - memberships", () => {
   });
 
   describe("AC18 - Membership Resubscription", () => {
-    it("reactivates cancelled membership, recalculates nextPaymentDate, reactivates form, and restores role level", async () => {
+    it("reactivates cancelled membership, keeps its paid-through date, reactivates form, and restores role level", async () => {
       const cancelledMembership = createMockMembership({
         id: 40,
         status: "cancelled",
@@ -488,13 +488,15 @@ describe("membership.server - memberships", () => {
       );
 
       expect(result.status).toBe("active");
+      // Resubscribing is free, so the next charge stays where the member already paid up to.
       expect(db.userMembership.update).toHaveBeenCalledWith({
         where: { id: cancelledMembership.id },
-        data: expect.objectContaining({
-          status: "active",
-          nextPaymentDate: expect.any(Date),
-        }),
+        data: expect.objectContaining({ status: "active" }),
       });
+      const resubscribeUpdate = db.userMembership.update.mock.calls[0][0].data;
+      expect(resubscribeUpdate.nextPaymentDate ?? cancelledMembership.nextPaymentDate).toEqual(
+        cancelledMembership.nextPaymentDate
+      );
       expect(db.userMembershipForm.updateMany).toHaveBeenCalledWith({
         where: expect.objectContaining({
           userId: 1,
@@ -509,6 +511,42 @@ describe("membership.server - memberships", () => {
       expect(db.user.update).toHaveBeenCalledWith({
         where: { id: user.id },
         data: { roleLevel: 3 },
+      });
+    });
+  });
+
+  describe("AC18b - resubscribing gives away no free time", () => {
+    const setup = (cancelled: any) => {
+      db.membershipPlan.findUnique.mockResolvedValue(createMockPlan({ id: cancelled.membershipPlanId }));
+      db.userMembership.findUnique.mockResolvedValue(cancelled);
+      db.userMembership.update.mockImplementation(async ({ data }: any) => ({ ...cancelled, ...data }));
+      db.userMembershipForm.updateMany.mockResolvedValue({ count: 1 });
+      db.user.findUnique.mockResolvedValue(createMockUser({ roleLevel: 3 }));
+      db.user.update.mockResolvedValue(createMockUser({ roleLevel: 3 }));
+    };
+
+    it("keeps a quarterly member's Dec 1 renewal when they resubscribe on Nov 10", async () => {
+      jest.useFakeTimers().setSystemTime(new Date("2026-11-10T19:00:00.000Z"));
+      const paidThrough = new Date("2026-12-01T06:00:00.000Z");
+      const cancelled = createMockMembership({ id: 42, userId: 5, status: "cancelled", billingCycle: "quarterly", nextPaymentDate: paidThrough });
+      setup(cancelled);
+
+      const result = await registerMembershipSubscription(5, cancelled.membershipPlanId, 42, false, true, undefined, "quarterly", true);
+
+      expect(result.nextPaymentDate).toEqual(paidThrough);
+      expect(db.userMembership.update.mock.calls[0][0].data.nextPaymentDate).toBeUndefined();
+      jest.useRealTimers();
+    });
+
+    it("still records the member's new auto-renew choice", async () => {
+      const cancelled = createMockMembership({ id: 43, userId: 5, status: "cancelled", nextPaymentDate: new Date("2026-12-01T06:00:00.000Z") });
+      setup(cancelled);
+
+      await registerMembershipSubscription(5, cancelled.membershipPlanId, 43, false, true, undefined, "monthly", false);
+
+      expect(db.userMembership.update).toHaveBeenCalledWith({
+        where: { id: 43 },
+        data: expect.objectContaining({ status: "active", autoRenew: false }),
       });
     });
   });
