@@ -15,29 +15,16 @@ import {
 } from "../../models/membership.server";
 import { getUser, getRoleUser } from "~/utils/session.server";
 import { useState } from "react";
-import { Stripe } from "stripe";
 import { getSavedPaymentMethod, getUserById } from "../../models/user.server";
 import QuickCheckout from "~/components/ui/Dashboard/QuickCheckout";
-import { logger } from "~/logging/logger";
 import { getAdminSetting } from "../../models/admin.server";
-import { getOrCreateGstTaxRate } from "~/services/stripe-discounts.server";
-
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-02-24.acacia",
-});
-
-function isPastRegistrationCutoff(
-  startDate: Date,
-  cutoffMinutes?: number | null
-): boolean {
-  if (!cutoffMinutes || cutoffMinutes <= 0) {
-    return false;
-  }
-  const cutoffTime = new Date(startDate);
-  cutoffTime.setMinutes(cutoffTime.getMinutes() - cutoffMinutes);
-  return new Date() >= cutoffTime;
-}
+import { addBusinessMonths, formatBusinessDate } from "~/utils/business-time";
+import { isPastRegistrationCutoff } from "~/utils/registration-cutoff";
+import {
+  BILLING_CYCLE_LABELS,
+  getPlanPriceForCycle,
+  isBillingCycle,
+} from "~/utils/membership-rules";
 
 // Loader: load either workshop data or membership plan data based on route parameters
 export const loader: LoaderFunction = async ({ params, request }) => {
@@ -92,38 +79,29 @@ export const loader: LoaderFunction = async ({ params, request }) => {
     }
 
     const url = new URL(request.url);
-    const billingCycle =
-      (url.searchParams.get("billingCycle") as
-        | "monthly"
-        | "quarterly"
-        | "semiannually"
-        | "yearly"
-        | null) || "monthly";
+    const billingCycle = url.searchParams.get("billingCycle") || "monthly";
     const autoRenewParam = url.searchParams.get("autoRenew");
     const autoRenew =
       autoRenewParam === null
         ? true
         : autoRenewParam !== "false" && autoRenewParam !== "0";
 
-    let membershipPrice = membershipPlan.price;
-    if (billingCycle === "quarterly" && membershipPlan.price3Months) {
-      membershipPrice = membershipPlan.price3Months;
-    } else if (billingCycle === "semiannually" && membershipPlan.price6Months) {
-      membershipPrice = membershipPlan.price6Months;
-    } else if (billingCycle === "yearly" && membershipPlan.priceYearly) {
-      membershipPrice = membershipPlan.priceYearly;
+    // Same price the checkout will charge; a cycle the plan does not offer is refused there too.
+    const membershipPrice = getPlanPriceForCycle(membershipPlan, billingCycle);
+    if (!isBillingCycle(billingCycle) || membershipPrice == null) {
+      const label = isBillingCycle(billingCycle) ? BILLING_CYCLE_LABELS[billingCycle] : "that";
+      throw new Response(
+        `This plan is not offered with ${label} billing. Please choose another billing cycle.`,
+        { status: 400 }
+      );
     }
 
-    // Enforce server-side gating for plans requiring admin permission
+    // Plans requiring admin permission; resubscribing is held to the same rule.
     if (membershipPlan.needAdminPermission) {
       const meetsLevelRequirement = (userRecord?.roleLevel ?? 0) >= 3;
       const hasAdminPermission = userRecord?.allowLevel4 === true;
-      const isResubscription = searchParams.get("resubscribe") === "true";
 
-      if (
-        !isResubscription &&
-        (!meetsLevelRequirement || !hasAdminPermission)
-      ) {
+      if (!meetsLevelRequirement || !hasAdminPermission) {
         throw redirect(roleRedirectPath);
       }
     }
@@ -148,8 +126,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
       // Instead of using the original signup date for A, use a date exactly one month before the next payment
       const nextPaymentDate = new Date(userActiveMembership.nextPaymentDate);
-      const effectiveStartDate = new Date(nextPaymentDate);
-      effectiveStartDate.setMonth(effectiveStartDate.getMonth() - 1);
+      const effectiveStartDate = addBusinessMonths(nextPaymentDate, -1);
       // A is now the time already used in the current billing cycle
       const A = now.getTime() - effectiveStartDate.getTime();
       // B remains the time left until next payment
@@ -301,7 +278,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     // Get the specific price variation
     const selectedVariation = await getWorkshopPriceVariation(variationId);
-    if (!selectedVariation)
+    if (!selectedVariation || selectedVariation.workshopId !== workshopId)
       throw new Response("Price variation not found", { status: 404 });
 
     // CHECK: If workshop is full (including variation capacity), redirect user
@@ -435,7 +412,7 @@ export const loader: LoaderFunction = async ({ params, request }) => {
 
     // Get the specific price variation
     const selectedVariation = await getWorkshopPriceVariation(variationId);
-    if (!selectedVariation)
+    if (!selectedVariation || selectedVariation.workshopId !== workshopId)
       throw new Response("Price variation not found", { status: 404 });
 
     // CHECK: If workshop is full (including variation capacity), redirect user
@@ -482,261 +459,6 @@ export const loader: LoaderFunction = async ({ params, request }) => {
   }
 };
 
-// Action: create a Stripe Checkout Session for the appropriate payment type
-export async function action({ request }: { request: Request }) {
-  try {
-    const body = await request.json();
-    const user = await getUser(request);
-    if (!user)
-      return new Response(JSON.stringify({ error: "User not authenticated" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-
-    const userRecord = await getUserById(user.id);
-
-    if (body.membershipPlanId) {
-      if (userRecord?.membershipStatus === "revoked") {
-        return new Response(
-          JSON.stringify({
-            error: "Your membership access has been revoked by an administrator.",
-          }),
-          {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-      const { membershipPlanId, price, userId, upgradeFee } = body;
-      if (!membershipPlanId || price === undefined || !userId) {
-        return new Response(
-          JSON.stringify({ error: "Missing required membership payment data" }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-      const membershipPlan = await getMembershipPlanById(
-        Number(membershipPlanId)
-      );
-      if (!membershipPlan) {
-        return new Response(
-          JSON.stringify({ error: "Membership Plan not found" }),
-          {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      const gstPercentage = await getAdminSetting("gst_percentage", "5");
-
-      // GST as a tax rate, so a promotion code discounts the base and GST follows the
-      // discounted amount — the same arithmetic the renewal invoices use.
-      const gstTaxRateId = await getOrCreateGstTaxRate(parseFloat(gstPercentage));
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        mode: "payment",
-        allow_promotion_codes: true,
-        line_items: [
-          {
-            price_data: {
-              currency: "cad",
-              ...(membershipPlan.stripeProductId
-                ? { product: membershipPlan.stripeProductId }
-                : {
-                    product_data: {
-                      name: membershipPlan.title,
-                      description:
-                        membershipPlan.description +
-                        (upgradeFee > 0
-                          ? ` (Upgrade fee: CA$${upgradeFee.toFixed(2)})`
-                          : "") +
-                        ` (plus ${gstPercentage}% GST)`,
-                    },
-                  }),
-              unit_amount: Math.round(price * 100),
-            },
-            quantity: 1,
-            ...(gstTaxRateId ? { tax_rates: [gstTaxRateId] } : {}),
-          },
-        ],
-        success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.BASE_URL}dashboard/memberships`,
-        metadata: {
-          membershipPlanId: membershipPlanId.toString(),
-          userId: userId.toString(),
-          upgradeFee: upgradeFee.toString(),
-          currentMembershipId: (body.currentMembershipId || "").toString(),
-          originalPrice: membershipPlan.price.toString(),
-        },
-      });
-
-      return new Response(JSON.stringify({ url: session.url }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // Workshop branch: standard single occurrence registration
-    else if (body.workshopId && body.occurrenceId) {
-      const { workshopId, occurrenceId, price, userId, variationId } = body;
-      if (!workshopId || !occurrenceId || !price || !userId) {
-        return new Response(
-          JSON.stringify({ error: "Missing required payment data" }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-      const workshop = await getWorkshopById(workshopId);
-      const occurrence = await getWorkshopOccurrence(workshopId, occurrenceId);
-      if (!workshop || !occurrence) {
-        return new Response(
-          JSON.stringify({ error: "Workshop or Occurrence not found" }),
-          {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      let workshopDisplayName = workshop.name;
-      if (variationId) {
-        const variation = await getWorkshopPriceVariation(Number(variationId));
-        if (variation) {
-          workshopDisplayName = `${workshop.name} - ${variation.name}`;
-        }
-      }
-
-      const gstPercentage = await getAdminSetting("gst_percentage", "5");
-      const gstRate = parseFloat(gstPercentage) / 100;
-      const priceWithGST = price * (1 + gstRate);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        mode: "payment",
-        allow_promotion_codes: true,
-        line_items: [
-          {
-            price_data: {
-              currency: "cad",
-              ...(workshop.stripeProductId
-                ? { product: workshop.stripeProductId }
-                : {
-                    product_data: {
-                      name: workshopDisplayName,
-                      description: `Occurrence on ${new Date(occurrence.startDate).toLocaleString()} (Includes ${gstPercentage}% GST)`,
-                    },
-                  }),
-              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
-            },
-            quantity: 1,
-          },
-        ],
-        success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
-        metadata: {
-          workshopId: workshopId.toString(),
-          occurrenceId: occurrenceId.toString(),
-          userId: userId.toString(),
-          variationId: variationId ? variationId.toString() : "",
-        },
-      });
-
-      return new Response(JSON.stringify({ url: session.url }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // Multi-day workshop branch: using connectId
-    else if (body.workshopId && body.connectId) {
-      const { workshopId, connectId, price, userId } = body;
-      if (!workshopId || !connectId || !price || !userId) {
-        return new Response(
-          JSON.stringify({ error: "Missing required payment data" }),
-          {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-      const workshop = await getWorkshopById(workshopId);
-      // Use the helper to get all occurrences with the given connectId; pick the first one
-      const occurrences = await getWorkshopOccurrencesByConnectId(
-        workshopId,
-        Number(connectId)
-      );
-      if (!workshop || !occurrences || occurrences.length === 0) {
-        return new Response(
-          JSON.stringify({ error: "Workshop or Occurrences not found" }),
-          {
-            status: 404,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-      }
-      const firstOccurrence = occurrences[0];
-
-      const gstPercentage = await getAdminSetting("gst_percentage", "5");
-      const gstRate = parseFloat(gstPercentage) / 100;
-      const priceWithGST = price * (1 + gstRate);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        mode: "payment",
-        allow_promotion_codes: true,
-        line_items: [
-          {
-            price_data: {
-              currency: "cad",
-              ...(workshop.stripeProductId
-                ? { product: workshop.stripeProductId }
-                : {
-                    product_data: {
-                      name: workshop.name,
-                      description: `Occurrences starting on ${new Date(firstOccurrence.startDate).toLocaleString()} (Includes ${gstPercentage}% GST)`,
-                    },
-                  }),
-              unit_amount: Math.round(priceWithGST * 100), // Price with GST included
-            },
-            quantity: 1,
-          },
-        ],
-        success_url: `${process.env.BASE_URL}dashboard/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.BASE_URL}dashboard/workshops`,
-        metadata: {
-          workshopId: workshopId.toString(),
-          connectId: connectId.toString(),
-          userId: userId.toString(),
-        },
-      });
-
-      return new Response(JSON.stringify({ url: session.url }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    } else {
-      throw new Response("Missing required payment parameters", {
-        status: 400,
-      });
-    }
-  } catch (error) {
-    logger.error(`Stripe Checkout Error: ${error}`, { url: request.url });
-    return new Response(
-      JSON.stringify({ error: "Failed to create checkout session" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
-}
-
 // Payment Component – renders UI based on whether which payment
 export default function Payment() {
   const data = useLoaderData() as {
@@ -764,6 +486,7 @@ export default function Payment() {
 
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isQuickCheckoutRedirecting, setIsQuickCheckoutRedirecting] = useState(false);
 
   const getMembershipPrice = () => {
@@ -775,8 +498,15 @@ export default function Payment() {
 
   const membershipPrice = getMembershipPrice();
 
+  // The server prices and validates everything; show what it refuses.
+  const fail = (message?: string) => {
+    setError(message || "Something went wrong. Please try again.");
+    setLoading(false);
+  };
+
   const handlePayment = async () => {
     setLoading(true);
+    setError(null);
     try {
       if (data.membershipPlan) {
         if (data.isResubscription) {
@@ -788,22 +518,16 @@ export default function Payment() {
                 ? Number(data.membershipRecordId)
                 : data.userActiveMembership?.id,
               membershipPlanId: data.membershipPlan.id,
-              userId: data.user.id,
               billingCycle: data.billingCycle || "monthly",
               autoRenew: data.autoRenew ?? true,
             }),
           });
 
-          if (!res.ok) {
-            throw new Error(`HTTP error! status: ${res.status}`);
-          }
-
-          const json = await res.json();
+          const json = await res.json().catch(() => ({}));
           if (json.success) {
             return navigate("/dashboard/payment/success?resubscribe=true");
-          } else {
-            console.error("Resubscription error:", json.error);
           }
+          fail(json.error);
         }
 
         // Downgrade branch
@@ -814,33 +538,24 @@ export default function Payment() {
             body: JSON.stringify({
               currentMembershipId: data.userActiveMembership?.id,
               newMembershipPlanId: data.membershipPlan.id,
-              userId: data.user.id,
               billingCycle: data.billingCycle || "monthly",
               autoRenew: data.autoRenew ?? true,
             }),
           });
-          const json = await res.json();
+          const json = await res.json().catch(() => ({}));
           if (json.success) {
             return navigate("/dashboard/payment/success?downgrade=true");
-          } else {
-            console.error("Downgrade error:", json.error);
           }
+          fail(json.error);
         }
 
-        // use `upgradeFee` for upgrades, otherwise full price
+        // New membership or a paid upgrade; the server works out the amount.
         else {
           const response = await fetch("/dashboard/paymentprocess", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               membershipPlanId: data.membershipPlan.id,
-              price: data.userActiveMembership
-                ? data.upgradeFee
-                : membershipPrice,
-              userId: data.user.id,
-              oldMembershipNextPaymentDate: data.oldMembershipNextPaymentDate,
-              // send upgradeFee here
-              upgradeFee: data.upgradeFee,
               currentMembershipId: data.userActiveMembership?.id || null,
               billingCycle: data.billingCycle || "monthly",
               autoRenew: data.autoRenew ?? true,
@@ -862,23 +577,21 @@ export default function Payment() {
                 body: JSON.stringify({
                   currentMembershipId: data.userActiveMembership?.id,
                   newMembershipPlanId: data.membershipPlan.id,
-                  userId: data.user.id,
                   billingCycle: data.billingCycle || "monthly",
                   autoRenew: data.autoRenew ?? true,
                 }),
               });
-              const j = await r.json();
+              const j = await r.json().catch(() => ({}));
               if (j.success) {
                 return navigate(
                   "/dashboard/payment/success?quick_checkout=true&type=membership"
                 );
               }
+              return fail(j.error);
             }
-            console.error("Payment error:", resData.error);
-            setLoading(false);
+            fail(resData.error);
           } else {
-            console.error("Payment error:", resData.error);
-            setLoading(false);
+            fail(resData.error);
           }
         }
       }
@@ -892,19 +605,14 @@ export default function Payment() {
             body: JSON.stringify({
               workshopId: data.workshop.id,
               connectId: data.occurrence.connectId,
-              price: data.selectedVariation
-                ? data.selectedVariation.price
-                : data.workshop.price,
-              userId: data.user.id,
               variationId: data.selectedVariation?.id || null,
             }),
           });
-          const resData = await response.json();
+          const resData = await response.json().catch(() => ({}));
           if (resData.url) {
             window.location.href = resData.url;
           } else {
-            console.error("Payment error:", resData.error);
-            setLoading(false);
+            fail(resData.error);
           }
         } else {
           const response = await fetch("/dashboard/paymentprocess", {
@@ -913,25 +621,20 @@ export default function Payment() {
             body: JSON.stringify({
               workshopId: data.workshop.id,
               occurrenceId: data.occurrence.id,
-              price: data.selectedVariation
-                ? data.selectedVariation.price
-                : data.workshop.price,
-              userId: data.user.id,
               variationId: data.selectedVariation?.id || null,
             }),
           });
-          const resData = await response.json();
+          const resData = await response.json().catch(() => ({}));
           if (resData.url) {
             window.location.href = resData.url;
           } else {
-            console.error("Payment error:", resData.error);
-            setLoading(false);
+            fail(resData.error);
           }
         }
       }
     } catch (error) {
       console.error("Payment error:", error);
-      setLoading(false);
+      fail();
     }
   };
 
@@ -942,7 +645,6 @@ export default function Payment() {
         (data.selectedVariation ? data.selectedVariation.price : data.workshop.price) > 0 && (
         <div className="mb-6">
           <QuickCheckout
-            userId={data.user.id}
             checkoutData={{
               type: "workshop",
               workshopId: data.workshop.id,
@@ -992,15 +694,10 @@ export default function Payment() {
         data.needsPayment && (
           <div className="mb-6">
             <QuickCheckout
-              userId={data.user.id}
               checkoutData={{
                 type: "membership",
                 membershipPlanId: data.membershipPlan.id,
-                price: data.userActiveMembership
-                  ? data.upgradeFee
-                  : membershipPrice,
                 currentMembershipId: data.userActiveMembership?.id,
-                upgradeFee: data.upgradeFee,
                 billingCycle:
                   (data.billingCycle as
                     | "monthly"
@@ -1105,9 +802,7 @@ export default function Payment() {
                       : "0.00"}
                     /month until your next payment date at{" "}
                     {data.oldMembershipNextPaymentDate
-                      ? new Date(
-                          data.oldMembershipNextPaymentDate
-                        ).toLocaleDateString()
+                      ? formatBusinessDate(data.oldMembershipNextPaymentDate)
                       : "N/A"}
                     , then switch to CA$
                     {(membershipPrice * (1 + data.gstPercentage / 100)).toFixed(
@@ -1137,9 +832,7 @@ export default function Payment() {
                   </strong>{" "}
                   starting from{" "}
                   {data.oldMembershipNextPaymentDate
-                    ? new Date(
-                        data.oldMembershipNextPaymentDate
-                      ).toLocaleDateString()
+                    ? formatBusinessDate(data.oldMembershipNextPaymentDate)
                     : "N/A"}
                   .
                 </p>
@@ -1229,6 +922,15 @@ export default function Payment() {
             );
           })()}
         </>
+      )}
+
+      {error && (
+        <p
+          role="alert"
+          className="mt-4 rounded border border-red-300 bg-red-50 p-3 text-sm leading-relaxed text-red-700"
+        >
+          {error}
+        </p>
       )}
 
       <Button

@@ -1,3 +1,5 @@
+import { addBusinessDays, addBusinessMonths } from "~/utils/business-time";
+
 export type MembershipStatus =
   | "active"
   | "ending"
@@ -12,17 +14,14 @@ export type BillingCycle =
 
 const defaultDate = new Date("2025-05-06T00:00:00Z");
 
-export const addMonths = (date: Date, months: number): Date => {
-  const result = new Date(date);
-  result.setMonth(result.getMonth() + months);
-  return result;
-};
+// Billing dates move on the business clock. The host-clock versions these replace made
+// expectations depend on the machine's zone: in America/Vancouver a May to November
+// step crossed DST and expected an extra hour that a UTC machine did not.
+export const addMonths = (date: Date, months: number): Date =>
+  addBusinessMonths(date, months);
 
-export const addDays = (date: Date, days: number): Date => {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-};
+export const addDays = (date: Date, days: number): Date =>
+  addBusinessDays(date, days);
 
 export const createMockPlan = (
   overrides: Partial<{

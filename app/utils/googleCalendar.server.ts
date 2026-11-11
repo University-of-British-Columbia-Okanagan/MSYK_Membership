@@ -2,6 +2,7 @@ import { google, calendar_v3 } from "googleapis";
 import CryptoJS from "crypto-js";
 import { getAdminSetting, updateAdminSetting } from "~/models/admin.server";
 import { logger } from "~/logging/logger";
+import { toBusinessIsoString } from "~/utils/business-time";
 
 type OAuthClient = InstanceType<typeof google.auth.OAuth2>;
 
@@ -132,16 +133,6 @@ export type OccurrenceLike = {
   connectId?: number | null;
 };
 
-function formatLocalNoTimezone(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const y = date.getFullYear();
-  const M = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const h = pad(date.getHours());
-  const m = pad(date.getMinutes());
-  const s = pad(date.getSeconds());
-  return `${y}-${M}-${d}T${h}:${m}:${s}`;
-}
 
 function sanitizeText(input: string): string {
   if (!input) return "";
@@ -153,13 +144,13 @@ function sanitizeText(input: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-function buildEventResource(
+export function buildEventResource(
   workshop: WorkshopLike,
   occ: OccurrenceLike,
   tz: string,
   baseUrl: string
 ): calendar_v3.Schema$Event {
-  // Use the exact local times chosen in the app (Yellowknife). No conversions.
+  // The explicit offset makes the event independent of the server's timezone.
   const start = occ.startDate;
   const end = occ.endDate;
   const summary = sanitizeText(workshop.name);
@@ -191,8 +182,8 @@ function buildEventResource(
     summary,
     description: descriptionLines.join("\n"),
     location: sanitizeText(workshop.location),
-    start: { dateTime: formatLocalNoTimezone(start), timeZone: tz },
-    end: { dateTime: formatLocalNoTimezone(end), timeZone: tz },
+    start: { dateTime: toBusinessIsoString(start), timeZone: tz },
+    end: { dateTime: toBusinessIsoString(end), timeZone: tz },
   };
 }
 

@@ -25,7 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FiSearch } from "react-icons/fi";
 import { Badge } from "@/components/ui/badge";
-import { format, differenceInSeconds } from "date-fns";
+import { differenceInSeconds } from "date-fns";
 import { getIssues, updateIssueStatus } from "~/models/issue.server";
 import {
   DropdownMenu,
@@ -42,6 +42,13 @@ import {
 import { SelectTrigger } from "@radix-ui/react-select";
 import { logger } from "~/logging/logger";
 import { getAllVolunteerHours } from "~/models/profile.server";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  formatBusinessTime,
+  parseBusinessDateTime,
+  toBusinessDateInput,
+} from "~/utils/business-time";
 
 /**
  * Convert workshop occurrence data to CSV string
@@ -70,8 +77,8 @@ const generateCSV = (workshopOccurrences: any[]) => {
       occ.connectId !== null && occ.connectId !== undefined ? "Yes" : "No",
       workshop.hasPriceVariations ? "Yes" : "No",
       occ.id,
-      new Date(occ.startDate).toLocaleString(),
-      new Date(occ.endDate).toLocaleString(),
+      formatBusinessDateTime(occ.startDate),
+      formatBusinessDateTime(occ.endDate),
       calculateDuration(occ.startDate, occ.endDate),
       occ.registrationCount,
       occ.offerId,
@@ -332,8 +339,13 @@ export default function AdminReports() {
 
   // Format date for display
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return format(date, "MMM d, yyyy h:mm a");
+    return formatBusinessDateTime(dateString, "en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   };
 
   // Group occurrences by workshop and status
@@ -375,7 +387,7 @@ export default function AdminReports() {
       }));
 
     const csvContent = generateCSV(activeWorkshopData);
-    const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const dateStr = toBusinessDateInput(new Date());
     downloadCSV(csvContent, `active-workshops-${dateStr}.csv`);
   };
 
@@ -390,7 +402,7 @@ export default function AdminReports() {
       }));
 
     const csvContent = generateCSV(pastWorkshopData);
-    const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const dateStr = toBusinessDateInput(new Date());
     downloadCSV(csvContent, `past-workshops-${dateStr}.csv`);
   };
 
@@ -477,8 +489,8 @@ export default function AdminReports() {
         appliedToTime
       ) {
         const entryStartDate = new Date(hour.startTime);
-        const fromDateTime = new Date(`${appliedFromDate}T${appliedFromTime}`);
-        const toDateTime = new Date(`${appliedToDate}T${appliedToTime}`);
+        const fromDateTime = parseBusinessDateTime(`${appliedFromDate}T${appliedFromTime}`);
+        const toDateTime = parseBusinessDateTime(`${appliedToDate}T${appliedToTime}`);
         dateTimeMatch =
           entryStartDate >= fromDateTime && entryStartDate < toDateTime;
       }
@@ -513,16 +525,16 @@ export default function AdminReports() {
         return [
           `${hour.user.firstName} ${hour.user.lastName}`,
           hour.user.email,
-          start.toLocaleDateString("en-US", {
+          formatBusinessDate(start, "en-US", {
             year: "numeric",
             month: "short",
             day: "numeric",
           }),
-          start.toLocaleTimeString("en-US", {
+          formatBusinessTime(start, "en-US", {
             hour: "2-digit",
             minute: "2-digit",
           }),
-          end.toLocaleTimeString("en-US", {
+          formatBusinessTime(end, "en-US", {
             hour: "2-digit",
             minute: "2-digit",
           }),
@@ -552,7 +564,7 @@ export default function AdminReports() {
     link.setAttribute("href", url);
 
     // Generate filename with current date
-    const today = new Date().toISOString().split("T")[0];
+    const today = toBusinessDateInput(new Date());
     link.setAttribute("download", `volunteer-hours-report-${today}.csv`);
 
     link.style.visibility = "hidden";
@@ -1000,12 +1012,8 @@ export default function AdminReports() {
                                 appliedToTime
                               ) {
                                 const entryStartDate = new Date(hour.startTime);
-                                const fromDateTime = new Date(
-                                  `${appliedFromDate}T${appliedFromTime}`
-                                );
-                                const toDateTime = new Date(
-                                  `${appliedToDate}T${appliedToTime}`
-                                );
+                                const fromDateTime = parseBusinessDateTime(`${appliedFromDate}T${appliedFromTime}`);
+                                const toDateTime = parseBusinessDateTime(`${appliedToDate}T${appliedToTime}`);
                                 dateTimeMatch =
                                   entryStartDate >= fromDateTime &&
                                   entryStartDate < toDateTime;
@@ -1051,16 +1059,16 @@ export default function AdminReports() {
                               return [
                                 `${hour.user.firstName} ${hour.user.lastName}`,
                                 hour.user.email,
-                                start.toLocaleDateString("en-US", {
+                                formatBusinessDate(start, "en-US", {
                                   year: "numeric",
                                   month: "short",
                                   day: "numeric",
                                 }),
-                                start.toLocaleTimeString("en-US", {
+                                formatBusinessTime(start, "en-US", {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 }),
-                                end.toLocaleTimeString("en-US", {
+                                formatBusinessTime(end, "en-US", {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 }),
@@ -1091,7 +1099,7 @@ export default function AdminReports() {
                           link.setAttribute("href", url);
 
                           // Generate filename with current date
-                          const today = new Date().toISOString().split("T")[0];
+                          const today = toBusinessDateInput(new Date());
                           link.setAttribute(
                             "download",
                             `volunteer-hours-detailed-${today}.csv`
@@ -1136,12 +1144,8 @@ export default function AdminReports() {
                                 appliedToTime
                               ) {
                                 const entryStartDate = new Date(hour.startTime);
-                                const fromDateTime = new Date(
-                                  `${appliedFromDate}T${appliedFromTime}`
-                                );
-                                const toDateTime = new Date(
-                                  `${appliedToDate}T${appliedToTime}`
-                                );
+                                const fromDateTime = parseBusinessDateTime(`${appliedFromDate}T${appliedFromTime}`);
+                                const toDateTime = parseBusinessDateTime(`${appliedToDate}T${appliedToTime}`);
                                 dateTimeMatch =
                                   entryStartDate >= fromDateTime &&
                                   entryStartDate < toDateTime;
@@ -1219,12 +1223,12 @@ export default function AdminReports() {
                                 user.userName,
                                 user.userEmail,
                                 user.totalHours.toFixed(2),
-                                user.earliestDate.toLocaleDateString("en-US", {
+                                formatBusinessDate(user.earliestDate, "en-US", {
                                   year: "numeric",
                                   month: "short",
                                   day: "numeric",
                                 }),
-                                user.latestDate.toLocaleDateString("en-US", {
+                                formatBusinessDate(user.latestDate, "en-US", {
                                   year: "numeric",
                                   month: "short",
                                   day: "numeric",
@@ -1254,7 +1258,7 @@ export default function AdminReports() {
                           link.setAttribute("href", url);
 
                           // Generate filename with current date
-                          const today = new Date().toISOString().split("T")[0];
+                          const today = toBusinessDateInput(new Date());
                           link.setAttribute(
                             "download",
                             `volunteer-hours-totals-${today}.csv`
@@ -1410,12 +1414,8 @@ export default function AdminReports() {
                         appliedToTime
                       ) {
                         const entryStartDate = new Date(hour.startTime);
-                        const fromDateTime = new Date(
-                          `${appliedFromDate}T${appliedFromTime}`
-                        );
-                        const toDateTime = new Date(
-                          `${appliedToDate}T${appliedToTime}`
-                        );
+                        const fromDateTime = parseBusinessDateTime(`${appliedFromDate}T${appliedFromTime}`);
+                        const toDateTime = parseBusinessDateTime(`${appliedToDate}T${appliedToTime}`);
                         dateTimeMatch =
                           entryStartDate >= fromDateTime &&
                           entryStartDate < toDateTime;
@@ -1516,7 +1516,7 @@ export default function AdminReports() {
                                         <TableCell>
                                           <div className="text-sm">
                                             <div className="font-medium">
-                                              {start.toLocaleDateString(
+                                              {formatBusinessDate(start,
                                                 "en-US",
                                                 {
                                                   month: "short",
@@ -1526,7 +1526,7 @@ export default function AdminReports() {
                                               )}
                                             </div>
                                             <div className="text-gray-600">
-                                              {start.toLocaleTimeString(
+                                              {formatBusinessTime(start,
                                                 "en-US",
                                                 {
                                                   hour: "2-digit",
@@ -1534,7 +1534,7 @@ export default function AdminReports() {
                                                 }
                                               )}{" "}
                                               -{" "}
-                                              {end.toLocaleTimeString("en-US", {
+                                              {formatBusinessTime(end, "en-US", {
                                                 hour: "2-digit",
                                                 minute: "2-digit",
                                               })}

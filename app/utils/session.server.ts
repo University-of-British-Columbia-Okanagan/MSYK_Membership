@@ -8,11 +8,13 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import * as fs from "fs";
 import * as path from "path";
 import CryptoJS from "crypto-js";
+import crypto from "crypto";
 import {
   sendRegistrationConfirmationEmail,
   sendMinorRegistrationNotificationEmail,
 } from "./email.server";
 import { calculateAge, requiresGuardian } from "./age";
+import { formatBusinessDate } from "~/utils/business-time";
 
 /**
  * Generates a digitally signed and encrypted waiver PDF document
@@ -102,7 +104,7 @@ async function generateSignedWaiver(
     }
 
     // Add date using calculated position
-    const currentDate = new Date().toLocaleDateString("en-US");
+    const currentDate = formatBusinessDate(new Date(), "en-US");
     secondPage.drawText(currentDate, {
       x: baseX,
       y: 114,
@@ -302,7 +304,7 @@ export async function register(rawValues: Record<string, any>) {
 /**
  * Authenticates a user with email and password
  * @param data - Object containing email and password
- * @returns Promise<Object> - User data with id, email, roleUserId, and password, or error object
+ * @returns Promise<Object> - User data with id, email and roleUserId, or error object
  */
 export async function login(rawValues: Record<string, any>) {
   // Validate the incoming form data using the Zod schema
@@ -342,7 +344,6 @@ export async function login(rawValues: Record<string, any>) {
     id: user.id,
     email: user.email,
     roleUserId: user.roleUserId,
-    password: data.password,
   };
 }
 
@@ -375,6 +376,65 @@ function getUserSession(request: Request) {
   return storage.getSession(request.headers.get("Cookie"));
 }
 
+const SESSION_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours
+
+/**
+ * Fingerprint of the user's bcrypt hash. A password change alters the hash, so it
+ * invalidates every session without the password itself ever entering the cookie.
+ */
+function passwordFingerprint(passwordHash: string) {
+  return crypto
+    .createHmac("sha256", sessionSecret as string)
+    .update(passwordHash)
+    .digest("hex");
+}
+
+function fingerprintMatches(candidate: unknown, passwordHash: string) {
+  if (typeof candidate !== "string") return false;
+  const expected = Buffer.from(passwordFingerprint(passwordHash));
+  const actual = Buffer.from(candidate);
+  return (
+    actual.length === expected.length && crypto.timingSafeEqual(actual, expected)
+  );
+}
+
+/**
+ * Returns the session's user id when every check passes, otherwise null.
+ * Has no side effects, so a rejected cookie never signs out the user's other devices.
+ */
+async function validateSession(
+  session: Awaited<ReturnType<typeof getUserSession>>
+) {
+  const userId = session.get("userId");
+  const loginTime = session.get("loginTime");
+  const pwf = session.get("pwf");
+  const sessionVersion = session.get("sessionVersion");
+
+  if (
+    !userId ||
+    typeof userId !== "string" ||
+    !pwf ||
+    typeof sessionVersion !== "number"
+  ) {
+    return null;
+  }
+
+  if (!loginTime || Date.now() - Number(loginTime) > SESSION_DURATION_MS) {
+    return null;
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: Number(userId) },
+    select: { id: true, password: true, sessionVersion: true },
+  });
+
+  if (!user) return null;
+  if (!fingerprintMatches(pwf, user.password)) return null;
+  if (sessionVersion !== user.sessionVersion) return null;
+
+  return userId;
+}
+
 /**
  * Extracts and validates the user ID from the session
  * @param request - The HTTP request object
@@ -382,40 +442,7 @@ function getUserSession(request: Request) {
  */
 export async function getUserId(request: Request) {
   const session = await getUserSession(request);
-  const userId = session.get("userId");
-  const userPassword = session.get("userPassword");
-  const loginTime = session.get("loginTime");
-  if (!userId || typeof userId !== "string" || !userPassword) {
-    await logout(request);
-    return null;
-  }
-
-  const SESSION_DURATION_MS = 3 * 60 * 60 * 1000; // 3 hours
-  if (!loginTime || Date.now() - Number(loginTime) > SESSION_DURATION_MS) {
-    await logout(request);
-    return null;
-  }
-
-  const user = await db.user.findUnique({
-    where: { id: Number(userId) },
-    select: {
-      id: true,
-      password: true,
-    },
-  });
-
-  if (!user) {
-    await logout(request);
-    return null;
-  }
-
-  const isPasswordValid = await bcrypt.compare(userPassword, user.password);
-  if (!isPasswordValid) {
-    await logout(request);
-    return null;
-  }
-
-  return userId;
+  return validateSession(session);
 }
 
 /**
@@ -447,12 +474,25 @@ export async function getUser(request: Request) {
 }
 
 /**
- * Destroys the user session and redirects to login page
+ * Signs the user out everywhere and redirects to the login page. Bumping
+ * sessionVersion kills every copy of the cookie, not just this browser's.
  * @param request - The HTTP request object
  * @returns Promise<Response> - Redirect response to login page
  */
 export async function logout(request: Request) {
   const session = await getUserSession(request);
+  const userId = await validateSession(session);
+  if (userId) {
+    try {
+      await db.user.update({
+        where: { id: Number(userId) },
+        data: { sessionVersion: { increment: 1 } },
+        select: { id: true },
+      });
+    } catch (error) {
+      console.error("Failed to bump sessionVersion on logout:", error);
+    }
+  }
   return redirect("/login", {
     headers: {
       "Set-Cookie": await storage.destroySession(session),
@@ -461,21 +501,24 @@ export async function logout(request: Request) {
 }
 
 /**
- * Creates a new user session and redirects to specified URL
+ * Creates a new user session and redirects to specified URL. The cookie holds
+ * the user id, login time, sessionVersion and a fingerprint of the password hash.
  * @param userId - The ID of the user to create session for
- * @param password - The user's password to store in session
  * @param redirectTo - The URL to redirect to after session creation
  * @returns Promise<Response> - Redirect response with session cookie
  */
-export async function createUserSession(
-  userId: number,
-  password: string,
-  redirectTo: string
-) {
+export async function createUserSession(userId: number, redirectTo: string) {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { password: true, sessionVersion: true },
+  });
+  if (!user) return redirect("/login");
+
   const session = await storage.getSession();
   session.set("userId", userId.toString());
-  session.set("userPassword", password);
   session.set("loginTime", Date.now().toString());
+  session.set("sessionVersion", user.sessionVersion);
+  session.set("pwf", passwordFingerprint(user.password));
   return redirect(redirectTo, {
     headers: {
       "Set-Cookie": await storage.commitSession(session),

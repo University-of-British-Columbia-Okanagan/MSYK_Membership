@@ -88,6 +88,16 @@ export const createDbMock = () => ({
       create: jest.fn(),
       update: jest.fn(),
     },
+    paymentFulfillment: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+    },
+    equipmentCheckout: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   },
 });

@@ -1,10 +1,28 @@
 import { db } from "../utils/db.server";
-import { getUserId } from "../utils/session.server";
-import { getAdminSetting } from "../models/admin.server";
+import { getAdminSetting, getPlannedClosures } from "../models/admin.server";
 import {
   syncEquipmentToStripe,
   archiveStripeProduct,
 } from "~/services/stripe-sync.server";
+import {
+  addBusinessDays,
+  getWallClock,
+  parseBusinessDate,
+  parseBusinessDateTime,
+  startOfBusinessDay,
+  toBusinessDateInput,
+} from "~/utils/business-time";
+import {
+  FULL_DAY_NAMES,
+  equipmentDayKey,
+  equipmentGridDays,
+  equipmentTimeKey,
+} from "~/utils/business-time-equipment";
+import {
+  getEquipmentBookingViolation,
+  parseSlotRanges,
+  type EquipmentBookingRules,
+} from "~/utils/equipment-booking-rules";
 
 /**
  * Get equipment with prerequisites by ID
@@ -75,70 +93,271 @@ export async function getAvailableEquipment() {
     );
 }
 
+/** The booking rules that apply to a member of `roleLevel`. */
+export async function loadEquipmentBookingRules(
+  roleLevel: number,
+): Promise<EquipmentBookingRules> {
+  if (roleLevel === 3) {
+    return {
+      level3Schedule: await getLevel3ScheduleRestrictions(),
+      plannedClosures: await getPlannedClosures(),
+    };
+  }
+  if (roleLevel === 4) {
+    return { level4Restrictions: await getLevel4UnavailableHours() };
+  }
+  return {};
+}
+
+/** Throws the first rule a slot breaks. Run before checkout and again when booking. */
+export async function assertEquipmentSlotsAllowed(roleLevel: number, starts: Date[]) {
+  const rules = await loadEquipmentBookingRules(roleLevel);
+  for (const start of starts) {
+    if (isNaN(start.getTime())) throw new Error("Invalid booking time.");
+    const violation = getEquipmentBookingViolation(roleLevel, start, rules);
+    if (violation) throw new Error(violation);
+  }
+}
+
+/** A refusal whose message is safe to show the member. */
+export class EquipmentBookingError extends Error {}
+
+export type EquipmentSlotTimes = { startTime: string; endTime: string };
+
+const SLOT_MS = 30 * 60 * 1000;
+const SLOT_TAKEN = "That time is already booked or reserved. Please choose another time.";
+
+async function readIntSetting(key: string, fallback: string) {
+  const value = parseInt(await getAdminSetting(key, fallback), 10);
+  return Number.isFinite(value) ? value : parseInt(fallback, 10);
+}
+
+/** First business midnight of the booking grid and the one after its last day. */
+async function bookingWindow(now: Date) {
+  const visibleDays = await readIntSetting("equipment_visible_registrable_days", "7");
+  const start = startOfBusinessDay(now);
+  return { start, end: addBusinessDays(start, visibleDays) };
+}
+
+/**
+ * The grid's per-day and sliding 7-day slot limits, counted the same way:
+ * this member's live bookings of this equipment inside the grid's window,
+ * plus the new slots, bucketed by business day. Only days and periods that
+ * gain a new slot are checked, as the grid only checks the cell being added.
+ */
+export async function assertEquipmentSlotLimits(
+  userId: number,
+  equipmentId: number,
+  newStarts: Date[],
+) {
+  const maxPerDay = await readIntSetting("max_number_equipment_slots_per_day", "4");
+  const maxPerWeek = await readIntSetting("max_number_equipment_slots_per_week", "14");
+  const window = await bookingWindow(new Date());
+
+  const booked = await db.equipmentBooking.findMany({
+    where: {
+      userId,
+      equipmentId,
+      status: { not: "cancelled" },
+      slot: { startTime: { gte: window.start, lt: window.end } },
+    },
+    select: { slotId: true, slot: { select: { startTime: true } } },
+  });
+  const bookedSlots = new Map<number, Date>();
+  for (const b of booked) if (b.slot) bookedSlots.set(b.slotId, b.slot.startTime);
+
+  const bookedDays = [...bookedSlots.values()].map((d) => toBusinessDateInput(d));
+  const newDays = newStarts.map((d) => toBusinessDateInput(d));
+  const allDays = [...bookedDays, ...newDays];
+
+  for (const day of new Set(newDays)) {
+    if (allDays.filter((d) => d === day).length > maxPerDay) {
+      throw new EquipmentBookingError(
+        `You can only select up to ${(maxPerDay * 30) / 60} hours (${maxPerDay} slots) per day.`,
+      );
+    }
+  }
+
+  for (const startKey of new Set(allDays)) {
+    const endKey = toBusinessDateInput(addBusinessDays(parseBusinessDate(startKey), 7));
+    const inPeriod = (d: string) => d >= startKey && d < endKey;
+    if (!newDays.some(inPeriod)) continue;
+    if (allDays.filter(inPeriod).length > maxPerWeek) {
+      throw new EquipmentBookingError(
+        `You can only select up to ${(maxPerWeek * 30) / 60} hours (${maxPerWeek} slots) within any 7-day period.`,
+      );
+    }
+  }
+}
+
+/**
+ * Whether the slot starting at `start` is free. A slot already booked under
+ * `paymentIntentId` by this member counts as "mine", so a retried fulfilment
+ * skips it instead of failing.
+ */
+async function slotState(
+  equipmentId: number,
+  start: Date,
+  userId: number,
+  paymentIntentId?: string | null,
+): Promise<"free" | "mine" | "taken"> {
+  const slot = await db.equipmentSlot.findFirst({ where: { equipmentId, startTime: start } });
+  if (!slot || (!slot.isBooked && !slot.workshopOccurrenceId)) return "free";
+  if (paymentIntentId) {
+    const mine = await db.equipmentBooking.findFirst({
+      where: { slotId: slot.id, userId, paymentIntentId, status: { not: "cancelled" } },
+    });
+    if (mine) return "mine";
+  }
+  return "taken";
+}
+
+/**
+ * Validates a member's slot selection and prices it from the server. Runs
+ * every check the booking will run, plus the grid's past and window checks,
+ * so nobody pays for a slot that would then be refused.
+ */
+export async function prepareEquipmentBooking(
+  userId: number,
+  equipmentId: number,
+  rawSlots: unknown,
+) {
+  const user = await db.user.findUnique({ where: { id: userId } });
+  if (!user) throw new EquipmentBookingError("User not found.");
+  const isAdmin = user.roleUserId === 2;
+
+  const equipment = await db.equipment.findUnique({ where: { id: equipmentId } });
+  if (!equipment || (!equipment.availability && !isAdmin)) {
+    throw new EquipmentBookingError("This equipment is not available for booking.");
+  }
+
+  if ((user.roleLevel === 1 || user.roleLevel === 2) && !isAdmin) {
+    throw new EquipmentBookingError("You do not have permission to book equipment.");
+  }
+  if (
+    (user.roleLevel === 3 || user.roleLevel === 4) &&
+    !(await hasUserCompletedEquipmentPrerequisites(userId, equipmentId))
+  ) {
+    throw new EquipmentBookingError(
+      "You must complete the required orientation before booking this equipment.",
+    );
+  }
+
+  const ranges = parseSlotRanges(rawSlots);
+  if (!ranges) {
+    throw new EquipmentBookingError(
+      "Your selected times were not received. Please reselect them and try again.",
+    );
+  }
+
+  const now = new Date();
+  const window = await bookingWindow(now);
+  const seen = new Set<number>();
+  for (const { start, end } of ranges) {
+    // Exactly one grid cell: half an hour, starting on the hour or half hour.
+    const wall = getWallClock(start);
+    const onGrid = wall.minute % 30 === 0 && wall.second === 0 && start.getTime() % 1000 === 0;
+    if (!onGrid || end.getTime() - start.getTime() !== SLOT_MS) {
+      throw new EquipmentBookingError("Invalid booking time.");
+    }
+    if (seen.has(start.getTime())) {
+      throw new EquipmentBookingError("Each time can only be selected once.");
+    }
+    seen.add(start.getTime());
+    if (start < now) throw new EquipmentBookingError("Cannot book slots in the past.");
+    if (start >= window.end) {
+      throw new EquipmentBookingError("That time is outside the booking window. Please choose another time.");
+    }
+  }
+
+  const starts = ranges.map((r) => r.start);
+  try {
+    await assertEquipmentSlotsAllowed(user.roleLevel, starts);
+  } catch (error) {
+    throw new EquipmentBookingError(error instanceof Error ? error.message : "Those times cannot be booked.");
+  }
+  for (const start of starts) {
+    if ((await slotState(equipmentId, start, userId)) !== "free") throw new EquipmentBookingError(SLOT_TAKEN);
+  }
+  await assertEquipmentSlotLimits(userId, equipmentId, starts);
+
+  const slots: EquipmentSlotTimes[] = ranges.map((r) => ({
+    startTime: r.start.toISOString(),
+    endTime: r.end.toISOString(),
+  }));
+  return { equipment, slots, amount: equipment.price * slots.length };
+}
+
+/** Holds the priced slots on the server until the payment for them succeeds. */
+export async function createEquipmentCheckout(
+  userId: number,
+  equipmentId: number,
+  slots: EquipmentSlotTimes[],
+  amount: number,
+) {
+  return db.equipmentCheckout.create({ data: { userId, equipmentId, slots, amount } });
+}
+
+/** Books a paid checkout's held slots for its owner, once. */
+export async function fulfilEquipmentCheckout(
+  checkoutId: string,
+  userId: number,
+  paymentIntentId: string | null,
+) {
+  const checkout = await db.equipmentCheckout.findUnique({ where: { id: checkoutId } });
+  if (!checkout) throw new EquipmentBookingError("Booking details not found.");
+  if (checkout.userId !== userId) {
+    throw new EquipmentBookingError("This booking belongs to a different account.");
+  }
+  if (checkout.fulfilledAt) {
+    return { count: 0, alreadyFulfilled: true, equipmentId: checkout.equipmentId };
+  }
+
+  const { count } = await bookEquipmentBulkByTimes(
+    userId,
+    checkout.equipmentId,
+    checkout.slots as EquipmentSlotTimes[],
+    paymentIntentId ?? undefined,
+  );
+  await db.equipmentCheckout.update({
+    where: { id: checkoutId },
+    data: { fulfilledAt: new Date() },
+  });
+  return { count, alreadyFulfilled: false, equipmentId: checkout.equipmentId };
+}
+
 /**
  * Book equipment using a predefined slot with role-based restrictions
- * @param request The HTTP request object for authentication
+ * @param userId The member the booking is for
  * @param equipmentId The ID of the equipment to book
- * @param startTime Start time of the booking slot as ISO string
- * @param endTime End time of the booking slot as ISO string
+ * @param startTime Start of the slot: an ISO instant, or an offset-less business wall time
+ * @param endTime End of the slot, in the same form
  * @returns Created equipment booking record
  */
 export async function bookEquipment(
-  request: Request,
+  userId: number,
   equipmentId: number,
   startTime: string,
   endTime: string,
   paymentIntentId?: string,
   options?: { suppressEmail?: boolean },
 ) {
-  const userId = await getUserId(request);
-  if (!userId) throw new Error("User is not authenticated.");
-
   // Fetch user role level
-  const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
+  const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) throw new Error("User not found.");
 
-  const parsedStartTime = new Date(startTime);
-  const parsedEndTime = new Date(endTime);
-
-  // Role-based access restrictions
-  const day = parsedStartTime.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  const hour = parsedStartTime.getHours();
+  const parsedStartTime = parseBusinessDateTime(startTime);
+  const parsedEndTime = parseBusinessDateTime(endTime);
+  if (isNaN(parsedStartTime.getTime()) || isNaN(parsedEndTime.getTime())) {
+    throw new Error("Invalid booking time.");
+  }
 
   // Allow admins (roleUserId === 2) to bypass role level restrictions
   if ((user.roleLevel === 1 || user.roleLevel === 2) && user.roleUserId !== 2) {
     throw new Error("You do not have permission to book equipment.");
   }
 
-  if (user.roleLevel === 3) {
-    // Get the dynamic Level 3 booking schedule from admin settings
-    const level3Schedule = await getLevel3ScheduleRestrictions();
-
-    // Map day number to day name
-    const dayNames = [
-      "Sunday",
-      "Monday",
-      "Tuesday",
-      "Wednesday",
-      "Thursday",
-      "Friday",
-      "Saturday",
-    ];
-    const dayName = dayNames[day];
-    const dayRestriction = level3Schedule[dayName];
-
-    // Check if the day is closed
-    if (dayRestriction.closed) {
-      throw new Error(`Level 3 members cannot book equipment on ${dayName}.`);
-    }
-
-    // Check if the booking hour is within allowed hours for this day
-    if (hour < dayRestriction.start || hour >= dayRestriction.end) {
-      throw new Error(
-        `Level 3 members can only book between ${dayRestriction.start} AM and ${dayRestriction.end} PM on ${dayName}. Please contact support.`,
-      );
-    }
-  }
+  await assertEquipmentSlotsAllowed(user.roleLevel, [parsedStartTime]);
 
   // Find or create slot
   let slot = await db.equipmentSlot.findFirst({
@@ -179,7 +398,7 @@ export async function bookEquipment(
       booking = await db.equipmentBooking.update({
         where: { id: existingBooking.id },
         data: {
-          userId: parseInt(userId),
+          userId,
           status: "pending",
           paymentIntentId: paymentIntentId || null,
           bookedFor: "user",
@@ -194,7 +413,7 @@ export async function bookEquipment(
     // Create new booking
     booking = await db.equipmentBooking.create({
       data: {
-        userId: parseInt(userId),
+        userId,
         equipmentId,
         slotId: slot.id,
         status: "pending",
@@ -230,20 +449,35 @@ export async function bookEquipment(
   return booking;
 }
 
+/**
+ * Books several slots for one member and sends one consolidated email. Every
+ * slot is checked (free, level rules, slot limits) before any is written.
+ */
 export async function bookEquipmentBulkByTimes(
-  request: Request,
+  userId: number,
   equipmentId: number,
-  times: Array<{ startTime: string; endTime: string }>,
+  times: EquipmentSlotTimes[],
   paymentIntentId?: string,
 ) {
-  const userId = await getUserId(request);
-  if (!userId) throw new Error("User is not authenticated.");
+  const bulkUser = await db.user.findUnique({ where: { id: userId } });
+  if (!bulkUser) throw new Error("User not found.");
+
+  const toBook: EquipmentSlotTimes[] = [];
+  for (const t of times) {
+    const state = await slotState(equipmentId, parseBusinessDateTime(t.startTime), userId, paymentIntentId);
+    if (state === "taken") throw new EquipmentBookingError(SLOT_TAKEN);
+    if (state === "free") toBook.push(t);
+  }
+
+  const starts = toBook.map((t) => parseBusinessDateTime(t.startTime));
+  await assertEquipmentSlotsAllowed(bulkUser.roleLevel, starts);
+  await assertEquipmentSlotLimits(userId, equipmentId, starts);
 
   // Book each slot without sending individual emails
   const bookings = [] as any[];
-  for (const t of times) {
+  for (const t of toBook) {
     const booking = await bookEquipment(
-      request,
+      userId,
       equipmentId,
       t.startTime,
       t.endTime,
@@ -254,31 +488,32 @@ export async function bookEquipmentBulkByTimes(
   }
 
   // Send one consolidated email
-  try {
-    const { sendEquipmentBulkConfirmationEmail } =
-      await import("../utils/email.server");
-    const user = await db.user.findUnique({ where: { id: parseInt(userId) } });
-    const equipment = await db.equipment.findUnique({
-      where: { id: equipmentId },
-      select: { name: true, price: true },
-    });
-    if (user?.email && equipment) {
-      const slots = times.map((t) => ({
-        startTime: new Date(t.startTime),
-        endTime: new Date(t.endTime),
-      }));
-      await sendEquipmentBulkConfirmationEmail({
-        userEmail: user.email,
-        equipmentName: equipment.name,
-        slots,
-        pricePerSlot: equipment.price,
+  if (toBook.length > 0) {
+    try {
+      const { sendEquipmentBulkConfirmationEmail } =
+        await import("../utils/email.server");
+      const equipment = await db.equipment.findUnique({
+        where: { id: equipmentId },
+        select: { name: true, price: true },
       });
+      if (bulkUser.email && equipment) {
+        const slots = toBook.map((t) => ({
+          startTime: parseBusinessDateTime(t.startTime),
+          endTime: parseBusinessDateTime(t.endTime),
+        }));
+        await sendEquipmentBulkConfirmationEmail({
+          userEmail: bulkUser.email,
+          equipmentName: equipment.name,
+          slots,
+          pricePerSlot: equipment.price,
+        });
+      }
+    } catch (emailError) {
+      console.error(
+        "Failed to send bulk equipment confirmation email:",
+        emailError,
+      );
     }
-  } catch (emailError) {
-    console.error(
-      "Failed to send bulk equipment confirmation email:",
-      emailError,
-    );
   }
 
   return { count: bookings.length };
@@ -603,15 +838,8 @@ export async function getEquipmentSlotsWithStatus(
     });
 
     const fullSlots: { [day: string]: { [time: string]: any } } = {};
-    const today = new Date();
 
-    for (let i = 0; i < visibleDays; i++) {
-      const date = new Date();
-      date.setDate(today.getDate() + i);
-      const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-      const dayNumber = date.getDate();
-      const dayKey = `${dayName} ${dayNumber}`;
-
+    for (const { key: dayKey } of equipmentGridDays(visibleDays)) {
       fullSlots[dayKey] = {};
       for (const time of times) {
         fullSlots[dayKey][time] = {
@@ -634,15 +862,8 @@ export async function getEquipmentSlotsWithStatus(
       const fullSlots = await generate24_7Slots();
 
       eq.slots.forEach((slot) => {
-        const date = new Date(slot.startTime);
-        const hours = String(date.getHours()).padStart(2, "0");
-        const minutes = String(date.getMinutes()).padStart(2, "0");
-        const time = `${hours}:${minutes}`;
-
-        // Format the day key to match our new format: "Day #"
-        const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-        const dayNumber = date.getDate();
-        const dayKey = `${dayName} ${dayNumber}`;
+        const time = equipmentTimeKey(slot.startTime);
+        const dayKey = equipmentDayKey(slot.startTime);
 
         const bookedByMe = userId
           ? slot.bookings?.some(
@@ -1472,8 +1693,7 @@ export async function createEquipmentCancellation({
   const earliestSlotTime = new Date(
     Math.min(...cancelledSlotTimes.map((slot) => slot.startTime.getTime())),
   );
-  const twoDaysFromNow = new Date();
-  twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+  const twoDaysFromNow = addBusinessDays(new Date(), 2);
   const eligibleForRefund = earliestSlotTime > twoDaysFromNow;
 
   if (paymentIntentId) {

@@ -16,21 +16,17 @@ import {
   TooltipTrigger,
 } from "../tooltip";
 
+// Identifies what to buy. The server works out who pays and how much.
 interface QuickCheckoutProps {
-  userId: number;
   checkoutData: {
     type: "workshop" | "equipment" | "membership";
     workshopId?: number;
     occurrenceId?: number;
     connectId?: number;
     equipmentId?: number;
-    slotCount?: number;
     slots?: string[];
-    slotsDataKey?: string;
     membershipPlanId?: number;
-    price?: number;
     currentMembershipId?: number;
-    upgradeFee?: number;
     variationId?: number | null;
     billingCycle?: "monthly" | "quarterly" | "semiannually" | "yearly";
     autoRenew?: boolean;
@@ -48,7 +44,6 @@ interface QuickCheckoutProps {
 }
 
 export default function QuickCheckout({
-  userId,
   checkoutData,
   itemName,
   itemPrice,
@@ -77,7 +72,6 @@ export default function QuickCheckout({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...checkoutData,
-          userId,
           useSavedCard: true,
         }),
       });
@@ -87,15 +81,9 @@ export default function QuickCheckout({
       if (result.success) {
         setStatus("success");
         onSuccess?.();
-        // Redirect to success page after a brief delay
+        // Already registered or booked on the server; the page only confirms it.
         setTimeout(() => {
-          if (checkoutData.type === "equipment") {
-            // For equipment, include equipment_id and slots_data_key in the URL and include payment intent ID in the redirect URL
-            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}&equipment_id=${checkoutData.equipmentId}&slots_data_key=${checkoutData.slotsDataKey}&payment_intent_id=${result.paymentIntentId}`;
-          } else {
-            // For other types (workshop, membership), use the regular redirect
-            window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}`;
-          }
+          window.location.href = `/dashboard/payment/success?quick_checkout=true&type=${checkoutData.type}`;
         }, 2000);
       } else if (result.requiresAction) {
         setErrorMessage(
@@ -158,6 +146,7 @@ export default function QuickCheckout({
             </h3>
             <p className="text-red-700 text-sm">{errorMessage}</p>
             <button
+              type="button"
               onClick={() => setStatus("idle")}
               className="mt-3 text-sm text-red-600 hover:text-red-700 underline font-medium"
             >
@@ -265,7 +254,9 @@ export default function QuickCheckout({
       </div>
 
       {/* Pay Button */}
+      {/* type="button": on the equipment page this sits inside the booking form. */}
       <button
+        type="button"
         onClick={handleQuickCheckout}
         disabled={isProcessing}
         className={`w-full py-3 px-4 rounded-lg font-semibold text-white shadow-md transition-all duration-200 flex items-center justify-center ${

@@ -13,18 +13,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  parseBusinessDateTime,
+  toBusinessDateTimeInput,
+} from "~/utils/business-time";
 
-// Helper: format a Date as "YYYY-MM-DDTHH:mm"
-function formatLocalDatetime(dateInput: Date): string {
-  const date = new Date(dateInput);
-  if (isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
 
 export interface GenericFormFieldProps {
   control: any; // Replace with your react-hook-form Control type if desired
@@ -74,11 +67,10 @@ const GenericFormField: React.FC<GenericFormFieldProps> = ({
         if (type === "datetime-local") {
           // If the value is a Date, format it for the input; otherwise, leave as is.
           if (field.value instanceof Date) {
-            valueToShow = formatLocalDatetime(field.value);
+            valueToShow = toBusinessDateTimeInput(field.value);
           }
-          // Update: parse the input string into a Date object
           onChangeHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
-            field.onChange(new Date(e.target.value));
+            field.onChange(parseBusinessDateTime(e.target.value));
           };
         }
 

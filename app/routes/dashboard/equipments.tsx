@@ -12,6 +12,7 @@ import {
 } from "~/models/equipment.server";
 import EquipmentCard from "~/components/ui/Dashboard/EquipmentCard";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
+import { logger } from "~/logging/logger";
 
 export async function loader({ request }: { request: Request }) {
   const equipments = await getAllEquipment();
@@ -92,6 +93,15 @@ export default function Equipments() {
 }
 
 export async function action({ request }: { request: Request }) {
+  const roleUser = await getRoleUser(request);
+  if (!roleUser || roleUser.roleName.toLowerCase() !== "admin") {
+    logger.warn(
+      `[User: ${roleUser?.userId ?? "unknown"}] Not authorized to modify equipment`,
+      { url: request.url }
+    );
+    throw new Response("Not Authorized", { status: 401 });
+  }
+
   const formData = await request.formData();
   const equipmentId = parseInt(formData.get("equipmentId") as string, 10);
   const actionType = formData.get("action");

@@ -51,14 +51,16 @@ describe("membership.server - cron", () => {
     jest.useRealTimers();
   });
 
-  it("registers on the daily midnight schedule", async () => {
+  it("registers on the daily midnight schedule, on the business clock", async () => {
     db.userMembership.findMany.mockResolvedValue([]);
 
     await runCron();
 
+    // Without the zone it ran at the server's midnight, which tracked stale tz data.
     expect(mocks.mockCronSchedule).toHaveBeenCalledWith(
       "0 0 * * *",
-      expect.any(Function)
+      expect.any(Function),
+      { timezone: "Etc/GMT+6" }
     );
   });
 

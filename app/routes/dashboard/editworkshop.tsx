@@ -85,6 +85,15 @@ import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  getWallClock,
+  parseBusinessDateTime,
+  toBusinessDateTimeInput,
+  toBusinessTimeInput,
+  toWallClockMirror,
+} from "~/utils/business-time";
 
 interface Occurrence {
   id?: number;
@@ -539,10 +548,9 @@ export async function action({
           throw new Error("End date must be later than start date");
         }
 
-        const startOffset = localStart.getTimezoneOffset();
-        const utcStart = new Date(localStart.getTime() - startOffset * 60000);
-        const endOffset = localEnd.getTimezoneOffset();
-        const utcEnd = new Date(localEnd.getTime() - endOffset * 60000);
+        // The PST columns hold the typed wall clock, so rows can be re-anchored later.
+        const utcStart = toWallClockMirror(localStart);
+        const utcEnd = toWallClockMirror(localEnd);
 
         return {
           id: occ.id,
@@ -736,21 +744,11 @@ export async function action({
    3) Local helpers for datetime-local fields
    ---------------------------------------------------------------------------*/
 function parseDateTimeAsLocal(value: string): Date {
-  if (!value) return new Date("");
-  const [datePart, timePart] = value.split("T");
-  const [year, month, day] = datePart.split("-").map(Number);
-  const [hours, minutes] = timePart.split(":").map(Number);
-  return new Date(year, month - 1, day, hours, minutes);
+  return parseBusinessDateTime(value);
 }
 
 function formatLocalDatetime(date: Date): string {
-  if (isNaN(date.getTime())) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return toBusinessDateTimeInput(date);
 }
 
 /**
@@ -797,15 +795,15 @@ function getEquipmentSlotsForOccurrences(occurrences: Occurrence[]): {
     const currentTime = new Date(occ.startDate);
     while (currentTime < occ.endDate) {
       // Format day as "Sat 24" (using the actual day name and number)
-      const dayName = currentTime.toLocaleDateString("en-US", {
+      const dayName = formatBusinessDate(currentTime, "en-US", {
         weekday: "short",
       });
-      const dayNumber = currentTime.getDate();
+      const dayNumber = getWallClock(currentTime).day;
       const dayKey = `${dayName} ${dayNumber}`;
 
       // Format time as "05:00"
-      const hours = String(currentTime.getHours()).padStart(2, "0");
-      const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+      const hours = toBusinessTimeInput(currentTime).slice(0, 2);
+      const minutes = toBusinessTimeInput(currentTime).slice(3, 5);
       const timeKey = `${hours}:${minutes}`;
 
       // Add to slots map
@@ -877,15 +875,15 @@ function checkForEquipmentOverlaps(
       const currentTime = new Date(occ.startDate);
       while (currentTime < occ.endDate) {
         // Format day as "Sat 24"
-        const dayName = currentTime.toLocaleDateString("en-US", {
+        const dayName = formatBusinessDate(currentTime, "en-US", {
           weekday: "short",
         });
-        const dayNumber = currentTime.getDate();
+        const dayNumber = getWallClock(currentTime).day;
         const dayKey = `${dayName} ${dayNumber}`;
 
         // Format time as "05:00"
-        const hours = String(currentTime.getHours()).padStart(2, "0");
-        const minutes = String(currentTime.getMinutes()).padStart(2, "0");
+        const hours = toBusinessTimeInput(currentTime).slice(0, 2);
+        const minutes = toBusinessTimeInput(currentTime).slice(3, 5);
         const timeKey = `${hours}:${minutes}`;
 
         // Check if this slot exists in the equipment's slots and is booked or unavailable
@@ -898,8 +896,8 @@ function checkForEquipmentOverlaps(
         ) {
           // Calculate end time (30 minutes later)
           const endTime = new Date(currentTime.getTime() + 30 * 60 * 1000);
-          const endHours = String(endTime.getHours()).padStart(2, "0");
-          const endMinutes = String(endTime.getMinutes()).padStart(2, "0");
+          const endHours = toBusinessTimeInput(endTime).slice(0, 2);
+          const endMinutes = toBusinessTimeInput(endTime).slice(3, 5);
 
           const formattedTime = `${dayName} ${dayNumber} at ${hours}:${minutes} - ${endHours}:${endMinutes}`;
 
@@ -1389,7 +1387,7 @@ export default function EditWorkshop() {
   // Format date for display
   const formatDateForDisplay = (date: Date): string => {
     if (isNaN(date.getTime())) return "Invalid date";
-    return date.toLocaleString(undefined, {
+    return formatBusinessDateTime(date, undefined, {
       weekday: "short",
       year: "numeric",
       month: "short",

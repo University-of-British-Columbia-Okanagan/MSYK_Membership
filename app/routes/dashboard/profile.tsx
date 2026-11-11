@@ -49,6 +49,14 @@ import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
 import type { VolunteerHourEntry } from "../../models/profile.server";
 import { getUserCompletedOrientations } from "~/models/workshop.server";
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  formatBusinessTime,
+  getWallClock,
+  isSameBusinessDay,
+  parseBusinessDateTime,
+} from "~/utils/business-time";
 
 export async function loader({ request }: Parameters<LoaderFunction>[0]) {
   const user = await getProfileDetails(request);
@@ -231,8 +239,11 @@ export async function action({ request }: { request: Request }) {
       return { error: "Description is required" };
     }
 
-    const startTime = new Date(startTimeStr);
-    const endTime = new Date(endTimeStr);
+    const startTime = parseBusinessDateTime(startTimeStr);
+    const endTime = parseBusinessDateTime(endTimeStr);
+    if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
+      return { error: "Start time and end time must be valid dates" };
+    }
 
     // Basic validation
     if (endTime <= startTime) {
@@ -240,18 +251,7 @@ export async function action({ request }: { request: Request }) {
     }
 
     // NEW: Validate that start and end are on the same day
-    const startDate = new Date(
-      startTime.getFullYear(),
-      startTime.getMonth(),
-      startTime.getDate()
-    );
-    const endDate = new Date(
-      endTime.getFullYear(),
-      endTime.getMonth(),
-      endTime.getDate()
-    );
-
-    if (startDate.getTime() !== endDate.getTime()) {
+    if (!isSameBusinessDay(startTime, endTime)) {
       return {
         error:
           "Volunteer hours must be logged within the same day. Please split multi-day sessions into separate entries.",
@@ -259,10 +259,8 @@ export async function action({ request }: { request: Request }) {
     }
 
     // NEW: Validate time is between 9 AM (09:00) and 11:45 PM (23:45)
-    const startHour = startTime.getHours();
-    const startMinute = startTime.getMinutes();
-    const endHour = endTime.getHours();
-    const endMinute = endTime.getMinutes();
+    const { hour: startHour } = getWallClock(startTime);
+    const { hour: endHour, minute: endMinute } = getWallClock(endTime);
 
     // Start time must be >= 9:00 AM
     if (startHour < 9) {
@@ -476,8 +474,8 @@ export default function ProfilePage() {
         const entryStartDate = new Date(entry.startTime);
 
         // Create from and to datetime objects
-        const fromDateTime = new Date(`${appliedFromDate}T${appliedFromTime}`);
-        const toDateTime = new Date(`${appliedToDate}T${appliedToTime}`);
+        const fromDateTime = parseBusinessDateTime(`${appliedFromDate}T${appliedFromTime}`);
+        const toDateTime = parseBusinessDateTime(`${appliedToDate}T${appliedToTime}`);
 
         // Check if entry start time is within the range
         dateTimeMatch =
@@ -565,17 +563,17 @@ export default function ProfilePage() {
   const volunteerHoursColumns: ColumnDefinition<VolunteerHourRow>[] = [
     {
       header: "Date",
-      render: (entry) => new Date(entry.startTime).toLocaleDateString(),
+      render: (entry) => formatBusinessDate(entry.startTime),
     },
     {
       header: "Time",
       render: (entry) => {
         const start = new Date(entry.startTime);
         const end = new Date(entry.endTime);
-        return `${start.toLocaleTimeString([], {
+        return `${formatBusinessTime(start, [], {
           hour: "2-digit",
           minute: "2-digit",
-        })} - ${end.toLocaleTimeString([], {
+        })} - ${formatBusinessTime(end, [], {
           hour: "2-digit",
           minute: "2-digit",
         })}`;
@@ -622,7 +620,7 @@ export default function ProfilePage() {
     },
     {
       header: "Logged",
-      render: (entry) => new Date(entry.createdAt).toLocaleDateString(),
+      render: (entry) => formatBusinessDate(entry.createdAt),
     },
   ];
 
@@ -878,9 +876,7 @@ export default function ProfilePage() {
                             </span>
                             <span className="font-medium text-gray-900">
                               {user.nextBillingDate
-                                ? new Date(
-                                    user.nextBillingDate
-                                  ).toLocaleDateString("en-US", {
+                                ? formatBusinessDate(user.nextBillingDate, "en-US", {
                                     month: "short",
                                     day: "numeric",
                                     year: "numeric",
@@ -978,9 +974,7 @@ export default function ProfilePage() {
                             </span>
                             <span className="font-medium text-gray-900">
                               {user.nextBillingDate
-                                ? new Date(
-                                    user.nextBillingDate
-                                  ).toLocaleDateString("en-US", {
+                                ? formatBusinessDate(user.nextBillingDate, "en-US", {
                                     month: "short",
                                     day: "numeric",
                                     year: "numeric",
@@ -1528,9 +1522,7 @@ export default function ProfilePage() {
                                     )
                                     .map((item, idx) => (
                                       <p key={idx}>
-                                        {new Date(
-                                          item.occurrence.startDate
-                                        ).toLocaleDateString("en-CA", {
+                                        {formatBusinessDate(item.occurrence.startDate, "en-CA", {
                                           year: "numeric",
                                           month: "short",
                                           day: "numeric",
@@ -1541,9 +1533,7 @@ export default function ProfilePage() {
                                           item.occurrence.endDate && (
                                           <span className="text-gray-500">
                                             {" - "}
-                                            {new Date(
-                                              item.occurrence.endDate
-                                            ).toLocaleDateString("en-CA", {
+                                            {formatBusinessDate(item.occurrence.endDate, "en-CA", {
                                               month: "short",
                                               day: "numeric",
                                               hour: "2-digit",
@@ -1557,9 +1547,7 @@ export default function ProfilePage() {
                               ) : (
                                 <div className="text-sm text-gray-600">
                                   <p>
-                                    {new Date(
-                                      orientation.occurrence.startDate
-                                    ).toLocaleDateString("en-CA", {
+                                    {formatBusinessDate(orientation.occurrence.startDate, "en-CA", {
                                       year: "numeric",
                                       month: "short",
                                       day: "numeric",
@@ -1571,9 +1559,7 @@ export default function ProfilePage() {
                                     orientation.occurrence.endDate && (
                                     <p className="text-gray-500">
                                       to{" "}
-                                      {new Date(
-                                        orientation.occurrence.endDate
-                                      ).toLocaleDateString("en-CA", {
+                                      {formatBusinessDate(orientation.occurrence.endDate, "en-CA", {
                                         month: "short",
                                         day: "numeric",
                                         hour: "2-digit",
@@ -1585,7 +1571,7 @@ export default function ProfilePage() {
                               )}
                               <p className="text-xs text-gray-500 mt-1">
                                 Registered:{" "}
-                                {new Date(orientation.date).toLocaleDateString(
+                                {formatBusinessDate(orientation.date,
                                   "en-CA"
                                 )}
                               </p>
@@ -2106,13 +2092,13 @@ export default function ProfilePage() {
                               appliedToTime && (
                                 <span className="ml-2 text-blue-600">
                                   (filtered from{" "}
-                                  {new Date(
-                                    `${appliedFromDate}T${appliedFromTime}`
-                                  ).toLocaleString()}{" "}
+                                  {formatBusinessDateTime(
+                                    parseBusinessDateTime(`${appliedFromDate}T${appliedFromTime}`)
+                                  )}{" "}
                                   to{" "}
-                                  {new Date(
-                                    `${appliedToDate}T${appliedToTime}`
-                                  ).toLocaleString()}
+                                  {formatBusinessDateTime(
+                                    parseBusinessDateTime(`${appliedToDate}T${appliedToTime}`)
+                                  )}
                                   )
                                 </span>
                               )}

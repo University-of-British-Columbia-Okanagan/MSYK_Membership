@@ -53,6 +53,12 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import AppSidebar from "~/components/ui/Dashboard/AppSidebar";
 import AdminAppSidebar from "~/components/ui/Dashboard/AdminAppSidebar";
 import GuestAppSidebar from "~/components/ui/Dashboard/GuestAppSidebar";
+import {
+  addBusinessDays,
+  formatBusinessDate,
+  formatBusinessDateTime,
+  formatBusinessTime,
+} from "~/utils/business-time";
 
 interface Occurrence {
   id: number;
@@ -103,8 +109,7 @@ export async function loader({
   const visibilityDays = await getWorkshopVisibilityDays();
 
   // Calculate the future cutoff date based on admin settings
-  const futureCutoffDate = new Date();
-  futureCutoffDate.setDate(futureCutoffDate.getDate() + visibilityDays);
+  const futureCutoffDate = addBusinessDays(now, visibilityDays);
 
   // Find the most recent (highest) offerId that has active dates
   const currentOfferIds = workshop.occurrences
@@ -1274,7 +1279,7 @@ export default function WorkshopDetails() {
                                   {index + 1}
                                 </span>
                                 <p className="font-medium">
-                                  {new Date(occ.startDate).toLocaleDateString(
+                                  {formatBusinessDate(occ.startDate,
                                     undefined,
                                     {
                                       weekday: "short",
@@ -1286,7 +1291,7 @@ export default function WorkshopDetails() {
                                 </p>
                               </div>
                               <p className="text-sm text-gray-600 ml-8">
-                                {new Date(occ.startDate).toLocaleTimeString(
+                                {formatBusinessTime(occ.startDate,
                                   undefined,
                                   {
                                     hour: "2-digit",
@@ -1294,7 +1299,7 @@ export default function WorkshopDetails() {
                                   }
                                 )}{" "}
                                 {" - "}
-                                {new Date(occ.endDate).toLocaleTimeString(
+                                {formatBusinessTime(occ.endDate,
                                   undefined,
                                   {
                                     hour: "2-digit",
@@ -1944,8 +1949,8 @@ export default function WorkshopDetails() {
                               )}
                             <p className="text-lg font-medium text-gray-800">
                               📅{" "}
-                              {new Date(occurrence.startDate).toLocaleString()}{" "}
-                              - {new Date(occurrence.endDate).toLocaleString()}
+                              {formatBusinessDateTime(occurrence.startDate)}{" "}
+                              - {formatBusinessDateTime(occurrence.endDate)}
                             </p>
 
                             {/* Capacity Display */}

@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toBusinessTimeInput } from "~/utils/business-time";
 
 interface TimeIntervalPickerProps {
   value?: string;
@@ -43,12 +44,14 @@ export const TimeIntervalPicker: React.FC<TimeIntervalPickerProps> = ({
 
     // Handle different input formats
     try {
-      // Try parsing as a full datetime
+      // A "YYYY-MM-DDTHH:mm" value is already business wall time; read it as written.
+      const wall = /T(\d{2}):(\d{2})(?::\d{2})?$/.exec(inputValue);
+      if (wall) return `${wall[1]}:${wall[2]}`;
+
+      // A real instant (ISO with Z or an offset) is shown on the business clock.
       const date = new Date(inputValue);
-      if (!isNaN(date.getTime())) {
-        const hours = date.getHours().toString().padStart(2, "0");
-        const minutes = date.getMinutes().toString().padStart(2, "0");
-        return `${hours}:${minutes}`;
+      if (!isNaN(date.getTime()) && inputValue.includes("T")) {
+        return toBusinessTimeInput(date);
       }
 
       // Handle direct time string
