@@ -45,9 +45,12 @@ model User {
   membershipRevokedAt     DateTime?
   membershipRevokedReason String?
 
-  brivoPersonId    String?  @unique
+  brivoPersonId     String?   @unique
   brivoLastSyncedAt DateTime?
-  brivoSyncError   String?
+  brivoSyncError    String?
+
+  // Bumped on Sign Out so every cookie issued before it stops working.
+  sessionVersion Int @default(0)
 
   // Relationships
   userWorkshops          UserWorkshop[]
@@ -62,6 +65,8 @@ model User {
   equipmentCancellations EquipmentCancelledBooking[]
   accessCards            AccessCard[]
   accessLogs             AccessLog[]
+  paymentFulfillments    PaymentFulfillment[]
+  equipmentCheckouts     EquipmentCheckout[]
 }
 
 model AccessCard {
@@ -206,11 +211,12 @@ model Equipment {
   updatedAt       DateTime           @updatedAt
   imageUrl        String?
   stripeProductId String? // Stripe Product ID for coupon restrictions
-  slots        EquipmentSlot[]
-  bookings     EquipmentBooking[]
+  slots           EquipmentSlot[]
+  bookings        EquipmentBooking[]
 
   prerequisites EquipmentPrerequisite[]     @relation("EquipmentWithPrerequisite")
   cancellations EquipmentCancelledBooking[]
+  checkouts     EquipmentCheckout[]
 }
 
 model EquipmentSlot {
@@ -363,15 +369,15 @@ model MembershipPlan {
 }
 
 model UserMembership {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   userId           Int
   membershipPlanId Int
-  date             DateTime @default(now())
+  date             DateTime  @default(now())
   nextPaymentDate  DateTime
-  status           String   @default("active") // "active", "ending", "cancelled", "inactive", "revoked"
-  autoRenew        Boolean  @default(true)
+  status           String    @default("active") // "active", "ending", "cancelled", "inactive", "revoked"
+  autoRenew        Boolean   @default(true)
   paymentIntentId  String? // Stripe Payment Intent ID
-  billingCycle     String   @default("monthly") // "monthly", "quarterly", "semiannually", "yearly"
+  billingCycle     String    @default("monthly") // "monthly", "quarterly", "semiannually", "yearly"
   stripeCouponId   String? // Recurring discount coupon, mirrored from the Stripe Customer
   discountEndsAt   DateTime? // When Stripe expires that discount; null if it never does
 
@@ -474,4 +480,35 @@ model AccessLog {
   @@index([userId])
   @@index([createdAt])
   @@index([accessCardId])
+}
+
+// One row per Stripe payment that has been turned into a registration, membership or
+// booking. The unique stripeRef is what stops a reloaded success page fulfilling twice.
+model PaymentFulfillment {
+  id        Int      @id @default(autoincrement())
+  stripeRef String   @unique // Checkout Session id (cs_...) or PaymentIntent id (pi_...)
+  userId    Int
+  kind      String // "workshop" | "membership" | "equipment"
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// The slots a member is paying for, held on the server between checkout and payment
+// so what gets booked is exactly what was priced and charged.
+model EquipmentCheckout {
+  id          String    @id @default(cuid())
+  userId      Int
+  equipmentId Int
+  slots       Json // [{ "startTime": ISO, "endTime": ISO }]
+  amount      Float // pre-GST total: equipment.price x number of slots
+  fulfilledAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
