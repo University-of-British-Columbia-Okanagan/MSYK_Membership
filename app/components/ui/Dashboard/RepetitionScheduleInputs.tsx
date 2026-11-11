@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TimeIntervalPicker } from "./TimeIntervalPicker";
 import { cn } from "@/lib/utils";
+import { addBusinessDays, addBusinessMonths } from "~/utils/business-time";
 import {
   isEndBeforeStart,
   sortOccurrencesByStart,
@@ -117,20 +118,13 @@ const RepetitionScheduleInputs: React.FC<RepetitionScheduleInputsProps> = ({
         startDate: new Date(baseOccurrence.startDate),
         endDate: new Date(baseOccurrence.endDate),
       };
+      // Step on the business clock so every session keeps the typed time.
       if (scheduleType === "weekly") {
-        occurrence.startDate.setDate(
-          baseOccurrence.startDate.getDate() + interval * 7 * i
-        );
-        occurrence.endDate.setDate(
-          baseOccurrence.endDate.getDate() + interval * 7 * i
-        );
+        occurrence.startDate = addBusinessDays(baseOccurrence.startDate, interval * 7 * i);
+        occurrence.endDate = addBusinessDays(baseOccurrence.endDate, interval * 7 * i);
       } else if (scheduleType === "monthly") {
-        occurrence.startDate.setMonth(
-          baseOccurrence.startDate.getMonth() + interval * i
-        );
-        occurrence.endDate.setMonth(
-          baseOccurrence.endDate.getMonth() + interval * i
-        );
+        occurrence.startDate = addBusinessMonths(baseOccurrence.startDate, interval * i);
+        occurrence.endDate = addBusinessMonths(baseOccurrence.endDate, interval * i);
       } else {
         // Extend logic for other schedule types (e.g., yearly) here.
       }
