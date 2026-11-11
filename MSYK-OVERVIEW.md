@@ -39,10 +39,14 @@ Three jobs start automatically from `entry.server.ts` (the process run by `npm r
 | Job | Function | Schedule | File |
 |-----|----------|----------|------|
 | Role level sync | `startRoleLevelSyncCron()` | Every 15 seconds (node-cron `*/15 * * * * *`) | `app/models/user.server.ts` |
-| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight (node-cron `0 0 * * *`) | `app/models/membership.server.ts` |
+| Membership billing | `startMonthlyMembershipCheck()` | Daily at midnight business time (node-cron `0 0 * * *` with `{ timezone: BUSINESS_TIME_ZONE }`) | `app/models/membership.server.ts` |
 | Workshop occurrence status | `startWorkshopOccurrenceStatusUpdate()` | Immediately on startup, then every 1 second (`setInterval`) | `app/models/workshop.server.ts` |
 
 The occurrence status job flips occurrences from `active` to `past` once their `startDate` has passed.
+
+### Business Timezone
+
+Every time a person reads or types is on one fixed business clock, UTC-6 all year (`BUSINESS_TIME_ZONE = "Etc/GMT+6"` in `app/config/timezone.ts`), whatever zone the server or the viewer's device uses. NWT stopped changing clocks on 2026-11-01, and devices with stale tz data had shifted every November 2026 session by an hour. Pages, forms, emails, the equipment grid, the `/home` calendar and Google Calendar events all go through `app/utils/business-time.ts`, and `tests/utils/business-time.guard.test.ts` fails on any host-clock date call in `app/`. If NWT's rules change again, `BUSINESS_TIME_ZONE` must change and existing future sessions must be re-anchored with `scripts/reanchor-times.cjs` in the same deploy. README.md → Business Timezone has the details.
 
 ---
 
@@ -54,7 +58,8 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Email/password login with session cookie storage
 - Session validation on protected routes
 - Automatic session invalidation on password change or tampering
-- Secure cookie-based session management (3-hour expiry for security on shared/public computers)
+- Secure cookie-based session management (3-hour expiry for security on shared/public computers). The cookie holds `userId`, `loginTime`, `sessionVersion` and a fingerprint of the password hash, never the password
+- Sign Out (a POST to `/logout`) signs the member out on every device by bumping `User.sessionVersion`; a GET to `/logout` only redirects to the login page
 - Case-insensitive email lookups — login, password reset, and access card provisioning all match emails regardless of capitalisation; new registrations are stored lowercase
 
 **Key Files:**
@@ -111,10 +116,11 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - **Cancellation**: 
   - Before cycle end: Status "cancelled", access retained until `nextPaymentDate`
   - After cycle end: Deleted, role level recalculated
-- **Resubscription**: Reactivates cancelled membership without payment
+- **Resubscription**: Reactivates the member's own cancelled membership without payment, keeping its paid-through `nextPaymentDate`
+- **Ownership and permission**: every change acts on the signed-in member's own membership (`getOwnedMembership()`), and a `needAdminPermission` plan needs level 3+ with `allowLevel4` on every path, resubscribe included
 
 **Automated Billing:**
-- Daily cron job (`0 0 * * *`) via `startMonthlyMembershipCheck()` processes due memberships
+- Daily cron job at midnight business time (`0 0 * * *`) via `startMonthlyMembershipCheck()` processes due memberships
 - Auto-renew controlled by `autoRenew` flag (defaults to `true` for backward compatibility)
 - When `autoRenew=true`: Membership auto-renews with saved payment method at term end
 - When `autoRenew=false`: Membership expires at term end without charging, status set to "inactive"
@@ -175,6 +181,7 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 **Registration Process:**
 - Prerequisite validation before registration
 - Capacity check (single occurrence or multi-day series)
+- Registration cutoff, capacity, cancelled or ended sessions, and the price (a price variation must belong to the workshop) are all checked on the server by `resolveWorkshopPurchase()` before any charge
 - Payment via Stripe Checkout or saved card
 - Automatic registration confirmation email with ICS attachment
 - Multi-day workshops linked via `connectId`
@@ -215,11 +222,18 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Real-time availability checking
 
 **Booking Process:**
-- Slot grid displays available time slots
+- Slot grid displays available time slots on the business clock
 - Prerequisites checked before booking allowed
 - Multiple slots can be selected and booked together
+- The server validates and prices the selection (`prepareEquipmentBooking()`): each slot one half-hour grid cell, not past, inside the booking window, free, within the member's level rules, and within the daily and 7-day slot limits
+- Paid slots are held in an `EquipmentCheckout` row and booked on the server only after payment is verified; free equipment is booked at once
 - Payment via Stripe Checkout or saved card
 - Confirmation email sent with booking details
+
+**Level Rules (shared by the grid and the server, `app/utils/equipment-booking-rules.ts`):**
+- Level 3: weekly allowed hours (`level3_start_end_hours`) and planned closures
+- Level 4: one daily restricted window (`level4_unavaliable_hours`); planned closures do not apply
+- Enforced before checkout and again when the booking is written
 
 **Cancellation & Refunds:**
 - Cancellation eligible for refund if 2+ days before slot start
@@ -237,7 +251,12 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 
 **Payment Methods:**
 - **Stripe Checkout Session**: Full payment flow with card input; billing cycle price (monthly/quarterly/semiannual/yearly) applied server-side
-- **Quick Checkout**: Saved payment method for one-click purchases
+- **Quick Checkout**: Saved payment method for one-click purchases; the purchase is fulfilled on the server before the browser is told it succeeded
+
+**Purchase Security:**
+- The buyer is always the signed-in member; a `userId` in the request body is ignored
+- Every price comes from the database: workshop or its own price variation, the plan's price for the chosen billing cycle (a cycle with no price is refused rather than charged the monthly price), equipment price x the server-held slots
+- The success page requires a login, a paid Checkout Session (or a completed one a 100%-off promotion code made free), and a session paid by the signed-in member. It fulfils each Stripe payment once, recorded in `PaymentFulfillment`, so a reload never registers, subscribes or books twice
 - Payment method storage (Stripe Customer + Payment Method)
 
 **GST Handling:**
@@ -255,9 +274,10 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 
 **Key Files:**
 - `app/models/payment.server.ts` - Payment intent creation, checkout sessions, refunds
-- `app/routes/api/paymentprocess.tsx` - Quick checkout endpoint (saved-card purchase)
+- `app/routes/api/paymentprocess.tsx` - Checkout endpoint (`POST /dashboard/paymentprocess`): Stripe Checkout Session, or quick checkout when `useSavedCard` is set, for the session user
 - `app/routes/api/paymentupgrade.tsx`, `app/routes/api/paymentdowngrade.tsx`, `app/routes/api/paymentresubscribe.tsx` - Membership change endpoints
-- `app/routes/dashboard/paymentsuccess.tsx` - Payment success handler (route `/dashboard/payment/success`)
+- `app/routes/dashboard/paymentsuccess.tsx` - Payment success handler (route `/dashboard/payment/success`); verifies the payment and fulfils it once
+- `app/utils/membership-rules.ts`, `app/utils/registration-cutoff.ts` - Billing-cycle pricing, the admin-permission gate, and the registration cutoff
 
 ### 8. Email Notifications
 
@@ -287,6 +307,8 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 
 **Email Features:**
 - HTML and plain text versions for all emails
+- Dates and times shown on the business clock
+- Development guard: `EMAIL_DEV_REDIRECT` reroutes every email to one address (subject prefixed `[DEV for <to>] `); with it unset, `NODE_ENV=development` sends nothing. Never set it in production
 - ICS calendar attachments for workshop registration confirmation
 - Google Calendar event links for multi-day workshops
 - Custom messages for admin-triggered emails (revocation reason)
@@ -302,7 +324,7 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Equipment visibility days (key: `equipment_visible_registrable_days`, default: `"7"`) — note the key name, it is not `equipment_visibility_days`
 - Past workshop history days (key: `past_workshop_visibility`, default: `"180"`)
 - Google Calendar ID (key: `google_calendar_id`)
-- Google Calendar timezone (key: `google_calendar_timezone`, default: `"America/Yellowknife"`)
+- Google Calendar timezone (key: `google_calendar_timezone`, default: `"America/Yellowknife"`) — sent as the event's `timeZone`; the event times themselves carry the business `-06:00` offset
 - Google OAuth refresh token — AES-encrypted (key: `google_oauth_refresh_token_enc`)
 - Brivo access group for Level 4 members (key: `brivo_access_group_level4`) — comma-separated group IDs; falls back to the `BRIVO_ACCESS_GROUP_LEVEL4` env var
 - Planned closures (key: `planned_closures`) — JSON array, managed via `getPlannedClosures()` / `updatePlannedClosures()`
@@ -310,6 +332,7 @@ The occurrence status job flips occurrences from `active` to `past` once their `
 - Level 4 unavailable hours (key: `level4_unavaliable_hours`) — JSON `{ start, end }`; unset falls back to `{ start: 0, end: 0 }` (no restriction). **The key is misspelled in the code and must be matched exactly**
 - Max equipment slots per day (key: `max_number_equipment_slots_per_day`, default: `"4"`)
 - Max equipment slots per week (key: `max_number_equipment_slots_per_week`, default: `"14"`)
+- Re-anchor markers (key: `tz_reanchor:<from>:<to>:<since>`) — written by `scripts/reanchor-times.cjs --apply`, never read by the app
 
 **Admin Settings Tabs** (the `TabsTrigger` values in `app/routes/dashboard/adminsettings.tsx`, in order):
 - **Workshop Settings** — workshop visibility days, past workshop visibility, per-workshop registration cutoffs
@@ -518,7 +541,7 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 9. User redirected to `/login?registered=true`
 10. Login page displays green "Registration successful!" confirmation banner
 11. User enters email and password
-12. Session cookie `RJ_session` created holding `userId`, `userPassword` (the raw password submitted on the login form), and `loginTime`. On every subsequent request `getUserId()` re-reads the user and `bcrypt.compare`s the session password against the stored hash, so a password change invalidates all existing sessions
+12. Session cookie `RJ_session` created holding `userId`, `loginTime`, `sessionVersion`, and `pwf` (an HMAC-SHA256 fingerprint of the stored password hash). The password never enters the cookie. On every subsequent request `getUserId()` re-reads the user and requires the fingerprint and `sessionVersion` to still match, so a password change, or Sign Out on any device, invalidates every existing session
 13. User redirected to `/dashboard/user` (or `/dashboard/admin` if admin role)
 
 **Validation Points:**
@@ -577,7 +600,7 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 3. System calculates prorated upgrade amount:
    - Remaining days in current cycle × (new price - old price) / total cycle days
 4. User confirms upgrade
-5. Payment processed for proration amount (with GST)
+5. Payment processed for proration amount (with GST), computed on the server from the member's own active monthly membership
 6. Old membership status updated to "ending"
 7. New membership created with status "active"
 8. Old membership's `nextPaymentDate` preserved for new membership
@@ -591,7 +614,7 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 ### Workflow 5: Membership Downgrade
 
 1. User has active membership
-2. User selects lower-tier membership plan
+2. User selects lower-tier membership plan (its monthly price must be lower than the current plan's; both must be monthly)
 3. System schedules downgrade at next payment date
 4. Old membership status updated to "ending"
 5. Old membership form status updated to "ending"
@@ -629,12 +652,13 @@ Memberships are **not** Stripe Subscriptions. The portal still owns `nextPayment
 
 1. User has cancelled membership (not expired)
 2. User selects same or different plan
-3. System finds cancelled membership record
-4. Cancelled membership status updated to "active"
-5. `nextPaymentDate` recalculated from now
-6. Membership form status updated to "active"
-7. User role level restored (Level 3 or Level 4)
-8. Resubscription confirmation email sent
+3. System loads the cancelled membership, refusing one that is not the member's own, not `cancelled`, or for a different plan
+4. The `needAdminPermission` gate is applied, as for any purchase
+5. Cancelled membership status updated to "active"
+6. `nextPaymentDate` is kept at the date already paid up to (it is not moved to now + one cycle)
+7. Membership form status updated to "active"
+8. User role level restored (Level 3 or Level 4)
+9. Resubscription confirmation email sent, quoting the saved date for every billing cycle ("Next billing date", or "Membership ends on" with auto-renew off)
 
 **Note:** No payment required if resubscribing to same plan. Payment required if different plan (treated as new subscription).
 
@@ -736,9 +760,9 @@ Cancellation and refund are two separate steps. Cancelling never calls Stripe an
    - Verifies user completed required orientation workshops
 5. User navigates to booking grid (`/dashboard/equipmentbooking/:id`)
 6. User selects available time slot
-7. System validates slot availability
+7. System validates and prices the slot on the server (`prepareEquipmentBooking()`), and holds it in an `EquipmentCheckout` row
 8. Payment processed (Stripe Checkout or saved card)
-9. Equipment slot marked as booked (`isBooked: true`)
+9. After payment is verified, `fulfilEquipmentCheckout()` books the held slot; the slot is marked as booked (`isBooked: true`)
 10. Booking record created in `EquipmentBooking`
 11. Payment intent ID stored in booking
 12. Confirmation email sent with booking details
@@ -748,9 +772,9 @@ Cancellation and refund are two separate steps. Cancelling never calls Stripe an
 
 1. User navigates to equipment booking grid
 2. User selects multiple time slots
-3. System validates all slots available
-4. System calculates total price (price per slot × slot count + GST)
-5. Payment processed for total amount
+3. System validates every slot on the server, including the daily and 7-day slot limits, and holds them in an `EquipmentCheckout` row
+4. System calculates total price (price per slot × slot count + GST) from the held slots
+5. Payment processed for total amount; the held slots are then booked on the server
 6. Multiple booking records created (one per slot)
 7. All bookings share same payment intent ID
 8. All slots marked as booked
@@ -780,7 +804,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 
 ### Workflow 14: Automated Membership Billing (Cron Job)
 
-**Daily Process (runs at midnight):**
+**Daily Process (runs at midnight business time):**
 1. System queries memberships with `nextPaymentDate <= now` and status "active", "ending", or "cancelled"
 2. For each due membership:
    - **If status "active" and `autoRenew=false`:**
@@ -828,7 +852,7 @@ As with workshops, cancellation and refund are two separate steps. Cancelling ne
 1. Admin creates workshop occurrence
 2. System checks if Google Calendar connected
 3. If connected:
-   - Creates Google Calendar event with workshop details
+   - Creates Google Calendar event with workshop details, its times sent as RFC 3339 with the business `-06:00` offset
    - Stores `googleEventId` in `WorkshopOccurrence`
 4. Event appears in selected calendar
 
@@ -960,7 +984,7 @@ Every implementation then follows **implement → test → verify end to end**. 
 1. Implement the feature
 2. Add test files under `tests/` and make them pass
 3. Verify end to end in a real browser via the Playwright MCP server
-4. `npm test` — the suite must stay fully green (**46 suites / 737 tests**)
+4. `npm test` — the suite must stay fully green (**71 suites / 1028 tests**)
 5. `npm run typecheck`
 
 **Change to existing functionality** — assume this whenever an existing function, route, query, or schema field is edited, since the existing tests encode the old behaviour
@@ -1001,7 +1025,9 @@ See [CLAUDE.md](./CLAUDE.md) for the full rules and [tests/README.md](./tests/RE
 **Test Focus Areas (all now covered):**
 - Model functions — workshop, equipment, membership, payment, user, profile, admin, access card, access log, issue
 - Services — Stripe Product sync, Brivo door access sync, Brivo client configuration
-- Auth and session — login, session expiry, password-change invalidation, email case-insensitivity
+- Auth and session — login, session expiry, password-change invalidation, Sign Out on every device, email case-insensitivity
+- Purchase security — session-user identity, server pricing, success-page verification and once-only fulfilment, server-held equipment slots, membership ownership
+- Business timezone — the helpers under several real host zones, emails, Google Calendar event times, the equipment grid, and a guard against host-clock calls in `app/`
 - Access control — role-level AND chain, door permission gating
 - Route actions and loaders
 - Payment processing — GST calculation, refunds, payment method removal
@@ -1048,7 +1074,7 @@ The acceptance criteria are organized into three categories:
 | AC15 | Membership Downgrade | Old membership "ending"; new membership "active"; new membership's `date` = old membership's `nextPaymentDate`; no payment required | `tests/models/membership.server.test.ts` |
 | AC16 | Membership Cancellation (Before Cycle End) | Membership status "cancelled"; membership form "cancelled"; user retains access until `nextPaymentDate`; role level unchanged | `tests/models/membership.server.test.ts` |
 | AC17 | Membership Cancellation (After Cycle End) | Membership record deleted; membership form "inactive"; user role level recalculated (Level 2 if orientation completed, else Level 1) | `tests/models/membership.server.test.ts` |
-| AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` recalculated; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
+| AC18 | Membership Resubscription | Cancelled membership status "active"; `nextPaymentDate` kept at the paid-through date; membership form "active"; role level restored | `tests/models/membership.server.test.ts` |
 | AC19 | Automated Membership Billing (Cron) | Registered daily at midnight (`0 0 * * *`); finds memberships with `nextPaymentDate <= now`; charges every billing cycle via a Stripe invoice using the saved payment method; sets memberships without a saved card to "inactive"; updates role levels; sends payment reminders; swallows database errors so the job survives to the next night | `tests/models/membership.cron.test.ts` |
 | AC20 | Membership Payment Reminder | Membership due within 24 hours; payment reminder email sent with plan title, next payment date, amount due, payment method reminder; the amount is the discounted total priced as of the charge date | `tests/models/membership.cron.test.ts` |
 | - | Billing Cycles | Every cycle (monthly, quarterly, semiannually, yearly) reads its own price with fallback to `price` when the cycle price is null, advances `nextPaymentDate` by the right interval, and carries the plan's `stripeProductId` on the invoice line | `tests/models/membership.cron.test.ts` |
@@ -1059,7 +1085,20 @@ The acceptance criteria are organized into three categories:
 | - | Apply a Discount to a Member | Refuses an unknown code, an invalid coupon, a promotion code carrying restrictions Stripe will not evaluate on a Customer, a plan never synced to Stripe, and a coupon whose products do not cover the selected membership's plan; every refusal leaves Stripe untouched. Applies across all four billing cycles, redeems the promotion code rather than the bare coupon, reports the renewal the discount first applies to, and uses the membership the admin selected rather than picking one | `tests/models/membership.discount-apply.test.ts` |
 | - | Discount Does Not Outlive Its Membership | Every exit ends the discount: the three cron branches, cancelling after the term has passed (which deletes the row), and an admin revoke. It is kept only when a surviving active membership can actually use the coupon, so an unscoped coupon survives and one scoped to the ended plan does not; an unreadable coupon is left alone | `tests/models/membership.discount-lifecycle.test.ts` |
 | - | Clear and Re-sync Discount Impact | Lists only product-scoped coupons, since unscoped ones survive a re-sync; treats a coupon Stripe cannot read as unknown rather than safe; deduplicates the coupon lookup across members sharing a code; logs the worklist before clearing anything | `tests/models/membership.resync-impact.test.ts` |
-| - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/routes/dashboard/payment.membership-gst.test.ts` |
+| - | Membership Checkout GST | Membership checkout sends the base price with GST as a Stripe tax rate rather than folded into `unit_amount`, allows promotion codes, and carries the plan's Stripe Product | `tests/models/payment.membership-gst.test.ts` |
+| AC3 | Session Invalidation | Password changed; the session's hash fingerprint no longer matches; `getUserId()` returns null | `tests/utils/session.server.test.ts` |
+| AC4 | Tampered Session Cookie | A tampered fingerprint, a stale `sessionVersion`, an old-format cookie carrying the raw password, a missing field, or a session past 3 hours is rejected, without signing the user out elsewhere | `tests/utils/session.server.test.ts` |
+| - | Sign Out Everywhere | POST `/logout` bumps `sessionVersion` once and destroys the cookie, a copy of the old cookie stops working, and GET `/logout` signs nobody out | `tests/utils/session.server.test.ts`, `tests/routes/authentication/logout.test.ts` |
+| - | Checkout Identity and Pricing | The session user pays and is recorded in the metadata whatever the body says; workshop, variation, multi-day, membership cycle, proration and equipment prices all come from the server; a variation from another workshop, a cycle with no price, someone else's membership, and a plan needing admin permission are refused | `tests/models/payment.checkout.test.ts`, `tests/models/payment.quickcheckout.test.ts`, `tests/routes/api/paymentprocess.test.ts` |
+| - | Payment Success Verification | Signed-out visitors go to login; an unpaid or still-open session, or one paid by another account, fulfils nothing; a 100%-off session fulfils; each session is fulfilled once and a failure releases the claim for a retry | `tests/routes/dashboard/paymentsuccess.verify.test.ts`, `tests/models/payment.quickcheckout.test.ts` |
+| - | Server-Held Equipment Checkout | Slots are validated (one grid cell, no repeats, not past, inside the window, level, prerequisites, availability, daily and 7-day limits), priced as price x slots, held, and booked once for their owner after payment | `tests/models/equipment.checkout.test.ts`, `tests/routes/dashboard/equipmentbooking.rules.test.ts` |
+| - | Equipment Booking Rules | Level 3 hours and closed days, planned closures, the level 4 window including overnight wrap, judged on the business clock, with 12-hour messages | `tests/utils/equipment-booking-rules.test.ts`, `tests/components/EquipmentBookingGrid.component.test.tsx` |
+| - | Membership Ownership | Upgrade, downgrade and resubscribe act only on the signed-in member's own membership in the right status; downgrade must be cheaper, the free upgrade route refuses a cheaper plan; `needAdminPermission` holds on resubscribe | `tests/models/membership.ownership.test.ts`, `tests/routes/api/payment-membership-changes.test.ts`, `tests/routes/dashboard/payment.loader-rules.test.ts` |
+| - | Resubscribe Keeps the Paid Term | Resubscribing keeps `nextPaymentDate`; the email quotes that date for every cycle | `tests/models/membership.server.test.ts`, `tests/routes/api/paymentresubscribe.test.ts`, `tests/utils/email.membership-resubscribe.test.ts` |
+| - | Admin-Only Routes | The equipments action refuses non-admins with 401, and the Offer Again loader with 403 | `tests/routes/dashboard/equipments.auth.test.ts`, `tests/routes/dashboard/workshopofferagain.auth.test.ts` |
+| - | Business Clock | Helpers, grid keys, emails, Google Calendar times and volunteer hours read and write UTC-6 wall time whatever the host zone; no host-clock date call exists in `app/` | `tests/utils/business-time*.test.ts`, `tests/utils/email.business-time.test.ts`, `tests/utils/googleCalendar.event-time.test.ts`, `tests/routes/dashboard/profile.volunteer-hours.test.ts` |
+| - | Timezone Re-anchor Script | The `legacy-mountain-dst` rule, the production re-anchor, a future rule change, dry run by default, `--apply` refused without reviewed ids | `tests/scripts/reanchor-times.test.ts` |
+| - | Email Dev Guard | `EMAIL_DEV_REDIRECT` reroutes with a tagged subject; development without it sends nothing; production sends normally | `tests/utils/email.dev-guard.test.ts` |
 | AC8 | Missing Required Fields | Zod schema validation fails; field-specific error messages displayed; no user record created. Also covers the guardian name being required for 14 to 17 and stripped for every other age | `tests/schemas/registration-age-guardian.test.ts` |
 | - | Age Arithmetic | Whole-year ages across both boundaries, leap days, malformed and non-existent calendar dates, future dates, and the timezone case where a UTC-parsed birthday used to admit a 13 year old a day early | `tests/utils/age.test.ts` |
 | - | Under-18 Staff Notice | Recipient resolved from `minor_notification_email` and never the registrant, the subject and every body fact, HTML escaping of crafted names, a missing guardian name, and a Mailgun failure propagating to the caller | `tests/utils/email.minor-registration.test.ts` |
@@ -1083,6 +1122,8 @@ The acceptance criteria are organized into three categories:
 | AC30 | Equipment Bulk Booking | Multiple booking records created; all bookings share same payment intent ID; all slots marked as booked | `tests/models/equipment.booking.test.ts` |
 | AC31 | Equipment Refund Eligibility | System checks cancellation date vs slot start time; eligible if 2+ days before; cancellation record created | `tests/models/equipment.cancellation.test.ts` |
 | AC33 | Equipment Partial Cancellation | User cancels individual slots from bulk booking; remaining slots remain booked | `tests/models/equipment.cancellation.test.ts` |
+| AC35 | Quick Checkout (Saved Card) | Charges the signed-in member's own saved card (`off_session: true`) at the server's price; equipment slots are held, booked and recorded server-side before success is reported; a member with no saved card is told to use the regular checkout | `tests/models/payment.quickcheckout.test.ts` |
+| AC36 | Stripe Checkout Session | Session created for the signed-in member at the server's price, never a price or user id from the request; metadata carries the item ids and GST info; the success page fulfils it once, only when paid and only for that member | `tests/models/payment.checkout.test.ts`, `tests/routes/dashboard/paymentsuccess.verify.test.ts` |
 | - | Equipment Basic Operations | Equipment CRUD operations, slot management, settings | `tests/models/equipment.basic.test.ts`, `tests/models/equipment.slots.test.ts`, `tests/models/equipment.settings.test.ts` |
 | - | Admin Workshop Creation | Admin creates new workshop; workshop form validation | `tests/routes/dashboard/addworkshop.test.ts` |
 | - | Admin Equipment Creation | Admin creates new equipment; equipment form validation | `tests/routes/dashboard/addequipment.test.ts` |
@@ -1099,10 +1140,8 @@ These tests are **not yet written**. The "Recommended Test File" column names wh
 
 | AC Number | Test Case | Description | Recommended Test File |
 |-----------|-----------|-------------|----------------------|
-| AC1 | Valid Login | Session cookie created with `userId`, `userPassword`, and `loginTime`; user redirected to appropriate dashboard; session expires after 3 hours | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
+| AC1 | Valid Login | Login action redirects to the appropriate dashboard. Cookie contents (`userId`, `loginTime`, `sessionVersion`, `pwf`) and the 3-hour expiry are already covered in `tests/utils/session.server.test.ts`; the role-based redirect in `login.tsx` is not | `tests/routes/authentication/login.test.ts` |
 | AC2 | Invalid Credentials | Error message displayed; no session created; user remains on login page | `tests/utils/session.server.test.ts` or `tests/models/user.server.test.ts` |
-| AC3 | Session Invalidation | User password changed externally; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
-| AC4 | Tampered Session Cookie | Session cookie modified or expired; session validation fails; user automatically logged out | `tests/utils/session.server.test.ts` |
 | AC5 | Valid Registration | User record created; password hashed with bcrypt; registration confirmation email sent; user redirected to login | `tests/utils/session.server.test.ts` |
 | AC6 | Waiver Signature | PDF template loaded; user name, signature, and date added; PDF encrypted with AES; encrypted PDF stored in `User.waiverSignature` | `tests/utils/session.server.test.ts` |
 | AC7 | Duplicate Email | Validation error displayed; no user record created; registration form shows error message | `tests/utils/session.server.test.ts` |
@@ -1115,8 +1154,6 @@ These tests are **not yet written**. The "Recommended Test File" column names wh
 | AC27 | Equipment Role Level Restriction | Equipment requires Level 3+ access; user with Level 2 attempts booking; booking blocked; error message displayed | `tests/models/equipment.server.test.ts` |
 | AC32 | Equipment Refund | Stripe refund processed; slot(s) marked as available; booking record(s) deleted; cancellation confirmation email sent | `tests/models/payment.server.test.ts` |
 | AC34 | GST Calculation | GST percentage retrieved from admin settings; GST amount calculated; total amount includes GST; GST metadata stored in Stripe payment intent | `tests/models/payment.server.test.ts` |
-| AC35 | Quick Checkout (Saved Card) | Payment intent created with saved payment method; payment processed automatically (`off_session: true`); no redirect to Stripe Checkout | `tests/models/payment.server.test.ts` |
-| AC36 | Stripe Checkout Session | Stripe Checkout session created; session metadata includes userId, item IDs, amounts, GST info; user redirected to Stripe Checkout | `tests/models/payment.server.test.ts` |
 | AC37 | Payment Method Storage | Stripe customer created; payment method attached; payment method set as default; details stored in `UserPaymentInformation` | `tests/models/payment.server.test.ts` |
 | AC38 | Workshop Confirmation Email | Email sent with workshop name, date/time, location, pricing, ICS attachment, Google Calendar links | `tests/utils/email.server.test.ts` |
 | AC39 | Equipment Confirmation Email | Email sent with equipment name, time slot(s), price | `tests/utils/email.server.test.ts` |
@@ -1189,7 +1226,7 @@ The following acceptance criteria should be manually tested by QA in the applica
 | AC15 | **Membership** Downgrade | Have active membership; select lower-tier plan | No payment required; old membership status "ending"; new membership scheduled at next payment date; downgrade confirmation email received; user retains current benefits until transition |
 | AC16 | **Membership** Cancellation (Before Cycle End) | Cancel membership before `nextPaymentDate` | Membership status "cancelled"; user retains access until `nextPaymentDate`; role level unchanged; cancellation confirmation email received |
 | AC17 | **Membership** Cancellation (After Cycle End) | Cancel membership after `nextPaymentDate` | Membership record deleted; role level recalculated (Level 2 if orientation completed, else Level 1); cancellation confirmation email received |
-| AC18 | **Membership** Resubscription | Have cancelled membership (not expired); resubscribe to same or different plan | Cancelled membership reactivated; `nextPaymentDate` recalculated; role level restored; resubscription confirmation email received |
+| AC18 | **Membership** Resubscription | Have cancelled membership (not expired); resubscribe to same or different plan | Cancelled membership reactivated; `nextPaymentDate` unchanged from before the cancellation; role level restored; resubscription confirmation email received, quoting that date |
 | AC19 | **Membership** Automated Monthly Billing (Cron) | Set membership `nextPaymentDate` to past date; trigger cron job (or wait for scheduled run) | Monthly **Membership** charged with saved payment method; `nextPaymentDate` updated to next month; payment intent ID stored; non-monthly memberships set to "inactive"; role levels updated correctly; payment reminders sent |
 | AC20 | **Membership** Payment Reminder | Set membership `nextPaymentDate` to within 24 hours; trigger cron job (or wait for scheduled run) | Payment reminder email sent; email includes all required information |
 | ---- | **Workshop:** Active Workshops, Orientations, Past Events | Go to /dashboard/workshops route and see the avaliable workshops | Workshops should be categorized as active workshops, orientations, or past events properly. Past events are determined if all days in the workshop have past while active ones have at least one date in the future | `NA` | `11/17/2025`
@@ -1397,7 +1434,7 @@ The following acceptance criteria should be manually tested by QA in the applica
   - ~~Orientation History confusing on if workshop is single occurrence or multi day **[ARIQ WILL DO THIS]**~~
   - ~~Disable in edit workshop the ability to uncheck and check "Add Workshop Price Variation"~~
   - ~~Workshop that are in the register cut-off phase can still be accessed and registered by typing URL: http://localhost:5173/dashboard/payment/:workshopID/:workshopOccurrenceID for single occurrence and http://localhost:5173/dashboard/payment/:workshopID/connect/:connectID for multi-day workshops~~
-    - The original fix covered only the two URL shapes named above. The price-variation form `/dashboard/payment/:workshopId/:occurrenceId/:variationId` was missed and stayed bypassable until it was fixed later. All four workshop branches of the `payment.tsx` loader now call `isPastRegistrationCutoff`, and `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape so a future branch cannot silently skip it
+    - The original fix covered only the two URL shapes named above. The price-variation form `/dashboard/payment/:workshopId/:occurrenceId/:variationId` was missed and stayed bypassable until it was fixed later. All four workshop branches of the `payment.tsx` loader now call `isPastRegistrationCutoff`, and `resolveWorkshopPurchase()` in `app/models/payment.server.ts` checks it again before any charge, so Stripe Checkout and Quick Checkout cannot bypass it either. `tests/routes/dashboard/payment.cutoff.test.ts` covers every shape so a future branch cannot silently skip it
   - ~~Need to notify users via email for users registered in a price variation if it has cancelled by the admin (need to handle for multi-day and regular workshops)~~
   - ~~People whos workshop registration in a price variation got cancelled should go into Workshop Cancelled Events to process refunds (need to handle for multi-day and regular workshops)~~
   - ~~When having a workshop that books equipments during its workshop occurrence times slots, editing the workshop and removing that equipment and pressing Update Workshop button, it does not remove the equipment from the workshop at all and in turn, does not free up the time slot (this for some reason only if you have a workshop for example with equipment Lazer Cutter and then you want to remove Lazer Cutter; the equipment will not be removed and so the slots do not free up. But if you have like Lazer Cutter and CNC Milling equipment and you remove CNC Milling, it will remove properly. Maybe it only does that if you are going from a workshop that books equipment to one that doesn't anymore after editing)~~
@@ -1589,6 +1626,9 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 **Utilities:**
 - `app/utils/session.server.ts` - Authentication, session management, waiver generation
+- `app/utils/business-time.ts`, `app/utils/business-time-equipment.ts` - Business-clock date helpers and equipment grid keys (client-safe)
+- `app/utils/equipment-booking-rules.ts` - Level 3 hours, planned closures and the level 4 window, shared by the grid and the server
+- `app/utils/membership-rules.ts`, `app/utils/registration-cutoff.ts` - Billing-cycle pricing, admin-permission gate, registration cutoff
 - `app/utils/email.server.ts` - Email composition and sending
 - `app/utils/db.server.ts` - Database singleton instance
 - `app/utils/googleCalendar.server.ts` - Google Calendar OAuth and event management
@@ -1596,6 +1636,10 @@ The following acceptance criteria should be manually tested by QA in the applica
 
 **Configuration and logging:**
 - `app/config/access-control.ts` - Access control configuration (door permissions, Brivo groups)
+- `app/config/timezone.ts` - `BUSINESS_TIME_ZONE`
+
+**Scripts:**
+- `scripts/reanchor-times.cjs` - Production repair tool: re-anchors future session and slot times when the business timezone's rule changes
 - `app/logging/logger.ts` - Winston logger (`logs/error.log`, `logs/all_logs.log`)
 
 **Server entry:**
@@ -1637,6 +1681,7 @@ npm run typecheck
 
 # Database migrations
 npx prisma migrate dev
+npx prisma migrate deploy   # production
 
 # Database seeding
 npx tsx seed.ts
@@ -1688,7 +1733,7 @@ npx prisma studio
 
 **Required:**
 - `DATABASE_URL` - PostgreSQL connection string
-- `SESSION_SECRET` - Secret for session cookie encryption
+- `SESSION_SECRET` - Signs the session cookie and keys its password-hash fingerprint
 - `STRIPE_SECRET_KEY` - Stripe API secret key
 - `STRIPE_PUBLIC_KEY` - Stripe API public key
 - `BASE_URL` - Application base URL (for email links)
@@ -1699,8 +1744,13 @@ npx prisma studio
 - `MAILGUN_DOMAIN` - Mailgun domain
 - `MAILGUN_FROM_EMAIL` - Sender email address
 
+**Development email guard:**
+- `EMAIL_DEV_REDIRECT` - Development only: every email goes here instead. With it unset, `NODE_ENV=development` sends no email. Never set in production
+
 **Password Reset:**
 - `JWT_SECRET` - JWT signing secret for password reset tokens
+
+`.env.example` lists every variable with placeholders.
 
 **Google Calendar (Optional):**
 - `GOOGLE_CLIENT_ID` - Google OAuth client ID
