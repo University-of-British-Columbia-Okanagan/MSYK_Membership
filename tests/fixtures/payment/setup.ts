@@ -27,6 +27,16 @@ const createPaymentDbMock = () => ({
       findUnique: jest.fn(),
       update: jest.fn(),
     },
+    equipment: {
+      findUnique: jest.fn(),
+    },
+    equipmentCheckout: {
+      findUnique: jest.fn(),
+    },
+    paymentFulfillment: {
+      create: jest.fn(),
+      deleteMany: jest.fn(),
+    },
   },
 });
 
@@ -82,11 +92,43 @@ jest.mock("~/models/workshop.server", () => ({
   registerForWorkshop: jest.fn(),
   registerUserForAllOccurrences: jest.fn(),
   getWorkshopPriceVariation: jest.fn(),
+  checkWorkshopCapacity: jest.fn(),
+  checkMultiDayWorkshopCapacity: jest.fn(),
 }));
 
 jest.mock("~/models/membership.server", () => ({
   getMembershipPlanById: jest.fn(),
   calculateProratedUpgradeAmount: jest.fn(),
+  getOwnedMembership: jest.fn(),
+  registerMembershipSubscription: jest.fn(),
+  activateMembershipForm: jest.fn(),
+  MEMBERSHIP_REVOKED_ERROR: "USER_MEMBERSHIP_REVOKED",
+}));
+
+// Thrown by the mocked equipment model the way the real one throws its refusals.
+export class MockEquipmentBookingError extends Error {}
+
+jest.mock("~/models/equipment.server", () => ({
+  prepareEquipmentBooking: jest.fn(),
+  createEquipmentCheckout: jest.fn(),
+  fulfilEquipmentCheckout: jest.fn(),
+  bookEquipmentBulkByTimes: jest.fn(),
+  get EquipmentBookingError() {
+    return MockEquipmentBookingError;
+  },
+}));
+
+// Confirmation emails must never leave a test run.
+jest.mock("~/utils/email.server", () => ({
+  sendWorkshopConfirmationEmail: jest.fn(),
+  sendMembershipConfirmationEmail: jest.fn(),
+  checkPaymentMethodStatus: jest.fn().mockResolvedValue(false),
+}));
+
+export const mockGetOrCreateGstTaxRate = jest.fn();
+
+jest.mock("~/services/stripe-discounts.server", () => ({
+  getOrCreateGstTaxRate: mockGetOrCreateGstTaxRate,
 }));
 
 export const mockSyncUserDoorAccess = jest.fn().mockResolvedValue(undefined);
@@ -121,6 +163,7 @@ export const resetPaymentMocks = () => {
     stripeCustomersCreateMock,
     mockGetSavedPaymentMethod,
     mockSyncUserDoorAccess,
+    mockGetOrCreateGstTaxRate,
   ].forEach((m) => m.mockReset());
 
   mockGetAdminSetting.mockReset();

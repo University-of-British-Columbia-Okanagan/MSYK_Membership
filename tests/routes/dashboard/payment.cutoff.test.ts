@@ -13,26 +13,41 @@ import {
   checkMultiDayWorkshopCapacity,
 } from "~/models/workshop.server";
 import { getAdminSetting } from "~/models/admin.server";
+import { db } from "~/utils/db.server";
 import { loader } from "~/routes/dashboard/payment";
+import { createCheckoutSession, quickCheckout } from "~/models/payment.server";
 
-// payment.tsx constructs a Stripe client at module load from STRIPE_SECRET_KEY,
-// which is absent under Jest, so the real module would throw on import.
+// payment.server constructs a Stripe client at module load from STRIPE_SECRET_KEY,
+// which is absent under Jest, so the real module would throw on import. The factory
+// runs during the imports above, so the mocks are created inside it and handed out.
 jest.mock("stripe", () => {
+  const sessionsCreate = jest.fn();
+  const paymentIntentsCreate = jest.fn();
   const stripeConstructorMock = jest.fn().mockImplementation(() => ({
-    checkout: { sessions: { create: jest.fn() } },
+    checkout: { sessions: { create: sessionsCreate } },
+    paymentIntents: { create: paymentIntentsCreate },
   }));
   return {
     __esModule: true,
     Stripe: stripeConstructorMock,
     default: stripeConstructorMock,
+    __sessionsCreate: sessionsCreate,
+    __paymentIntentsCreate: paymentIntentsCreate,
   };
 });
+
+const { __sessionsCreate: sessionsCreateMock, __paymentIntentsCreate: paymentIntentsCreateMock } =
+  require("stripe") as { __sessionsCreate: jest.Mock; __paymentIntentsCreate: jest.Mock };
 
 jest.mock("~/utils/session.server");
 jest.mock("~/models/user.server");
 jest.mock("~/models/workshop.server");
 jest.mock("~/models/membership.server");
+jest.mock("~/models/equipment.server");
 jest.mock("~/models/admin.server");
+jest.mock("~/services/access-control-sync.server");
+jest.mock("~/services/stripe-discounts.server");
+jest.mock("~/utils/email.server");
 jest.mock("~/logging/logger");
 
 const mockGetUser = getUser as jest.Mock;
@@ -54,8 +69,9 @@ const REGISTRATION_CUTOFF_MINUTES = 60;
 
 /**
  * The four workshop URL shapes the payment loader accepts. Each must enforce
- * Workshop.registrationCutoff — the loader is the only server-side gate, since
- * neither quickCheckout() nor paymentsuccess.tsx re-checks it.
+ * Workshop.registrationCutoff, and so must every purchase path behind it:
+ * createCheckoutSession() and quickCheckout() both re-check it, because the
+ * loader alone is bypassed by posting to /dashboard/paymentprocess directly.
  */
 const URL_SHAPES: Array<{
   name: string;
@@ -204,5 +220,72 @@ describe("payment loader — registration cutoff", () => {
     expect(result).toEqual(
       expect.objectContaining({ isMultiDayWorkshop: false })
     );
+  });
+});
+
+/** The same four shapes as a purchase request body, as the payment page posts them. */
+const purchaseBody = (params: Record<string, string>) => ({
+  workshopId: Number(params.workshopId),
+  ...(params.occurrenceId ? { occurrenceId: Number(params.occurrenceId) } : {}),
+  ...(params.connectId ? { connectId: Number(params.connectId) } : {}),
+  ...(params.variationId ? { variationId: Number(params.variationId) } : {}),
+});
+
+describe("purchase paths — registration cutoff", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (db.user.findUnique as jest.Mock).mockResolvedValue({
+      id: 1,
+      email: "user@example.com",
+      membershipStatus: "active",
+      roleLevel: 3,
+      allowLevel4: false,
+    });
+    sessionsCreateMock.mockResolvedValue({ url: "https://checkout.stripe.test/s" });
+  });
+
+  describe.each(URL_SHAPES)("$name", ({ params, isMultiDay }) => {
+    it("Stripe Checkout refuses once the cutoff has passed", async () => {
+      primeMocks(30, isMultiDay);
+
+      const res = (await createCheckoutSession(
+        new Request("http://localhost/dashboard/paymentprocess", {
+          method: "POST",
+          body: JSON.stringify({ ...purchaseBody(params), userId: 1 }),
+        }),
+        1
+      )) as Response;
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "Registration for this workshop has closed." });
+      expect(sessionsCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("quick checkout refuses once the cutoff has passed, before charging the card", async () => {
+      primeMocks(30, isMultiDay);
+
+      const result = await quickCheckout(1, { type: "workshop", ...purchaseBody(params) });
+
+      expect(result).toEqual({
+        success: false,
+        error: "Registration for this workshop has closed.",
+        type: "workshop",
+      });
+      expect(paymentIntentsCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("Stripe Checkout still opens while registration is open", async () => {
+      primeMocks(180, isMultiDay);
+
+      await createCheckoutSession(
+        new Request("http://localhost/dashboard/paymentprocess", {
+          method: "POST",
+          body: JSON.stringify(purchaseBody(params)),
+        }),
+        1
+      );
+
+      expect(sessionsCreateMock).toHaveBeenCalled();
+    });
   });
 });

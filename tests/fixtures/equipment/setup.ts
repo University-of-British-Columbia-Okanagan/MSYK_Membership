@@ -29,6 +29,7 @@ jest.mock("~/models/admin.server", () => ({
     async (key: string, fallback?: string) =>
       ADMIN_SETTING_TEST_DEFAULTS[key] ?? fallback ?? ""
   ),
+  getPlannedClosures: jest.fn(async () => []),
 }));
 jest.mock("~/utils/email.server", () => ({
   sendEquipmentConfirmationEmail: jest.fn(),
@@ -51,7 +52,7 @@ export { db } from "~/utils/db.server";
 export const getEquipmentMocks = () => {
   const { db } = require("~/utils/db.server");
   const { getUserId } = require("~/utils/session.server");
-  const { getAdminSetting } = require("~/models/admin.server");
+  const { getAdminSetting, getPlannedClosures } = require("~/models/admin.server");
   const {
     sendEquipmentConfirmationEmail,
     sendEquipmentBulkConfirmationEmail,
@@ -66,6 +67,7 @@ export const getEquipmentMocks = () => {
     db,
     mockGetUserId: getUserId as jest.Mock,
     mockGetAdminSetting: getAdminSetting as jest.Mock,
+    mockGetPlannedClosures: getPlannedClosures as jest.Mock,
     mockSendEquipmentConfirmationEmail:
       sendEquipmentConfirmationEmail as jest.Mock,
     mockSendEquipmentBulkConfirmationEmail:
