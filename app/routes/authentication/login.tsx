@@ -40,7 +40,7 @@ export async function action({ request }: Route.ActionArgs) {
     redirectParam ||
     (result.roleUserId === 2 ? "/dashboard/admin" : "/dashboard/user");
 
-  return createUserSession(result.id, result.password, redirectTo);
+  return createUserSession(result.id, redirectTo);
 }
 
 interface ActionData {
