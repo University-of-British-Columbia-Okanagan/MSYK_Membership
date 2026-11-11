@@ -4,6 +4,8 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction"; 
 import googleCalendarPlugin from "@fullcalendar/google-calendar"; // Import Google Calendar Plugin
+import { BUSINESS_TIME_ZONE } from "~/config/timezone";
+import { businessTimeZonePlugin } from "./businessTimeZonePlugin";
 
 const EventCalendar: React.FC = () => {
   return (
@@ -15,7 +17,8 @@ const EventCalendar: React.FC = () => {
         {/* Calendar Wrapper */}
         <div className="bg-white rounded-lg p-6 shadow-lg overflow-hidden">
           <FullCalendar
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, googleCalendarPlugin]}
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, googleCalendarPlugin, businessTimeZonePlugin]}
+            timeZone={BUSINESS_TIME_ZONE}
             initialView="dayGridMonth"
             googleCalendarApiKey="YOUR_GOOGLE_CALENDAR_API_KEY" //TODO: Ask Aileen for google calendar API key
             events={{
