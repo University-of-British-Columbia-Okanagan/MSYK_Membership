@@ -49,7 +49,6 @@ export default [
     "/dashboard/editworkshop/:workshopId",
     "routes/dashboard/editworkshop.tsx"
   ),
-  route("/dashboard/register/:id", "routes/api/register.tsx"),
   route("/dashboard/accesslogs", "routes/dashboard/accesslogs.tsx"),
   route("/dashboard/accessusage", "routes/dashboard/accessusage.tsx"),
   route("/access", "routes/api/access.tsx"),
@@ -122,7 +121,6 @@ export default [
   route("/dashboard/admin/reports", "routes/dashboard/adminreports.tsx"),
   route("/dashboard/report", "routes/dashboard/issue.tsx"),
   route("/dashboard/logs", "routes/dashboard/serverlogs.tsx"),
-  route("/dashboard/equipments/book-slot", "routes/api/bookequipmentslot.tsx"),
   route("/dashboard/profile/download-waiver", "routes/api/download-waiver.tsx"),
   route(
     "/dashboard/profile/download-membership-agreement/:formId",
